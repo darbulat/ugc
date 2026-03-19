@@ -745,6 +745,39 @@ async def test_record_advertiser_feedback_ok_triggers_referral_income() -> None:
 
 
 @pytest.mark.asyncio
+async def test_reactivate_or_create_reactivates_existing() -> None:
+    """When existing interaction found, reactivates it instead of creating."""
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo)
+    order_id = UUID("00000000-0000-0000-0000-000000000901")
+    blogger_id = UUID("00000000-0000-0000-0000-000000000902")
+    advertiser_id = UUID("00000000-0000-0000-0000-000000000903")
+
+    existing = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000000904"),
+        order_id=order_id,
+        blogger_id=blogger_id,
+        advertiser_id=advertiser_id,
+        status=InteractionStatus.NO_DEAL,
+        from_advertiser=None,
+        from_blogger=None,
+        postpone_count=2,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await repo.save(existing)
+
+    result = await service.reactivate_or_create_for_contacts_sent(
+        order_id, blogger_id, advertiser_id
+    )
+
+    assert result.interaction_id == existing.interaction_id
+    assert result.status == InteractionStatus.PENDING
+    assert result.postpone_count == 0
+
+
+@pytest.mark.asyncio
 async def test_referral_income_error_does_not_break_feedback() -> None:
     """Exception in referral income recording is caught and logged."""
     order_id = UUID("00000000-0000-0000-0000-000000003001")

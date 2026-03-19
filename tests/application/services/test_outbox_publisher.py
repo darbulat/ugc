@@ -729,3 +729,17 @@ class TestOutboxPublisher:
         published_order = kafka_publisher.publish.call_args[0][0]
         assert published_order.min_followers == 500
         assert published_order.max_followers == 10_000
+
+    @pytest.mark.asyncio
+    async def test_stale_events_reset_logs_warning(self) -> None:
+        """When stale events are reset, a warning is logged."""
+        outbox_repo = Mock()
+        outbox_repo.claim_pending_events = AsyncMock(return_value=[])
+        outbox_repo.reset_stale_processing_events = AsyncMock(return_value=2)
+        kafka_publisher = Mock()
+        order_repo = Mock()
+        publisher = OutboxPublisher(
+            outbox_repo=outbox_repo, order_repo=order_repo
+        )
+        await publisher.process_pending_events(kafka_publisher, max_retries=3)
+        outbox_repo.reset_stale_processing_events.assert_awaited_once()

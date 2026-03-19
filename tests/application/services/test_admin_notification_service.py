@@ -1173,3 +1173,100 @@ async def test_notify_support_chat_resolves_currency_from_order() -> None:
     text = messenger_client.sent_text[0]["text"]
     assert "1000.0 $" in text
     assert "₽" not in text
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_non_digit_external_id_shows_dash() -> None:
+    """When telegram is None and external_id is not a digit, shows dash."""
+    messenger_client = FakeMessengerClient()
+    user = User(
+        user_id=uuid4(),
+        external_id="non_digit",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram=None,
+    )
+    order = _make_order(advertiser_id=user.user_id)
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=messenger_client,
+        support_chat_id="-100123",
+    )
+
+    text = messenger_client.sent_text[0]["text"]
+    assert "<b>Telegram:</b> —" in text
+
+
+@pytest.mark.asyncio
+async def test_notify_admins_about_order_created_resolves_currency() -> None:
+    """Currency symbol is resolved from country_repo when provided."""
+    from decimal import Decimal
+
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        external_id="111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    content_moderation = ContentModerationService()
+    order = _make_order(currency="USD")
+
+    country_repo = InMemoryCountryRepository()
+    country_repo.countries["US"] = Country(
+        code="US",
+        name_native="United States",
+        currency_code="USD",
+        currency_symbol="$",
+        tax_rate=Decimal("0"),
+        enabled=True,
+    )
+
+    await notify_admins_about_order_created(
+        order,
+        messenger_client,
+        user_service,
+        content_moderation,
+        currency_symbol="₽",
+        country_repo=country_repo,
+    )
+
+    text = messenger_client.sent_text[0]["text"]
+    assert "1000.0 $" in text
+    assert "₽" not in text
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_unknown_currency_uses_default() -> None:
+    """When country not found for currency, default symbol is used."""
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user()
+    order = _make_order(advertiser_id=user.user_id, currency="XYZ")
+
+    country_repo = InMemoryCountryRepository()  # empty, no XYZ country
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=messenger_client,
+        support_chat_id="-100123",
+        currency_symbol="₽",
+        country_repo=country_repo,
+    )
+
+    text = messenger_client.sent_text[0]["text"]
+    assert "₽" in text

@@ -146,3 +146,22 @@ async def test_get_loaded_but_key_missing_in_cache_uses_defaults() -> None:
     await svc.load_from_db()
     result = await svc.get("start_message", "ru")
     assert result == DEFAULT_TEXTS["ru"]["start_message"]
+
+
+@pytest.mark.asyncio
+async def test_get_not_loaded_unknown_key_returns_empty() -> None:
+    """When not loaded and key has no default, returns empty string."""
+    repo = FakeBotTextsRepo(get_all_rows=[])
+    svc = BotTextsService(bot_texts_repo=repo, default_locale="ru")
+    result = await svc.get("totally_unknown_key_xyz", "ru")
+    assert result == ""
+
+
+@pytest.mark.asyncio
+async def test_get_loaded_unknown_locale_falls_back_to_default_locale() -> None:
+    """When loaded, unknown locale falls back to default_locale defaults."""
+    repo = FakeBotTextsRepo(get_all_rows=[])
+    svc = BotTextsService(bot_texts_repo=repo, default_locale="ru")
+    await svc.load_from_db()
+    result = await svc.get("start_message", "fr")  # "fr" not in DEFAULT_TEXTS
+    assert result == DEFAULT_TEXTS["ru"]["start_message"]

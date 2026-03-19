@@ -121,3 +121,34 @@ async def test_get_advertiser_profile_with_transaction_manager(fake_tm) -> None:
     result = await service.get_advertiser_profile(user_id)
     assert result is not None
     assert result.phone == "contact@test.com"
+
+
+@pytest.mark.asyncio
+async def test_get_blogger_profiles_returns_map_by_user_id() -> None:
+    """get_blogger_profiles fetches multiple profiles by user_ids."""
+    user_id = UUID("00000000-0000-0000-0000-000000000005")
+    blogger_repo = InMemoryBloggerProfileRepository()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/y",
+        confirmed=False,
+        city="SPb",
+        topics={"selected": ["food"]},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=20,
+        audience_age_max=40,
+        audience_geo="SPb",
+        price=500.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    await blogger_repo.save(profile)
+    service = ProfileService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=blogger_repo,
+        advertiser_repo=InMemoryAdvertiserProfileRepository(),
+    )
+    result = await service.get_blogger_profiles([user_id])
+    assert user_id in result
+    assert result[user_id].city == "SPb"
