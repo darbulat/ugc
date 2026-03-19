@@ -64,6 +64,7 @@ class TestManagerOrdersEndpoint:
 
         dispatcher = MagicMock()
         dispatcher.__getitem__ = lambda self, k: manager_service
+        dispatcher.get = lambda k: None
 
         cfg = MagicMock()
         cfg.bot.bot_username = "testbot"
@@ -95,6 +96,7 @@ class TestManagerOrdersEndpoint:
 
         dispatcher = MagicMock()
         dispatcher.__getitem__ = lambda self, k: manager_service
+        dispatcher.get = lambda k: None
 
         cfg = MagicMock()
         cfg.bot.bot_username = "testbot"
@@ -137,6 +139,7 @@ class TestManagerOrdersEndpoint:
 
         dispatcher = MagicMock()
         dispatcher.__getitem__ = lambda self, k: manager_service
+        dispatcher.get = lambda k: None
 
         cfg = MagicMock()
         cfg.bot.bot_username = "testbot"
