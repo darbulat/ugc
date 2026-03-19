@@ -188,6 +188,7 @@ class OrderListItem(BaseModel):
     order_type: str
     created_at: str
     payment_link: str = ""  # t.me/bot?start=pay_ORDER_ID
+    currency_symbol: str = "₽"
 
 
 class OrdersListResponse(BaseModel):
@@ -305,6 +306,20 @@ def _payment_link_for_order(order_id: str, bot_username: str) -> str:
     if not username:
         return ""
     return f"https://t.me/{username}?start=pay_{order_id}"
+
+
+async def _currency_symbol_map(request: Request) -> dict[str, str]:
+    """Build a mapping from currency code to currency symbol."""
+    dispatcher = request.app.state.dispatcher
+    country_repo = dispatcher.get("country_repo")
+    if not country_repo:
+        return {}
+    countries = await country_repo.list_enabled()
+    result: dict[str, str] = {}
+    for c in countries:
+        if c.currency_code not in result:
+            result[c.currency_code] = c.currency_symbol
+    return result
 
 
 async def _get_user_locale(request: Request, external_id: str) -> str:
@@ -1289,6 +1304,7 @@ async def list_orders(
     orders = await order_service.list_by_advertiser(user_id)
     cfg = request.app.state.config
     bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
+    cur_map = await _currency_symbol_map(request)
     items = [
         OrderListItem(
             order_id=str(o.order_id),
@@ -1300,6 +1316,7 @@ async def list_orders(
             payment_link=_payment_link_for_order(str(o.order_id), bot_username)
             if o.status == OrderStatus.NEW
             else "",
+            currency_symbol=cur_map.get(o.currency, "₽"),
         )
         for o in orders
     ]
@@ -1318,6 +1335,7 @@ async def list_creator_orders(
     responses = await offer_response_service.list_by_blogger(
         user_id, in_offer_only=True
     )
+    cur_map = await _currency_symbol_map(request)
     items: list[OrderListItem] = []
     seen_order_ids: set[UUID] = set()
     for resp in sorted(
@@ -1340,6 +1358,7 @@ async def list_creator_orders(
                 order_type=order.order_type.value,
                 created_at=order.created_at.isoformat(),
                 payment_link="",
+                currency_symbol=cur_map.get(order.currency, "₽"),
             )
         )
     return OrdersListResponse(orders=items)
@@ -1503,6 +1522,7 @@ async def manager_orders(
     )
     cfg = request.app.state.config
     bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
+    cur_map = await _currency_symbol_map(request)
     items = [
         OrderListItem(
             order_id=str(o.order_id),
@@ -1514,6 +1534,7 @@ async def manager_orders(
             payment_link=_payment_link_for_order(str(o.order_id), bot_username)
             if o.status == OrderStatus.NEW
             else "",
+            currency_symbol=cur_map.get(o.currency, "₽"),
         )
         for o in orders
     ]

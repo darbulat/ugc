@@ -1578,7 +1578,7 @@
             var strong = document.createElement('strong');
             strong.textContent = o.product_link || o.order_id;
             li.appendChild(strong);
-            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
+            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol)));
             ul.appendChild(li);
           });
           if (!data.orders || data.orders.length === 0) {
@@ -1914,7 +1914,7 @@
             var strong = document.createElement('strong');
             strong.textContent = o.product_link || o.order_id;
             li.appendChild(strong);
-            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
+            li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol)));
             var payLink = o.payment_link || '';
             if (payLink) {
               var payBtn = document.createElement('a');
@@ -2125,7 +2125,7 @@
               var strong = document.createElement('strong');
               strong.textContent = o.product_link || o.order_id;
               li.appendChild(strong);
-              li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price)));
+              li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol)));
               li.addEventListener('click', function() {
                 openManagerOrder(o.order_id, o.product_link || o.order_id);
               });
@@ -2495,8 +2495,8 @@
         window._currencySymbol = s;
       }
 
-      function fmtPrice(price) {
-        return price + ' ' + (window._currencySymbol || '₽');
+      function fmtPrice(price, symbol) {
+        return price + ' ' + (symbol || window._currencySymbol || '₽');
       }
 
       function showRoleOrDashboard(me) {
