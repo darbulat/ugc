@@ -328,7 +328,11 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
         today = datetime.now(timezone.utc).date()
         result: dict[str, bool] = {}
         for r in self._requests.values():
-            if r.user_id == user_id and r.requested_at.date() == today:
+            if (
+                r.user_id == user_id
+                and r.requested_at.date() == today
+                and r.status != PayoutRequestStatus.CANCELLED
+            ):
                 result[r.currency] = True
         return result
 

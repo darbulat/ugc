@@ -2407,3 +2407,60 @@ async def test_record_creator_zero_bloggers_skips() -> None:
     )
 
     assert len(entry_repo.entries) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_payout_does_not_block_same_day_request() -> None:
+    """CANCELLED payout request today should not block new requests."""
+    from ugc_bot.infrastructure.memory_repositories import InMemoryPayoutRequestRepository
+    from ugc_bot.domain.entities import PayoutRequest
+    from ugc_bot.domain.enums import PayoutRequestStatus
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from uuid import uuid4
+
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    cancelled = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.CANCELLED,
+        amount=Decimal("100.00"),
+        currency="RUB",
+    )
+    await repo.save(cancelled)
+
+    result = await repo.has_request_today_by_currency(user_id)
+    # CANCELLED should NOT block — should return empty dict
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_pending_payout_blocks_same_day_same_currency() -> None:
+    """PENDING payout request today should block new requests for that currency."""
+    from ugc_bot.infrastructure.memory_repositories import InMemoryPayoutRequestRepository
+    from ugc_bot.domain.entities import PayoutRequest
+    from ugc_bot.domain.enums import PayoutRequestStatus
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from uuid import uuid4
+
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    pending = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("100.00"),
+        currency="RUB",
+    )
+    await repo.save(pending)
+
+    result = await repo.has_request_today_by_currency(user_id)
+    assert result == {"RUB": True}
