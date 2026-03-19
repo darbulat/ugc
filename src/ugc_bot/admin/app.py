@@ -1658,9 +1658,12 @@ class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
         OfferDispatchModel.updated_at,
         OfferDispatchModel.accepted,
         OfferDispatchModel.in_offer,
+        OfferDispatchModel.rejection_reason,
+        OfferDispatchModel.desired_price,
     ]
     column_sortable_list = list(column_list)
     column_default_sort = (OfferDispatchModel.created_at, True)
+    column_searchable_list = [OfferDispatchModel.rejection_reason]
     column_labels = {
         OfferDispatchModel.order_id: "ID заказа",
         OfferDispatchModel.blogger_id: "ID креатора",
@@ -1668,6 +1671,8 @@ class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
         OfferDispatchModel.updated_at: "Обновлено",
         OfferDispatchModel.accepted: "Принял оффер",
         OfferDispatchModel.in_offer: "В заказе",
+        OfferDispatchModel.rejection_reason: "Причина отказа",
+        OfferDispatchModel.desired_price: "Желаемая цена",
     }
 
 
