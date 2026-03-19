@@ -344,6 +344,7 @@ def _build_advertiser_contact_content(
     has_telegram: bool,
     telegram_handle: str,
     texts: dict[str, str],
+    creator_external_id: str | None = None,
 ) -> tuple[str, Keyboard | None]:
     """Build contact message and inline keyboard for advertiser."""
     t = texts
@@ -382,6 +383,13 @@ def _build_advertiser_contact_content(
                 url=f"https://t.me/{telegram_handle.lstrip('@')}",
             )
         )
+    elif creator_external_id and creator_external_id.isdigit():
+        buttons.append(
+            Button(
+                text=t.get("btn_write_telegram", "Написать в телеграм"),
+                url=f"tg://user?id={creator_external_id}",
+            )
+        )
     keyboard = (
         Keyboard(kind=KeyboardKind.INLINE, rows=[buttons]) if buttons else None
     )
@@ -392,6 +400,7 @@ def _build_blogger_contacts_text(
     advertiser_telegram: str | None,
     advertiser_phone: str | None,
     texts: dict[str, str],
+    advertiser_external_id: str | None = None,
 ) -> str:
     """Build message with advertiser contacts for blogger."""
     t = texts
@@ -402,6 +411,8 @@ def _build_blogger_contacts_text(
     if advertiser_telegram and advertiser_telegram.strip():
         tg = advertiser_telegram.strip().lstrip("@")
         parts.append(f"Telegram: @{tg}\n")
+    elif advertiser_external_id and advertiser_external_id.isdigit():
+        parts.append(f"Telegram: tg://user?id={advertiser_external_id}\n")
     else:
         parts.append(t.get("lbl_telegram_dash", "Telegram: —") + "\n")
     if advertiser_phone:
@@ -458,6 +469,7 @@ async def _send_contact_immediately(
         has_telegram=bool(user.telegram and user.telegram.strip()),
         telegram_handle=user.telegram or "",
         texts=t_adv,
+        creator_external_id=user.external_id,
     )
 
     if advertiser and advertiser.external_id.isdigit():
@@ -504,6 +516,7 @@ async def _send_contact_immediately(
             has_telegram=bool(user.telegram and user.telegram.strip()),
             telegram_handle=user.telegram or "",
             texts=t_mgr,
+            creator_external_id=user.external_id,
         )
         await send_with_retry(
             messenger_client,
@@ -524,6 +537,7 @@ async def _send_contact_immediately(
             advertiser_telegram=manager.telegram,
             advertiser_phone=None,
             texts=texts,
+            advertiser_external_id=manager.external_id,
         )
     else:
         advertiser_profile = await profile_service.get_advertiser_profile(
@@ -535,6 +549,7 @@ async def _send_contact_immediately(
             if advertiser_profile
             else None,
             texts=texts,
+            advertiser_external_id=advertiser.external_id if advertiser else None,
         )
     await send_with_retry(
         messenger_client,

@@ -445,7 +445,11 @@ async def _notify_ugc_video_saved(
         creator_handle = (
             f"@{creator.telegram}"
             if creator is not None and creator.telegram
-            else (creator.username if creator is not None else "—")
+            else (
+                f"tg://user?id={creator.external_id}"
+                if creator is not None
+                else "—"
+            )
         )
         text = template.format(telegram=creator_handle, url=video_url)
         await send_with_retry(
@@ -1806,7 +1810,11 @@ async def manager_add_creator(
         manager_telegram = (
             f"@{manager.telegram}"
             if manager is not None and manager.telegram
-            else "—"
+            else (
+                f"tg://user?id={manager.external_id}"
+                if manager is not None
+                else "—"
+            )
         )
         locale = creator.language or "ru"
         bot_texts_service = dispatcher["bot_texts_service"]

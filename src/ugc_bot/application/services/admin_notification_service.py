@@ -402,9 +402,12 @@ async def notify_support_chat_about_new_order(
         return
 
     phone = advertiser_profile.phone if advertiser_profile else "—"
-    telegram = (
-        f"@{advertiser_user.telegram}" if advertiser_user.telegram else "—"
-    )
+    if advertiser_user.telegram:
+        telegram = f"@{html.escape(advertiser_user.telegram)}"
+    elif advertiser_user.external_id.isdigit():
+        telegram = f'<a href="tg://user?id={advertiser_user.external_id}">tg://user?id={advertiser_user.external_id}</a>'
+    else:
+        telegram = "—"
     order_type_label = _format_order_type_for_moderation(order)
 
     offer_esc = html.escape(order.offer_text or "")
@@ -417,7 +420,7 @@ async def notify_support_chat_about_new_order(
     text = (
         "🆕 <b>Новый заказ</b>\n\n"
         f"<b>Телефон:</b> {html.escape(phone)}\n"
-        f"<b>Telegram:</b> {html.escape(telegram)}\n"
+        f"<b>Telegram:</b> {telegram}\n"
         f"<b>Заказчик:</b> {html.escape(advertiser_user.username)}\n\n"
         f"<b>ID заказа:</b> <code>{html.escape(str(order.order_id))}</code>\n"
         f"<b>Тип заказа:</b> {html.escape(order_type_label)}\n"
