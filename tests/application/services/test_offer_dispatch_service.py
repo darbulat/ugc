@@ -1,6 +1,7 @@
 """Tests for offer dispatch service."""
 
 from datetime import date, datetime, timezone
+from decimal import Decimal
 from typing import Optional
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.ports import BloggerProfileRepository
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
+    SkipResult,
     _age_from_birth_date,
     _build_dispatch_criteria,
     _passes_profile_based_filters,
@@ -22,6 +24,7 @@ from ugc_bot.domain.entities import (
     Country,
     InstagramStats,
     Interaction,
+    ManagerOrder,
     Order,
     User,
 )
@@ -32,6 +35,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OrderType,
+    RejectionReason,
     UserStatus,
     WorkFormat,
 )
@@ -40,6 +44,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryCountryRepository,
     InMemoryInstagramStatsRepository,
     InMemoryInteractionRepository,
+    InMemoryManagerOrderRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
@@ -3038,3 +3043,188 @@ async def test_dispatch_filter_by_placement_ugc_only_includes_ugc_creator() -> (
     result = await service.dispatch(order.order_id)
     assert len(result) == 1
     assert result[0].user_id == blogger_ugc.user_id
+
+
+@pytest.mark.asyncio
+async def test_record_skip_with_rejection_reason() -> None:
+    """record_skip stores non-price reason and returns SkipResult."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000003001")
+    blogger_id = UUID("00000000-0000-0000-0000-000000003002")
+
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID("00000000-0000-0000-0000-000000003003"),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=1500.0,
+            bloggers_needed=1,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            completed_at=None,
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    result = await service.record_skip(
+        order_id,
+        blogger_id,
+        rejection_reason=RejectionReason.WRONG_FORMAT,
+    )
+
+    assert isinstance(result, SkipResult)
+    assert result.rejection_reason == RejectionReason.WRONG_FORMAT
+    assert result.desired_price is None
+    assert result.manager_id is None
+    assert result.order_price is None
+
+
+@pytest.mark.asyncio
+async def test_record_skip_low_price_returns_manager_id() -> None:
+    """record_skip with LOW_PRICE returns manager_id and order_price."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000003010")
+    blogger_id = UUID("00000000-0000-0000-0000-000000003011")
+    manager_id = UUID("00000000-0000-0000-0000-000000003012")
+
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    manager_order_repo = InMemoryManagerOrderRepository()
+
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID("00000000-0000-0000-0000-000000003013"),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=2000.0,
+            bloggers_needed=1,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            completed_at=None,
+        )
+    )
+    await manager_order_repo.save(
+        ManagerOrder(
+            user_id=manager_id,
+            order_id=order_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        manager_order_repo=manager_order_repo,
+    )
+
+    result = await service.record_skip(
+        order_id,
+        blogger_id,
+        rejection_reason=RejectionReason.LOW_PRICE,
+        desired_price=Decimal("1800.00"),
+    )
+
+    assert isinstance(result, SkipResult)
+    assert result.rejection_reason == RejectionReason.LOW_PRICE
+    assert result.desired_price == Decimal("1800.00")
+    assert result.manager_id == manager_id
+    assert result.order_price == Decimal("2000.0")
+    assert result.offer_text == "Offer"
+
+
+@pytest.mark.asyncio
+async def test_record_skip_without_reason() -> None:
+    """record_skip with no reason returns empty SkipResult (backward compat)."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000003020")
+    blogger_id = UUID("00000000-0000-0000-0000-000000003021")
+
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=offer_dispatch_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    result = await service.record_skip(order_id, blogger_id)
+
+    assert isinstance(result, SkipResult)
+    assert result.rejection_reason is None
+    assert result.desired_price is None
+    assert result.manager_id is None
+    assert result.order_price is None
+    assert result.offer_text is None
+
+
+@pytest.mark.asyncio
+async def test_get_order_price_bounds() -> None:
+    """get_order_price_bounds returns (price, price*10) tuple."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000003030")
+    order_repo = InMemoryOrderRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID("00000000-0000-0000-0000-000000003031"),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=500.0,
+            bloggers_needed=1,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            completed_at=None,
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=order_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    bounds = await service.get_order_price_bounds(order_id)
+    assert bounds is not None
+    assert bounds == (Decimal("500.0"), Decimal("5000.0"))
+
+
+@pytest.mark.asyncio
+async def test_get_order_price_bounds_not_found() -> None:
+    """get_order_price_bounds returns None for missing order."""
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    bounds = await service.get_order_price_bounds(
+        UUID("00000000-0000-0000-0000-000000003040")
+    )
+    assert bounds is None

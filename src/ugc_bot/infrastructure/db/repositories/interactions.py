@@ -3,6 +3,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Dict, List, Optional
 from uuid import UUID
 
@@ -14,7 +15,7 @@ from ugc_bot.application.ports import (
     OfferDispatchRepository,
 )
 from ugc_bot.domain.entities import Interaction, OfferDispatch
-from ugc_bot.domain.enums import InteractionStatus, OrderStatus
+from ugc_bot.domain.enums import InteractionStatus, OrderStatus, RejectionReason
 from ugc_bot.infrastructure.db.models import (
     InteractionModel,
     OfferDispatchModel,
@@ -54,6 +55,8 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         in_offer: bool,
         session: object | None = None,
         manager_id: UUID | None = None,
+        rejection_reason: str | None = None,
+        desired_price: Decimal | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
         async with _resolve_session(
@@ -71,6 +74,8 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                     in_offer=in_offer,
                     updated_at=now,
                     manager_id=manager_id,
+                    rejection_reason=rejection_reason,
+                    desired_price=desired_price,
                 )
             )
 
@@ -538,6 +543,10 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         in_offer=model.in_offer,
         manager_id=model.manager_id,
         ugc_video_url=model.ugc_video_url,
+        rejection_reason=RejectionReason(model.rejection_reason)
+        if model.rejection_reason
+        else None,
+        desired_price=model.desired_price,
     )
 
 

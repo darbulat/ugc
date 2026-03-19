@@ -60,6 +60,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     OutboxEventStatus,
     PayoutRequestStatus,
+    RejectionReason,
 )
 
 
@@ -728,6 +729,8 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         in_offer: bool,
         session: object | None = None,
         manager_id: UUID | None = None,
+        rejection_reason: str | None = None,
+        desired_price: Decimal | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
         key = (order_id, blogger_id)
@@ -740,6 +743,10 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
                 accepted=accepted,
                 in_offer=in_offer,
                 manager_id=manager_id,
+                rejection_reason=RejectionReason(rejection_reason)
+                if rejection_reason
+                else None,
+                desired_price=desired_price,
             )
 
     async def list_blogger_ids_sent_for_order(

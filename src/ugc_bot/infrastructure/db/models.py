@@ -485,6 +485,12 @@ class OfferDispatchModel(Base):
         nullable=True,
     )
     ugc_video_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, default=None
+    )
+    desired_price: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 2), nullable=True, default=None
+    )
 
 
 class ManagerOrderModel(Base):

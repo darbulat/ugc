@@ -2,12 +2,14 @@
 
 import contextlib
 import logging
+from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
 
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.messenger.dto import (
@@ -38,7 +40,7 @@ from ugc_bot.bot.handlers.utils import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import OrderType
+from ugc_bot.domain.enums import MessengerType, OrderType, RejectionReason
 
 router = Router()
 
@@ -63,6 +65,18 @@ _SEND_CONTACT_TEXTS_KEYS = (
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+
+class OfferSkipStates(StatesGroup):
+    waiting_desired_price = State()
+
+
+_REJECTION_REASON_BUTTONS = {
+    RejectionReason.LOW_PRICE: "btn_reject_low_price",
+    RejectionReason.WRONG_FORMAT: "btn_reject_wrong_format",
+    RejectionReason.UNINTERESTING_PRODUCT: "btn_reject_uninteresting",
+    RejectionReason.NO_TIME: "btn_reject_no_time",
+}
 
 
 async def _send_order_closed_and_remove_keyboard(
@@ -187,8 +201,7 @@ async def handle_offer_skip(
 ) -> None:
     """Handle blogger pressing 'Пропустить' on offer.
 
-    Records skip in offer_dispatches (accepted=False, in_offer=False) and
-    removes inline keyboard.
+    Shows rejection reason selection menu instead of recording skip immediately.
     """
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
@@ -197,6 +210,19 @@ async def handle_offer_skip(
     locale = user_locale
     msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
     order_id = _parse_offer_skip_order_id(callback.data or "")
+
+    # Answer callback (empty toast) and remove original offer keyboard
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id, text=""
+    )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+
     user = await get_user_and_ensure_allowed_callback(
         incoming,
         messenger_client,
@@ -205,21 +231,316 @@ async def handle_offer_skip(
         blocked_msg=msg_skip,
         pause_msg=msg_skip,
     )
-    await messenger_client.answer_callback(
-        callback_id=incoming.callback_id, text=msg_skip
-    )
     if user is not None:
         user = await user_role_service.update_telegram(
             user, callback.from_user.username
         )
-    if order_id is not None and user is not None:
+    if order_id is None or user is None:
+        return
+
+    # Build reason selection keyboard
+    order_id_hex = str(order_id)
+    reason_texts = await bot_texts_service.get_many(
+        list(_REJECTION_REASON_BUTTONS.values()), locale
+    )
+    rows: list[list[Button]] = []
+    for reason, text_key in _REJECTION_REASON_BUTTONS.items():
+        btn_text = reason_texts.get(text_key, reason.value)
+        rows.append(
+            [
+                Button(
+                    text=btn_text,
+                    callback_data=f"orr:{order_id_hex}:{reason.value}",
+                )
+            ]
+        )
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=rows)
+    prompt = await bot_texts_service.get("msg_offer_skip_reason_prompt", locale)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=prompt,
+        keyboard=keyboard,
+    )
+
+
+@router.callback_query(
+    lambda callback: callback.data and callback.data.startswith("orr_cancel:")
+)
+async def handle_cancel_price_entry(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    offer_dispatch_service: OfferDispatchService,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle cancel button during price entry FSM state."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    locale = user_locale
+
+    await state.clear()
+
+    raw = (callback.data or "").split("orr_cancel:", 1)[-1]
+    try:
+        order_id = UUID(raw)
+    except (ValueError, IndexError):
+        order_id = None
+
+    msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg=msg_skip,
+        blocked_msg=msg_skip,
+        pause_msg=msg_skip,
+    )
+    if user is not None and order_id is not None:
         await offer_dispatch_service.record_skip(order_id, user.user_id)
+
+    msg_cancelled = await bot_texts_service.get(
+        "msg_price_entry_cancelled", locale
+    )
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id, text=msg_cancelled
+    )
     if incoming.message_id:
         with contextlib.suppress(Exception):
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+
+
+@router.callback_query(
+    lambda callback: (
+        callback.data
+        and callback.data.startswith("orr:")
+        and not callback.data.startswith("orr_cancel:")
+    )
+)
+async def handle_rejection_reason(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    offer_dispatch_service: OfferDispatchService,
+    bot_texts_service: BotTextsService,
+    config: AppConfig,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle rejection reason selection callback (orr:{order_hex}:{reason})."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    locale = user_locale
+
+    # Parse callback data: orr:{order_hex}:{reason}
+    parts = (callback.data or "").split(":", 2)
+    if len(parts) < 3:
+        return
+    _, order_hex, reason_value = parts
+    try:
+        order_id = UUID(order_hex)
+    except ValueError:
+        return
+    try:
+        reason = RejectionReason(reason_value)
+    except ValueError:
+        return
+
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id, text=""
+    )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+
+    msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg=msg_skip,
+        blocked_msg=msg_skip,
+        pause_msg=msg_skip,
+    )
+    if user is None:
+        return
+
+    if reason == RejectionReason.LOW_PRICE:
+        # Enter FSM for price entry
+        await state.set_state(OfferSkipStates.waiting_desired_price)
+        await state.update_data(order_id=str(order_id), reason=reason.value)
+        prompt = await bot_texts_service.get("msg_enter_desired_price", locale)
+        cancel_text = await bot_texts_service.get(
+            "btn_cancel_price_entry", locale
+        )
+        cancel_kb = Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[
+                [
+                    Button(
+                        text=cancel_text,
+                        callback_data=f"orr_cancel:{order_hex}",
+                    )
+                ]
+            ],
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=prompt,
+            keyboard=cancel_kb,
+        )
+    else:
+        # Non-price reason: record skip immediately
+        await offer_dispatch_service.record_skip(
+            order_id, user.user_id, rejection_reason=reason
+        )
+        reason_texts = await bot_texts_service.get_many(
+            list(_REJECTION_REASON_BUTTONS.values()), locale
+        )
+        reason_label = reason_texts.get(
+            _REJECTION_REASON_BUTTONS.get(reason, ""), reason.value
+        )
+        msg_tpl = await bot_texts_service.get(
+            "msg_offer_skipped_with_reason", locale
+        )
+        msg = msg_tpl.format(reason=reason_label)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=msg,
+        )
+
+
+@router.message(OfferSkipStates.waiting_desired_price)
+async def handle_desired_price(
+    message: Message,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    offer_dispatch_service: OfferDispatchService,
+    bot_texts_service: BotTextsService,
+    config: AppConfig,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Handle price entry during FSM waiting_desired_price state."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    locale = user_locale
+    data = await state.get_data()
+    order_id_str = data.get("order_id")
+    if not order_id_str:
+        await state.clear()
+        return
+    order_id = UUID(order_id_str)
+
+    if not message.text:
+        prompt = await bot_texts_service.get("msg_enter_desired_price", locale)
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text=prompt,
+        )
+        return
+
+    # Get order price bounds via service
+    bounds = await offer_dispatch_service.get_order_price_bounds(order_id)
+    if bounds is None:
+        await state.clear()
+        msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id), text=msg_skip
+        )
+        return
+    offer_price, max_price = bounds
+    currency = config.market.currency_symbol
+
+    try:
+        value = Decimal(message.text.strip().replace(",", "."))
+    except (InvalidOperation, ValueError):
+        msg_tpl = await bot_texts_service.get("msg_invalid_price", locale)
+        msg = msg_tpl.format(min=offer_price, max=max_price, currency=currency)
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text=msg,
+        )
+        return
+
+    if value <= offer_price or value > max_price:
+        msg_tpl = await bot_texts_service.get("msg_invalid_price", locale)
+        msg = msg_tpl.format(min=offer_price, max=max_price, currency=currency)
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id),
+            text=msg,
+        )
+        return
+
+    # Resolve user
+    from_user = message.from_user
+    if not from_user:
+        await state.clear()
+        return
+    external_id = str(from_user.id)
+    user = await user_role_service.get_user(
+        external_id=external_id,
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None:
+        await state.clear()
+        return
+
+    result = await offer_dispatch_service.record_skip(
+        order_id,
+        user.user_id,
+        rejection_reason=RejectionReason.LOW_PRICE,
+        desired_price=value,
+    )
+    await state.clear()
+
+    msg_tpl = await bot_texts_service.get("msg_offer_skipped_low_price", locale)
+    msg = msg_tpl.format(price=value, currency=currency)
+    await messenger_client.send_text(
+        chat_id=str(message.chat.id),
+        text=msg,
+    )
+
+    # Notify manager if available
+    if result.manager_id:
+        manager = await user_role_service.get_user_by_id(result.manager_id)
+        if manager and manager.external_id.isdigit():
+            mgr_locale = manager.language or "ru"
+            mgr_msg_tpl = await bot_texts_service.get(
+                "msg_manager_low_price_notification", mgr_locale
+            )
+            mgr_msg = mgr_msg_tpl.format(
+                blogger=user.username or external_id,
+                order=result.offer_text or "",
+                desired_price=value,
+                offer_price=result.order_price or offer_price,
+                currency=currency,
+            )
+            await send_with_retry(
+                messenger_client,
+                chat_id=manager.external_id,
+                text=mgr_msg,
+                retries=_send_retries,
+                delay_seconds=_send_retry_delay_seconds,
+                logger=logger,
+                extra={"order_id": str(order_id)},
             )
 
 

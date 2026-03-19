@@ -270,6 +270,8 @@ class OfferDispatchRepository(ABC):
         in_offer: bool,
         session: object | None = None,
         manager_id: UUID | None = None,
+        rejection_reason: str | None = None,
+        desired_price: Decimal | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
 
