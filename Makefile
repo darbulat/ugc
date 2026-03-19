@@ -95,13 +95,6 @@ e2e-docker:
 e2e-miniapp:  ## Mini App Playwright E2E tests (requires E2E_MINIAPP_URL, E2E_BOT_TOKEN)
 	uv run pytest tests/e2e/test_miniapp_ui.py -v -m e2e
 
-test-docker:
-	$(COMPOSE_TEST) run --rm test
-
-# One command: unit + integration + e2e + e2e_telegram. Uses nginx from main compose (test overlay); WEBHOOK_BASE_URL must point at nginx (e.g. ngrok to host:80). Requires TELEGRAM_E2E_BOT_TOKEN, WEBHOOK_BASE_URL, WEBHOOK_SECRET in .env.
-test-all-docker:
-	$(COMPOSE_TEST_WITH_MAIN) run --rm test-all
-
 # Run full test suite in a container attached to the dev stack network (no Python on host). Set DEV_NETWORK to dev network name (e.g. ugc_default), E2E_BASE_URL=http://admin:8001, E2E_DATABASE_URL=postgresql+psycopg://...@db:5432/ugc, E2E_CLEAN_TELEGRAM=darbulat in .env.
 test-all-docker-dev:
 	@if [ -z "$${DEV_NETWORK}" ]; then \
