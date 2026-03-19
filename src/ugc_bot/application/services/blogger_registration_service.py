@@ -313,6 +313,7 @@ class BloggerRegistrationService:
         region: Optional[str] = None,
         location_geometry: Optional[str] = None,
         country: Optional[str] = None,
+        phone: Optional[str] = None,
     ) -> BloggerProfile:
         """Save blogger profile and update user before consent confirmation.
 
@@ -393,6 +394,7 @@ class BloggerRegistrationService:
                 location_geometry=geom_wkt,
                 country=profile_country,
                 currency=profile_currency,
+                phone=phone,
             )
             await self.blogger_repo.save(profile, session=session)
 
