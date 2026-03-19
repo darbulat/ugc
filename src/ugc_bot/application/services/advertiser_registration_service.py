@@ -135,14 +135,27 @@ class AdvertiserRegistrationService:
                     "User not found for advertiser registration."
                 )
 
-            profile = AdvertiserProfile(
-                user_id=user.user_id,
-                phone=phone,
-                brand=brand,
-                site_link=site_link,
-                city=city,
-                company_activity=company_activity,
+            existing_profile = await self.advertiser_repo.get_by_user_id(
+                user_id, session=session
             )
+            if existing_profile is not None:
+                profile = replace(
+                    existing_profile,
+                    phone=phone,
+                    brand=brand,
+                    site_link=site_link,
+                    city=city,
+                    company_activity=company_activity,
+                )
+            else:
+                profile = AdvertiserProfile(
+                    user_id=user.user_id,
+                    phone=phone,
+                    brand=brand,
+                    site_link=site_link,
+                    city=city,
+                    company_activity=company_activity,
+                )
             await self.advertiser_repo.save(profile, session=session)
 
             now = datetime.now(timezone.utc)
