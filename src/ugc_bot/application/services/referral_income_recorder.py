@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import (
     ContactPricingRepository,
+    PaymentRepository,
     ReferralIncomeEntryRepository,
     UserReferralBindingRepository,
     UserRepository,
@@ -27,6 +28,7 @@ class ReferralIncomeRecorder:
     user_repo: UserRepository
     referral_income_entry_repo: ReferralIncomeEntryRepository
     contact_pricing_repo: ContactPricingRepository
+    payment_repo: PaymentRepository
 
     async def record_creator_referral_income(
         self,
@@ -56,13 +58,23 @@ class ReferralIncomeRecorder:
             )
             return
 
+        payment = await self.payment_repo.get_by_order(
+            order.order_id, session=session
+        )
+        if payment is None:
+            logger.warning(
+                "No payment for order_id=%s (creator referral income skipped)",
+                order.order_id,
+            )
+            return
+
         creator = await self.user_repo.get_by_id(creator_id, session=session)
         if creator is None:
             return
 
         if order.bloggers_needed <= 0:
             return
-        platform_revenue = pricing.price / order.bloggers_needed
+        platform_revenue = Decimal(str(payment.amount)) / order.bloggers_needed
         rate = resolve_rate(creator, order)
         commission = (platform_revenue * rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
@@ -110,13 +122,23 @@ class ReferralIncomeRecorder:
             )
             return
 
+        payment = await self.payment_repo.get_by_order(
+            order.order_id, session=session
+        )
+        if payment is None:
+            logger.warning(
+                "No payment for order_id=%s (advertiser referral skipped)",
+                order.order_id,
+            )
+            return
+
         advertiser = await self.user_repo.get_by_id(
             advertiser_id, session=session
         )
         if advertiser is None:
             return
 
-        platform_revenue = pricing.price
+        platform_revenue = Decimal(str(payment.amount))
         rate = resolve_rate(advertiser, order)
         commission = (platform_revenue * rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP

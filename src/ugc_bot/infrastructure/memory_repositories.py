@@ -439,6 +439,21 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 )
         return totals
 
+    async def get_batch_totals_by_referrer_ids(
+        self,
+        referrer_user_ids: list[UUID],
+        session: object | None = None,
+    ) -> dict[UUID, Decimal]:
+        """Return {referrer_user_id: total_commission} for referrers."""
+        result: dict[UUID, Decimal] = {}
+        for entry in self.entries:
+            if entry.referrer_user_id in referrer_user_ids:
+                result[entry.referrer_user_id] = (
+                    result.get(entry.referrer_user_id, Decimal("0"))
+                    + entry.commission_amount
+                )
+        return result
+
 
 @dataclass
 class InMemoryBloggerProfileRepository(BloggerProfileRepository):

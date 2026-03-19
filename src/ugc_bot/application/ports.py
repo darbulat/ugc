@@ -1018,6 +1018,15 @@ class ReferralIncomeEntryRepository(ABC):
     ) -> dict[str, Decimal]:
         """Return {currency: total_commission_this_month} for referrer."""
 
+    @abstractmethod
+    async def get_batch_totals_by_referrer_ids(
+        self,
+        referrer_user_ids: list[UUID],
+        session: object | None = None,
+    ) -> dict[UUID, Decimal]:
+        """Return {referrer_user_id: total_commission} for referrers."""
+        ...
+
 
 class ReferralOrderIncomeRowLoader(Protocol):
     """Load referral order income rows in one query (reduces N+1)."""

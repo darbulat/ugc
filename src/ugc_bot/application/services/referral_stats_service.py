@@ -85,30 +85,23 @@ class ReferralStatsService:
     ) -> Dict[UUID, tuple[float, float]]:
         """(income_total, paid_total) per user_id for dashboard.
 
-        Uses batch DB when loader has combined_batch; else
-        get_user_referral_stats per user.
+        Prefers income_entries as source of truth when available; else falls
+        back to batch loader or per-user stats.
         """
         if not user_ids:
             return {}
         if now is None:
             now = datetime.now(timezone.utc)
 
-        loader = self.referral_order_income_loader
-        has_batch = loader is not None and callable(
-            getattr(
-                loader,
-                "load_referral_order_income_rows_combined_batch",
-                None,
-            )
-        )
-
-        if has_batch and loader is not None:
+        if self.referral_income_entry_repo is not None:
             if session is not None:
                 return await self._run_combined_batch_balances(
                     user_ids, session
                 )
 
-            async def _with_tx(sess: object | None):
+            async def _with_tx(
+                sess: object | None,
+            ) -> Dict[UUID, tuple[float, float]]:
                 return await self._run_combined_batch_balances(user_ids, sess)
 
             return await with_optional_tx(self.transaction_manager, _with_tx)
@@ -217,20 +210,13 @@ class ReferralStatsService:
         user_ids: List[UUID],
         session: object | None,
     ) -> Dict[UUID, tuple[float, float]]:
-        """(income_total, paid_total) per user via batch loader."""
-        loader = self.referral_order_income_loader
-        if loader is None:
+        """(income_total, paid_total) per user via income_entries."""
+        if self.referral_income_entry_repo is None:
             return {}
 
-        users_map = await self.user_repo.get_by_ids(user_ids, session=session)
-        custom_rates: Dict[UUID, Optional[float]] = {}
-        for uid in user_ids:
-            u = users_map.get(uid)
-            custom_rates[uid] = (
-                float(u.referral_payout_rate)
-                if u is not None and u.referral_payout_rate is not None
-                else None
-            )
+        income_totals = await (
+            self.referral_income_entry_repo
+        ).get_batch_totals_by_referrer_ids(user_ids, session=session)
         payout_requests = list(
             await self.payout_request_repo.list_by_user_ids(
                 user_ids, session=session
@@ -245,30 +231,10 @@ class ReferralStatsService:
                 paid_by_user[req.user_id] = paid_by_user.get(
                     req.user_id, 0.0
                 ) + float(req.amount)
-        rows_with_referrer = (
-            await loader.load_referral_order_income_rows_combined_batch(
-                referrer_user_ids=user_ids,
-                limit=None,
-                session=session,
-            )
-        )
-        income_by_user: Dict[UUID, float] = {uid: 0.0 for uid in user_ids}
-        for referrer_uid, row in rows_with_referrer:
-            if not row.bloggers_needed:
-                continue
-            rate = effective_rate(
-                row.creator_created_at,
-                row.order_completed_at,
-                custom_rates.get(referrer_uid),
-            )
-            platform_revenue = row.payment_amount / row.bloggers_needed
-            commission = platform_revenue * rate
-            income_by_user[referrer_uid] = (
-                income_by_user.get(referrer_uid, 0.0) + commission
-            )
+
         return {
             uid: (
-                round(income_by_user.get(uid, 0.0), 2),
+                round(float(income_totals.get(uid, Decimal("0"))), 2),
                 round(paid_by_user.get(uid, 0.0), 2),
             )
             for uid in user_ids
@@ -483,10 +449,31 @@ class ReferralStatsService:
         )
         creators_count = len(bindings)
 
-        if (
+        if self.referral_income_entry_repo is not None:
+            # Primary path: use income_entries as source of truth
+            income_by_currency = (
+                await self.referral_income_entry_repo.get_totals_by_currency(
+                    referrer_user_id, session=session
+                )
+            )
+            income_total = round(float(sum(income_by_currency.values())), 2)
+            current_month_by_currency = await (
+                self.referral_income_entry_repo
+            ).get_current_month_totals_by_currency(
+                referrer_user_id, session=session
+            )
+            income_current_month = round(
+                float(sum(current_month_by_currency.values())), 2
+            )
+            orders_by_currency = await (
+                self.referral_income_entry_repo
+            ).get_orders_count_by_currency(referrer_user_id, session=session)
+            orders_count = sum(orders_by_currency.values())
+        elif (
             self.referral_order_income_loader is not None
             and session is not None
         ):
+            # Fallback: compute from raw orders via loader
             (
                 income_current_month,
                 income_total,
@@ -499,6 +486,7 @@ class ReferralStatsService:
                 custom_rate=custom_rate,
             )
         else:
+            # Last resort: N+1 bindings path
             (
                 income_current_month,
                 income_total,

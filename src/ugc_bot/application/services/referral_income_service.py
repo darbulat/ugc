@@ -96,6 +96,7 @@ class ReferralIncomeService:
             user_repo=self.user_repo,
             referral_income_entry_repo=(self.referral_income_entry_repo),
             contact_pricing_repo=self.contact_pricing_repo,
+            payment_repo=self.payment_repo,
         )
 
     # --- Stats delegation ---
