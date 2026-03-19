@@ -2957,3 +2957,24 @@ async def test_commission_rate_uses_binding_date_not_registration_date() -> (
     # Binding is 6 months old → first-year rate applies (10%), NOT 3%
     # Binding is 6 months old → first-year rate (10%), not 3%
     assert entry.commission_rate == Decimal("0.10")
+
+
+def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
+    """CANCELLED request today should not set has_request_today=True."""
+    from ugc_bot.application.services.referral_commission import (
+        aggregate_payout_requests,
+    )
+
+    now = datetime.now(timezone.utc)
+    requests = [
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=uuid4(),
+            requested_at=now,
+            status=PayoutRequestStatus.CANCELLED,
+            amount=Decimal("100"),
+            currency="RUB",
+        ),
+    ]
+    _, _, has_request_today = aggregate_payout_requests(requests, now)
+    assert has_request_today is False

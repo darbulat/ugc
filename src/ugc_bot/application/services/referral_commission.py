@@ -82,7 +82,15 @@ def aggregate_payout_requests(
     requests: list[PayoutRequest],
     now: datetime,
 ) -> tuple[float, bool, bool]:
-    """Return (sum of PAID amounts, has_pending, has_request_today)."""
+    """Return (sum of PAID amounts, has_pending, has_request_today).
+
+    WARNING: paid_total sums amounts across all currencies — use only for
+    single-currency contexts or rough estimates. Use get_multicurrency_stats
+    for accurate per-currency breakdowns.
+
+    has_request_today: True if ANY currency has a non-cancelled request today.
+    For per-currency check use has_request_today_by_currency() repo method.
+    """
     paid_total = 0.0
     has_pending = False
     has_request_today = False
@@ -90,6 +98,8 @@ def aggregate_payout_requests(
         now.date() if now.tzinfo else now.replace(tzinfo=timezone.utc).date()
     )
     for req in requests:
+        if req.status == PayoutRequestStatus.CANCELLED:
+            continue  # cancelled should not block new requests
         if req.status == PayoutRequestStatus.PENDING:
             has_pending = True
         if req.status == PayoutRequestStatus.PAID and req.amount is not None:
