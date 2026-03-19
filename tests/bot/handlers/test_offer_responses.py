@@ -2356,6 +2356,127 @@ async def test_desired_price_non_numeric(
 
 
 @pytest.mark.asyncio
+async def test_desired_price_equal_to_offer_rejected(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Price equal to offer price is rejected (must be strictly greater)."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a63"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a64")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000a65"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    msg = FakeMessage(text="1000", user=FakeUser(1))
+    await handle_desired_price(
+        msg,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should NOT be cleared — price equal to offer is invalid
+    assert fsm.state == OfferSkipStates.waiting_desired_price.state
+    sent = messenger_client.sent_text
+    assert any("1000" in s["text"] and "10000" in s["text"] for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_desired_price_order_not_found(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """If order not found, FSM is cleared and skip message sent."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a66"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    # order_id does NOT exist in order_repo
+    order_id = UUID("00000000-0000-0000-0000-000000000a67")
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    msg = FakeMessage(text="2000", user=FakeUser(1))
+    await handle_desired_price(
+        msg,
+        state=fsm,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should be cleared — order not found
+    assert fsm.state is None
+    # A message should be sent
+    assert len(messenger_client.sent_text) >= 1
+
+
+@pytest.mark.asyncio
 async def test_cancel_price_entry(
     user_repo,
     config,

@@ -719,7 +719,7 @@ EN: dict[str, str] = {
     "msg_invalid_price": "Enter a number from {min} to {max} {currency}",
     "msg_offer_skipped_with_reason": "Thanks for feedback. Declined: {reason}. Skipped.",
     "msg_offer_skipped_low_price": "Thanks. Declined: Low price. Desired: {price} {currency}. We may return with a new offer.",
-    "msg_manager_low_price_notification": "Blogger {blogger} declined \"{order}\": low price. Wants {desired_price} {currency} (offered: {offer_price} {currency}).",
+    "msg_manager_low_price_notification": 'Blogger {blogger} declined "{order}": low price. Wants {desired_price} {currency} (offered: {offer_price} {currency}).',
     "btn_cancel_price_entry": "Cancel",
     "msg_price_entry_cancelled": "Decline recorded. Skipped.",
     "err_interaction_not_found": "Interaction not found.",

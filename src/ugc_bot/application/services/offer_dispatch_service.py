@@ -22,7 +22,13 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.domain.entities import BloggerProfile, InstagramStats, Order, User
-from ugc_bot.domain.enums import OrderStatus, OrderType, RejectionReason, UserStatus, WorkFormat
+from ugc_bot.domain.enums import (
+    OrderStatus,
+    OrderType,
+    RejectionReason,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -263,6 +269,7 @@ class SkipResult:
     desired_price: Decimal | None = None
     manager_id: UUID | None = None
     order_price: Decimal | None = None
+    offer_text: str | None = None
 
 
 @dataclass(slots=True)
@@ -569,6 +576,20 @@ class OfferDispatchService:
 
         await with_optional_tx(self.transaction_manager, _run)
 
+    async def get_order_price_bounds(
+        self,
+        order_id: UUID,
+    ) -> tuple[Decimal, Decimal] | None:
+        """Return (min_price, max_price) for desired price validation.
+
+        Returns None if order not found.
+        """
+        order = await self.order_repo.get_by_id(order_id)
+        if order is None:
+            return None
+        offer_price = Decimal(str(order.price))
+        return offer_price, offer_price * 10
+
     async def record_skip(
         self,
         order_id: UUID,
@@ -586,12 +607,18 @@ class OfferDispatchService:
                 accepted=False,
                 in_offer=False,
                 session=sess,
-                rejection_reason=rejection_reason.value if rejection_reason else None,
+                rejection_reason=rejection_reason.value
+                if rejection_reason
+                else None,
                 desired_price=desired_price,
             )
             manager_id: UUID | None = None
             order_price: Decimal | None = None
-            if rejection_reason == RejectionReason.LOW_PRICE and self.manager_order_repo:
+            offer_text: str | None = None
+            if (
+                rejection_reason == RejectionReason.LOW_PRICE
+                and self.manager_order_repo
+            ):
                 assignments = await self.manager_order_repo.list_by_order(
                     order_id, session=sess
                 )
@@ -600,11 +627,13 @@ class OfferDispatchService:
                 order = await self.order_repo.get_by_id(order_id, session=sess)
                 if order:
                     order_price = Decimal(str(order.price))
+                    offer_text = order.offer_text
             return SkipResult(
                 rejection_reason=rejection_reason,
                 desired_price=desired_price,
                 manager_id=manager_id,
                 order_price=order_price,
+                offer_text=offer_text,
             )
 
         return await with_optional_tx(self.transaction_manager, _run)

@@ -3147,6 +3147,7 @@ async def test_record_skip_low_price_returns_manager_id() -> None:
     assert result.desired_price == Decimal("1800.00")
     assert result.manager_id == manager_id
     assert result.order_price == Decimal("2000.0")
+    assert result.offer_text == "Offer"
 
 
 @pytest.mark.asyncio
@@ -3173,3 +3174,57 @@ async def test_record_skip_without_reason() -> None:
     assert result.desired_price is None
     assert result.manager_id is None
     assert result.order_price is None
+    assert result.offer_text is None
+
+
+@pytest.mark.asyncio
+async def test_get_order_price_bounds() -> None:
+    """get_order_price_bounds returns (price, price*10) tuple."""
+
+    order_id = UUID("00000000-0000-0000-0000-000000003030")
+    order_repo = InMemoryOrderRepository()
+    await order_repo.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID("00000000-0000-0000-0000-000000003031"),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Offer",
+            barter_description=None,
+            price=500.0,
+            bloggers_needed=1,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            completed_at=None,
+        )
+    )
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=order_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    bounds = await service.get_order_price_bounds(order_id)
+    assert bounds is not None
+    assert bounds == (Decimal("500.0"), Decimal("5000.0"))
+
+
+@pytest.mark.asyncio
+async def test_get_order_price_bounds_not_found() -> None:
+    """get_order_price_bounds returns None for missing order."""
+
+    service = OfferDispatchService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+
+    bounds = await service.get_order_price_bounds(
+        UUID("00000000-0000-0000-0000-000000003040")
+    )
+    assert bounds is None

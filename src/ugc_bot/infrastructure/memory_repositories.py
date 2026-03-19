@@ -743,7 +743,9 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
                 accepted=accepted,
                 in_offer=in_offer,
                 manager_id=manager_id,
-                rejection_reason=RejectionReason(rejection_reason) if rejection_reason else None,
+                rejection_reason=RejectionReason(rejection_reason)
+                if rejection_reason
+                else None,
                 desired_price=desired_price,
             )
 

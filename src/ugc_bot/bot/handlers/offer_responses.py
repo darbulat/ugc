@@ -40,7 +40,7 @@ from ugc_bot.bot.handlers.utils import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import OrderType, RejectionReason
+from ugc_bot.domain.enums import MessengerType, OrderType, RejectionReason
 
 router = Router()
 
@@ -255,9 +255,7 @@ async def handle_offer_skip(
             ]
         )
     keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=rows)
-    prompt = await bot_texts_service.get(
-        "msg_offer_skip_reason_prompt", locale
-    )
+    prompt = await bot_texts_service.get("msg_offer_skip_reason_prompt", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=prompt,
@@ -266,8 +264,7 @@ async def handle_offer_skip(
 
 
 @router.callback_query(
-    lambda callback: callback.data
-    and callback.data.startswith("orr_cancel:")
+    lambda callback: callback.data and callback.data.startswith("orr_cancel:")
 )
 async def handle_cancel_price_entry(
     callback: CallbackQuery,
@@ -322,9 +319,11 @@ async def handle_cancel_price_entry(
 
 
 @router.callback_query(
-    lambda callback: callback.data
-    and callback.data.startswith("orr:")
-    and not callback.data.startswith("orr_cancel:")
+    lambda callback: (
+        callback.data
+        and callback.data.startswith("orr:")
+        and not callback.data.startswith("orr_cancel:")
+    )
 )
 async def handle_rejection_reason(
     callback: CallbackQuery,
@@ -384,12 +383,8 @@ async def handle_rejection_reason(
     if reason == RejectionReason.LOW_PRICE:
         # Enter FSM for price entry
         await state.set_state(OfferSkipStates.waiting_desired_price)
-        await state.update_data(
-            order_id=str(order_id), reason=reason.value
-        )
-        prompt = await bot_texts_service.get(
-            "msg_enter_desired_price", locale
-        )
+        await state.update_data(order_id=str(order_id), reason=reason.value)
+        prompt = await bot_texts_service.get("msg_enter_desired_price", locale)
         cancel_text = await bot_texts_service.get(
             "btn_cancel_price_entry", locale
         )
@@ -411,7 +406,7 @@ async def handle_rejection_reason(
         )
     else:
         # Non-price reason: record skip immediately
-        result = await offer_dispatch_service.record_skip(
+        await offer_dispatch_service.record_skip(
             order_id, user.user_id, rejection_reason=reason
         )
         reason_texts = await bot_texts_service.get_many(
@@ -455,19 +450,23 @@ async def handle_desired_price(
     order_id = UUID(order_id_str)
 
     if not message.text:
-        prompt = await bot_texts_service.get(
-            "msg_enter_desired_price", locale
-        )
+        prompt = await bot_texts_service.get("msg_enter_desired_price", locale)
         await messenger_client.send_text(
             chat_id=str(message.chat.id),
             text=prompt,
         )
         return
 
-    # Get order for price bounds
-    order = await offer_dispatch_service.order_repo.get_by_id(order_id)
-    offer_price = Decimal(str(order.price)) if order else Decimal("0")
-    max_price = offer_price * 10
+    # Get order price bounds via service
+    bounds = await offer_dispatch_service.get_order_price_bounds(order_id)
+    if bounds is None:
+        await state.clear()
+        msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id), text=msg_skip
+        )
+        return
+    offer_price, max_price = bounds
     currency = config.market.currency_symbol
 
     try:
@@ -481,7 +480,7 @@ async def handle_desired_price(
         )
         return
 
-    if value < offer_price or value > max_price:
+    if value <= offer_price or value > max_price:
         msg_tpl = await bot_texts_service.get("msg_invalid_price", locale)
         msg = msg_tpl.format(min=offer_price, max=max_price, currency=currency)
         await messenger_client.send_text(
@@ -498,7 +497,7 @@ async def handle_desired_price(
     external_id = str(from_user.id)
     user = await user_role_service.get_user(
         external_id=external_id,
-        messenger_type="telegram",
+        messenger_type=MessengerType.TELEGRAM,
     )
     if user is None:
         await state.clear()
@@ -512,9 +511,7 @@ async def handle_desired_price(
     )
     await state.clear()
 
-    msg_tpl = await bot_texts_service.get(
-        "msg_offer_skipped_low_price", locale
-    )
+    msg_tpl = await bot_texts_service.get("msg_offer_skipped_low_price", locale)
     msg = msg_tpl.format(price=value, currency=currency)
     await messenger_client.send_text(
         chat_id=str(message.chat.id),
@@ -531,7 +528,7 @@ async def handle_desired_price(
             )
             mgr_msg = mgr_msg_tpl.format(
                 blogger=user.username or external_id,
-                order=order.offer_text if order else "",
+                order=result.offer_text or "",
                 desired_price=value,
                 offer_price=result.order_price or offer_price,
                 currency=currency,

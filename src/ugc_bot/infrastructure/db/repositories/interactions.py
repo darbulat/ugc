@@ -543,7 +543,9 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         in_offer=model.in_offer,
         manager_id=model.manager_id,
         ugc_video_url=model.ugc_video_url,
-        rejection_reason=RejectionReason(model.rejection_reason) if model.rejection_reason else None,
+        rejection_reason=RejectionReason(model.rejection_reason)
+        if model.rejection_reason
+        else None,
         desired_price=model.desired_price,
     )
 
