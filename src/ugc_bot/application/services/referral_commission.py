@@ -63,12 +63,18 @@ def effective_rate(
     return get_rate(creator_created_at, order_completed_at)
 
 
-def resolve_rate(referred_user: User, order: Order) -> Decimal:
-    """Return commission rate for a referred user on an order."""
+def resolve_rate(
+    referred_user: User, order: Order, binding_created_at: datetime
+) -> Decimal:
+    """Return commission rate for a referred user on an order.
+
+    The 10%/3% threshold is based on ``binding_created_at`` — the date the
+    referral binding was established — not the user's registration date.
+    """
     if referred_user.referral_payout_rate is not None:
         return referred_user.referral_payout_rate
     completed = order.completed_at or datetime.now(timezone.utc)
-    yrs = years_since(referred_user.created_at, completed)
+    yrs = years_since(binding_created_at, completed)
     return Decimal(str(FIRST_YEAR_RATE if yrs < 1.0 else AFTER_FIRST_YEAR_RATE))
 
 
