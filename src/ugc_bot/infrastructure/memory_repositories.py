@@ -272,6 +272,39 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
         session: object | None = None,
     ) -> None:
         """Persist payout request."""
+        if request.status not in (
+            PayoutRequestStatus.CANCELLED,
+            PayoutRequestStatus.DELETED,
+        ):
+            req_date = (
+                request.requested_at.date()
+                if request.requested_at.tzinfo
+                else request.requested_at.replace(tzinfo=timezone.utc).date()
+            )
+            for existing in self._requests.values():
+                if existing.request_id == request.request_id:
+                    continue
+                if (
+                    existing.user_id == request.user_id
+                    and existing.currency == request.currency
+                    and existing.status
+                    not in (
+                        PayoutRequestStatus.CANCELLED,
+                        PayoutRequestStatus.DELETED,
+                    )
+                ):
+                    existing_date = (
+                        existing.requested_at.date()
+                        if existing.requested_at.tzinfo
+                        else existing.requested_at.replace(
+                            tzinfo=timezone.utc
+                        ).date()
+                    )
+                    if existing_date == req_date:
+                        raise ValueError(
+                            "Duplicate payout request for same"
+                            " user+currency+day"
+                        )
         self._requests[request.request_id] = request
 
     async def get_by_id(
@@ -328,7 +361,20 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
         today = datetime.now(timezone.utc).date()
         result: dict[str, bool] = {}
         for r in self._requests.values():
-            if r.user_id == user_id and r.requested_at.date() == today:
+            r_date = (
+                r.requested_at.date()
+                if r.requested_at.tzinfo
+                else r.requested_at.replace(tzinfo=timezone.utc).date()
+            )
+            if (
+                r.user_id == user_id
+                and r_date == today
+                and r.status
+                not in (
+                    PayoutRequestStatus.CANCELLED,
+                    PayoutRequestStatus.DELETED,
+                )
+            ):
                 result[r.currency] = True
         return result
 
@@ -392,6 +438,21 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     totals.get(e.currency, Decimal("0")) + e.commission_amount
                 )
         return totals
+
+    async def get_batch_totals_by_referrer_ids(
+        self,
+        referrer_user_ids: list[UUID],
+        session: object | None = None,
+    ) -> dict[UUID, Decimal]:
+        """Return {referrer_user_id: total_commission} for referrers."""
+        result: dict[UUID, Decimal] = {}
+        for entry in self.entries:
+            if entry.referrer_user_id in referrer_user_ids:
+                result[entry.referrer_user_id] = (
+                    result.get(entry.referrer_user_id, Decimal("0"))
+                    + entry.commission_amount
+                )
+        return result
 
 
 @dataclass

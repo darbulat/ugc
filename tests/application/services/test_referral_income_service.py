@@ -394,12 +394,13 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
     now = datetime.now(timezone.utc)
     user_id = uuid4()
 
+    yesterday = now - timedelta(days=1)
     payout_repo = InMemoryPayoutRequestRepository()
     await payout_repo.save(
         PayoutRequest(
             request_id=uuid4(),
             user_id=user_id,
-            requested_at=now,
+            requested_at=yesterday,
             status=PayoutRequestStatus.PAID,
             amount=Decimal("100.50"),
         )
@@ -408,7 +409,7 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
         PayoutRequest(
             request_id=uuid4(),
             user_id=user_id,
-            requested_at=now,
+            requested_at=now - timedelta(days=2),
             status=PayoutRequestStatus.PAID,
             amount=Decimal("49.50"),
         )
@@ -654,8 +655,6 @@ async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
     """When loader and session are set, stats use loader (single-query path)."""
     from contextlib import asynccontextmanager
 
-    from ugc_bot.domain.entities import ReferralOrderIncomeRow
-
     referrer_id = uuid4()
     order_id = uuid4()
     now = datetime.now(timezone.utc)
@@ -709,8 +708,6 @@ async def test_get_user_referral_stats_uses_loader_when_provided() -> None:
 async def test_stats_uses_combined_loader_when_available() -> None:
     """When loader has async combined method, it is used for stats."""
     from contextlib import asynccontextmanager
-
-    from ugc_bot.domain.entities import ReferralOrderIncomeRow
 
     referrer_id = uuid4()
     order_id = uuid4()
@@ -782,8 +779,6 @@ async def test_get_user_referral_stats_loader_rate_after_first_year() -> None:
     """When order is exactly 1 year after creator registration, rate is 3%."""
     from contextlib import asynccontextmanager
 
-    from ugc_bot.domain.entities import ReferralOrderIncomeRow
-
     referrer_id = uuid4()
     order_id = uuid4()
     now = datetime.now(timezone.utc)
@@ -834,8 +829,6 @@ async def test_get_user_referral_stats_loader_rate_after_first_year() -> None:
 async def test_get_user_referral_stats_uses_custom_rate_when_set() -> None:
     """When referrer has referral_payout_rate set, income uses that rate."""
     from contextlib import asynccontextmanager
-
-    from ugc_bot.domain.entities import ReferralOrderIncomeRow
 
     referrer_id = uuid4()
     order_id = uuid4()
@@ -902,8 +895,6 @@ async def test_get_user_referral_stats_uses_custom_rate_when_set() -> None:
 async def test_get_user_referral_stats_custom_rate_none_keeps_default() -> None:
     """When referrer has no referral_payout_rate, default 10%%/3%% is used."""
     from contextlib import asynccontextmanager
-
-    from ugc_bot.domain.entities import ReferralOrderIncomeRow
 
     referrer_id = uuid4()
     order_id = uuid4()
@@ -1046,8 +1037,6 @@ async def test_get_user_referral_stats_loader_includes_advertiser_rows() -> (
     """Loader advertiser rows are included in income and orders_count."""
     from contextlib import asynccontextmanager
 
-    from ugc_bot.domain.entities import ReferralOrderIncomeRow
-
     referrer_id = uuid4()
     order_id = uuid4()
     now = datetime.now(timezone.utc)
@@ -1188,21 +1177,24 @@ async def test_get_referral_balances_batch_empty_returns_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_referral_balances_batch_uses_loader() -> None:
-    """get_referral_balances_batch uses batch loader, returns (income, paid)."""
+async def test_get_referral_balances_batch_uses_income_entries() -> None:
+    """get_referral_balances_batch uses income_entries (source of truth)."""
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+
     user_id = uuid4()
     now = datetime.now(timezone.utc)
-    user_repo = InMemoryUserRepository()
-    await user_repo.save(
-        User(
-            user_id=user_id,
-            external_id="ext1",
-            telegram="u1",
-            username="u1",
-            status=UserStatus.ACTIVE,
-            messenger_type=MessengerType.TELEGRAM,
-            referral_code="r1",
-            issue_count=0,
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+    await entry_repo.save(
+        ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=user_id,
+            referred_user_id=uuid4(),
+            order_id=uuid4(),
+            income_type=ReferralIncomeType.CREATOR,
+            currency="RUB",
+            platform_revenue=Decimal("100.00"),
+            commission_rate=Decimal("0.10"),
+            commission_amount=Decimal("10.00"),
             created_at=now,
         )
     )
@@ -1216,31 +1208,19 @@ async def test_get_referral_balances_batch_uses_loader() -> None:
             amount=Decimal("10.00"),
         )
     )
-    row = ReferralOrderIncomeRow(
-        creator_created_at=now,
-        order_completed_at=now,
-        payment_amount=100.0,
-        bloggers_needed=1,
-        order_id=uuid4(),
-    )
-    mock_loader = MagicMock()
-    mock_loader.load_referral_order_income_rows_combined_batch = AsyncMock(
-        return_value=[(user_id, row)]
-    )
     service = ReferralIncomeService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
         payment_repo=InMemoryPaymentRepository(),
         interaction_repo=InMemoryInteractionRepository(),
-        user_repo=user_repo,
+        user_repo=InMemoryUserRepository(),
         payout_request_repo=payout_repo,
         transaction_manager=None,
-        referral_order_income_loader=mock_loader,
+        referral_income_entry_repo=entry_repo,
     )
     result = await service.get_referral_balances_batch([user_id])
     assert result == {user_id: (10.0, 10.0)}
-    mock_loader.load_referral_order_income_rows_combined_batch.assert_called_once()
     sess = MagicMock()
     result2 = await service.get_referral_balances_batch([user_id], session=sess)
     assert result2 == {user_id: (10.0, 10.0)}
@@ -1327,6 +1307,19 @@ async def test_record_creator_referral_income_creates_entry() -> None:
             updated_at=now,
         )
     )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext1",
+            created_at=now,
+        )
+    )
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
@@ -1347,7 +1340,7 @@ async def test_record_creator_referral_income_creates_entry() -> None:
         user_referral_binding_repo=binding_repo,
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
-        payment_repo=InMemoryPaymentRepository(),
+        payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=user_repo,
         payout_request_repo=InMemoryPayoutRequestRepository(),
@@ -1369,7 +1362,8 @@ async def test_record_creator_referral_income_creates_entry() -> None:
     assert entry.order_id == order_id
     assert entry.income_type == ReferralIncomeType.CREATOR
     assert entry.currency == "RUB"
-    # platform_revenue = 9000 / 3 = 3000, rate = 0.10, commission = 300.00
+    # platform_revenue = payment.amount / bloggers_needed = 9000 / 3 = 3000
+    # rate = 0.10, commission = 300.00
     assert entry.platform_revenue == Decimal("3000")
     assert entry.commission_rate == Decimal("0.10")
     assert entry.commission_amount == Decimal("300.00")
@@ -1470,6 +1464,19 @@ async def test_record_advertiser_referral_income_creates_entry() -> None:
             updated_at=now,
         )
     )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext2",
+            created_at=now,
+        )
+    )
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
@@ -1490,7 +1497,7 @@ async def test_record_advertiser_referral_income_creates_entry() -> None:
         user_referral_binding_repo=binding_repo,
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
-        payment_repo=InMemoryPaymentRepository(),
+        payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=user_repo,
         payout_request_repo=InMemoryPayoutRequestRepository(),
@@ -1512,7 +1519,7 @@ async def test_record_advertiser_referral_income_creates_entry() -> None:
     assert entry.order_id == order_id
     assert entry.income_type == ReferralIncomeType.ADVERTISER
     assert entry.currency == "RUB"
-    # platform_revenue = 9000 (full), rate = 0.10, commission = 900.00
+    # platform_revenue = payment.amount = 9000, rate = 0.10, commission = 900.00
     assert entry.platform_revenue == Decimal("9000")
     assert entry.commission_rate == Decimal("0.10")
     assert entry.commission_amount == Decimal("900.00")
@@ -1556,6 +1563,19 @@ async def test_record_creator_referral_income_idempotent() -> None:
             updated_at=now,
         )
     )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext3",
+            created_at=now,
+        )
+    )
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
@@ -1576,7 +1596,7 @@ async def test_record_creator_referral_income_idempotent() -> None:
         user_referral_binding_repo=binding_repo,
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
-        payment_repo=InMemoryPaymentRepository(),
+        payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=user_repo,
         payout_request_repo=InMemoryPayoutRequestRepository(),
@@ -1906,10 +1926,11 @@ async def test_record_creator_no_pricing_skips() -> None:
 
 @pytest.mark.asyncio
 async def test_record_creator_no_user_skips() -> None:
-    """Binding and pricing exist but creator not in user_repo — skips."""
+    """Binding, pricing, and payment exist but creator not in user_repo."""
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
     creator_id = uuid4()
+    order_id = uuid4()
 
     binding_repo = InMemoryUserReferralBindingRepository()
     await binding_repo.save(
@@ -1929,11 +1950,24 @@ async def test_record_creator_no_user_skips() -> None:
             updated_at=now,
         )
     )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext_no_user",
+            created_at=now,
+        )
+    )
     # creator is NOT saved to user_repo
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
-        order_id=uuid4(),
+        order_id=order_id,
         advertiser_id=uuid4(),
         order_type=OrderType.UGC_ONLY,
         product_link="https://x.com",
@@ -1950,7 +1984,7 @@ async def test_record_creator_no_user_skips() -> None:
         user_referral_binding_repo=binding_repo,
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
-        payment_repo=InMemoryPaymentRepository(),
+        payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=InMemoryUserRepository(),
         payout_request_repo=InMemoryPayoutRequestRepository(),
@@ -2112,10 +2146,11 @@ async def test_record_advertiser_no_pricing_skips() -> None:
 
 @pytest.mark.asyncio
 async def test_record_advertiser_no_user_skips() -> None:
-    """Binding + pricing exist but advertiser not in user_repo — skips."""
+    """Binding, pricing, and payment exist but advertiser not in user_repo."""
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
     advertiser_id = uuid4()
+    order_id = uuid4()
 
     binding_repo = InMemoryUserReferralBindingRepository()
     await binding_repo.save(
@@ -2135,11 +2170,24 @@ async def test_record_advertiser_no_user_skips() -> None:
             updated_at=now,
         )
     )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext_adv_no_user",
+            created_at=now,
+        )
+    )
     # advertiser is NOT saved to user_repo
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
-        order_id=uuid4(),
+        order_id=order_id,
         advertiser_id=advertiser_id,
         order_type=OrderType.UGC_ONLY,
         product_link="https://x.com",
@@ -2156,7 +2204,7 @@ async def test_record_advertiser_no_user_skips() -> None:
         user_referral_binding_repo=binding_repo,
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
-        payment_repo=InMemoryPaymentRepository(),
+        payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=InMemoryUserRepository(),
         payout_request_repo=InMemoryPayoutRequestRepository(),
@@ -2180,6 +2228,7 @@ async def test_record_creator_custom_rate() -> None:
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
     creator_id = uuid4()
+    order_id = uuid4()
 
     user_repo = InMemoryUserRepository()
     await user_repo.save(
@@ -2212,6 +2261,487 @@ async def test_record_creator_custom_rate() -> None:
             updated_at=now,
         )
     )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext_c_custom",
+            created_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=3000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=payment_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 1
+    entry = entry_repo.entries[0]
+    assert entry.commission_rate == Decimal("0.15")
+    # platform_revenue = payment.amount / bloggers_needed = 9000 / 3 = 3000
+    # commission = 3000 * 0.15 = 450.00
+    assert entry.commission_amount == Decimal("450.00")
+
+
+@pytest.mark.asyncio
+async def test_record_advertiser_custom_rate() -> None:
+    """Advertiser's referrer has custom rate — commission uses that rate."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=advertiser_id,
+            external_id="adv_custom",
+            messenger_type=MessengerType.TELEGRAM,
+            username="adv_custom",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+            referral_payout_rate=Decimal("0.20"),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=advertiser_id,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("9000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext_adv_custom",
+            created_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=advertiser_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=3000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=payment_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_advertiser_referral_income(
+        order=order,
+        advertiser_id=advertiser_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 1
+    entry = entry_repo.entries[0]
+    assert entry.commission_rate == Decimal("0.20")
+    # platform_revenue = payment.amount = 9000
+    # commission = 9000 * 0.20 = 1800.00
+    assert entry.commission_amount == Decimal("1800.00")
+
+
+@pytest.mark.asyncio
+async def test_record_creator_zero_bloggers_skips() -> None:
+    """Creator income skipped when bloggers_needed is 0."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            external_id="c_zero",
+            messenger_type=MessengerType.TELEGRAM,
+            username="c_zero",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=creator_id,
+            created_at=now,
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=0,
+            price=Decimal("5000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=5000.0,
+            currency="RUB",
+            external_id="ext_zero",
+            created_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=5000.0,
+        bloggers_needed=0,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=payment_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_payout_does_not_block_same_day_request() -> None:
+    """CANCELLED payout request today should not block new requests."""
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    cancelled = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.CANCELLED,
+        amount=Decimal("100.00"),
+        currency="RUB",
+    )
+    await repo.save(cancelled)
+
+    result = await repo.has_request_today_by_currency(user_id)
+    # CANCELLED should NOT block — should return empty dict
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_pending_payout_blocks_same_day_same_currency() -> None:
+    """PENDING payout today should block new requests for that currency."""
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    pending = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("100.00"),
+        currency="RUB",
+    )
+    await repo.save(pending)
+
+    result = await repo.has_request_today_by_currency(user_id)
+    assert result == {"RUB": True}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_active_payout_request_same_day_raises() -> None:
+    """Duplicate active payout request for same user+currency+day must fail."""
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    req1 = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    req2 = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    await repo.save(req1)
+    with pytest.raises(ValueError):
+        await repo.save(req2)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_then_new_payout_same_day_allowed() -> None:
+    """After CANCELLED request, a new request on same day is allowed."""
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    cancelled = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.CANCELLED,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    new_req = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    await repo.save(cancelled)
+    # Should NOT raise
+    await repo.save(new_req)
+    assert new_req.request_id in repo._requests
+
+
+@pytest.mark.asyncio
+async def test_batch_balances_use_income_entries() -> None:
+    """get_referral_balances_batch uses income_entries, not loader."""
+    from ugc_bot.application.services.referral_stats_service import (
+        ReferralStatsService,
+    )
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+    await entry_repo.save(
+        ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            order_id=order_id,
+            income_type=ReferralIncomeType.CREATOR,
+            currency="RUB",
+            platform_revenue=Decimal("1000.00"),
+            commission_rate=Decimal("0.10"),
+            commission_amount=Decimal("100.00"),
+            created_at=now,
+        )
+    )
+
+    service = ReferralStatsService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+    )
+
+    result = await service.get_referral_balances_batch([referrer_id])
+
+    assert referrer_id in result
+    income_total, paid_total = result[referrer_id]
+    assert income_total == 100.0
+    assert paid_total == 0.0
+
+
+@pytest.mark.asyncio
+async def test_get_user_referral_stats_uses_income_entries() -> None:
+    """get_user_referral_stats uses income_entries as primary path."""
+    from ugc_bot.application.services.referral_stats_service import (
+        ReferralStatsService,
+    )
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+
+    referrer_id = uuid4()
+    referred_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+    await entry_repo.save(
+        ReferralIncomeEntry(
+            entry_id=uuid4(),
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            order_id=uuid4(),
+            income_type=ReferralIncomeType.CREATOR,
+            currency="RUB",
+            platform_revenue=Decimal("500.00"),
+            commission_rate=Decimal("0.10"),
+            commission_amount=Decimal("50.00"),
+            created_at=now,
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=referred_id,
+            created_at=now,
+        )
+    )
+
+    service = ReferralStatsService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+    )
+
+    stats = await service.get_user_referral_stats(referrer_id)
+    assert stats.creators_count == 1
+    assert stats.income_total == 50.0
+    assert stats.orders_count == 1
+    assert stats.paid_total == 0.0
+
+
+@pytest.mark.asyncio
+async def test_record_creator_no_payment_skips() -> None:
+    """Binding and pricing exist but no payment — entry not created."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            external_id="c_nopay",
+            messenger_type=MessengerType.TELEGRAM,
+            username="c_nopay",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=creator_id,
+            created_at=now,
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("9000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
@@ -2247,16 +2777,12 @@ async def test_record_creator_custom_rate() -> None:
         advertiser_country_code="ru",
     )
 
-    assert len(entry_repo.entries) == 1
-    entry = entry_repo.entries[0]
-    assert entry.commission_rate == Decimal("0.15")
-    # platform_revenue = 9000 / 3 = 3000, commission = 3000 * 0.15 = 450.00
-    assert entry.commission_amount == Decimal("450.00")
+    assert len(entry_repo.entries) == 0
 
 
 @pytest.mark.asyncio
-async def test_record_advertiser_custom_rate() -> None:
-    """Advertiser's referrer has custom rate — commission uses that rate."""
+async def test_record_advertiser_no_payment_skips() -> None:
+    """Binding and pricing exist but no payment — entry not created."""
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
     advertiser_id = uuid4()
@@ -2265,13 +2791,12 @@ async def test_record_advertiser_custom_rate() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv_custom",
+            external_id="adv_nopay",
             messenger_type=MessengerType.TELEGRAM,
-            username="adv_custom",
+            username="adv_nopay",
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=now - timedelta(days=30),
-            referral_payout_rate=Decimal("0.20"),
         )
     )
     binding_repo = InMemoryUserReferralBindingRepository()
@@ -2279,7 +2804,7 @@ async def test_record_advertiser_custom_rate() -> None:
         UserReferralBinding(
             referrer_user_id=referrer_id,
             referred_user_id=advertiser_id,
-            created_at=now - timedelta(days=30),
+            created_at=now,
         )
     )
     pricing_repo = InMemoryContactPricingRepository()
@@ -2327,61 +2852,82 @@ async def test_record_advertiser_custom_rate() -> None:
         advertiser_country_code="ru",
     )
 
-    assert len(entry_repo.entries) == 1
-    entry = entry_repo.entries[0]
-    assert entry.commission_rate == Decimal("0.20")
-    # platform_revenue = 9000 (full), commission = 9000 * 0.20 = 1800.00
-    assert entry.commission_amount == Decimal("1800.00")
+    assert len(entry_repo.entries) == 0
 
 
 @pytest.mark.asyncio
-async def test_record_creator_zero_bloggers_skips() -> None:
-    """Creator income skipped when bloggers_needed is 0."""
+async def test_commission_rate_uses_binding_date_not_registration_date() -> (
+    None
+):
+    """Commission rate uses binding date, not user registration date.
+
+    User registered 2 years ago → would get 3% if using user.created_at.
+    Binding created 6 months ago → should get 10% (binding < 1 year).
+    """
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
     creator_id = uuid4()
+    advertiser_id = uuid4()
+    order_id = uuid4()
 
+    # User registered 2 years ago — would get 3% if using user.created_at
     user_repo = InMemoryUserRepository()
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="c_zero",
+            external_id="old_creator",
             messenger_type=MessengerType.TELEGRAM,
-            username="c_zero",
+            username="old_creator",
             status=UserStatus.ACTIVE,
             issue_count=0,
-            created_at=now - timedelta(days=30),
+            created_at=now - timedelta(days=730),  # 2 years ago
         )
     )
+
+    # Binding created only 6 months ago — should yield 10% rate
     binding_repo = InMemoryUserReferralBindingRepository()
     await binding_repo.save(
         UserReferralBinding(
             referrer_user_id=referrer_id,
             referred_user_id=creator_id,
-            created_at=now,
+            created_at=now - timedelta(days=180),  # 6 months ago
         )
     )
+
     pricing_repo = InMemoryContactPricingRepository()
     await pricing_repo.save(
         ContactPricing(
             country_code="ru",
-            bloggers_count=0,
-            price=Decimal("5000"),
+            bloggers_count=1,
+            price=Decimal("3000"),
             currency="RUB",
             updated_at=now,
+        )
+    )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=3000.0,
+            currency="RUB",
+            external_id="ext_binding_date",
+            created_at=now,
         )
     )
     entry_repo = InMemoryReferralIncomeEntryRepository()
 
     order = Order(
-        order_id=uuid4(),
-        advertiser_id=uuid4(),
+        order_id=order_id,
+        advertiser_id=advertiser_id,
         order_type=OrderType.UGC_ONLY,
         product_link="https://x.com",
         offer_text="Offer",
         barter_description=None,
-        price=5000.0,
-        bloggers_needed=0,
+        price=3000.0,
+        bloggers_needed=1,
         status=OrderStatus.CLOSED,
         created_at=now,
         completed_at=now,
@@ -2391,7 +2937,7 @@ async def test_record_creator_zero_bloggers_skips() -> None:
         user_referral_binding_repo=binding_repo,
         offer_dispatch_repo=InMemoryOfferDispatchRepository(),
         order_repo=InMemoryOrderRepository(),
-        payment_repo=InMemoryPaymentRepository(),
+        payment_repo=payment_repo,
         interaction_repo=InMemoryInteractionRepository(),
         user_repo=user_repo,
         payout_request_repo=InMemoryPayoutRequestRepository(),
@@ -2406,4 +2952,29 @@ async def test_record_creator_zero_bloggers_skips() -> None:
         advertiser_country_code="ru",
     )
 
-    assert len(entry_repo.entries) == 0
+    assert len(entry_repo.entries) == 1
+    entry = entry_repo.entries[0]
+    # Binding is 6 months old → first-year rate applies (10%), NOT 3%
+    # Binding is 6 months old → first-year rate (10%), not 3%
+    assert entry.commission_rate == Decimal("0.10")
+
+
+def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
+    """CANCELLED request today should not set has_request_today=True."""
+    from ugc_bot.application.services.referral_commission import (
+        aggregate_payout_requests,
+    )
+
+    now = datetime.now(timezone.utc)
+    requests = [
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=uuid4(),
+            requested_at=now,
+            status=PayoutRequestStatus.CANCELLED,
+            amount=Decimal("100"),
+            currency="RUB",
+        ),
+    ]
+    _, _, has_request_today = aggregate_payout_requests(requests, now)
+    assert has_request_today is False

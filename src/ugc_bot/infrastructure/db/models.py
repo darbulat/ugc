@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Optional
 from uuid import UUID
 
+import sqlalchemy as sa
 from geoalchemy2 import Geometry
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import (
@@ -807,6 +808,17 @@ class PayoutRequestModel(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        sa.Index(
+            "uq_payout_request_user_currency_day",
+            "user_id",
+            "currency",
+            sa.func.date(sa.text("requested_at AT TIME ZONE 'UTC'")),
+            unique=True,
+            postgresql_where=sa.text("status NOT IN ('cancelled', 'deleted')"),
+        ),
     )
 
 

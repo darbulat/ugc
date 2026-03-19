@@ -439,7 +439,7 @@ async def payout_button_callback(
 
     try:
         await with_optional_tx(transaction_manager, _run)
-    except IntegrityError:
+    except (IntegrityError, ValueError):
         msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),

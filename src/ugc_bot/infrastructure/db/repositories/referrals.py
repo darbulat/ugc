@@ -366,6 +366,12 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
                 .where(
                     PayoutRequestModel.user_id == user_id,
                     PayoutRequestModel.requested_at >= today_start,
+                    PayoutRequestModel.status.notin_(
+                        [
+                            PayoutRequestStatus.CANCELLED,
+                            PayoutRequestStatus.DELETED,
+                        ]
+                    ),
                 )
                 .group_by(PayoutRequestModel.currency)
             )
@@ -474,6 +480,32 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     ReferralIncomeEntryModel.created_at >= first_day,
                 )
                 .group_by(ReferralIncomeEntryModel.currency)
+            )
+            result = await db_session.execute(stmt)
+            return {row[0]: Decimal(str(row[1])) for row in result.all()}
+
+    async def get_batch_totals_by_referrer_ids(
+        self,
+        referrer_user_ids: list[UUID],
+        session: object | None = None,
+    ) -> dict[UUID, Decimal]:
+        """Return {referrer_user_id: total_commission} for referrers."""
+        if not referrer_user_ids:
+            return {}
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    ReferralIncomeEntryModel.referrer_user_id,
+                    func.sum(ReferralIncomeEntryModel.commission_amount),
+                )
+                .where(
+                    ReferralIncomeEntryModel.referrer_user_id.in_(
+                        referrer_user_ids
+                    )
+                )
+                .group_by(ReferralIncomeEntryModel.referrer_user_id)
             )
             result = await db_session.execute(stmt)
             return {row[0]: Decimal(str(row[1])) for row in result.all()}
