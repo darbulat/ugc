@@ -29,7 +29,7 @@ from ugc_bot.infrastructure.db.session import create_session_factory
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
-from ugc_bot.infrastructure.messenger.types import Button, Keyboard, KeyboardKind
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +58,13 @@ def _reminder_text(locale: str) -> str:
     return texts.get(
         "msg_instagram_confirm_reminder",
         (
-            "Напоминаем, что для получения заказов необходимо "
-            "подтвердить ваш Instagram-аккаунт."
+"""Здравствуйте!
+Для вас уже есть подходящий заказ в UMC.
+
+Он станет доступен сразу после подтверждения Instagram — вы сможете увидеть его и откликнуться.
+Без подтверждения аккаунта доступ к заказам закрыт.
+Подтверждение занимает меньше минуты.
+Завершите сейчас, чтобы не упустить заказ."""
         ),
     )
 
