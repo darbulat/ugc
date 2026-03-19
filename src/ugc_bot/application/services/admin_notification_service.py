@@ -393,6 +393,7 @@ async def notify_support_chat_about_new_order(
     support_chat_id: str,
     admin_base_url: str = "",
     currency_symbol: str = "₽",
+    country_repo: CountryRepository | None = None,
 ) -> None:
     """Send order notification to support chat (REFERRAL_SUPPORT_CHAT_ID).
 
@@ -400,6 +401,11 @@ async def notify_support_chat_about_new_order(
     """
     if not support_chat_id.strip():
         return
+
+    if country_repo is not None:
+        country = await country_repo.get_by_currency_code(order.currency)
+        if country is not None:
+            currency_symbol = country.currency_symbol
 
     phone = advertiser_profile.phone if advertiser_profile else "—"
     if advertiser_user.telegram:

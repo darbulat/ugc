@@ -16,7 +16,7 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import AdvertiserProfile, Complaint, Order, User
+from ugc_bot.domain.entities import AdvertiserProfile, Complaint, Country, Order, User
 from ugc_bot.domain.enums import (
     ComplaintStatus,
     MessengerType,
@@ -24,7 +24,10 @@ from ugc_bot.domain.enums import (
     OrderType,
     UserStatus,
 )
-from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryCountryRepository,
+    InMemoryUserRepository,
+)
 
 
 def _make_complaint(
@@ -251,6 +254,7 @@ def _make_order(
     deadlines: str | None = None,
     geography: str | None = None,
     product_photo_file_id: str | None = None,
+    currency: str = "RUB",
 ) -> Order:
     return Order(
         order_id=order_id or uuid4(),
@@ -268,6 +272,7 @@ def _make_order(
         deadlines=deadlines,
         geography=geography,
         product_photo_file_id=product_photo_file_id,
+        currency=currency,
     )
 
 
@@ -1124,3 +1129,38 @@ async def test_notify_support_chat_handles_send_failure() -> None:
         messenger_client=client,
         support_chat_id="-100123",
     )
+
+
+@pytest.mark.asyncio
+async def test_notify_support_chat_resolves_currency_from_order() -> None:
+    """Currency symbol is resolved from the order's currency via country_repo."""
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user()
+    order = _make_order(advertiser_id=user.user_id, currency="USD")
+
+    country_repo = InMemoryCountryRepository()
+    from decimal import Decimal
+
+    country_repo.countries["US"] = Country(
+        code="US",
+        name_native="United States",
+        currency_code="USD",
+        currency_symbol="$",
+        tax_rate=Decimal("0"),
+        enabled=True,
+    )
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=messenger_client,
+        support_chat_id="-100123",
+        currency_symbol="₽",  # default (wrong) symbol — should be overridden
+        country_repo=country_repo,
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    text = messenger_client.sent_text[0]["text"]
+    assert "1000.0 $" in text
+    assert "₽" not in text
