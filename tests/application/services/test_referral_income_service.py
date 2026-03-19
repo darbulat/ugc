@@ -2497,7 +2497,7 @@ async def test_duplicate_active_payout_request_same_day_raises() -> None:
         currency="RUB",
     )
     await repo.save(req1)
-    with pytest.raises((ValueError, Exception)):
+    with pytest.raises(ValueError):
         await repo.save(req2)
 
 
@@ -2527,3 +2527,4 @@ async def test_cancelled_then_new_payout_same_day_allowed() -> None:
     await repo.save(cancelled)
     # Should NOT raise
     await repo.save(new_req)
+    assert new_req.request_id in repo._requests
