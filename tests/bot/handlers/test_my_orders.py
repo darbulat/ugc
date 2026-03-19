@@ -380,7 +380,6 @@ async def test_paginate_orders_blogger_no_profile(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -455,7 +454,6 @@ async def test_paginate_orders_blogger_page2(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -1331,7 +1329,6 @@ async def test_paginate_orders_returns_early_when_no_from_user(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
     )
@@ -1372,7 +1369,6 @@ async def test_paginate_orders_user_not_found(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
     )
@@ -1424,7 +1420,6 @@ async def test_paginate_orders_no_advertiser_profile(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
     )
@@ -1485,7 +1480,6 @@ async def test_paginate_orders_skips_edit_when_message_has_no_edit_text(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -1537,7 +1531,6 @@ async def test_paginate_orders_invalid_page_uses_one(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
     )
@@ -1598,7 +1591,6 @@ async def test_my_orders_page_one_shows_forward_button(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -1677,7 +1669,6 @@ async def test_my_orders_pagination(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -1838,7 +1829,6 @@ async def test_paginate_orders_blogger(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -2558,7 +2548,6 @@ async def test_paginate_orders_blogger_invalid_page_defaults_to_one(
         profile_service,
         order_service,
         offer_response_service,
-        currency_symbol="₽",
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
@@ -2618,10 +2607,93 @@ async def test_render_blogger_orders_page_page1_has_forward_button(
     text, keyboard = _render_blogger_orders_page(
         order_responses,
         page=1,
-        currency_symbol="₽",
         texts=texts,
     )
     assert "страница 1/" in text
     assert keyboard.rows
     last_row = keyboard.rows[-1]
     assert any(getattr(b, "callback_data", "").endswith("2") for b in last_row)
+
+
+@pytest.mark.asyncio
+async def test_my_orders_uses_order_currency_not_user_currency(
+    fake_tm: object,
+    user_repo,
+    advertiser_repo,
+    order_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    country_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+) -> None:
+    """Order list shows currency from order, not from user's country."""
+    from ugc_bot.domain.entities import Country
+
+    country_repo.countries["US"] = Country(
+        code="US",
+        name_native="United States",
+        currency_code="USD",
+        currency_symbol="$",
+    )
+    country_repo.countries["RU"] = Country(
+        code="RU",
+        name_native="Россия",
+        currency_code="RUB",
+        currency_symbol="₽",
+    )
+
+    user = await create_test_user(
+        user_repo,
+        user_id=uuid4(),
+        external_id="cur_test",
+        username="cur_test",
+        country="US",
+    )
+    await create_test_advertiser_profile(advertiser_repo, user.user_id)
+    await create_test_order(
+        order_repo,
+        user.user_id,
+        order_id=uuid4(),
+        price=5000.0,
+        currency="RUB",
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(
+        user_repo, blogger_repo, advertiser_repo
+    )
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+
+    message = FakeMessage(
+        text=_TEXTS_RU["btn_my_orders"], user=FakeUser("cur_test")
+    )
+    await show_my_orders(
+        message,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service=bot_texts_service,
+        country_repo=country_repo,
+    )
+
+    assert message.answers
+    answer_text = (
+        message.answers[0]
+        if isinstance(message.answers[0], str)
+        else message.answers[0][0]
+    )
+    assert "5 000 ₽" in answer_text
+    assert "$" not in answer_text

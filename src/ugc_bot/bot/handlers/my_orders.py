@@ -41,7 +41,6 @@ from ugc_bot.bot.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
-    resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
@@ -127,6 +126,20 @@ def _format_price_and_barter(
     return result
 
 
+async def _build_currency_map(
+    country_repo: CountryRepository | None,
+) -> dict[str, str]:
+    """Build mapping from currency code to currency symbol."""
+    if country_repo is None:
+        return {}
+    countries = await country_repo.list_enabled()
+    result: dict[str, str] = {}
+    for c in countries:
+        if c.currency_code not in result:
+            result[c.currency_code] = c.currency_symbol
+    return result
+
+
 _PAGE_SIZE = 5
 _MY_ORDERS_CALLBACK_PREFIX = "my_orders:"
 _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
@@ -192,9 +205,7 @@ async def _send_my_orders_content(
             await state.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
-    currency_symbol = await resolve_currency_symbol(
-        user, country_repo, config.market.currency_symbol
-    )
+    currency_map = await _build_currency_map(country_repo)
     order_texts = await bot_texts_service.get_many(
         list(MY_ORDERS_TEXTS_KEYS), locale
     )
@@ -209,7 +220,8 @@ async def _send_my_orders_content(
                 orders,
                 page=1,
                 offer_response_service=offer_response_service,
-                currency_symbol=currency_symbol,
+                currency_map=currency_map,
+                default_currency_symbol=config.market.currency_symbol,
                 texts=order_texts,
             )
             await messenger_client.send_text(
@@ -239,7 +251,8 @@ async def _send_my_orders_content(
             text, keyboard = _render_blogger_orders_page(
                 order_responses,
                 page=1,
-                currency_symbol=currency_symbol,
+                currency_map=currency_map,
+                default_currency_symbol=config.market.currency_symbol,
                 texts=order_texts,
             )
             await messenger_client.send_text(
@@ -387,7 +400,6 @@ async def paginate_orders(
     profile_service: ProfileService,
     order_service: OrderService,
     offer_response_service: OfferResponseService,
-    currency_symbol: str,
     config: AppConfig,
     bot_texts_service: BotTextsService,
     user_locale: str = "ru",
@@ -420,9 +432,7 @@ async def paginate_orders(
     if user is None:
         return
 
-    currency_symbol = await resolve_currency_symbol(
-        user, country_repo, currency_symbol
-    )
+    currency_map = await _build_currency_map(country_repo)
     order_texts = await bot_texts_service.get_many(
         list(MY_ORDERS_TEXTS_KEYS), locale
     )
@@ -458,7 +468,8 @@ async def paginate_orders(
         text, keyboard = _render_blogger_orders_page(
             order_responses,
             page=page,
-            currency_symbol=currency_symbol,
+            currency_map=currency_map,
+            default_currency_symbol=config.market.currency_symbol,
             texts=order_texts,
         )
     else:
@@ -486,7 +497,8 @@ async def paginate_orders(
             orders,
             page=page,
             offer_response_service=offer_response_service,
-            currency_symbol=currency_symbol,
+            currency_map=currency_map,
+            default_currency_symbol=config.market.currency_symbol,
             texts=order_texts,
         )
 
@@ -504,11 +516,13 @@ async def _render_page(
     orders,
     page: int,
     offer_response_service: OfferResponseService,
-    currency_symbol: str = "₽",
+    currency_map: dict[str, str] | None = None,
+    default_currency_symbol: str = "₽",
     texts: dict[str, str] | None = None,
 ) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
     t = texts or {}
+    cur_map = currency_map or {}
     total_pages = max(1, ceil(len(orders) / _PAGE_SIZE))
     page = max(1, min(page, total_pages))
     start = (page - 1) * _PAGE_SIZE
@@ -549,12 +563,13 @@ async def _render_page(
         link_line = t.get("msg_order_link", "Ссылка на проект: {link}").format(
             link=order.product_link
         )
+        sym = cur_map.get(order.currency, default_currency_symbol)
         order_lines = [
             f"№ {creation_number}",
             status_line,
             creators_line,
             matched_line,
-            *_format_price_and_barter(order, currency_symbol, t),
+            *_format_price_and_barter(order, sym, t),
             date_created_line,
             date_completed_line,
             link_line,
@@ -602,11 +617,13 @@ async def _render_page(
 def _render_blogger_orders_page(
     order_responses: list[tuple[Order, OfferDispatch]],
     page: int = 1,
-    currency_symbol: str = "₽",
+    currency_map: dict[str, str] | None = None,
+    default_currency_symbol: str = "₽",
     texts: dict[str, str] | None = None,
 ) -> tuple[str, Keyboard]:
     """Render paginated list of orders the blogger responded to."""
     t = texts or {}
+    cur_map = currency_map or {}
     total_pages = max(1, ceil(len(order_responses) / _PAGE_SIZE))
     page = max(1, min(page, total_pages))
     start = (page - 1) * _PAGE_SIZE
@@ -638,11 +655,12 @@ def _render_blogger_orders_page(
         format_line = t.get("msg_order_format", "Формат: {order_type}").format(
             order_type=_format_order_type(order, t)
         )
+        sym = cur_map.get(order.currency, default_currency_symbol)
         order_lines = [
             f"№ {creation_number}",
             status_line,
             format_line,
-            *_format_price_and_barter(order, currency_symbol, t),
+            *_format_price_and_barter(order, sym, t),
             t.get("msg_order_link", "Ссылка на проект: {link}").format(
                 link=order.product_link
             ),

@@ -233,6 +233,7 @@ async def create_test_order(
     created_at: datetime | None = None,
     completed_at: datetime | None = None,
     product_photo_file_id: str | None = None,
+    currency: str = "RUB",
 ) -> Order:
     """Create and save test order.
 
@@ -273,6 +274,7 @@ async def create_test_order(
         created_at=created_at,
         completed_at=completed_at,
         product_photo_file_id=product_photo_file_id,
+        currency=currency,
     )
     await order_repo.save(order)
     return order

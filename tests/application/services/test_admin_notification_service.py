@@ -16,7 +16,13 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import AdvertiserProfile, Complaint, Country, Order, User
+from ugc_bot.domain.entities import (
+    AdvertiserProfile,
+    Complaint,
+    Country,
+    Order,
+    User,
+)
 from ugc_bot.domain.enums import (
     ComplaintStatus,
     MessengerType,
@@ -1106,7 +1112,10 @@ async def test_notify_support_chat_no_profile_shows_dash() -> None:
     assert len(messenger_client.sent_text) == 1
     text = messenger_client.sent_text[0]["text"]
     assert "<b>Телефон:</b> —" in text
-    assert "<b>Telegram:</b> —" in text
+    assert (
+        '<b>Telegram:</b> <a href="tg://user?id=999">tg://user?id=999</a>'
+        in text
+    )
 
 
 @pytest.mark.asyncio
@@ -1133,7 +1142,7 @@ async def test_notify_support_chat_handles_send_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_notify_support_chat_resolves_currency_from_order() -> None:
-    """Currency symbol is resolved from the order's currency via country_repo."""
+    """Currency symbol resolved from order's currency via country_repo."""
     messenger_client = FakeMessengerClient()
     user = _make_advertiser_user()
     order = _make_order(advertiser_id=user.user_id, currency="USD")
