@@ -549,7 +549,9 @@ async def _send_contact_immediately(
             if advertiser_profile
             else None,
             texts=texts,
-            advertiser_external_id=advertiser.external_id if advertiser else None,
+            advertiser_external_id=advertiser.external_id
+            if advertiser
+            else None,
         )
     await send_with_retry(
         messenger_client,
