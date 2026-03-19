@@ -257,7 +257,11 @@ async def test_blogger_registration_full_flow(
     assert text is not None
     if _has_any(text, "имя", "name", "зовут", "call"):
         text = await _send_and_wait(client, entity, bot_username, "E2E Креатор")
-        assert text and _has_any(text, "инстаграмм", "instagram")
+    assert text and _has_any(text, "телефон", "phone", "номер", "number")
+    text = await send_and_get_reply(
+        client, entity, bot_username, "89001234567", timeout=15
+    )
+    assert text and _has_any(text, "инстаграмм", "instagram")
     text = await send_and_get_reply(
         client,
         entity,
