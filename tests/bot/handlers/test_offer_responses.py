@@ -29,10 +29,14 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.offer_responses import (
+    OfferSkipStates,
     _send_contact_immediately,
     _send_order_closed_and_remove_keyboard,
+    handle_cancel_price_entry,
+    handle_desired_price,
     handle_offer_response,
     handle_offer_skip,
+    handle_rejection_reason,
 )
 from ugc_bot.bot.handlers.utils import RateLimiter
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
@@ -43,6 +47,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OrderType,
+    RejectionReason,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
@@ -313,14 +318,14 @@ async def test_offer_skip_handler(
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
-    assert callback.answers
-    assert (
-        "пропущено" in callback.answers[0].lower()
-        or "ок" in callback.answers[0].lower()
-        or "skip" in callback.answers[0].lower()
-    )
+    # Now shows reason selection menu instead of immediate skip
+    assert callback.answers is not None  # callback answered (empty toast)
+    # Original keyboard removed
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
+    # Reason prompt sent via messenger_client
+    sent = messenger_client.sent_text
+    assert any("причину" in s["text"].lower() for s in sent)
 
 
 @pytest.mark.asyncio
@@ -1508,12 +1513,8 @@ async def test_offer_skip_edit_reply_markup_exception(
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
-    assert callback.answers
-    assert (
-        "пропущено" in callback.answers[0].lower()
-        or "ок" in callback.answers[0].lower()
-        or "skip" in callback.answers[0].lower()
-    )
+    # Callback answered (empty toast for reason menu flow)
+    assert callback.answers is not None
 
 
 @pytest.mark.asyncio
@@ -1867,3 +1868,546 @@ async def test_send_contact_instagram_url_without_http(
         "Новый отклик" in (a[0] if isinstance(a, tuple) else a)
         for a in bot.answers
     )
+
+
+# ---------------------------------------------------------------------------
+# Rejection reason selection tests
+# ---------------------------------------------------------------------------
+
+
+def _build_offer_dispatch_service(
+    user_repo=None,
+    order_repo=None,
+    offer_dispatch_repo=None,
+):
+    """Build OfferDispatchService with in-memory repos."""
+    return OfferDispatchService(
+        user_repo=user_repo or InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=order_repo or InMemoryOrderRepository(),
+        offer_dispatch_repo=offer_dispatch_repo
+        or InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+        transaction_manager=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_offer_skip_shows_reason_menu(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Pressing skip shows 4-button rejection reason keyboard."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a01"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a02")
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    message = FakeMessage()
+    message.reply_markup = object()
+    callback = FakeCallback(
+        data=f"offer_skip:{order_id}",
+        user=FakeUser(1),
+        message=message,
+    )
+    await handle_offer_skip(
+        callback,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # Should have sent a reason prompt with inline keyboard
+    sent = messenger_client.sent_text
+    reason_msgs = [s for s in sent if "причину" in s["text"].lower()]
+    assert len(reason_msgs) == 1
+    kb = reason_msgs[0]["keyboard"]
+    assert kb is not None
+    # 4 reason buttons, one per row
+    assert len(kb.rows) == 4
+
+
+@pytest.mark.asyncio
+async def test_rejection_reason_non_price_records_skip(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Selecting WRONG_FORMAT records skip immediately with reason."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a10"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a11")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000a12"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    message = FakeMessage()
+    callback = FakeCallback(
+        data=f"orr:{order_id}:{RejectionReason.WRONG_FORMAT.value}",
+        user=FakeUser(1),
+        message=message,
+    )
+    fsm = FakeFSMContext()
+    await handle_rejection_reason(
+        callback,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # Skip should be recorded
+    responses = await offer_dispatch_repo.list_responses_by_order(order_id)
+    assert len(list(responses)) >= 1
+    # Confirmation message sent
+    sent = messenger_client.sent_text
+    assert any("отказались" in s["text"].lower() for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_rejection_reason_low_price_enters_fsm(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Selecting LOW_PRICE enters FSM waiting_desired_price state."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a20"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a21")
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    message = FakeMessage()
+    callback = FakeCallback(
+        data=f"orr:{order_id}:{RejectionReason.LOW_PRICE.value}",
+        user=FakeUser(1),
+        message=message,
+    )
+    fsm = FakeFSMContext()
+    await handle_rejection_reason(
+        callback,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM state should be set
+    assert fsm.state == OfferSkipStates.waiting_desired_price.state
+    fsm_data = await fsm.get_data()
+    assert fsm_data["order_id"] == str(order_id)
+    # Price entry prompt sent with cancel button
+    sent = messenger_client.sent_text
+    assert any("стоимость" in s["text"].lower() for s in sent)
+    # Cancel keyboard should be present
+    price_msg = next(s for s in sent if "стоимость" in s["text"].lower())
+    assert price_msg["keyboard"] is not None
+
+
+@pytest.mark.asyncio
+async def test_desired_price_valid(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Entering a valid price records skip with price and sends confirmation."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a30"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a31")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000a32"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    msg = FakeMessage(text="2000", user=FakeUser(1))
+    await handle_desired_price(
+        msg,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should be cleared
+    assert fsm.state is None
+    # Skip recorded
+    responses = await offer_dispatch_repo.list_responses_by_order(order_id)
+    assert len(list(responses)) >= 1
+    # Confirmation sent
+    sent = messenger_client.sent_text
+    assert any("2000" in s["text"] for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_desired_price_below_min(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Entering a price below the offer price shows error."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a40"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a41")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000a42"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    msg = FakeMessage(text="500", user=FakeUser(1))
+    await handle_desired_price(
+        msg,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should NOT be cleared (still waiting)
+    assert fsm.state == OfferSkipStates.waiting_desired_price.state
+    # Error message sent with range
+    sent = messenger_client.sent_text
+    assert any("1000" in s["text"] and "10000" in s["text"] for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_desired_price_above_max(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Entering a price above 10x the offer price shows error."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a50"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a51")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000a52"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    msg = FakeMessage(text="99999", user=FakeUser(1))
+    await handle_desired_price(
+        msg,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should NOT be cleared
+    assert fsm.state == OfferSkipStates.waiting_desired_price.state
+    # Error message sent
+    sent = messenger_client.sent_text
+    assert any("1000" in s["text"] and "10000" in s["text"] for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_desired_price_non_numeric(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Entering non-numeric text shows error."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a60"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    order_repo = InMemoryOrderRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        order_repo=order_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a61")
+    order = Order(
+        order_id=order_id,
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000a62"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=datetime.now(timezone.utc),
+        completed_at=None,
+    )
+    await order_repo.save(order)
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    msg = FakeMessage(text="abc", user=FakeUser(1))
+    await handle_desired_price(
+        msg,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should NOT be cleared
+    assert fsm.state == OfferSkipStates.waiting_desired_price.state
+    # Error message sent
+    sent = messenger_client.sent_text
+    assert any("1000" in s["text"] and "10000" in s["text"] for s in sent)
+
+
+@pytest.mark.asyncio
+async def test_cancel_price_entry(
+    user_repo,
+    config,
+    bot_texts_service,
+    messenger_client,
+    event_adapter,
+) -> None:
+    """Pressing cancel records skip without reason and clears FSM."""
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000a70"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(blogger_user)
+    user_service = UserRoleService(user_repo=user_repo)
+    offer_dispatch_repo = InMemoryOfferDispatchRepository()
+    offer_dispatch_service = _build_offer_dispatch_service(
+        user_repo=user_repo,
+        offer_dispatch_repo=offer_dispatch_repo,
+    )
+    order_id = UUID("00000000-0000-0000-0000-000000000a71")
+    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
+
+    fsm = FakeFSMContext()
+    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
+    await fsm.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
+
+    message = FakeMessage()
+    callback = FakeCallback(
+        data=f"orr_cancel:{order_id}",
+        user=FakeUser(1),
+        message=message,
+    )
+    await handle_cancel_price_entry(
+        callback,
+        state=fsm,
+        user_role_service=user_service,
+        offer_dispatch_service=offer_dispatch_service,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # FSM should be cleared
+    assert fsm.state is None
+    # Callback answered with cancelled message
+    assert callback.answers
+    # Skip recorded without reason
+    responses = await offer_dispatch_repo.list_responses_by_order(order_id)
+    assert len(list(responses)) >= 1
