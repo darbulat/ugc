@@ -133,6 +133,7 @@ def build_offer_dispatch_service(
         country_repo=repos.get("country_repo"),
         interaction_repo=repos["interaction_repo"],
         instagram_stats_repo=repos.get("instagram_stats_repo"),
+        manager_order_repo=repos.get("manager_order_repo"),
         transaction_manager=transaction_manager,
         currency_symbol=currency_symbol,
     )
@@ -409,6 +410,7 @@ def build_bot_services(
             offer_dispatch_repo=repos["offer_dispatch_repo"],
             interaction_repo=repos["interaction_repo"],
             country_repo=repos.get("country_repo"),
+            manager_order_repo=repos.get("manager_order_repo"),
             transaction_manager=transaction_manager,
             currency_symbol=config.market.currency_symbol,
         ),
