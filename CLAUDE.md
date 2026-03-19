@@ -121,6 +121,15 @@ make all  # format-check + lint + typecheck + coverage (exact replica of GitHub 
 
 `make all` is identical to GitHub Actions — no auto-format. Run `make fix` to auto-format first, then verify.
 
+## Compact Instructions
+
+During compaction, preserve in priority order:
+1. Architectural decisions (NEVER summarize)
+2. Changed files and key modifications
+3. Current verification status (pass/fail)
+4. Open TODOs and rollback notes
+5. Tool outputs (can be dropped, keep pass/fail only)
+
 ## Key Patterns
 
 - **Repository pattern:** 20+ abstract repos in `application/ports.py`, SQLAlchemy implementations in `infrastructure/db/repositories.py`, in-memory implementations for tests. **Repositories use `_resolve_session(self.session_factory, session)` context manager** — if `session` is provided it's used as-is, if `None` the repo opens its own session from `session_factory`. This means repos can be called without an explicit session (they'll manage their own transaction), but passing a session keeps multiple operations in one transaction.
