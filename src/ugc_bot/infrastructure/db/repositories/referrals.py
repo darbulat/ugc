@@ -366,7 +366,12 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
                 .where(
                     PayoutRequestModel.user_id == user_id,
                     PayoutRequestModel.requested_at >= today_start,
-                    PayoutRequestModel.status != PayoutRequestStatus.CANCELLED,
+                    PayoutRequestModel.status.notin_(
+                        [
+                            PayoutRequestStatus.CANCELLED,
+                            PayoutRequestStatus.DELETED,
+                        ]
+                    ),
                 )
                 .group_by(PayoutRequestModel.currency)
             )

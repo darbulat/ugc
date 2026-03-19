@@ -331,7 +331,11 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
             if (
                 r.user_id == user_id
                 and r.requested_at.date() == today
-                and r.status != PayoutRequestStatus.CANCELLED
+                and r.status
+                not in (
+                    PayoutRequestStatus.CANCELLED,
+                    PayoutRequestStatus.DELETED,
+                )
             ):
                 result[r.currency] = True
         return result
