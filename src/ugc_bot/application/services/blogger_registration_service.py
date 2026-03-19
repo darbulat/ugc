@@ -340,14 +340,21 @@ class BloggerRegistrationService:
                 )
             )
 
-            existing_profile = await self.blogger_repo.get_by_instagram_url(
+            existing_by_url = await self.blogger_repo.get_by_instagram_url(
                 instagram_url_clean, session=session
             )
-            if existing_profile is not None:
+            if (
+                existing_by_url is not None
+                and existing_by_url.user_id != user.user_id
+            ):
                 raise BloggerRegistrationError(
                     "Этот Instagram аккаунт уже зарегистрирован. "
                     "Пожалуйста, используйте другой аккаунт."
                 )
+
+            existing_profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
 
             geom_wkt: Optional[str]
             if location_geometry is not None:
@@ -374,28 +381,54 @@ class BloggerRegistrationService:
                 )
                 if country_obj:
                     profile_currency = country_obj.currency_code
-            profile = BloggerProfile(
-                user_id=user.user_id,
-                instagram_url=instagram_url_clean,
-                confirmed=False,
-                city=city_clean,
-                topics=topics,
-                audience_gender=audience_gender,
-                audience_age_min=audience_age_min,
-                audience_age_max=audience_age_max,
-                audience_geo=audience_geo_clean,
-                price=price,
-                barter=barter,
-                work_format=work_format,
-                updated_at=datetime.now(timezone.utc),
-                blogger_gender=blogger_gender,
-                birth_date=birth_date,
-                region=profile_region,
-                location_geometry=geom_wkt,
-                country=profile_country,
-                currency=profile_currency,
-                phone=phone,
-            )
+            if existing_profile is not None:
+                profile = replace(
+                    existing_profile,
+                    instagram_url=instagram_url_clean,
+                    confirmed=False
+                    if instagram_url_clean != existing_profile.instagram_url
+                    else existing_profile.confirmed,
+                    city=city_clean,
+                    topics=topics,
+                    audience_gender=audience_gender,
+                    audience_age_min=audience_age_min,
+                    audience_age_max=audience_age_max,
+                    audience_geo=audience_geo_clean,
+                    price=price,
+                    barter=barter,
+                    work_format=work_format,
+                    updated_at=datetime.now(timezone.utc),
+                    blogger_gender=blogger_gender,
+                    birth_date=birth_date,
+                    region=profile_region,
+                    location_geometry=geom_wkt,
+                    country=profile_country,
+                    currency=profile_currency,
+                    phone=phone,
+                )
+            else:
+                profile = BloggerProfile(
+                    user_id=user.user_id,
+                    instagram_url=instagram_url_clean,
+                    confirmed=False,
+                    city=city_clean,
+                    topics=topics,
+                    audience_gender=audience_gender,
+                    audience_age_min=audience_age_min,
+                    audience_age_max=audience_age_max,
+                    audience_geo=audience_geo_clean,
+                    price=price,
+                    barter=barter,
+                    work_format=work_format,
+                    updated_at=datetime.now(timezone.utc),
+                    blogger_gender=blogger_gender,
+                    birth_date=birth_date,
+                    region=profile_region,
+                    location_geometry=geom_wkt,
+                    country=profile_country,
+                    currency=profile_currency,
+                    phone=phone,
+                )
             await self.blogger_repo.save(profile, session=session)
 
             now = datetime.now(timezone.utc)
