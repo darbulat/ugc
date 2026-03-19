@@ -474,13 +474,15 @@ class ReferralStatsService:
             and session is not None
         ):
             # Fallback: compute from raw orders via loader
+            # Use large limit — need ALL rows for correct income calculation
+            income_loader_limit = 10_000_000
             (
                 income_current_month,
                 income_total,
                 orders_count,
             ) = await self._compute_income_from_loader(
                 referrer_user_id,
-                eff_limit,
+                income_loader_limit,
                 now,
                 session,
                 custom_rate=custom_rate,
