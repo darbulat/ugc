@@ -121,6 +121,7 @@ class BloggerProfile:
     country: str = ""
     currency: str = "RUB"
     agreement_confirmed_at: Optional[datetime] = None
+    phone: Optional[str] = None
 
 
 @dataclass(frozen=True)

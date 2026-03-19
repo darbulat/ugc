@@ -995,6 +995,7 @@ _BLOGGER_PROFILE_OPTIONAL_FIELDS = (
     "region",
     "location_geometry",
     "country",
+    "phone",
 )
 
 
@@ -1027,6 +1028,7 @@ def _blogger_profile_with_all_optional_fields(
         region="Москва",
         location_geometry="MULTIPOINT((37.6 55.75))",
         country="russia",
+        phone="+79001234567",
     )
 
 

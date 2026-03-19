@@ -279,6 +279,7 @@ def _to_blogger_profile_entity(
         country=model.country,
         currency=model.currency,
         agreement_confirmed_at=model.agreement_confirmed_at,
+        phone=model.phone,
     )
 
 
@@ -313,6 +314,7 @@ def _to_blogger_profile_model(
         country=profile.country,
         currency=profile.currency,
         agreement_confirmed_at=profile.agreement_confirmed_at,
+        phone=profile.phone,
     )
 
 

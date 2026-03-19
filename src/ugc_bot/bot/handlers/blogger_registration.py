@@ -56,6 +56,7 @@ from ugc_bot.bot.handlers.keyboards import (
     creator_start_keyboard,
     flow_inline_keyboard,
     flow_keyboard_city_request,
+    flow_keyboard_phone_request,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.handlers.utils import (
@@ -75,6 +76,7 @@ from ugc_bot.bot.validators import (
     validate_birth_date,
     validate_city,
     validate_nickname,
+    validate_phone,
     validate_price,
     validate_topics,
 )
@@ -146,6 +148,7 @@ class BloggerRegistrationStates(StatesGroup):
     """States for blogger registration."""
 
     name = State()
+    phone = State()
     instagram = State()
     city = State()
     birth_date = State()
@@ -457,10 +460,52 @@ async def handle_name(
         )
         return
 
+    await state_store.update_data(nickname=nickname)
+    texts = await bot_texts_service.get_many(
+        ["btn_phone_request", "msg_phone_request"], locale
+    )
+    phone_prompt = texts.get("msg_phone_request", "")
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=phone_prompt,
+        keyboard=flow_keyboard_phone_request(texts),
+    )
+    await state_store.set_state(BloggerRegistrationStates.phone.state)
+
+
+@router.message(BloggerRegistrationStates.phone)
+async def handle_phone(
+    message: Message,
+    state: FSMContext,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Store phone and ask for Instagram."""
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    state_store = AiogramStateStore(state)
+    locale = user_locale
+    validator_texts = await bot_texts_service.get_many(
+        list(VALIDATOR_ERR_KEYS), locale
+    )
+    phone = (incoming.contact_phone or incoming.text or "").strip()
+    err = validate_phone(phone, texts=validator_texts)
+    if err is not None:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err,
+            keyboard=flow_keyboard_remove(),
+        )
+        return
+
+    await state_store.update_data(phone=phone)
     step_instagram = await bot_texts_service.get(
         "msg_step_ask_instagram", locale
     )
-    await state_store.update_data(nickname=nickname)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=step_instagram,
@@ -1669,6 +1714,7 @@ async def handle_work_format_callback(
             region=data.get("region"),
             location_geometry=data.get("location_geometry"),
             country=data.get("country"),
+            phone=data.get("phone"),
         )
     except Exception as exc:
         error_str = str(exc)
@@ -1796,6 +1842,7 @@ async def handle_work_format(
             region=data.get("region"),
             location_geometry=data.get("location_geometry"),
             country=data.get("country"),
+            phone=data.get("phone"),
         )
     except Exception as exc:
         error_str = str(exc)
