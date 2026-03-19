@@ -72,8 +72,9 @@ No indexes initially.
 
 ### Callback data
 
-- `offer_skip:{order_id}` — existing, now shows reason menu instead of recording skip. Original offer keyboard is removed immediately on click (prevents double-clicks).
-- `orr:{order_id_hex}:{reason}` — new, selects a specific reason. Uses short prefix `orr:` and UUID without dashes (32 chars) to fit Telegram's 64-byte callback data limit. Example: `orr:550e8400e29b41d4a716446655440000:low_price` (52 bytes).
+- `offer_skip:{order_id}` — existing (unchanged format), now shows reason menu instead of recording skip. Original offer keyboard is removed immediately on click (prevents double-clicks).
+- `orr:{order_id_hex}:{reason}` — new, selects a specific reason. Uses short prefix `orr:` and UUID without dashes (32 chars) to fit Telegram's 64-byte callback data limit. Example: `orr:550e8400e29b41d4a716446655440000:low_price` (52 bytes). Max: 58 bytes (`uninteresting_product`).
+- `orr_cancel:{order_id_hex}` — cancel during price entry. Records skip without reason. 43 bytes max.
 
 ### FSM state
 
@@ -101,10 +102,13 @@ async def record_skip(
     self,
     order_id: UUID,
     blogger_id: UUID,
-    rejection_reason: RejectionReason,
+    rejection_reason: RejectionReason | None = None,
     desired_price: Decimal | None = None,
-) -> None:
+) -> SkipResult:
 ```
+
+- `rejection_reason` is optional to support the cancel flow (skip without reason).
+- Returns `SkipResult` so the handler knows whether to send a manager notification.
 
 ### `OfferDispatchRepository.record_response()`
 
@@ -112,14 +116,16 @@ Add `rejection_reason` and `desired_price` parameters, pass through to UPDATE.
 
 ### Manager notification
 
-On `LOW_PRICE`: `record_skip()` returns a result dataclass indicating notification is needed (with manager_id, blogger info, prices). The handler then sends the Telegram message to the manager. This keeps the service layer free of messaging infrastructure dependencies (consistent with current `OfferDispatchService` which only has repository dependencies).
+On `LOW_PRICE`: `record_skip()` returns a `SkipResult` indicating notification is needed. The handler sends the Telegram message to the manager. This keeps the service layer free of messaging infrastructure dependencies.
+
+Manager lookup: `record_skip()` queries `ManagerOrderRepository` to find the manager assigned to the order (via `manager_orders` table). `OfferDispatchService` gains `ManagerOrderRepository` as a new dependency.
 
 ```python
 @dataclass(slots=True)
 class SkipResult:
-    rejection_reason: RejectionReason
+    rejection_reason: RejectionReason | None = None
     desired_price: Decimal | None = None
-    manager_id: UUID | None = None  # set when notification needed
+    manager_id: UUID | None = None  # from manager_orders; set when LOW_PRICE
     order_price: Decimal | None = None
 ```
 
@@ -172,7 +178,7 @@ New text keys across 5 locales (RU, EN, BE, KK, UZ):
 - `btn_reject_wrong_format`: Не падыходзіць фармат рэкламы
 - `btn_reject_uninteresting`: Нецікавы прадукт / прапанова
 - `btn_reject_no_time`: Няма часу
-- `msg_enter_desired_price`: Пазначце, за якую кошт вы гатовы размясціць рэкламу:
+- `msg_enter_desired_price`: Пазначце, за які кошт вы гатовы размясціць рэкламу:
 - `msg_invalid_price`: Увядзіце лік ад {min} да {max} {currency}
 - `msg_offer_skipped_with_reason`: Дзякуй за зваротную сувязь. Вы адмовіліся: {reason}. Прапушчана.
 - `msg_offer_skipped_low_price`: Дзякуй. Адмовіліся: Нізкая цана. Жаданая сума: {price} {currency}. Мы можам вярнуцца з новай прапановай.
