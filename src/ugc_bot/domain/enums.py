@@ -111,3 +111,12 @@ class PayoutRequestStatus(StrEnum):
     PAID = "paid"
     CANCELLED = "cancelled"
     DELETED = "deleted"
+
+
+class RejectionReason(StrEnum):
+    """Reason for rejecting an offer."""
+
+    LOW_PRICE = "low_price"
+    WRONG_FORMAT = "wrong_format"
+    UNINTERESTING_PRODUCT = "uninteresting_product"
+    NO_TIME = "no_time"

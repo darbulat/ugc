@@ -18,6 +18,7 @@ from ugc_bot.domain.enums import (
     PaymentStatus,
     PayoutRequestStatus,
     ReferralIncomeType,
+    RejectionReason,
     UserStatus,
     WorkFormat,
 )
@@ -237,6 +238,8 @@ class OfferDispatch:
     )
     manager_id: Optional[UUID] = None
     ugc_video_url: Optional[str] = None
+    rejection_reason: Optional[RejectionReason] = None
+    desired_price: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)
