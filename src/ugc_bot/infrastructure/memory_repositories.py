@@ -282,6 +282,8 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
                 else request.requested_at.replace(tzinfo=timezone.utc).date()
             )
             for existing in self._requests.values():
+                if existing.request_id == request.request_id:
+                    continue
                 if (
                     existing.user_id == request.user_id
                     and existing.currency == request.currency
@@ -359,9 +361,14 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
         today = datetime.now(timezone.utc).date()
         result: dict[str, bool] = {}
         for r in self._requests.values():
+            r_date = (
+                r.requested_at.date()
+                if r.requested_at.tzinfo
+                else r.requested_at.replace(tzinfo=timezone.utc).date()
+            )
             if (
                 r.user_id == user_id
-                and r.requested_at.date() == today
+                and r_date == today
                 and r.status
                 not in (
                     PayoutRequestStatus.CANCELLED,

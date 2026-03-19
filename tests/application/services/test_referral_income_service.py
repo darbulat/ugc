@@ -2413,16 +2413,6 @@ async def test_record_creator_zero_bloggers_skips() -> None:
 @pytest.mark.asyncio
 async def test_cancelled_payout_does_not_block_same_day_request() -> None:
     """CANCELLED payout request today should not block new requests."""
-    from datetime import datetime, timezone
-    from decimal import Decimal
-    from uuid import uuid4
-
-    from ugc_bot.domain.entities import PayoutRequest
-    from ugc_bot.domain.enums import PayoutRequestStatus
-    from ugc_bot.infrastructure.memory_repositories import (
-        InMemoryPayoutRequestRepository,
-    )
-
     repo = InMemoryPayoutRequestRepository()
     user_id = uuid4()
     now = datetime.now(timezone.utc)
@@ -2445,16 +2435,6 @@ async def test_cancelled_payout_does_not_block_same_day_request() -> None:
 @pytest.mark.asyncio
 async def test_pending_payout_blocks_same_day_same_currency() -> None:
     """PENDING payout today should block new requests for that currency."""
-    from datetime import datetime, timezone
-    from decimal import Decimal
-    from uuid import uuid4
-
-    from ugc_bot.domain.entities import PayoutRequest
-    from ugc_bot.domain.enums import PayoutRequestStatus
-    from ugc_bot.infrastructure.memory_repositories import (
-        InMemoryPayoutRequestRepository,
-    )
-
     repo = InMemoryPayoutRequestRepository()
     user_id = uuid4()
     now = datetime.now(timezone.utc)
