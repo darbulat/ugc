@@ -272,6 +272,37 @@ class InMemoryPayoutRequestRepository(PayoutRequestRepository):
         session: object | None = None,
     ) -> None:
         """Persist payout request."""
+        if request.status not in (
+            PayoutRequestStatus.CANCELLED,
+            PayoutRequestStatus.DELETED,
+        ):
+            req_date = (
+                request.requested_at.date()
+                if request.requested_at.tzinfo
+                else request.requested_at.replace(tzinfo=timezone.utc).date()
+            )
+            for existing in self._requests.values():
+                if (
+                    existing.user_id == request.user_id
+                    and existing.currency == request.currency
+                    and existing.status
+                    not in (
+                        PayoutRequestStatus.CANCELLED,
+                        PayoutRequestStatus.DELETED,
+                    )
+                ):
+                    existing_date = (
+                        existing.requested_at.date()
+                        if existing.requested_at.tzinfo
+                        else existing.requested_at.replace(
+                            tzinfo=timezone.utc
+                        ).date()
+                    )
+                    if existing_date == req_date:
+                        raise ValueError(
+                            "Duplicate payout request for same"
+                            " user+currency+day"
+                        )
         self._requests[request.request_id] = request
 
     async def get_by_id(

@@ -394,12 +394,13 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
     now = datetime.now(timezone.utc)
     user_id = uuid4()
 
+    yesterday = now - timedelta(days=1)
     payout_repo = InMemoryPayoutRequestRepository()
     await payout_repo.save(
         PayoutRequest(
             request_id=uuid4(),
             user_id=user_id,
-            requested_at=now,
+            requested_at=yesterday,
             status=PayoutRequestStatus.PAID,
             amount=Decimal("100.50"),
         )
@@ -408,7 +409,7 @@ async def test_get_user_referral_stats_paid_total_sums_paid_payouts() -> None:
         PayoutRequest(
             request_id=uuid4(),
             user_id=user_id,
-            requested_at=now,
+            requested_at=now - timedelta(days=2),
             status=PayoutRequestStatus.PAID,
             amount=Decimal("49.50"),
         )
@@ -2470,3 +2471,59 @@ async def test_pending_payout_blocks_same_day_same_currency() -> None:
 
     result = await repo.has_request_today_by_currency(user_id)
     assert result == {"RUB": True}
+
+
+@pytest.mark.asyncio
+async def test_duplicate_active_payout_request_same_day_raises() -> None:
+    """Duplicate active payout request for same user+currency+day must fail."""
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    req1 = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    req2 = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    await repo.save(req1)
+    with pytest.raises((ValueError, Exception)):
+        await repo.save(req2)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_then_new_payout_same_day_allowed() -> None:
+    """After CANCELLED request, a new request on same day is allowed."""
+    repo = InMemoryPayoutRequestRepository()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    cancelled = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.CANCELLED,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    new_req = PayoutRequest(
+        request_id=uuid4(),
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("500.00"),
+        currency="RUB",
+    )
+    await repo.save(cancelled)
+    # Should NOT raise
+    await repo.save(new_req)
