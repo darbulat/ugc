@@ -15,8 +15,10 @@ After pressing "Пропустить", the creator must select a rejection reaso
 
 ### New enum `RejectionReason`
 
+Located in `domain/enums.py` (following existing enum pattern):
+
 ```python
-class RejectionReason(str, Enum):
+class RejectionReason(StrEnum):
     LOW_PRICE = "low_price"
     WRONG_FORMAT = "wrong_format"
     UNINTERESTING_PRODUCT = "uninteresting_product"
@@ -70,20 +72,23 @@ No indexes initially.
 
 ### Callback data
 
-- `offer_skip:{order_id}` — existing, now shows reason menu instead of recording skip
-- `offer_reject_reason:{order_id}:{reason}` — new, selects a specific reason
+- `offer_skip:{order_id}` — existing, now shows reason menu instead of recording skip. Original offer keyboard is removed immediately on click (prevents double-clicks).
+- `orr:{order_id_hex}:{reason}` — new, selects a specific reason. Uses short prefix `orr:` and UUID without dashes (32 chars) to fit Telegram's 64-byte callback data limit. Example: `orr:550e8400e29b41d4a716446655440000:low_price` (52 bytes).
 
 ### FSM state
 
-One new state: `OfferSkipStates.waiting_desired_price`
-State data stores `order_id` and `reason`.
+New `OfferSkipStates(StatesGroup)` defined in `offer_responses.py` (following existing pattern of colocating FSM states with handlers):
+- `waiting_desired_price = State()` — waiting for price input
+- State data stores `order_id` and `reason`
 
 ### Price validation
 
-- Parse as number
-- Min: offer price (from order)
+- Parse text as `Decimal` (use `Decimal(str)` to avoid float precision issues)
+- Min: offer price (from order, converted to `Decimal`)
 - Max: offer price × 10
 - On error: re-prompt with hint showing valid range
+- Non-text messages (stickers, photos, etc.) are ignored with a re-prompt
+- Cancel button available: sends `orr_cancel:{order_id_hex}` — records skip without reason (graceful exit)
 
 ## Service Layer
 
@@ -107,7 +112,16 @@ Add `rejection_reason` and `desired_price` parameters, pass through to UPDATE.
 
 ### Manager notification
 
-On `LOW_PRICE`: service sends Telegram message to order's manager with blogger info, desired price, and original offer price. Notification logic lives in the service layer, not in handlers.
+On `LOW_PRICE`: `record_skip()` returns a result dataclass indicating notification is needed (with manager_id, blogger info, prices). The handler then sends the Telegram message to the manager. This keeps the service layer free of messaging infrastructure dependencies (consistent with current `OfferDispatchService` which only has repository dependencies).
+
+```python
+@dataclass(slots=True)
+class SkipResult:
+    rejection_reason: RejectionReason
+    desired_price: Decimal | None = None
+    manager_id: UUID | None = None  # set when notification needed
+    order_price: Decimal | None = None
+```
 
 ## Localization
 
@@ -203,19 +217,20 @@ New text keys across 5 locales (RU, EN, BE, KK, UZ):
 
 | Component | File |
 |-----------|------|
-| Domain entity + enum | `src/ugc_bot/domain/entities.py` |
+| Domain enum | `src/ugc_bot/domain/enums.py` |
+| Domain entity | `src/ugc_bot/domain/entities.py` |
 | DB model | `src/ugc_bot/infrastructure/db/models.py` |
 | Migration | `src/ugc_bot/infrastructure/db/migrations/versions/` (new) |
 | Repository port | `src/ugc_bot/application/ports.py` |
-| Repository impl | `src/ugc_bot/infrastructure/db/repositories.py` |
+| Repository impl | `src/ugc_bot/infrastructure/db/repositories/interactions.py` |
 | Memory repo | `src/ugc_bot/infrastructure/memory_repositories.py` |
 | Offer dispatch service | `src/ugc_bot/application/services/offer_dispatch_service.py` |
-| Bot handler | `src/ugc_bot/bot/handlers/offer_responses.py` |
+| Bot handler + FSM states | `src/ugc_bot/bot/handlers/offer_responses.py` |
 | Text defaults (ru) | `src/ugc_bot/bot/texts/defaults/ru.py` |
 | Text defaults (en) | `src/ugc_bot/bot/texts/defaults/en.py` |
 | Text defaults (be) | `src/ugc_bot/bot/texts/defaults/be.py` |
 | Text defaults (kk) | `src/ugc_bot/bot/texts/defaults/kk.py` |
 | Text defaults (uz) | `src/ugc_bot/bot/texts/defaults/uz.py` |
-| Admin | `src/ugc_bot/admin/views.py` |
+| Admin | `src/ugc_bot/admin/app.py` |
 | Unit tests | `tests/unit/` |
 | Integration tests | `tests/integration/` |
