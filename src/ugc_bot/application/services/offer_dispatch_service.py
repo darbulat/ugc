@@ -270,6 +270,7 @@ class SkipResult:
     manager_id: UUID | None = None
     order_price: Decimal | None = None
     offer_text: str | None = None
+    product_link: str | None = None
 
 
 @dataclass(slots=True)
@@ -615,6 +616,7 @@ class OfferDispatchService:
             manager_id: UUID | None = None
             order_price: Decimal | None = None
             offer_text: str | None = None
+            product_link: str | None = None
             if (
                 rejection_reason == RejectionReason.LOW_PRICE
                 and self.manager_order_repo
@@ -628,12 +630,14 @@ class OfferDispatchService:
                 if order:
                     order_price = Decimal(str(order.price))
                     offer_text = order.offer_text
+                    product_link = order.product_link or None
             return SkipResult(
                 rejection_reason=rejection_reason,
                 desired_price=desired_price,
                 manager_id=manager_id,
                 order_price=order_price,
                 offer_text=offer_text,
+                product_link=product_link,
             )
 
         return await with_optional_tx(self.transaction_manager, _run)

@@ -117,6 +117,7 @@ async def _reply_offer_response_result(
     interaction_service: InteractionService,
     bot_texts_service: BotTextsService,
     locale: str,
+    currency_symbol: str = "₽",
 ) -> None:
     """Answer callback, remove keyboard; if accepted, send link and contact."""
     if result.accepted:
@@ -173,6 +174,7 @@ async def _reply_offer_response_result(
             texts=contact_texts,
             bot_texts_service=bot_texts_service,
             manager=manager,
+            currency_symbol=currency_symbol,
         )
 
 
@@ -526,12 +528,15 @@ async def handle_desired_price(
             mgr_msg_tpl = await bot_texts_service.get(
                 "msg_manager_low_price_notification", mgr_locale
             )
+            blogger_handle = user.telegram or user.username or external_id
+            if blogger_handle and not blogger_handle.startswith("@"):
+                blogger_handle = f"@{blogger_handle}"
             mgr_msg = mgr_msg_tpl.format(
-                blogger=user.username or external_id,
-                order=result.offer_text or "",
+                blogger=blogger_handle,
                 desired_price=value,
                 offer_price=result.order_price or offer_price,
                 currency=currency,
+                product_link=result.product_link or "",
             )
             await send_with_retry(
                 messenger_client,
@@ -645,6 +650,7 @@ async def handle_offer_response(
         interaction_service,
         bot_texts_service,
         locale,
+        currency_symbol=config.market.currency_symbol,
     )
 
 
@@ -755,6 +761,7 @@ async def _send_contact_immediately(
     texts: dict[str, str],
     bot_texts_service: BotTextsService,
     manager: User | None = None,
+    currency_symbol: str = "₽",
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
 
@@ -839,6 +846,7 @@ async def _send_contact_immediately(
             texts=t_mgr,
             creator_external_id=user.external_id,
         )
+        mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
         await send_with_retry(
             messenger_client,
             chat_id=manager.external_id,

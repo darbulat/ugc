@@ -790,7 +790,7 @@ RU: dict[str, str] = {
     "msg_invalid_price": "Введите число от {min} до {max} {currency}",
     "msg_offer_skipped_with_reason": "Спасибо за обратную связь. Вы отказались: {reason}. Пропущено.",
     "msg_offer_skipped_low_price": "Спасибо за обратную связь. Вы отказались: Низкая цена. Желаемая сумма: {price} {currency}. Мы можем вернуться с новым предложением.",
-    "msg_manager_low_price_notification": "Блогер {blogger} отказался от заказа «{order}»: низкая цена. Готов за {desired_price} {currency} (в оффере: {offer_price} {currency}).",
+    "msg_manager_low_price_notification": "Блогер {blogger} отказался: низкая цена. Готов за {desired_price} {currency} (в оффере: {offer_price} {currency}).\n{product_link}",
     "btn_cancel_price_entry": "Отмена",
     "msg_price_entry_cancelled": "Отказ записан. Пропущено.",
     "err_interaction_not_found": "Взаимодействие не найдено.",

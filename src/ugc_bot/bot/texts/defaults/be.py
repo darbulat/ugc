@@ -789,7 +789,7 @@ BE: dict[str, str] = {
     "msg_invalid_price": "Увядзіце лік ад {min} да {max} {currency}",
     "msg_offer_skipped_with_reason": "Дзякуй за зваротную сувязь. Вы адмовіліся: {reason}. Прапушчана.",
     "msg_offer_skipped_low_price": "Дзякуй. Адмовіліся: Нізкая цана. Жаданая сума: {price} {currency}. Мы можам вярнуцца з новай прапановай.",
-    "msg_manager_low_price_notification": "Блогер {blogger} адмовіўся ад замовы «{order}»: нізкая цана. Гатовы за {desired_price} {currency} (у оферы: {offer_price} {currency}).",
+    "msg_manager_low_price_notification": "Блогер {blogger} адмовіўся: нізкая цана. Гатовы за {desired_price} {currency} (у оферы: {offer_price} {currency}).\n{product_link}",
     "btn_cancel_price_entry": "Адмена",
     "msg_price_entry_cancelled": "Адмова запісана. Прапушчана.",
     "err_interaction_not_found": "Узаемадзеянне не знойдзена.",

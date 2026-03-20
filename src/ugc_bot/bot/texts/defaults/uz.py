@@ -778,7 +778,7 @@ UZ: dict[str, str] = {
     "msg_invalid_price": "{min} dan {max} {currency} gacha son kiriting",
     "msg_offer_skipped_with_reason": "Fikr-mulohaza uchun rahmat. Rad ettingiz: {reason}. O'tkazib yuborildi.",
     "msg_offer_skipped_low_price": "Rahmat. Rad: Narx past. Xohlagan summa: {price} {currency}. Yangi taklif bilan qaytishimiz mumkin.",
-    "msg_manager_low_price_notification": "Bloger {blogger} «{order}» buyurtmasidan voz kechdi: narx past. {desired_price} {currency} tayyor (offerda: {offer_price} {currency}).",
+    "msg_manager_low_price_notification": "Bloger {blogger} rad etdi: narx past. {desired_price} {currency} tayyor (offerda: {offer_price} {currency}).\n{product_link}",
     "btn_cancel_price_entry": "Bekor qilish",
     "msg_price_entry_cancelled": "Rad etish yozildi. O'tkazib yuborildi.",
     "err_interaction_not_found": "Muloqot topilmadi.",

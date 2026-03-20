@@ -758,7 +758,7 @@ KK: dict[str, str] = {
     "msg_invalid_price": "{min} мен {max} {currency} арасында сан енгізіңіз",
     "msg_offer_skipped_with_reason": "Кері байланыс үшін рақмет. Бас тарттыңыз: {reason}. Өткізілді.",
     "msg_offer_skipped_low_price": "Рақмет. Бас тарту: Баға төмен. Қалаған сома: {price} {currency}. Жаңа ұсыныспен қайта ораламыз.",
-    "msg_manager_low_price_notification": "Блогер {blogger} «{order}» тапсырысынан бас тартты: баға төмен. {desired_price} {currency} дайын (офферде: {offer_price} {currency}).",
+    "msg_manager_low_price_notification": "Блогер {blogger} бас тартты: баға төмен. {desired_price} {currency} дайын (офферде: {offer_price} {currency}).\n{product_link}",
     "btn_cancel_price_entry": "Болдырмау",
     "msg_price_entry_cancelled": "Бас тарту жазылды. Өткізілді.",
     "err_interaction_not_found": "Әрекеттесу табылмады.",
