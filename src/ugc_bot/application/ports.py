@@ -1001,6 +1001,17 @@ class ReferralIncomeEntryRepository(ABC):
         """Save entry; skip if duplicate key."""
 
     @abstractmethod
+    async def exists(
+        self,
+        order_id: UUID,
+        referrer_user_id: UUID,
+        income_type: str,
+        session: object | None = None,
+    ) -> bool:
+        """Return True if entry already exists for this order+referrer+type."""
+        ...  # pragma: no cover
+
+    @abstractmethod
     async def get_totals_by_currency(
         self, referrer_user_id: UUID, session: object | None = None
     ) -> dict[str, Decimal]:

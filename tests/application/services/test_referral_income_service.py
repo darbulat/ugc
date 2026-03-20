@@ -3055,3 +3055,114 @@ async def test_compute_income_from_loader_uses_decimal_precision() -> None:
     )
     assert income_total == 11.1
     assert orders_count == 1
+
+
+@pytest.mark.asyncio
+async def test_income_entry_exists_returns_true_when_present() -> None:
+    """exists() should return True when entry already recorded."""
+    from ugc_bot.infrastructure.memory_repositories import InMemoryReferralIncomeEntryRepository
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+    from ugc_bot.domain.enums import ReferralIncomeType
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from uuid import uuid4
+
+    repo = InMemoryReferralIncomeEntryRepository()
+    referrer_id = uuid4()
+    order_id = uuid4()
+
+    entry = ReferralIncomeEntry(
+        entry_id=uuid4(),
+        referrer_user_id=referrer_id,
+        referred_user_id=uuid4(),
+        order_id=order_id,
+        income_type=ReferralIncomeType.CREATOR,
+        currency="RUB",
+        platform_revenue=Decimal("1000"),
+        commission_rate=Decimal("0.10"),
+        commission_amount=Decimal("100"),
+        created_at=datetime.now(timezone.utc),
+    )
+    await repo.save(entry)
+
+    assert await repo.exists(order_id, referrer_id, "creator") is True
+    assert await repo.exists(order_id, referrer_id, "advertiser") is False
+    assert await repo.exists(uuid4(), referrer_id, "creator") is False
+
+
+@pytest.mark.asyncio
+async def test_record_creator_skips_when_already_exists() -> None:
+    """record_creator_referral_income should skip if entry already exists."""
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+    from decimal import Decimal
+    from datetime import datetime, timedelta, timezone
+
+    from ugc_bot.application.services.referral_income_recorder import ReferralIncomeRecorder
+    from ugc_bot.domain.entities import (
+        Order, ReferralIncomeEntry, UserReferralBinding,
+    )
+    from ugc_bot.domain.enums import OrderStatus, OrderType, ReferralIncomeType
+    from ugc_bot.infrastructure.memory_repositories import InMemoryReferralIncomeEntryRepository
+
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+    order_id = uuid4()
+
+    binding = UserReferralBinding(
+        referrer_user_id=referrer_id,
+        referred_user_id=creator_id,
+        created_at=now - timedelta(days=30),
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    income_repo = InMemoryReferralIncomeEntryRepository()
+    entry = ReferralIncomeEntry(
+        entry_id=uuid4(),
+        referrer_user_id=referrer_id,
+        referred_user_id=creator_id,
+        order_id=order_id,
+        income_type=ReferralIncomeType.CREATOR,
+        currency="RUB",
+        platform_revenue=Decimal("100"),
+        commission_rate=Decimal("0.10"),
+        commission_amount=Decimal("10"),
+        created_at=now,
+    )
+    await income_repo.save(entry)
+
+    binding_repo = AsyncMock()
+    binding_repo.get_by_referred_user = AsyncMock(return_value=binding)
+    user_repo = AsyncMock()
+    pricing_repo = AsyncMock()
+    payment_repo = AsyncMock()
+
+    recorder = ReferralIncomeRecorder(
+        user_referral_binding_repo=binding_repo,
+        user_repo=user_repo,
+        referral_income_entry_repo=income_repo,
+        contact_pricing_repo=pricing_repo,
+        payment_repo=payment_repo,
+    )
+
+    await recorder.record_creator_referral_income(
+        order=order, creator_id=creator_id, advertiser_country_code="ru"
+    )
+
+    # Early exit: these repos should NOT be called
+    pricing_repo.get_by_bloggers_count.assert_not_called()
+    payment_repo.get_by_order.assert_not_called()
+    user_repo.get_by_id.assert_not_called()

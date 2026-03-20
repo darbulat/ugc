@@ -412,6 +412,30 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
             )
             await db_session.execute(stmt)
 
+    async def exists(
+        self,
+        order_id: UUID,
+        referrer_user_id: UUID,
+        income_type: str,
+        session: object | None = None,
+    ) -> bool:
+        """Return True if entry exists for order+referrer+type."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(func.count())
+                .select_from(ReferralIncomeEntryModel)
+                .where(
+                    ReferralIncomeEntryModel.order_id == order_id,
+                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id,
+                    ReferralIncomeEntryModel.income_type == income_type,
+                )
+                .limit(1)
+            )
+            result = await db_session.execute(stmt)
+            return (result.scalar_one() or 0) > 0
+
     async def get_totals_by_currency(
         self, referrer_user_id: UUID, session: object | None = None
     ) -> dict[str, Decimal]:
