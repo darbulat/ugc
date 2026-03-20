@@ -46,6 +46,7 @@ _COMPLAINT_REASONS = [
     "Некорректное поведение",
     "Другое",
 ]
+_COMPLAINT_OTHER_INDEX = len(_COMPLAINT_REASONS) - 1
 
 
 @router.callback_query(
@@ -137,8 +138,17 @@ async def select_complaint_target(
             )
             return
 
+        # Store order_id + blogger_ids in state so complaint:{i} only needs index
+        await state_store.update_data(
+            order_id=str(order_id),
+            blogger_ids=[str(r.blogger_id) for r in responses],
+            reporter_id=str(user.user_id),
+        )
+        btn_complaint_tpl = (
+            await bot_texts_service.get("btn_complaint", locale)
+        ).strip() or "Пожаловаться на {name}"
         buttons: list[list[Button]] = []
-        for response in responses:
+        for i, response in enumerate(responses):
             blogger = await user_role_service.get_user_by_id(
                 response.blogger_id
             )
@@ -147,14 +157,11 @@ async def select_complaint_target(
                 if blogger
                 else f"Блогер {str(response.blogger_id)[:8]}"
             )
-            btn_complaint_tpl = (
-                await bot_texts_service.get("btn_complaint", locale)
-            ).strip() or "Пожаловаться на {name}"
             buttons.append(
                 [
                     Button(
                         text=btn_complaint_tpl.format(name=blogger_name),
-                        callback_data=f"complaint:{order_id}:{response.blogger_id}",
+                        callback_data=f"complaint:{i}",
                     )
                 ]
             )
@@ -191,8 +198,8 @@ async def select_complaint_target(
 
         # Show reason selection keyboard
         buttons = [
-            [Button(text=reason, callback_data=f"complaint_reason:{reason}")]
-            for reason in _COMPLAINT_REASONS
+            [Button(text=reason, callback_data=f"complaint_reason:{i}")]
+            for i, reason in enumerate(_COMPLAINT_REASONS)
         ]
         keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
 
@@ -249,81 +256,49 @@ async def start_complaint(
     if user is None:
         return
 
-    parts = incoming.data.split(":")
-    if len(parts) != 3:
-        msg_invalid = await bot_texts_service.get(
-            "msg_invalid_format_short", locale
-        )
-        await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text=msg_invalid
-        )
+    # Parse blogger index from "complaint:{i}"
+    parts = incoming.data.split(":", 1)
+    if len(parts) != 2:
+        return
+    try:
+        blogger_idx = int(parts[1])
+    except ValueError:
         return
 
-    _, order_id_raw, reported_id_raw = parts
+    # Read order_id and blogger list stored by select_complaint_target
+    data = await state_store.get_data()
+    blogger_ids: list[str] = data.get("blogger_ids", [])
+    order_id_raw = data.get("order_id")
+    reporter_id_raw = data.get("reporter_id")
+    if (
+        not order_id_raw
+        or not reporter_id_raw
+        or blogger_idx < 0
+        or blogger_idx >= len(blogger_ids)
+    ):
+        msg_expired = await bot_texts_service.get("msg_session_expired", locale)
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id, text=msg_expired
+        )
+        return
 
     try:
         order_id = UUID(order_id_raw)
-        reported_id = UUID(reported_id_raw)
+        reported_id = UUID(blogger_ids[blogger_idx])
     except ValueError:
-        msg_invalid_id = await bot_texts_service.get("msg_invalid_id", locale)
-        await messenger_client.answer_callback(
-            callback_id=incoming.callback_id,
-            text=msg_invalid_id,
-        )
         return
 
-    order = await order_service.get_order(order_id)
-    if order is None:
-        msg_not_found = await bot_texts_service.get(
-            "msg_order_not_found", locale
-        )
-        await messenger_client.answer_callback(
-            callback_id=incoming.callback_id, text=msg_not_found
-        )
-        return
-
-    # Verify user has access to this order
-    if order.advertiser_id != user.user_id:
-        # Check if user is a blogger who responded to this order
-        responses = await offer_response_service.list_by_order(order_id)
-        if not any(
-            response.blogger_id == user.user_id for response in responses
-        ):
-            msg_no_access = await bot_texts_service.get(
-                "msg_no_access_order", locale
-            )
-            await messenger_client.answer_callback(
-                callback_id=incoming.callback_id,
-                text=msg_no_access,
-            )
-            return
-
-    # Verify reported_id is valid (either advertiser or blogger from this order)
-    if reported_id != order.advertiser_id:
-        responses = await offer_response_service.list_by_order(order_id)
-        if not any(
-            response.blogger_id == reported_id for response in responses
-        ):
-            msg_invalid_user = await bot_texts_service.get(
-                "msg_invalid_uuid", locale
-            )
-            await messenger_client.answer_callback(
-                callback_id=incoming.callback_id,
-                text=msg_invalid_user,
-            )
-            return
-
-    # Store complaint data in state
+    # Store selected reported_id so handle_complaint_reason can use it
     await state_store.update_data(
         order_id=str(order_id),
         reported_id=str(reported_id),
-        reporter_id=str(user.user_id),
+        reporter_id=reporter_id_raw,
     )
 
     # Show reason selection keyboard
     buttons = [
-        [Button(text=reason, callback_data=f"complaint_reason:{reason}")]
-        for reason in _COMPLAINT_REASONS
+        [Button(text=reason, callback_data=f"complaint_reason:{i}")]
+        for i, reason in enumerate(_COMPLAINT_REASONS)
     ]
     keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
 
@@ -375,8 +350,11 @@ async def handle_complaint_reason(
         )
         return
 
-    reason = incoming.data.split("complaint_reason:", 1)[-1]
-    if reason not in _COMPLAINT_REASONS:
+    idx_raw = incoming.data.split("complaint_reason:", 1)[-1]
+    try:
+        reason_idx = int(idx_raw)
+        reason = _COMPLAINT_REASONS[reason_idx]
+    except (ValueError, IndexError):
         msg_invalid_reason = await bot_texts_service.get(
             "msg_invalid_reason", locale
         )
@@ -398,7 +376,7 @@ async def handle_complaint_reason(
         return
 
     # If "Другое" is selected, ask for text input
-    if reason == "Другое":
+    if reason_idx == _COMPLAINT_OTHER_INDEX:
         msg_describe = await bot_texts_service.get(
             "msg_describe_complaint", locale
         )

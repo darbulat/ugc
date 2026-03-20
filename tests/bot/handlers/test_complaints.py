@@ -39,7 +39,7 @@ async def test_start_complaint_invalid_format(
     config,
     bot_texts_service,
 ) -> None:
-    """Reject malformed callback data."""
+    """Return early on non-integer index in callback data."""
 
     user_service = UserRoleService(user_repo=user_repo)
     order_service = build_order_service(
@@ -66,6 +66,7 @@ async def test_start_complaint_invalid_format(
         username="user",
     )
 
+    # Non-integer index: handler silently returns without answering
     callback = FakeCallback(data="complaint:bad", user=FakeUser(1))
     await start_complaint(
         callback,
@@ -77,7 +78,7 @@ async def test_start_complaint_invalid_format(
         bot_texts_service,
     )
 
-    assert any("Неверный формат" in ans for ans in callback.answers)
+    assert not callback.answers and not callback.message.answers
 
 
 @pytest.mark.asyncio
@@ -90,7 +91,7 @@ async def test_start_complaint_order_not_found(
     config,
     bot_texts_service,
 ) -> None:
-    """Reject complaint for non-existent order."""
+    """start_complaint no longer validates order existence; shows reason keyboard."""
 
     from uuid import UUID
 
@@ -117,10 +118,14 @@ async def test_start_complaint_order_not_found(
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
-    callback = FakeCallback(
-        data=f"complaint:{UUID('00000000-0000-0000-0000-000000000999')}:{UUID('00000000-0000-0000-0000-000000000998')}",
-        user=FakeUser(1),
+    # Pre-populate state: valid index 0 pointing to a blogger_id
+    await state.update_data(
+        order_id=str(UUID("00000000-0000-0000-0000-000000000999")),
+        blogger_ids=[str(UUID("00000000-0000-0000-0000-000000000998"))],
+        reporter_id=str(UUID("00000000-0000-0000-0000-000000000951")),
     )
+
+    callback = FakeCallback(data="complaint:0", user=FakeUser(1))
     await start_complaint(
         callback,
         state,
@@ -131,7 +136,15 @@ async def test_start_complaint_order_not_found(
         bot_texts_service,
     )
 
-    assert any("Заказ не найден" in ans for ans in callback.answers)
+    # Handler shows reason selection keyboard — does not check order existence
+    def _answer_text(a: str | tuple) -> str:
+        return a if isinstance(a, str) else a[0]
+
+    assert callback.message.answers
+    assert any(
+        "Выберите причину" in _answer_text(ans)
+        for ans in callback.message.answers
+    )
 
 
 @pytest.mark.asyncio
@@ -144,30 +157,15 @@ async def test_start_complaint_no_access(
     config,
     bot_texts_service,
 ) -> None:
-    """Reject complaint when user has no access to order."""
+    """Return session-expired when state is empty (no prior select_complaint_target call)."""
 
     from uuid import UUID
 
-    advertiser = await create_test_user(
-        user_repo,
-        user_id=UUID("00000000-0000-0000-0000-000000000961"),
-        external_id="1",
-        username="advertiser",
-    )
     await create_test_user(
         user_repo,
         user_id=UUID("00000000-0000-0000-0000-000000000962"),
         external_id="2",
         username="other",
-    )
-
-    order = await create_test_order(
-        order_repo,
-        advertiser.user_id,
-        order_id=UUID("00000000-0000-0000-0000-000000000963"),
-        price=1000.0,
-        bloggers_needed=3,
-        status=OrderStatus.ACTIVE,
     )
 
     user_service = UserRoleService(user_repo=user_repo)
@@ -185,11 +183,9 @@ async def test_start_complaint_no_access(
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
+    # State is empty — no session was established by select_complaint_target
 
-    callback = FakeCallback(
-        data=f"complaint:{order.order_id}:{advertiser.user_id}",
-        user=FakeUser(2),
-    )
+    callback = FakeCallback(data="complaint:0", user=FakeUser(2))
     await start_complaint(
         callback,
         state,
@@ -200,7 +196,7 @@ async def test_start_complaint_no_access(
         bot_texts_service,
     )
 
-    assert any("нет доступа" in ans.lower() for ans in callback.answers)
+    assert any("Сессия истекла" in ans for ans in callback.answers)
 
 
 @pytest.mark.asyncio
@@ -275,7 +271,8 @@ async def test_handle_complaint_reason_success(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(2)
+        data="complaint_reason:0",
+        user=FakeUser(2),  # index 0 = "Мошенничество"
     )
     await handle_complaint_reason(
         callback,
@@ -770,7 +767,10 @@ async def test_handle_complaint_reason_other(
     )
 
     user_role_service = UserRoleService(user_repo=user_repo)
-    callback = FakeCallback(data="complaint_reason:Другое", user=FakeUser(2))
+    callback = FakeCallback(
+        data="complaint_reason:4",
+        user=FakeUser(2),  # index 4 = "Другое"
+    )
     await handle_complaint_reason(
         callback,
         state,
@@ -814,7 +814,8 @@ async def test_handle_complaint_reason_no_state(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(1)
+        data="complaint_reason:0",
+        user=FakeUser(1),  # index 0 = "Мошенничество"
     )
     await handle_complaint_reason(
         callback,
@@ -863,7 +864,8 @@ async def test_handle_complaint_reason_invalid_reason(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:InvalidReason", user=FakeUser(1)
+        data="complaint_reason:99",  # out-of-range index → invalid reason
+        user=FakeUser(1),
     )
     await handle_complaint_reason(
         callback,
@@ -942,7 +944,8 @@ async def test_handle_complaint_reason_duplicate(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(1)
+        data="complaint_reason:0",  # index 0 = "Мошенничество"
+        user=FakeUser(1),
     )
     await handle_complaint_reason(
         callback,
@@ -1124,8 +1127,8 @@ async def test_start_complaint_user_not_found(
     state = FSMContext(storage=storage, key="test")
 
     callback = FakeCallback(
-        data=f"complaint:{UUID('00000000-0000-0000-0000-000000001010')}:{UUID('00000000-0000-0000-0000-000000001011')}",
-        user=FakeUser(999),
+        data="complaint:0",  # new index-based format
+        user=FakeUser(999),  # user not registered in repo
     )
     await start_complaint(
         callback,
@@ -1150,7 +1153,7 @@ async def test_start_complaint_invalid_reported_id(
     config,
     bot_texts_service,
 ) -> None:
-    """Reject complaint with invalid reported_id."""
+    """Reject complaint when index is out of range (session expired)."""
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001020"),
@@ -1208,10 +1211,15 @@ async def test_start_complaint_invalid_reported_id(
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
+    # State has only 1 blogger (index 0), so index 5 is out of range → session expired
+    await state.update_data(
+        order_id=str(order.order_id),
+        blogger_ids=[str(blogger.user_id)],
+        reporter_id=str(advertiser.user_id),
+    )
 
-    # Invalid reported_id (not a blogger who responded)
     callback = FakeCallback(
-        data=f"complaint:{order.order_id}:{UUID('00000000-0000-0000-0000-000000001099')}",
+        data="complaint:5",  # out-of-range index
         user=FakeUser(1),
     )
     await start_complaint(
@@ -1224,10 +1232,7 @@ async def test_start_complaint_invalid_reported_id(
         bot_texts_service,
     )
 
-    assert any(
-        "Неверный идентификатор" in ans or "Неверный формат" in ans
-        for ans in callback.answers
-    )
+    assert any("Сессия истекла" in ans for ans in callback.answers)
 
 
 @pytest.mark.asyncio
@@ -1269,8 +1274,9 @@ async def test_start_complaint_invalid_uuid(
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
 
+    # Non-integer in index position: handler silently returns without answering
     callback = FakeCallback(
-        data="complaint:not-a-uuid:00000000-0000-0000-0000-000000001121",
+        data="complaint:not-an-int",
         user=FakeUser(1),
     )
     await start_complaint(
@@ -1283,10 +1289,7 @@ async def test_start_complaint_invalid_uuid(
         bot_texts_service,
     )
 
-    assert any(
-        "Неверный идентификатор" in ans or "Неверный формат" in ans
-        for ans in callback.answers
-    )
+    assert not callback.answers and not callback.message.answers
 
 
 @pytest.mark.asyncio
@@ -1679,9 +1682,15 @@ async def test_start_complaint_advertiser_success(
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
+    # Pre-populate state as select_complaint_target would have done
+    await state.update_data(
+        order_id=str(order.order_id),
+        blogger_ids=[str(blogger.user_id)],
+        reporter_id=str(advertiser.user_id),
+    )
 
     callback = FakeCallback(
-        data=f"complaint:{order.order_id}:{blogger.user_id}",
+        data="complaint:0",  # index 0 points to blogger.user_id
         user=FakeUser(1),
     )
     await start_complaint(
@@ -1738,7 +1747,8 @@ async def test_handle_complaint_reason_no_from_user(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(1)
+        data="complaint_reason:0",  # index 0 = "Мошенничество"
+        user=FakeUser(1),
     )
     callback.from_user = None
 
@@ -1789,7 +1799,8 @@ async def test_handle_complaint_reason_no_data(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(1)
+        data="complaint_reason:0",  # index 0 = "Мошенничество"
+        user=FakeUser(1),
     )
     callback.data = None
 
@@ -1840,7 +1851,8 @@ async def test_handle_complaint_reason_bad_state_data(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(1)
+        data="complaint_reason:0",  # index 0 = "Мошенничество"
+        user=FakeUser(1),
     )
     await handle_complaint_reason(
         callback,
@@ -1924,7 +1936,7 @@ async def test_handle_complaint_reason_with_notify(
     from tests.helpers.fakes import FakeBot
 
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество",
+        data="complaint_reason:0",  # index 0 = "Мошенничество"
         user=FakeUser(2),
         bot=FakeBot(),
     )
@@ -1982,7 +1994,8 @@ async def test_handle_complaint_reason_generic_exception(
 
     user_role_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
-        data="complaint_reason:Мошенничество", user=FakeUser(1)
+        data="complaint_reason:0",  # index 0 = "Мошенничество"
+        user=FakeUser(1),
     )
     await handle_complaint_reason(
         callback,
