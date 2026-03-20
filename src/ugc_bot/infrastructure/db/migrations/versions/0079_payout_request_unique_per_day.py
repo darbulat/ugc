@@ -3,7 +3,7 @@
 from alembic import op
 
 revision = "0079"
-down_revision = "0078"
+down_revision = "0078_add_rejection_reason_to_offer_dispatches"
 branch_labels = None
 depends_on = None
 
