@@ -502,7 +502,7 @@ class ReferralStatsService:
                 referrer_user_id, session=session
             )
         )
-        paid_total, has_pending_payout, has_request_today = (
+        paid_total, has_pending_payout, has_request_today, paid_by_currency = (
             aggregate_payout_requests(payout_requests, now)
         )
 
@@ -514,4 +514,5 @@ class ReferralStatsService:
             paid_total=round(paid_total, 2),
             has_pending_payout=has_pending_payout,
             has_request_today=has_request_today,
+            paid_by_currency=paid_by_currency,
         )

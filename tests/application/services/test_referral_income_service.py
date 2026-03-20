@@ -2975,8 +2975,36 @@ def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
             currency="RUB",
         ),
     ]
-    _, _, has_request_today = aggregate_payout_requests(requests, now)
+    _, _, has_request_today, _ = aggregate_payout_requests(requests, now)
     assert has_request_today is False
+
+
+def test_aggregate_payout_requests_returns_paid_by_currency() -> None:
+    """aggregate_payout_requests should return per-currency paid breakdown."""
+    from ugc_bot.application.services.referral_commission import aggregate_payout_requests
+    from ugc_bot.domain.entities import PayoutRequest
+    from ugc_bot.domain.enums import PayoutRequestStatus
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from uuid import uuid4
+
+    now = datetime.now(timezone.utc)
+    uid = uuid4()
+    requests = [
+        PayoutRequest(
+            request_id=uuid4(), user_id=uid, requested_at=now,
+            status=PayoutRequestStatus.PAID, amount=Decimal("100"), currency="USD",
+        ),
+        PayoutRequest(
+            request_id=uuid4(), user_id=uid, requested_at=now,
+            status=PayoutRequestStatus.PAID, amount=Decimal("5000"), currency="RUB",
+        ),
+    ]
+    paid_total, has_pending, has_request_today, paid_by_currency = (
+        aggregate_payout_requests(requests, now)
+    )
+    assert paid_by_currency == {"USD": 100.0, "RUB": 5000.0}
+    assert paid_total == 5100.0
 
 
 @pytest.mark.asyncio
