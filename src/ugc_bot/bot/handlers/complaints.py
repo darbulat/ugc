@@ -138,7 +138,7 @@ async def select_complaint_target(
             )
             return
 
-        # Store order_id + blogger_ids in state so complaint:{i} only needs index
+        # Store order_id + blogger_ids; complaint:{i} callbacks use index only
         await state_store.update_data(
             order_id=str(order_id),
             blogger_ids=[str(r.blogger_id) for r in responses],

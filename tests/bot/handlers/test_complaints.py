@@ -5,7 +5,7 @@ from uuid import UUID
 
 import pytest
 
-from tests.helpers.factories import create_test_order, create_test_user
+from tests.helpers.factories import create_test_user
 from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
 from tests.helpers.services import build_order_service
 from ugc_bot.application.services.complaint_service import ComplaintService
@@ -91,7 +91,7 @@ async def test_start_complaint_order_not_found(
     config,
     bot_texts_service,
 ) -> None:
-    """start_complaint no longer validates order existence; shows reason keyboard."""
+    """start_complaint skips order validation; shows reason keyboard."""
 
     from uuid import UUID
 
@@ -157,7 +157,7 @@ async def test_start_complaint_no_access(
     config,
     bot_texts_service,
 ) -> None:
-    """Return session-expired when state is empty (no prior select_complaint_target call)."""
+    """Return session-expired when state is empty (no prior target select)."""
 
     from uuid import UUID
 
@@ -1211,7 +1211,7 @@ async def test_start_complaint_invalid_reported_id(
 
     storage = MemoryStorage()
     state = FSMContext(storage=storage, key="test")
-    # State has only 1 blogger (index 0), so index 5 is out of range → session expired
+    # State has 1 blogger (index 0), index 5 is out of range → session expired
     await state.update_data(
         order_id=str(order.order_id),
         blogger_ids=[str(blogger.user_id)],
@@ -2334,3 +2334,114 @@ async def test_handle_complaint_reason_text_duplicate(
     )
 
     assert any("уже подали жалобу" in ans for ans in message.answers)
+
+
+@pytest.mark.asyncio
+async def test_start_complaint_no_colon_in_data(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Return early when callback data has no colon (malformed)."""
+
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001140"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(user)
+
+    user_service = UserRoleService(user_repo=user_repo)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    storage = MemoryStorage()
+    state = FSMContext(storage=storage, key="test")
+
+    callback = FakeCallback(data="complaint", user=FakeUser(1))
+    await start_complaint(
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
+    )
+
+    assert not callback.answers and not callback.message.answers
+
+
+@pytest.mark.asyncio
+async def test_start_complaint_invalid_uuid_in_state(
+    fake_tm: object,
+    user_repo,
+    order_repo,
+    offer_dispatch_repo,
+    advertiser_repo,
+    config,
+    bot_texts_service,
+) -> None:
+    """Return early when blogger_ids contains a non-UUID value."""
+
+    user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001141"),
+        external_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(user)
+
+    user_service = UserRoleService(user_repo=user_repo)
+    order_service = build_order_service(
+        user_repo, advertiser_repo, order_repo, fake_tm
+    )
+    offer_response_service = OfferResponseService(
+        order_repo=order_repo,
+        dispatch_repo=offer_dispatch_repo,
+        transaction_manager=fake_tm,
+    )
+
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    storage = MemoryStorage()
+    state = FSMContext(storage=storage, key="test")
+    await state.update_data(
+        order_id=str(user.user_id),
+        blogger_ids=["not-a-uuid"],
+        reporter_id=str(user.user_id),
+    )
+
+    callback = FakeCallback(data="complaint:0", user=FakeUser(1))
+    await start_complaint(
+        callback,
+        state,
+        user_service,
+        order_service,
+        offer_response_service,
+        config,
+        bot_texts_service,
+    )
+
+    assert not callback.answers and not callback.message.answers
