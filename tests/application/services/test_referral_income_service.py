@@ -2977,3 +2977,53 @@ def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
     ]
     _, _, has_request_today = aggregate_payout_requests(requests, now)
     assert has_request_today is False
+
+
+@pytest.mark.asyncio
+async def test_compute_income_from_loader_uses_decimal_precision() -> None:
+    """Loader fallback should produce same result as Decimal arithmetic."""
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import uuid4
+
+    from ugc_bot.application.services.referral_stats_service import ReferralStatsService
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOfferDispatchRepository,
+        InMemoryOrderRepository,
+        InMemoryPaymentRepository,
+        InMemoryPayoutRequestRepository,
+        InMemoryUserReferralBindingRepository,
+        InMemoryUserRepository,
+    )
+
+    now = datetime.now(timezone.utc)
+    order_id = uuid4()
+    row = ReferralOrderIncomeRow(
+        creator_created_at=now - timedelta(days=30),
+        order_completed_at=now,
+        payment_amount=333.0,
+        bloggers_needed=3,
+        order_id=order_id,
+    )
+
+    loader = MagicMock()
+    loader.load_referral_order_income_rows_combined = AsyncMock(return_value=[row])
+
+    service = ReferralStatsService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=MagicMock(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        referral_order_income_loader=loader,
+    )
+
+    session = MagicMock()
+    income_cm, income_total, orders_count = await service._compute_income_from_loader(
+        uuid4(), limit=100, now=now, session=session
+    )
+    assert income_total == 11.1
+    assert orders_count == 1
