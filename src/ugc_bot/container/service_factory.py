@@ -510,7 +510,9 @@ def build_bot_services(
     }
 
 
-def build_referral_reconciliation_deps(config: AppConfig, repos, transaction_manager):
+def build_referral_reconciliation_deps(
+    config: AppConfig, repos, transaction_manager
+):
     """Build deps for referral reconciliation scheduler."""
     return {
         "referral_income_entry_repo": repos["referral_income_entry_repo"],

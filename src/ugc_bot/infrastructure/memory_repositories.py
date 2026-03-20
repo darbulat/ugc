@@ -472,12 +472,16 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         return result
 
     async def find_missing_creator_income(
-        self, limit: int = 100, session: object | None = None,
+        self,
+        limit: int = 100,
+        session: object | None = None,
     ) -> list:
         return []
 
     async def find_missing_advertiser_income(
-        self, limit: int = 100, session: object | None = None,
+        self,
+        limit: int = 100,
+        session: object | None = None,
     ) -> list:
         return []
 

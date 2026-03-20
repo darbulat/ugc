@@ -17,6 +17,7 @@ from ugc_bot.application.ports import (
     UserReferralPendingRepository,
 )
 from ugc_bot.domain.entities import (
+    MissingReferralIncome,
     PayoutRequest,
     ReferralIncomeEntry,
     ReferralOrderIncomeRow,
@@ -428,7 +429,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 .select_from(ReferralIncomeEntryModel)
                 .where(
                     ReferralIncomeEntryModel.order_id == order_id,
-                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id,
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id,
                     ReferralIncomeEntryModel.income_type == income_type,
                 )
                 .limit(1)
@@ -538,10 +540,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         self,
         limit: int = 100,
         session: object | None = None,
-    ) -> list["MissingReferralIncome"]:
-        """Find creator orders with binding + CLOSED + PAID + OK but no entry."""
-        from ugc_bot.domain.entities import MissingReferralIncome
-
+    ) -> list[MissingReferralIncome]:
+        """Find creator orders with binding+CLOSED+PAID+OK, no entry."""
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
@@ -554,9 +554,13 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     ),
                 )
                 .select_from(InteractionModel)
-                .join(OrderModel, InteractionModel.order_id == OrderModel.order_id)
+                .join(
+                    OrderModel, InteractionModel.order_id == OrderModel.order_id
+                )
                 .join(UserModel, OrderModel.advertiser_id == UserModel.user_id)
-                .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
                 .join(
                     UserReferralBindingModel,
                     UserReferralBindingModel.referred_user_id
@@ -565,7 +569,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 .outerjoin(
                     ReferralIncomeEntryModel,
                     and_(
-                        ReferralIncomeEntryModel.order_id == OrderModel.order_id,
+                        ReferralIncomeEntryModel.order_id
+                        == OrderModel.order_id,
                         ReferralIncomeEntryModel.referrer_user_id
                         == UserReferralBindingModel.referrer_user_id,
                         ReferralIncomeEntryModel.income_type == "creator",
@@ -595,10 +600,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         self,
         limit: int = 100,
         session: object | None = None,
-    ) -> list["MissingReferralIncome"]:
+    ) -> list[MissingReferralIncome]:
         """Find advertiser orders with binding + CLOSED + PAID but no entry."""
-        from ugc_bot.domain.entities import MissingReferralIncome
-
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
@@ -612,7 +615,9 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 )
                 .select_from(OrderModel)
                 .join(UserModel, OrderModel.advertiser_id == UserModel.user_id)
-                .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+                .join(
+                    PaymentModel, OrderModel.order_id == PaymentModel.order_id
+                )
                 .join(
                     UserReferralBindingModel,
                     UserReferralBindingModel.referred_user_id
@@ -621,7 +626,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 .outerjoin(
                     ReferralIncomeEntryModel,
                     and_(
-                        ReferralIncomeEntryModel.order_id == OrderModel.order_id,
+                        ReferralIncomeEntryModel.order_id
+                        == OrderModel.order_id,
                         ReferralIncomeEntryModel.referrer_user_id
                         == UserReferralBindingModel.referrer_user_id,
                         ReferralIncomeEntryModel.income_type == "advertiser",

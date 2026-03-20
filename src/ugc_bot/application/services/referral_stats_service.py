@@ -275,12 +275,18 @@ class ReferralStatsService:
         for row in rows:
             if not row.bloggers_needed:
                 continue
-            platform_revenue = Decimal(str(row.payment_amount)) / Decimal(str(row.bloggers_needed))
-            rate = Decimal(str(effective_rate(
-                row.creator_created_at,
-                row.order_completed_at,
-                custom_rate,
-            )))
+            platform_revenue = Decimal(str(row.payment_amount)) / Decimal(
+                str(row.bloggers_needed)
+            )
+            rate = Decimal(
+                str(
+                    effective_rate(
+                        row.creator_created_at,
+                        row.order_completed_at,
+                        custom_rate,
+                    )
+                )
+            )
             commission = platform_revenue * rate
             income_total += commission
             seen_orders.add(row.order_id)
@@ -294,7 +300,11 @@ class ReferralStatsService:
                 and completed_utc.year == now_utc.year
             ):
                 income_current_month += commission
-        return round(float(income_current_month), 2), round(float(income_total), 2), len(seen_orders)
+        return (
+            round(float(income_current_month), 2),
+            round(float(income_total), 2),
+            len(seen_orders),
+        )
 
     async def _income_from_advertiser_orders(
         self,
@@ -322,7 +332,13 @@ class ReferralStatsService:
             if payment is None or payment.status != PaymentStatus.PAID:
                 continue
             completed_at = order.completed_at or order.created_at
-            rate = Decimal(str(effective_rate(creator.created_at, completed_at, custom_rate)))
+            rate = Decimal(
+                str(
+                    effective_rate(
+                        creator.created_at, completed_at, custom_rate
+                    )
+                )
+            )
             commission = Decimal(str(payment.amount)) * rate
             income_tot += commission
             seen.add(order.order_id)
@@ -389,12 +405,16 @@ class ReferralStatsService:
                 if order.bloggers_needed <= 0:
                     continue
                 completed_at = order.completed_at or order.created_at
-                platform_revenue_per_creator = (
-                    Decimal(str(payment.amount)) / Decimal(str(order.bloggers_needed))
+                platform_revenue_per_creator = Decimal(
+                    str(payment.amount)
+                ) / Decimal(str(order.bloggers_needed))
+                rate = Decimal(
+                    str(
+                        effective_rate(
+                            creator.created_at, completed_at, custom_rate
+                        )
+                    )
                 )
-                rate = Decimal(str(effective_rate(
-                    creator.created_at, completed_at, custom_rate
-                )))
                 commission = platform_revenue_per_creator * rate
                 income_total += commission
                 seen_orders.add(order.order_id)

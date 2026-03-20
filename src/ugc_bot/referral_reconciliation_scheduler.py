@@ -112,7 +112,7 @@ async def run_loop(
         )
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover
     """Entry point for referral reconciliation scheduler."""
     config = load_config()
     configure_logging(
@@ -150,5 +150,5 @@ def main() -> None:
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

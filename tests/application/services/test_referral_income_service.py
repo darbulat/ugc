@@ -2981,23 +2981,34 @@ def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
 
 def test_aggregate_payout_requests_returns_paid_by_currency() -> None:
     """aggregate_payout_requests should return per-currency paid breakdown."""
-    from ugc_bot.application.services.referral_commission import aggregate_payout_requests
-    from ugc_bot.domain.entities import PayoutRequest
-    from ugc_bot.domain.enums import PayoutRequestStatus
     from datetime import datetime, timezone
     from decimal import Decimal
     from uuid import uuid4
+
+    from ugc_bot.application.services.referral_commission import (
+        aggregate_payout_requests,
+    )
+    from ugc_bot.domain.entities import PayoutRequest
+    from ugc_bot.domain.enums import PayoutRequestStatus
 
     now = datetime.now(timezone.utc)
     uid = uuid4()
     requests = [
         PayoutRequest(
-            request_id=uuid4(), user_id=uid, requested_at=now,
-            status=PayoutRequestStatus.PAID, amount=Decimal("100"), currency="USD",
+            request_id=uuid4(),
+            user_id=uid,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("100"),
+            currency="USD",
         ),
         PayoutRequest(
-            request_id=uuid4(), user_id=uid, requested_at=now,
-            status=PayoutRequestStatus.PAID, amount=Decimal("5000"), currency="RUB",
+            request_id=uuid4(),
+            user_id=uid,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("5000"),
+            currency="RUB",
         ),
     ]
     paid_total, has_pending, has_request_today, paid_by_currency = (
@@ -3014,7 +3025,9 @@ async def test_compute_income_from_loader_uses_decimal_precision() -> None:
     from unittest.mock import AsyncMock, MagicMock
     from uuid import uuid4
 
-    from ugc_bot.application.services.referral_stats_service import ReferralStatsService
+    from ugc_bot.application.services.referral_stats_service import (
+        ReferralStatsService,
+    )
     from ugc_bot.domain.entities import ReferralOrderIncomeRow
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryOfferDispatchRepository,
@@ -3036,7 +3049,9 @@ async def test_compute_income_from_loader_uses_decimal_precision() -> None:
     )
 
     loader = MagicMock()
-    loader.load_referral_order_income_rows_combined = AsyncMock(return_value=[row])
+    loader.load_referral_order_income_rows_combined = AsyncMock(
+        return_value=[row]
+    )
 
     service = ReferralStatsService(
         user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
@@ -3050,7 +3065,11 @@ async def test_compute_income_from_loader_uses_decimal_precision() -> None:
     )
 
     session = MagicMock()
-    income_cm, income_total, orders_count = await service._compute_income_from_loader(
+    (
+        income_cm,
+        income_total,
+        orders_count,
+    ) = await service._compute_income_from_loader(
         uuid4(), limit=100, now=now, session=session
     )
     assert income_total == 11.1
@@ -3060,12 +3079,15 @@ async def test_compute_income_from_loader_uses_decimal_precision() -> None:
 @pytest.mark.asyncio
 async def test_income_entry_exists_returns_true_when_present() -> None:
     """exists() should return True when entry already recorded."""
-    from ugc_bot.infrastructure.memory_repositories import InMemoryReferralIncomeEntryRepository
-    from ugc_bot.domain.entities import ReferralIncomeEntry
-    from ugc_bot.domain.enums import ReferralIncomeType
     from datetime import datetime, timezone
     from decimal import Decimal
     from uuid import uuid4
+
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+    from ugc_bot.domain.enums import ReferralIncomeType
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryReferralIncomeEntryRepository,
+    )
 
     repo = InMemoryReferralIncomeEntryRepository()
     referrer_id = uuid4()
@@ -3093,17 +3115,23 @@ async def test_income_entry_exists_returns_true_when_present() -> None:
 @pytest.mark.asyncio
 async def test_record_creator_skips_when_already_exists() -> None:
     """record_creator_referral_income should skip if entry already exists."""
+    from datetime import datetime, timedelta, timezone
+    from decimal import Decimal
     from unittest.mock import AsyncMock
     from uuid import uuid4
-    from decimal import Decimal
-    from datetime import datetime, timedelta, timezone
 
-    from ugc_bot.application.services.referral_income_recorder import ReferralIncomeRecorder
+    from ugc_bot.application.services.referral_income_recorder import (
+        ReferralIncomeRecorder,
+    )
     from ugc_bot.domain.entities import (
-        Order, ReferralIncomeEntry, UserReferralBinding,
+        Order,
+        ReferralIncomeEntry,
+        UserReferralBinding,
     )
     from ugc_bot.domain.enums import OrderStatus, OrderType, ReferralIncomeType
-    from ugc_bot.infrastructure.memory_repositories import InMemoryReferralIncomeEntryRepository
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryReferralIncomeEntryRepository,
+    )
 
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
