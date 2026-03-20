@@ -139,6 +139,25 @@ class InstagramStats:
     biography: Optional[str] = None
     provider: str = "rapid_api"
     instagram_id: Optional[str] = None
+    # Profile fields
+    full_name: Optional[str] = None
+    is_professional_account: Optional[bool] = None
+    is_business_account: Optional[bool] = None
+    category_name: Optional[str] = None
+    external_url: Optional[str] = None
+    # Engagement metrics (computed from recent posts)
+    avg_likes: Optional[float] = None
+    avg_comments: Optional[float] = None
+    avg_video_views: Optional[float] = None
+    engagement_rate: Optional[float] = None
+    posting_frequency_days: Optional[float] = None
+    # Content structure
+    total_video_count: Optional[int] = None
+    total_photo_count: Optional[int] = None
+    video_ratio: Optional[float] = None
+    # Audience quality signals
+    followers_to_follows_ratio: Optional[float] = None
+    comments_to_likes_ratio: Optional[float] = None
 
 
 @dataclass(frozen=True)
