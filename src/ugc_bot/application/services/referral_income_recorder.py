@@ -75,7 +75,7 @@ class ReferralIncomeRecorder:
         if order.bloggers_needed <= 0:
             return
         platform_revenue = Decimal(str(payment.amount)) / order.bloggers_needed
-        rate = resolve_rate(creator, order, binding.created_at)
+        rate = resolve_rate(creator, order)
         commission = (platform_revenue * rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -139,7 +139,7 @@ class ReferralIncomeRecorder:
             return
 
         platform_revenue = Decimal(str(payment.amount))
-        rate = resolve_rate(advertiser, order, binding.created_at)
+        rate = resolve_rate(advertiser, order)
         commission = (platform_revenue * rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
