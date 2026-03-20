@@ -31,6 +31,7 @@ from ugc_bot.domain.entities import (
     OutboxEvent,
     Payment,
     PayoutRequest,
+    MissingReferralIncome,
     ReferralIncomeEntry,
     ReferralOrderIncomeRow,
     User,
@@ -1036,6 +1037,24 @@ class ReferralIncomeEntryRepository(ABC):
         session: object | None = None,
     ) -> dict[UUID, Decimal]:
         """Return {referrer_user_id: total_commission} for referrers."""
+        ...  # pragma: no cover
+
+    @abstractmethod
+    async def find_missing_creator_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list[MissingReferralIncome]:
+        """Find creator orders with binding but no income entry."""
+        ...  # pragma: no cover
+
+    @abstractmethod
+    async def find_missing_advertiser_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list[MissingReferralIncome]:
+        """Find advertiser orders with binding but no income entry."""
         ...  # pragma: no cover
 
 

@@ -534,6 +534,117 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
             result = await db_session.execute(stmt)
             return {row[0]: Decimal(str(row[1])) for row in result.all()}
 
+    async def find_missing_creator_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list["MissingReferralIncome"]:
+        """Find creator orders with binding + CLOSED + PAID + OK but no entry."""
+        from ugc_bot.domain.entities import MissingReferralIncome
+
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    OrderModel.order_id,
+                    InteractionModel.blogger_id.label("referred_user_id"),
+                    func.coalesce(UserModel.country, "ru").label(
+                        "advertiser_country_code"
+                    ),
+                )
+                .select_from(InteractionModel)
+                .join(OrderModel, InteractionModel.order_id == OrderModel.order_id)
+                .join(UserModel, OrderModel.advertiser_id == UserModel.user_id)
+                .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+                .join(
+                    UserReferralBindingModel,
+                    UserReferralBindingModel.referred_user_id
+                    == InteractionModel.blogger_id,
+                )
+                .outerjoin(
+                    ReferralIncomeEntryModel,
+                    and_(
+                        ReferralIncomeEntryModel.order_id == OrderModel.order_id,
+                        ReferralIncomeEntryModel.referrer_user_id
+                        == UserReferralBindingModel.referrer_user_id,
+                        ReferralIncomeEntryModel.income_type == "creator",
+                    ),
+                )
+                .where(
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                    InteractionModel.status == InteractionStatus.OK,
+                    OrderModel.bloggers_needed > 0,
+                    ReferralIncomeEntryModel.entry_id.is_(None),
+                )
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            return [
+                MissingReferralIncome(
+                    order_id=row.order_id,
+                    referred_user_id=row.referred_user_id,
+                    advertiser_country_code=row.advertiser_country_code,
+                    income_type="creator",
+                )
+                for row in result.all()
+            ]
+
+    async def find_missing_advertiser_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list["MissingReferralIncome"]:
+        """Find advertiser orders with binding + CLOSED + PAID but no entry."""
+        from ugc_bot.domain.entities import MissingReferralIncome
+
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            stmt = (
+                select(
+                    OrderModel.order_id,
+                    OrderModel.advertiser_id.label("referred_user_id"),
+                    func.coalesce(UserModel.country, "ru").label(
+                        "advertiser_country_code"
+                    ),
+                )
+                .select_from(OrderModel)
+                .join(UserModel, OrderModel.advertiser_id == UserModel.user_id)
+                .join(PaymentModel, OrderModel.order_id == PaymentModel.order_id)
+                .join(
+                    UserReferralBindingModel,
+                    UserReferralBindingModel.referred_user_id
+                    == OrderModel.advertiser_id,
+                )
+                .outerjoin(
+                    ReferralIncomeEntryModel,
+                    and_(
+                        ReferralIncomeEntryModel.order_id == OrderModel.order_id,
+                        ReferralIncomeEntryModel.referrer_user_id
+                        == UserReferralBindingModel.referrer_user_id,
+                        ReferralIncomeEntryModel.income_type == "advertiser",
+                    ),
+                )
+                .where(
+                    OrderModel.status == OrderStatus.CLOSED,
+                    PaymentModel.status == PaymentStatus.PAID,
+                    ReferralIncomeEntryModel.entry_id.is_(None),
+                )
+                .limit(limit)
+            )
+            result = await db_session.execute(stmt)
+            return [
+                MissingReferralIncome(
+                    order_id=row.order_id,
+                    referred_user_id=row.referred_user_id,
+                    advertiser_country_code=row.advertiser_country_code,
+                    income_type="advertiser",
+                )
+                for row in result.all()
+            ]
+
 
 @dataclass(slots=True)
 class SqlReferralOrderIncomeLoader:

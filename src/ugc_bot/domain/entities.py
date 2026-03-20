@@ -445,3 +445,13 @@ class ReferralOrderIncomeRow:
     payment_amount: float
     bloggers_needed: int
     order_id: UUID
+
+
+@dataclass(frozen=True)
+class MissingReferralIncome:
+    """Order that qualifies for referral income but has no entry yet."""
+
+    order_id: UUID
+    referred_user_id: UUID
+    advertiser_country_code: str
+    income_type: str  # 'creator' or 'advertiser'

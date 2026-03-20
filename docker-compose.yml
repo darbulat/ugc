@@ -229,6 +229,19 @@ services:
     command: ["python", "-m", "ugc_bot.role_reminder_scheduler"]
     restart: unless-stopped
 
+  referral_reconciliation_scheduler:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
+    depends_on:
+      db:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    command: ["python", "-m", "ugc_bot.referral_reconciliation_scheduler"]
+    restart: unless-stopped
+
   outbox_processor:
     build: .
     env_file: .env

@@ -191,6 +191,13 @@ class Container:
         """Create Instagram Graph API client if configured."""
         return infrastructure_factory.build_instagram_api_client(self._config)
 
+    def build_referral_reconciliation_deps(self) -> dict:
+        """Deps for referral reconciliation scheduler."""
+        repos = self.build_repos()
+        return service_factory.build_referral_reconciliation_deps(
+            self._config, repos, self._transaction_manager
+        )
+
     def build_manager_service(self) -> ManagerService:
         """ManagerService for admin panel."""
         repos = self.build_repos()

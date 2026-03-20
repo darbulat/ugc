@@ -586,6 +586,14 @@ class ReferralConfig(BaseSettings):
         default=10_000,
         alias="REFERRAL_STATS_LIMIT",
     )
+    referral_reconciliation_enabled: bool = Field(
+        default=False,
+        alias="REFERRAL_RECONCILIATION_ENABLED",
+    )
+    referral_reconciliation_interval_seconds: int = Field(
+        default=300,
+        alias="REFERRAL_RECONCILIATION_INTERVAL_SECONDS",
+    )
 
 
 # --- Composite ---
