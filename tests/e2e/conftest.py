@@ -114,7 +114,11 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 E2E_PORT = 8001
 BASE_URL = f"http://127.0.0.1:{E2E_PORT}"
-TABLES_TO_EXCLUDE = {"outbox_events", "blogger_profiles"}
+TABLES_TO_EXCLUDE = {
+    "outbox_events",
+    "blogger_profiles",
+    "payout_requests",  # uses AT TIME ZONE in index expression
+}
 
 
 @pytest.fixture(scope="session")

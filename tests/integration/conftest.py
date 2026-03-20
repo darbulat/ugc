@@ -31,11 +31,12 @@ def engine(test_database_url: str):
 
     eng = create_engine(test_database_url, echo=False)
 
-    # Exclude tables with JSONB (not compatible with SQLite)
+    # Exclude tables with JSONB or PostgreSQL-specific indexes
     tables_to_exclude = {
         "outbox_events",
         "blogger_profiles",
         "instagram_stats",
+        "payout_requests",  # uses AT TIME ZONE in index expression
     }
     tables_to_create = [
         table

@@ -494,8 +494,8 @@ async def test_get_dashboard_referrers_balance_and_sort_when_income_service_set(
         _FakeResult(scalar_value=0),
     ]
     mock_income = AsyncMock()
-    mock_income.get_user_referral_stats = AsyncMock(
-        return_value=SimpleNamespace(income_total=100.0, paid_total=30.0)
+    mock_income.get_referral_balances_batch = AsyncMock(
+        return_value={ref_user_id: (100.0, 30.0)}
     )
     svc = AdminDashboardService(
         session_factory=_make_session_factory(*results),
@@ -824,7 +824,8 @@ async def test_build_period_window_30d(service) -> None:
 
 @pytest.mark.asyncio
 async def test_build_period_window_all(service) -> None:
-    """_build_period_window for all returns epoch start and no previous range."""
+    """_build_period_window for all returns epoch start and no
+    previous range."""
     results = [
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),

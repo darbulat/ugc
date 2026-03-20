@@ -14,11 +14,12 @@ def test_db_engine():
     """Create in-memory SQLite engine for admin tests."""
     engine = create_engine("sqlite:///:memory:", echo=False)
 
-    # Exclude tables with JSONB (not compatible with SQLite)
+    # Exclude tables with JSONB or PostgreSQL-specific indexes
     tables_to_exclude = {
         "outbox_events",
         "blogger_profiles",
         "instagram_stats",
+        "payout_requests",  # uses AT TIME ZONE in index expression
     }
     tables_to_create = [
         table

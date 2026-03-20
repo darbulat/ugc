@@ -1,6 +1,5 @@
 """Admin dashboard aggregation service."""
 
-import asyncio
 import contextlib
 import logging
 import time
@@ -897,19 +896,17 @@ class AdminDashboardService:
                 "total_earned": total_earned,
                 "total_balance": total_balance,
             }
-        stats_list = await asyncio.gather(
-            *[
-                service.get_user_referral_stats(UUID(r["user_id"]))
-                for r in referrers
-            ]
-        )
+        user_ids = [UUID(r["user_id"]) for r in referrers]
+        balances = await service.get_referral_balances_batch(user_ids)
         sum_earned = 0.0
         sum_balance = 0.0
-        for r, stats in zip(referrers, stats_list, strict=True):
-            balance = round(stats.income_total - stats.paid_total, 2)
+        for r in referrers:
+            uid = UUID(r["user_id"])
+            inc, paid = balances.get(uid, (0.0, 0.0))
+            balance = round(inc - paid, 2)
             r["balance"] = balance
             if sort_by_balance:
-                sum_earned += stats.income_total
+                sum_earned += inc
                 sum_balance += balance
         if sort_by_balance:
             total_earned = round(sum_earned, 2)
