@@ -484,64 +484,6 @@ class OfferDispatchService:
 
         return users
 
-    async def _get_followers_and_media(
-        self,
-        user_id: UUID,
-        profile: BloggerProfile | None,
-        criteria: _DispatchCriteria,
-        session: object | None,
-    ) -> tuple[int | None, int | None]:
-        """Resolve followers_count and media_count from stats and/or profile."""
-        followers_count: int | None = None
-        media_count: int | None = None
-        if criteria.need_instagram_stats and self.instagram_stats_repo:
-            stats = await self.instagram_stats_repo.get_by_user_id(
-                user_id, session=session
-            )
-            if stats is not None:
-                followers_count = stats.followers_count
-                media_count = stats.media_count
-        if profile is not None and followers_count is None:
-            followers_count = profile.instagram_followers_count
-        return followers_count, media_count
-
-    async def _check_user_eligible(
-        self,
-        user_id: UUID,
-        order: Order,
-        criteria: _DispatchCriteria,
-        already_sent_set: frozenset[UUID],
-        bloggers_with_unfulfilled: frozenset[UUID],
-        session: object | None,
-    ) -> User | None:
-        """Return User if blogger is eligible for the order, else None."""
-        if (
-            user_id == order.advertiser_id
-            or user_id in already_sent_set
-            or user_id in bloggers_with_unfulfilled
-        ):
-            return None
-        user = await self.user_repo.get_by_id(user_id, session=session)
-        if user is None or user.status != UserStatus.ACTIVE:
-            return None
-        profile: BloggerProfile | None = None
-        if criteria.need_profile:
-            profile = await self.blogger_repo.get_by_user_id(
-                user_id, session=session
-            )
-            if profile is None:
-                return None
-        if not _passes_profile_based_filters(profile, order, criteria):
-            return None
-        followers_count, media_count = await self._get_followers_and_media(
-            user_id, profile, criteria, session
-        )
-        if not _passes_follower_filters(followers_count, criteria):
-            return None
-        if not _passes_publication_filters(media_count, order, criteria):
-            return None
-        return user
-
     async def _dispatch(
         self, order_id: UUID, session: object | None
     ) -> list[User]:

@@ -178,3 +178,31 @@ def test_miniapp_open_inline_keyboard_empty_url() -> None:
     keyboard = miniapp_open_inline_keyboard("")
     assert keyboard.kind == KeyboardKind.INLINE
     assert len(keyboard.rows) == 0
+
+
+def test_build_support_telegram_url_with_username() -> None:
+    """build_support_telegram_url returns t.me URL for a valid username."""
+    from ugc_bot.bot.handlers.keyboards import build_support_telegram_url
+
+    assert (
+        build_support_telegram_url("support_bot") == "https://t.me/support_bot"
+    )
+    assert (
+        build_support_telegram_url("@support_bot") == "https://t.me/support_bot"
+    )
+
+
+def test_build_support_telegram_url_empty_returns_none() -> None:
+    """build_support_telegram_url returns None for empty/whitespace input."""
+    from ugc_bot.bot.handlers.keyboards import build_support_telegram_url
+
+    assert build_support_telegram_url("") is None
+    assert build_support_telegram_url("   ") is None
+
+
+def test_keyboard_property_alias() -> None:
+    """Keyboard.keyboard property is an alias for rows."""
+    from ugc_bot.application.messenger.dto import Keyboard
+
+    kb = Keyboard(kind=KeyboardKind.INLINE, rows=[])
+    assert kb.keyboard is kb.rows

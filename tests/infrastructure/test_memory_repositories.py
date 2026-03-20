@@ -638,3 +638,88 @@ async def test_in_memory_bot_texts_repo_get_all() -> None:
     assert len(rows) == 2
     assert ("k1", "ru", "v1") in rows
     assert ("k2", "en", "v2") in rows
+
+
+@pytest.mark.asyncio
+async def test_payout_repo_save_same_request_id_skips_duplicate_check() -> None:
+    """Re-saving the same request skips it in duplicate detection (continue)."""
+    repo = InMemoryPayoutRequestRepository()
+    request_id = uuid4()
+    user_id = uuid4()
+    now = datetime.now(timezone.utc)
+    request = PayoutRequest(
+        request_id=request_id,
+        user_id=user_id,
+        requested_at=now,
+        status=PayoutRequestStatus.PENDING,
+    )
+    # Save once, then save again — same request_id so the loop should `continue`
+    await repo.save(request)
+    await repo.save(request)
+    saved = await repo.get_by_id(request_id)
+    assert saved is not None
+    assert saved.status == PayoutRequestStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_repo_set_manager_updates_existing() -> None:
+    """set_manager updates manager_id on an existing dispatch."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOfferDispatchRepository,
+    )
+
+    repo = InMemoryOfferDispatchRepository()
+    order_id = uuid4()
+    blogger_id = uuid4()
+    manager_id = uuid4()
+
+    await repo.record_sent(order_id, blogger_id)
+    await repo.set_manager(order_id, blogger_id, manager_id)
+
+    dispatch = await repo.get_by_order_and_blogger(order_id, blogger_id)
+    assert dispatch is not None
+    assert dispatch.manager_id == manager_id
+
+
+@pytest.mark.asyncio
+async def test_outbox_repo_reset_stale_processing_events() -> None:
+    """reset_stale_processing_events resets events claimed before cutoff."""
+    from ugc_bot.domain.enums import OutboxEventStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOutboxRepository,
+    )
+
+    repo = InMemoryOutboxRepository()
+    from ugc_bot.domain.entities import OutboxEvent
+
+    event_id = uuid4()
+    event = OutboxEvent(
+        event_id=event_id,
+        event_type="test",
+        aggregate_id=str(uuid4()),
+        aggregate_type="test",
+        payload={},
+        status=OutboxEventStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+        processed_at=None,
+        retry_count=0,
+        last_error=None,
+    )
+    await repo.save(event)
+
+    # Claim event (moves to PROCESSING and records claimed_at)
+    claimed = await repo.claim_pending_events(limit=10)
+    assert len(claimed) == 1
+
+    # Backdate claimed_at to simulate stale processing
+    from datetime import timedelta
+
+    stale_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+    repo._claimed_at[event_id] = stale_time
+
+    reset_count = await repo.reset_stale_processing_events(
+        stale_after_minutes=15
+    )
+    assert reset_count == 1
+    assert repo.events[event_id].status == OutboxEventStatus.PENDING
+    assert event_id not in repo._claimed_at

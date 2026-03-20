@@ -1944,8 +1944,8 @@ async def test_offer_skip_shows_reason_menu(
     assert len(reason_msgs) == 1
     kb = reason_msgs[0]["keyboard"]
     assert kb is not None
-    # 4 reason buttons, one per row
-    assert len(kb.rows) == 4
+    # 5 reason buttons, one per row
+    assert len(kb.rows) == 5
 
 
 @pytest.mark.asyncio
@@ -3293,3 +3293,18 @@ async def test_handle_offer_response_order_creation_error(
 
     msg_closed_full = _DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
     assert any(msg_closed_full in s["text"] for s in messenger_client.sent_text)
+
+
+def test_rejection_reason_callback_data_within_telegram_limit() -> None:
+    """All orr:{uuid}:{reason} callback_data values must fit Telegram's 64-byte limit."""  # noqa: E501
+    from uuid import UUID
+
+    from ugc_bot.bot.handlers.offer_responses import _REJECTION_REASON_BUTTONS
+
+    max_uuid = UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    for reason in _REJECTION_REASON_BUTTONS:
+        data = f"orr:{max_uuid}:{reason.value}"
+        assert len(data.encode()) <= 64, (
+            f"callback_data for {reason.name!r} is {len(data.encode())} bytes "
+            f"(max 64): {data!r}"
+        )
