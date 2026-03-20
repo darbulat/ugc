@@ -120,4 +120,4 @@ class RejectionReason(StrEnum):
     WRONG_FORMAT = "wrong_format"
     UNINTERESTING_PRODUCT = "uninteresting_product"
     NO_TIME = "no_time"
-    ALREADY_WORKING_WITH_BRAND = "already_working_with_brand"
+    ALREADY_WORKING_WITH_BRAND = "already_working"
