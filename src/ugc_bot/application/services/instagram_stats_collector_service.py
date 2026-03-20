@@ -53,6 +53,27 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    """Return float from value or None."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_bool(value: Any) -> Optional[bool]:
+    """Return bool from value or None."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("true", "1", "yes")
+    return bool(value)
+
+
 def _safe_str(value: Any) -> Optional[str]:
     """Return non-empty string or None."""
     if value is None:
@@ -233,6 +254,241 @@ def _extract_instagram_id(raw: dict) -> Optional[str]:
     return None  # pragma: no cover - defensive fallback
 
 
+@dataclass(frozen=True)
+class AnalyticsFields:
+    """Extracted analytics fields from raw Instagram response."""
+
+    full_name: Optional[str] = None
+    is_professional_account: Optional[bool] = None
+    is_business_account: Optional[bool] = None
+    category_name: Optional[str] = None
+    external_url: Optional[str] = None
+    avg_likes: Optional[float] = None
+    avg_comments: Optional[float] = None
+    avg_video_views: Optional[float] = None
+    engagement_rate: Optional[float] = None
+    posting_frequency_days: Optional[float] = None
+    total_video_count: Optional[int] = None
+    total_photo_count: Optional[int] = None
+    video_ratio: Optional[float] = None
+    followers_to_follows_ratio: Optional[float] = None
+    comments_to_likes_ratio: Optional[float] = None
+
+
+def _extract_profile_fields(
+    user: dict,
+) -> tuple[
+    Optional[str],
+    Optional[bool],
+    Optional[bool],
+    Optional[str],
+    Optional[str],
+]:
+    """Extract profile-level fields from user dict.
+
+    Returns (full_name, is_professional, is_business, category, external_url).
+    """
+    full_name = _safe_str(user.get("full_name"))
+    is_professional = _safe_bool(user.get("is_professional_account"))
+    is_business = _safe_bool(user.get("is_business_account"))
+    category = _safe_str(user.get("category_name") or user.get("category"))
+    external_url = _safe_str(user.get("external_url"))
+    if not external_url:
+        bio_links = user.get("bio_links")
+        if isinstance(bio_links, list) and bio_links:
+            first = bio_links[0]
+            if isinstance(first, dict):
+                external_url = _safe_str(first.get("url"))
+    return full_name, is_professional, is_business, category, external_url
+
+
+def _extract_post_metrics(
+    posts: list[dict],
+) -> tuple[
+    Optional[float],
+    Optional[float],
+    Optional[float],
+    Optional[int],
+    Optional[int],
+]:
+    """Compute avg engagement metrics and content counts from posts."""
+    if not posts:
+        return None, None, None, None, None
+
+    total_likes = 0
+    total_comments = 0
+    total_video_views = 0
+    video_count = 0
+    photo_count = 0
+    video_view_items = 0
+
+    for post in posts:
+        node = post.get("node", post) if isinstance(post, dict) else post
+        if not isinstance(node, dict):
+            continue
+
+        likes = _safe_int(
+            node.get("edge_liked_by", {}).get("count")
+            if isinstance(node.get("edge_liked_by"), dict)
+            else node.get("like_count") or node.get("likes")
+        )
+        comments = _safe_int(
+            node.get("edge_media_to_comment", {}).get("count")
+            if isinstance(node.get("edge_media_to_comment"), dict)
+            else node.get("comment_count") or node.get("comments")
+        )
+        if likes is not None:
+            total_likes += likes
+        if comments is not None:
+            total_comments += comments
+
+        is_video = node.get("is_video", False)
+        product_type = node.get("product_type", "")
+        if is_video or product_type in ("clips", "igtv", "reels"):
+            video_count += 1
+            vv = _safe_int(
+                node.get("video_view_count") or node.get("view_count")
+            )
+            if vv is not None:
+                total_video_views += vv
+                video_view_items += 1
+        else:
+            photo_count += 1
+
+    n = len(posts)
+    avg_likes = total_likes / n if n > 0 else None
+    avg_comments = total_comments / n if n > 0 else None
+    avg_video_views = (
+        total_video_views / video_view_items if video_view_items > 0 else None
+    )
+    return avg_likes, avg_comments, avg_video_views, video_count, photo_count
+
+
+def _extract_posting_frequency(posts: list[dict]) -> Optional[float]:
+    """Compute average days between posts from timestamps."""
+    timestamps: list[int] = []
+    for post in posts:
+        node = post.get("node", post) if isinstance(post, dict) else post
+        if not isinstance(node, dict):
+            continue
+        ts = _safe_int(
+            node.get("taken_at_timestamp")
+            or node.get("taken_at")
+            or node.get("timestamp")
+        )
+        if ts is not None:
+            timestamps.append(ts)
+
+    if len(timestamps) < 2:
+        return None
+    timestamps.sort(reverse=True)
+    total_span = timestamps[0] - timestamps[-1]
+    if total_span <= 0:
+        return None
+    return (total_span / (len(timestamps) - 1)) / 86400.0
+
+
+def _get_posts_from_raw(raw: dict) -> list[dict]:
+    """Extract post list from various API response shapes."""
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+    if not isinstance(data, dict):
+        return []
+
+    user_val = data.get("user")
+    user: dict = user_val if isinstance(user_val, dict) else data
+
+    timeline = user.get("edge_owner_to_timeline_media")
+    if isinstance(timeline, dict):
+        edges = timeline.get("edges")
+        if isinstance(edges, list):
+            return edges
+
+    media = user.get("media") or user.get("posts") or user.get("recent_posts")
+    if isinstance(media, list):
+        return media
+    if isinstance(media, dict):
+        items = media.get("data") or media.get("edges") or media.get("items")
+        if isinstance(items, list):
+            return items
+
+    return []
+
+
+def _get_user_dict(raw: dict) -> dict:
+    """Get the user-level dict from various API response shapes."""
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else raw
+    if not isinstance(data, dict):
+        return {}
+    user = data.get("user")
+    if isinstance(user, dict):
+        return user
+    return data
+
+
+def _extract_analytics_fields(
+    raw: dict,
+    followers_count: Optional[int],
+    follows_count: Optional[int],
+) -> AnalyticsFields:
+    """Extract all analytics fields from raw Instagram API response."""
+    user = _get_user_dict(raw)
+
+    full_name, is_professional, is_business, category, external_url = (
+        _extract_profile_fields(user)
+    )
+
+    posts = _get_posts_from_raw(raw)
+    avg_likes, avg_comments, avg_video_views, video_count, photo_count = (
+        _extract_post_metrics(posts)
+    )
+    posting_frequency = _extract_posting_frequency(posts)
+
+    # Engagement rate
+    engagement_rate: Optional[float] = None
+    if (
+        followers_count
+        and followers_count > 0
+        and avg_likes is not None
+        and avg_comments is not None
+    ):
+        engagement_rate = (avg_likes + avg_comments) / followers_count
+
+    # Video ratio
+    video_ratio: Optional[float] = None
+    if video_count is not None and photo_count is not None:
+        total = video_count + photo_count
+        if total > 0:
+            video_ratio = video_count / total
+
+    # Audience quality: followers/follows ratio
+    followers_to_follows: Optional[float] = None
+    if followers_count and follows_count and follows_count > 0:
+        followers_to_follows = followers_count / follows_count
+
+    # Comments to likes ratio
+    comments_to_likes: Optional[float] = None
+    if avg_comments is not None and avg_likes is not None and avg_likes > 0:
+        comments_to_likes = avg_comments / avg_likes
+
+    return AnalyticsFields(
+        full_name=full_name,
+        is_professional_account=is_professional,
+        is_business_account=is_business,
+        category_name=category,
+        external_url=external_url,
+        avg_likes=avg_likes,
+        avg_comments=avg_comments,
+        avg_video_views=avg_video_views,
+        engagement_rate=engagement_rate,
+        posting_frequency_days=posting_frequency,
+        total_video_count=video_count,
+        total_photo_count=photo_count,
+        video_ratio=video_ratio,
+        followers_to_follows_ratio=followers_to_follows,
+        comments_to_likes_ratio=comments_to_likes,
+    )
+
+
 def _username_from_profile(profile: BloggerProfile) -> Optional[str]:
     """Get Instagram username from profile (username or parsed from URL)."""
     if profile.instagram_username and profile.instagram_username.strip():
@@ -387,6 +643,7 @@ class InstagramStatsCollectorService:
         followers, follows, media, parsed_username, biography = (
             _extract_typed_fields(raw)
         )
+        analytics = _extract_analytics_fields(raw, followers, follows)
         stats = InstagramStats(
             user_id=profile.user_id,
             raw_response=raw,
@@ -398,6 +655,21 @@ class InstagramStatsCollectorService:
             biography=biography,
             provider=_provider or "scrapecreators",
             instagram_id=_extract_instagram_id(raw),
+            full_name=analytics.full_name,
+            is_professional_account=analytics.is_professional_account,
+            is_business_account=analytics.is_business_account,
+            category_name=analytics.category_name,
+            external_url=analytics.external_url,
+            avg_likes=analytics.avg_likes,
+            avg_comments=analytics.avg_comments,
+            avg_video_views=analytics.avg_video_views,
+            engagement_rate=analytics.engagement_rate,
+            posting_frequency_days=analytics.posting_frequency_days,
+            total_video_count=analytics.total_video_count,
+            total_photo_count=analytics.total_photo_count,
+            video_ratio=analytics.video_ratio,
+            followers_to_follows_ratio=analytics.followers_to_follows_ratio,
+            comments_to_likes_ratio=analytics.comments_to_likes_ratio,
         )
 
         async def _save(

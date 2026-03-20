@@ -267,6 +267,39 @@ class InstagramStatsModel(Base):
     instagram_id: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True
     )
+    # Profile fields
+    full_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_professional_account: Mapped[Optional[bool]] = mapped_column(
+        nullable=True
+    )
+    is_business_account: Mapped[Optional[bool]] = mapped_column(nullable=True)
+    category_name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
+    external_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Engagement metrics (computed from recent posts)
+    avg_likes: Mapped[Optional[float]] = mapped_column(nullable=True)
+    avg_comments: Mapped[Optional[float]] = mapped_column(nullable=True)
+    avg_video_views: Mapped[Optional[float]] = mapped_column(nullable=True)
+    engagement_rate: Mapped[Optional[float]] = mapped_column(nullable=True)
+    posting_frequency_days: Mapped[Optional[float]] = mapped_column(
+        nullable=True
+    )
+    # Content structure
+    total_video_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    total_photo_count: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True
+    )
+    video_ratio: Mapped[Optional[float]] = mapped_column(nullable=True)
+    # Audience quality signals
+    followers_to_follows_ratio: Mapped[Optional[float]] = mapped_column(
+        nullable=True
+    )
+    comments_to_likes_ratio: Mapped[Optional[float]] = mapped_column(
+        nullable=True
+    )
 
 
 class AdvertiserProfileModel(Base):
