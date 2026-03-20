@@ -250,12 +250,13 @@ async def _update_blogger_profile_location_from_nominatim(
 
 
 T = TypeVar("T")
-_DASHBOARD_PERIODS = ("today", "yesterday", "7d", "30d")
+_DASHBOARD_PERIODS = ("today", "yesterday", "7d", "30d", "all")
 _PERIOD_LABELS = {
     "today": "Сегодня",
     "yesterday": "Вчера",
     "7d": "7 дней",
     "30d": "30 дней",
+    "all": "Все",
 }
 _STATUS_LABELS = {
     "active": "Активен",
@@ -324,6 +325,8 @@ def _dashboard_cache_ttl(period: str) -> int:
     """TTL in seconds for dashboard/charts by period."""
     if period in ("today", "yesterday"):
         return 90
+    if period == "all":
+        return 600
     return 300
 
 

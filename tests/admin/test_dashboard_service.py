@@ -823,6 +823,32 @@ async def test_build_period_window_30d(service) -> None:
 
 
 @pytest.mark.asyncio
+async def test_build_period_window_all(service) -> None:
+    """_build_period_window for all returns epoch start and no previous range."""
+    results = [
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[_order_cards_row()]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+        _FakeResult(all_rows=[]),
+        _FakeResult(scalar_value=0),
+    ]
+    svc = service(results)
+    data = await svc.get_dashboard("all")
+    assert data["period"] == "all"
+    window = svc._build_period_window("all")
+    assert window.current_start.year == 2000
+    assert window.previous_start == window.previous_end
+
+
+@pytest.mark.asyncio
 async def test_build_period_window_raises_for_invalid(service) -> None:
     """_build_period_window raises for invalid period."""
     svc = service([])

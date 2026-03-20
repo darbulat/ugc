@@ -42,7 +42,7 @@ if TYPE_CHECKING:
         ReferralIncomeService,
     )
 
-PeriodKey = Literal["today", "yesterday", "7d", "30d"]
+PeriodKey = Literal["today", "yesterday", "7d", "30d", "all"]
 
 _ACTIVE_ORDER_STATUSES = (
     OrderStatus.NEW,
@@ -552,6 +552,11 @@ class AdminDashboardService:
             current_start = now - timedelta(days=30)
             previous_end = current_start
             previous_start = previous_end - timedelta(days=30)
+        elif period == "all":
+            current_start = datetime(2000, 1, 1, tzinfo=self._timezone)
+            current_end = now
+            previous_start = current_start
+            previous_end = current_start
         else:
             raise ValueError(f"Unsupported period: {period}")
         return PeriodWindow(
