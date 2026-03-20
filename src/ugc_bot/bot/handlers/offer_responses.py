@@ -26,6 +26,7 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
+    SkipResult,
 )
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseResult,
@@ -427,6 +428,47 @@ async def handle_rejection_reason(
         )
 
 
+async def _notify_manager_low_price(
+    result: SkipResult,
+    user: User,
+    external_id: str,
+    offer_price: Decimal,
+    desired_price: Decimal,
+    currency: str,
+    order_id: UUID,
+    user_role_service: UserRoleService,
+    bot_texts_service: BotTextsService,
+    messenger_client: MessengerClient,
+) -> None:
+    """Notify manager about low-price rejection."""
+    assert result.manager_id is not None
+    manager = await user_role_service.get_user_by_id(result.manager_id)
+    if manager and manager.external_id.isdigit():
+        mgr_locale = manager.language or "ru"
+        mgr_msg_tpl = await bot_texts_service.get(
+            "msg_manager_low_price_notification", mgr_locale
+        )
+        blogger_handle = user.telegram or user.username or external_id
+        if blogger_handle and not blogger_handle.startswith("@"):
+            blogger_handle = f"@{blogger_handle}"
+        mgr_msg = mgr_msg_tpl.format(
+            blogger=blogger_handle,
+            desired_price=desired_price,
+            offer_price=result.order_price or offer_price,
+            currency=currency,
+            product_link=result.product_link or "",
+        )
+        await send_with_retry(
+            messenger_client,
+            chat_id=manager.external_id,
+            text=mgr_msg,
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={"order_id": str(order_id)},
+        )
+
+
 @router.message(OfferSkipStates.waiting_desired_price)
 async def handle_desired_price(
     message: Message,
@@ -522,31 +564,18 @@ async def handle_desired_price(
 
     # Notify manager if available
     if result.manager_id:
-        manager = await user_role_service.get_user_by_id(result.manager_id)
-        if manager and manager.external_id.isdigit():
-            mgr_locale = manager.language or "ru"
-            mgr_msg_tpl = await bot_texts_service.get(
-                "msg_manager_low_price_notification", mgr_locale
-            )
-            blogger_handle = user.telegram or user.username or external_id
-            if blogger_handle and not blogger_handle.startswith("@"):
-                blogger_handle = f"@{blogger_handle}"
-            mgr_msg = mgr_msg_tpl.format(
-                blogger=blogger_handle,
-                desired_price=value,
-                offer_price=result.order_price or offer_price,
-                currency=currency,
-                product_link=result.product_link or "",
-            )
-            await send_with_retry(
-                messenger_client,
-                chat_id=manager.external_id,
-                text=mgr_msg,
-                retries=_send_retries,
-                delay_seconds=_send_retry_delay_seconds,
-                logger=logger,
-                extra={"order_id": str(order_id)},
-            )
+        await _notify_manager_low_price(
+            result=result,
+            user=user,
+            external_id=external_id,
+            offer_price=offer_price,
+            desired_price=value,
+            currency=currency,
+            order_id=order_id,
+            user_role_service=user_role_service,
+            bot_texts_service=bot_texts_service,
+            messenger_client=messenger_client,
+        )
 
 
 @router.callback_query(
