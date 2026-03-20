@@ -2856,13 +2856,13 @@ async def test_record_advertiser_no_payment_skips() -> None:
 
 
 @pytest.mark.asyncio
-async def test_commission_rate_uses_registration_date_not_binding_date() -> (
+async def test_commission_rate_uses_binding_date_not_registration_date() -> (
     None
 ):
-    """Commission rate uses user registration date, not binding date.
+    """Commission rate uses binding date, not user registration date.
 
-    User registered 2 years ago → gets 3% (based on user.created_at).
-    Binding created 6 months ago → irrelevant for rate calculation.
+    User registered 2 years ago → would get 3% if using user.created_at.
+    Binding created 6 months ago → should get 10% (binding < 1 year).
     """
     now = datetime.now(timezone.utc)
     referrer_id = uuid4()
@@ -2870,7 +2870,7 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
     advertiser_id = uuid4()
     order_id = uuid4()
 
-    # User registered 2 years ago → should get 3%
+    # User registered 2 years ago — would get 3% if using user.created_at
     user_repo = InMemoryUserRepository()
     await user_repo.save(
         User(
@@ -2884,7 +2884,7 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
         )
     )
 
-    # Binding created only 6 months ago — irrelevant for rate
+    # Binding created only 6 months ago — should yield 10% rate
     binding_repo = InMemoryUserReferralBindingRepository()
     await binding_repo.save(
         UserReferralBinding(
@@ -2954,8 +2954,9 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
 
     assert len(entry_repo.entries) == 1
     entry = entry_repo.entries[0]
-    # User registered 2 years ago → after-first-year rate (3%)
-    assert entry.commission_rate == Decimal("0.03")
+    # Binding is 6 months old → first-year rate applies (10%), NOT 3%
+    # Binding is 6 months old → first-year rate (10%), not 3%
+    assert entry.commission_rate == Decimal("0.10")
 
 
 def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
