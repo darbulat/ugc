@@ -715,6 +715,7 @@ EN: dict[str, str] = {
     "btn_reject_wrong_format": "Wrong ad format",
     "btn_reject_uninteresting": "Uninteresting product",
     "btn_reject_no_time": "No time",
+    "btn_reject_already_working": "Already working with the brand directly",
     "msg_enter_desired_price": "Enter your desired price:",
     "msg_invalid_price": "Enter a number from {min} to {max} {currency}",
     "msg_offer_skipped_with_reason": "Thanks for feedback. Declined: {reason}. Skipped.",

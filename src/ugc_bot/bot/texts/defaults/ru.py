@@ -786,6 +786,7 @@ RU: dict[str, str] = {
     "btn_reject_wrong_format": "Не подходит формат рекламы",
     "btn_reject_uninteresting": "Неинтересный продукт / предложение",
     "btn_reject_no_time": "Нет времени",
+    "btn_reject_already_working": "Уже работаю с брендом напрямую",
     "msg_enter_desired_price": "Укажите, за какую стоимость вы готовы разместить рекламу:",
     "msg_invalid_price": "Введите число от {min} до {max} {currency}",
     "msg_offer_skipped_with_reason": "Спасибо за обратную связь. Вы отказались: {reason}. Пропущено.",

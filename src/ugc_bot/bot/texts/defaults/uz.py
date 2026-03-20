@@ -774,6 +774,7 @@ UZ: dict[str, str] = {
     "btn_reject_wrong_format": "Reklama formati mos emas",
     "btn_reject_uninteresting": "Qiziq bo'lmagan mahsulot / taklif",
     "btn_reject_no_time": "Vaqt yo'q",
+    "btn_reject_already_working": "Brand bilan to'g'ridan-to'g'ri ishlayman",
     "msg_enter_desired_price": "Qancha narxga reklama joylashga tayyorsiz:",
     "msg_invalid_price": "{min} dan {max} {currency} gacha son kiriting",
     "msg_offer_skipped_with_reason": "Fikr-mulohaza uchun rahmat. Rad ettingiz: {reason}. O'tkazib yuborildi.",

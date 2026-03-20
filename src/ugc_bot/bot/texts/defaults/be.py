@@ -785,6 +785,7 @@ BE: dict[str, str] = {
     "btn_reject_wrong_format": "Не падыходзіць фармат рэкламы",
     "btn_reject_uninteresting": "Нецікавы прадукт / прапанова",
     "btn_reject_no_time": "Няма часу",
+    "btn_reject_already_working": "Ужо працую з брэндам напрамую",
     "msg_enter_desired_price": "Пазначце, за які кошт вы гатовы размясціць рэкламу:",
     "msg_invalid_price": "Увядзіце лік ад {min} да {max} {currency}",
     "msg_offer_skipped_with_reason": "Дзякуй за зваротную сувязь. Вы адмовіліся: {reason}. Прапушчана.",

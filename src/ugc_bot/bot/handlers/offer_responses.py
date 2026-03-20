@@ -77,6 +77,7 @@ _REJECTION_REASON_BUTTONS = {
     RejectionReason.WRONG_FORMAT: "btn_reject_wrong_format",
     RejectionReason.UNINTERESTING_PRODUCT: "btn_reject_uninteresting",
     RejectionReason.NO_TIME: "btn_reject_no_time",
+    RejectionReason.ALREADY_WORKING_WITH_BRAND: "btn_reject_already_working",
 }
 
 

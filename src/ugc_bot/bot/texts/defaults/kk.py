@@ -754,6 +754,7 @@ KK: dict[str, str] = {
     "btn_reject_wrong_format": "Жарнама форматы сәйкес келмейді",
     "btn_reject_uninteresting": "Қызықсыз өнім / ұсыныс",
     "btn_reject_no_time": "Уақыт жоқ",
+    "btn_reject_already_working": "Брендпен тікелей жұмыс істеймін",
     "msg_enter_desired_price": "Жарнаманы қанша бағаға орналастыруға дайынсыз:",
     "msg_invalid_price": "{min} мен {max} {currency} арасында сан енгізіңіз",
     "msg_offer_skipped_with_reason": "Кері байланыс үшін рақмет. Бас тарттыңыз: {reason}. Өткізілді.",
