@@ -27,7 +27,7 @@ from ugc_bot.config import (
 
 
 @pytest.mark.asyncio
-async def test_no_close_messenger_client_close_is_noop() -> None:
+async def test_no_close_messenger_client_does_not_close_delegate() -> None:
     """_NoCloseMessengerClient.close() does not call delegate.close()."""
     from ugc_bot.worker import _NoCloseMessengerClient
 
@@ -163,19 +163,25 @@ async def test_run_with_restart_restarts_on_exception() -> None:
 
     call_count = 0
 
-    async def flaky():
+    gate = asyncio.Event()
+
+    async def factory():
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             raise ValueError("transient error")
-        # Second call exits the infinite loop via CancelledError (BaseException)
-        raise asyncio.CancelledError
+        gate.set()  # signal: second call (success) reached
+        # Block until cancelled so the loop doesn't advance to a 3rd call
+        await asyncio.sleep(float("inf"))
 
-    with (
-        patch("ugc_bot.worker.asyncio.sleep", new=AsyncMock()),
-        pytest.raises(asyncio.CancelledError),
-    ):
-        await _run_with_restart("test", flaky, restart_delay=0)
+    async def run():
+        await _run_with_restart("test", factory, restart_delay=0)
+
+    task = asyncio.create_task(run())
+    await gate.wait()  # wait until second call starts
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
 
     assert call_count == 2
 
@@ -267,7 +273,7 @@ def _make_mock_container():
 
 
 @pytest.mark.asyncio
-async def test_main_async_starts_all_enabled_schedulers() -> None:
+async def test_worker_runs_all_enabled_schedulers() -> None:
     """main_async launches all 5 schedulers when all are enabled."""
     from ugc_bot.worker import main_async
 
@@ -292,7 +298,7 @@ async def test_main_async_starts_all_enabled_schedulers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_main_async_skips_disabled_scheduler() -> None:
+async def test_worker_skips_disabled_scheduler() -> None:
     """main_async does not launch a scheduler whose enabled flag is False."""
     from ugc_bot.worker import main_async
 
@@ -312,7 +318,7 @@ async def test_main_async_skips_disabled_scheduler() -> None:
 
 
 @pytest.mark.asyncio
-async def test_main_async_all_disabled_blocks_indefinitely() -> None:
+async def test_worker_all_disabled_does_not_exit() -> None:
     """main_async calls asyncio.sleep(inf) when all schedulers are disabled."""
     from ugc_bot.worker import main_async
 

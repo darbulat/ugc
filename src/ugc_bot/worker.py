@@ -272,10 +272,6 @@ def main() -> None:  # pragma: no cover
     install_exception_hooks("worker")
     log_startup_info(logger=logger, service_name="Worker", config=config)
 
-    if not config.db.database_url:
-        logger.error("DATABASE_URL is required for worker")
-        return
-
     container = Container(config)
     bot = Bot(token=config.bot.bot_token)
     messenger_client = TelegramMessengerClient(bot)
@@ -284,10 +280,10 @@ def main() -> None:  # pragma: no cover
         try:
             await main_async(config, container, messenger_client)
         finally:
+            await container.dispose()
             session = getattr(bot, "session", None)
             if session is not None:
                 await session.close()
-            await container.dispose()
 
     asyncio.run(_run())
 
