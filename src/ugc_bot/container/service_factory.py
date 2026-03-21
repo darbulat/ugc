@@ -528,7 +528,9 @@ def build_referral_reconciliation_deps(
     }
 
 
-def build_role_reminder_scheduler_deps(config: AppConfig, repos, transaction_manager):
+def build_role_reminder_scheduler_deps(
+    config: AppConfig, repos, transaction_manager
+):
     """Build deps for role reminder scheduler."""
     return {
         "user_role_service": UserRoleService(

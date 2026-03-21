@@ -419,11 +419,15 @@ async def test_container_dispose_no_session_factory() -> None:
     await container.dispose()  # Should not raise
 
 
-def test_container_build_role_reminder_scheduler_deps(monkeypatch: pytest.MonkeyPatch) -> None:
-    """build_role_reminder_scheduler_deps returns user_role_service and transaction_manager."""
+def test_container_build_role_reminder_scheduler_deps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """build_role_reminder_scheduler_deps returns user_role_service and transaction_manager."""  # noqa: E501
     from unittest.mock import Mock, patch
 
-    container = Container(_config(database_url="postgresql+psycopg://x:x@localhost:5432/x"))
+    container = Container(
+        _config(database_url="postgresql+psycopg://x:x@localhost:5432/x")
+    )
     mock_repos = {"user_repo": Mock()}
     mock_tm = Mock()
     container._transaction_manager = mock_tm
