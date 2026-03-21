@@ -203,43 +203,20 @@ services:
     command: ["python", "-m", "ugc_bot.kafka_consumer"]
     restart: unless-stopped
 
-  feedback_scheduler:
+  worker:
     build: .
     env_file: .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
+      INSTAGRAM_STATS_AIOGRAPI_SESSION_PATH: /app/instagram_session/.instagram_session.json
+    volumes:
+      - instagram_session_data:/app/instagram_session
     depends_on:
       db:
         condition: service_healthy
       pgbouncer:
         condition: service_started
-    command: ["python", "-m", "ugc_bot.feedback_scheduler"]
-    restart: unless-stopped
-
-  role_reminder_scheduler:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
-    depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-    command: ["python", "-m", "ugc_bot.role_reminder_scheduler"]
-    restart: unless-stopped
-
-  referral_reconciliation_scheduler:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
-    depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-    command: ["python", "-m", "ugc_bot.referral_reconciliation_scheduler"]
+    command: ["python", "-m", "ugc_bot.worker"]
     restart: unless-stopped
 
   outbox_processor:
@@ -255,35 +232,6 @@ services:
       kafka:
         condition: service_healthy
     command: ["python", "-m", "ugc_bot.outbox_processor"]
-    restart: unless-stopped
-
-  instagram_stats_scheduler:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
-    depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-    command: ["python", "-m", "ugc_bot.instagram_stats_scheduler"]
-    restart: unless-stopped
-
-  instagram_stats_collector_scheduler:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
-      INSTAGRAM_STATS_AIOGRAPI_SESSION_PATH: /app/instagram_session/.instagram_session.json
-    volumes:
-      - instagram_session_data:/app/instagram_session
-    depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-    command: ["python", "-m", "ugc_bot.instagram_stats_collector_scheduler"]
     restart: unless-stopped
 
   wal_archive_init:
