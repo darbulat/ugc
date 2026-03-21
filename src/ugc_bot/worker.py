@@ -4,27 +4,27 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable
 
-from aiogram import Bot  # noqa: F401
+from aiogram import Bot
 
 from ugc_bot import (
-    feedback_scheduler,  # noqa: F401
-    instagram_stats_collector_scheduler,  # noqa: F401
-    instagram_stats_scheduler,  # noqa: F401
-    referral_reconciliation_scheduler,  # noqa: F401
-    role_reminder_scheduler,  # noqa: F401
+    feedback_scheduler,
+    instagram_stats_collector_scheduler,
+    instagram_stats_scheduler,
+    referral_reconciliation_scheduler,
+    role_reminder_scheduler,
 )
 from ugc_bot.application.messenger.dto import Invoice, Keyboard
-from ugc_bot.config import AppConfig, load_config  # noqa: F401
-from ugc_bot.container import Container  # noqa: F401
+from ugc_bot.config import AppConfig, load_config
+from ugc_bot.container import Container
 from ugc_bot.exception_hooks import (
-    install_asyncio_exception_handler,  # noqa: F401
-    install_exception_hooks,  # noqa: F401
+    install_asyncio_exception_handler,
+    install_exception_hooks,
 )
 from ugc_bot.infrastructure.messenger.telegram.client import (
-    TelegramMessengerClient,  # noqa: F401
+    TelegramMessengerClient,
 )
-from ugc_bot.logging_setup import configure_logging  # noqa: F401
-from ugc_bot.startup_logging import log_startup_info  # noqa: F401
+from ugc_bot.logging_setup import configure_logging
+from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
 
