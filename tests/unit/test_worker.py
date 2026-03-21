@@ -5,6 +5,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from ugc_bot.config import (
+    AdminConfig,
+    AppConfig,
+    BotConfig,
+    DbConfig,
+    DocsConfig,
+    FeedbackConfig,
+    GeocoderConfig,
+    InstagramConfig,
+    KafkaConfig,
+    LogConfig,
+    MarketConfig,
+    OrderConfig,
+    OutboxConfig,
+    RedisConfig,
+    ReferralConfig,
+    RoleReminderConfig,
+    WebhookConfig,
+)
+
 
 @pytest.mark.asyncio
 async def test_no_close_messenger_client_close_is_noop() -> None:
@@ -158,3 +178,159 @@ async def test_run_with_restart_restarts_on_exception() -> None:
         await _run_with_restart("test", flaky, restart_delay=0)
 
     assert call_count == 2
+
+
+def _make_config(
+    *,
+    feedback_enabled: bool = True,
+    role_reminder_enabled: bool = True,
+    referral_reconciliation_enabled: bool = True,
+    instagram_stats_update_enabled: bool = True,
+    instagram_stats_collector_enabled: bool = True,
+) -> AppConfig:
+    """Build AppConfig via nested form to control scheduler enabled flags."""
+    return AppConfig.model_validate(
+        {
+            "bot": BotConfig.model_validate({"BOT_TOKEN": "test"}),
+            "log": LogConfig.model_validate({}),
+            "db": DbConfig.model_validate(
+                {"DATABASE_URL": "postgresql+psycopg://x:x@localhost:5432/x"}
+            ),
+            "admin": AdminConfig.model_validate({}),
+            "kafka": KafkaConfig.model_validate({"KAFKA_ENABLED": False}),
+            "feedback": FeedbackConfig.model_validate(
+                {"FEEDBACK_ENABLED": feedback_enabled}
+            ),
+            "role_reminder": RoleReminderConfig.model_validate(
+                {"ROLE_REMINDER_ENABLED": role_reminder_enabled}
+            ),
+            "redis": RedisConfig.model_validate({}),
+            "instagram": InstagramConfig.model_validate(
+                {
+                    "INSTAGRAM_STATS_UPDATE_ENABLED": (
+                        instagram_stats_update_enabled
+                    ),
+                    "INSTAGRAM_STATS_COLLECTOR_ENABLED": (
+                        instagram_stats_collector_enabled
+                    ),
+                }
+            ),
+            "geocoder": GeocoderConfig.model_validate({}),
+            "docs": DocsConfig.model_validate({}),
+            "webhook": WebhookConfig.model_validate({}),
+            "outbox": OutboxConfig.model_validate({}),
+            "order": OrderConfig.model_validate({}),
+            "market": MarketConfig.model_validate({}),
+            "referral": ReferralConfig.model_validate(
+                {
+                    "REFERRAL_RECONCILIATION_ENABLED": (
+                        referral_reconciliation_enabled
+                    )
+                }
+            ),
+        }
+    )
+
+
+def _make_mock_container():
+    from unittest.mock import MagicMock
+
+    container = MagicMock()
+    container.build_feedback_scheduler_deps.return_value = {
+        "interaction_repo": MagicMock(),
+        "interaction_service": MagicMock(),
+        "user_role_service": MagicMock(),
+        "profile_service": MagicMock(),
+        "order_repo": MagicMock(),
+        "transaction_manager": MagicMock(),
+    }
+    container.build_bot_texts_service.return_value = MagicMock()
+    container.build_role_reminder_scheduler_deps.return_value = {
+        "user_role_service": MagicMock(),
+        "transaction_manager": MagicMock(),
+    }
+    container.build_referral_reconciliation_deps.return_value = {
+        "referral_income_entry_repo": MagicMock(),
+        "recorder": MagicMock(),
+        "order_repo": MagicMock(),
+        "transaction_manager": MagicMock(),
+    }
+    container.build_instagram_stats_scheduler_deps.return_value = {
+        "instagram_stats_update_service": MagicMock(),
+        "interval_seconds": 60,
+    }
+    container.build_instagram_stats_collector_scheduler_deps.return_value = {
+        "instagram_stats_collector_service": MagicMock(),
+        "interval_seconds": 120,
+    }
+    return container
+
+
+@pytest.mark.asyncio
+async def test_main_async_starts_all_enabled_schedulers() -> None:
+    """main_async launches all 5 schedulers when all are enabled."""
+    from ugc_bot.worker import main_async
+
+    config = _make_config()
+    container = _make_mock_container()
+    messenger = AsyncMock()
+    launched = []
+
+    async def fake_restart(name, coro_factory, restart_delay=5.0):
+        launched.append(name)
+
+    with patch("ugc_bot.worker._run_with_restart", new=fake_restart):
+        await main_async(config, container, messenger)
+
+    assert set(launched) == {
+        "feedback",
+        "role_reminder",
+        "referral_reconciliation",
+        "instagram_stats",
+        "instagram_stats_collector",
+    }
+
+
+@pytest.mark.asyncio
+async def test_main_async_skips_disabled_scheduler() -> None:
+    """main_async does not launch a scheduler whose enabled flag is False."""
+    from ugc_bot.worker import main_async
+
+    config = _make_config(feedback_enabled=False)
+    container = _make_mock_container()
+    messenger = AsyncMock()
+    launched = []
+
+    async def fake_restart(name, coro_factory, restart_delay=5.0):
+        launched.append(name)
+
+    with patch("ugc_bot.worker._run_with_restart", new=fake_restart):
+        await main_async(config, container, messenger)
+
+    assert "feedback" not in launched
+    assert len(launched) == 4
+
+
+@pytest.mark.asyncio
+async def test_main_async_all_disabled_blocks_indefinitely() -> None:
+    """main_async calls asyncio.sleep(inf) when all schedulers are disabled."""
+    from ugc_bot.worker import main_async
+
+    config = _make_config(
+        feedback_enabled=False,
+        role_reminder_enabled=False,
+        referral_reconciliation_enabled=False,
+        instagram_stats_update_enabled=False,
+        instagram_stats_collector_enabled=False,
+    )
+    container = _make_mock_container()
+    messenger = AsyncMock()
+    sleep_args = []
+
+    async def fake_sleep(seconds):
+        sleep_args.append(seconds)
+
+    with patch("ugc_bot.worker.asyncio.sleep", new=fake_sleep):
+        await main_async(config, container, messenger)
+
+    assert float("inf") in sleep_args

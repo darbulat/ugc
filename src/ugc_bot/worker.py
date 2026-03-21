@@ -142,3 +142,155 @@ async def _run_with_restart(
                 "Scheduler %s crashed, restarting in %.0fs", name, restart_delay
             )
             await asyncio.sleep(restart_delay)
+
+
+async def main_async(  # noqa: C901
+    config: AppConfig,
+    container: Container,
+    messenger_client: Any,
+) -> None:
+    """Initialize all enabled schedulers and run them concurrently."""
+    install_asyncio_exception_handler("worker")
+
+    tasks = []
+
+    if config.feedback.feedback_enabled:
+        deps = container.build_feedback_scheduler_deps()
+        bot_texts_service = container.build_bot_texts_service()
+        default_locale = (
+            (config.market.default_locale or "ru") if config.market else "ru"
+        )
+        no_close = _NoCloseMessengerClient(messenger_client)
+
+        # Use default-argument capture to freeze values at task-creation time,
+        # preventing the classic Python closure-over-mutable-variable bug.
+        def _feedback_factory(  # noqa: E306  # pragma: no cover
+            d: Any = deps,
+            t: Any = bot_texts_service,
+            c: Any = no_close,
+            loc: str = default_locale,
+        ) -> Awaitable[Any]:
+            return feedback_scheduler.run_loop(
+                c,
+                d["interaction_repo"],
+                d["interaction_service"],
+                d["user_role_service"],
+                d["profile_service"],
+                d["order_repo"],
+                config.feedback,
+                interval_seconds=config.feedback.feedback_poll_interval_seconds,  # noqa: E501
+                transaction_manager=d["transaction_manager"],
+                default_locale=loc,
+                bot_texts_service=t,
+            )
+
+        tasks.append(_run_with_restart("feedback", _feedback_factory))
+    else:
+        logger.info("Feedback scheduler disabled by config")
+
+    if config.role_reminder.role_reminder_enabled:
+        deps = container.build_role_reminder_scheduler_deps()
+
+        def _role_reminder_factory(d: Any = deps) -> Awaitable[Any]:  # noqa: E306  # pragma: no cover
+            return role_reminder_scheduler.run_loop(
+                messenger_client,
+                d["user_role_service"],
+                config,
+            )
+
+        tasks.append(_run_with_restart("role_reminder", _role_reminder_factory))
+    else:
+        logger.info("Role reminder scheduler disabled by config")
+
+    if config.referral.referral_reconciliation_enabled:
+        deps = container.build_referral_reconciliation_deps()
+
+        def _referral_factory(d: Any = deps) -> Awaitable[Any]:  # noqa: E306  # pragma: no cover
+            return referral_reconciliation_scheduler.run_loop(
+                income_entry_repo=d["referral_income_entry_repo"],
+                recorder=d["recorder"],
+                order_repo=d["order_repo"],
+                transaction_manager=d["transaction_manager"],
+                interval_seconds=config.referral.referral_reconciliation_interval_seconds,  # noqa: E501
+            )
+
+        tasks.append(
+            _run_with_restart("referral_reconciliation", _referral_factory)
+        )
+    else:
+        logger.info("Referral reconciliation scheduler disabled by config")
+
+    if config.instagram.instagram_stats_update_enabled:
+        deps = container.build_instagram_stats_scheduler_deps()
+
+        def _instagram_stats_factory(d: Any = deps) -> Awaitable[Any]:  # noqa: E306  # pragma: no cover
+            return instagram_stats_scheduler.run_loop(
+                d["instagram_stats_update_service"],
+                interval_seconds=d["interval_seconds"],
+            )
+
+        tasks.append(
+            _run_with_restart("instagram_stats", _instagram_stats_factory)
+        )
+    else:
+        logger.info("Instagram stats scheduler disabled by config")
+
+    if config.instagram.instagram_stats_collector_enabled:
+        deps = container.build_instagram_stats_collector_scheduler_deps()
+
+        def _instagram_collector_factory(  # noqa: E306  # pragma: no cover
+            d: Any = deps,
+        ) -> Awaitable[Any]:
+            return instagram_stats_collector_scheduler.run_loop(
+                d["instagram_stats_collector_service"],
+                interval_seconds=d["interval_seconds"],
+            )
+
+        tasks.append(
+            _run_with_restart(
+                "instagram_stats_collector", _instagram_collector_factory
+            )
+        )
+    else:
+        logger.info("Instagram stats collector scheduler disabled by config")
+
+    if not tasks:
+        logger.warning("All schedulers are disabled; worker is idle")
+        await asyncio.sleep(float("inf"))
+        return
+
+    await asyncio.gather(*tasks)
+
+
+def main() -> None:  # pragma: no cover
+    """Entry point for unified worker process."""
+    config = load_config()
+    configure_logging(
+        config.log.log_level,
+        json_format=config.log.log_format.lower() == "json",
+    )
+    install_exception_hooks("worker")
+    log_startup_info(logger=logger, service_name="Worker", config=config)
+
+    if not config.db.database_url:
+        logger.error("DATABASE_URL is required for worker")
+        return
+
+    container = Container(config)
+    bot = Bot(token=config.bot.bot_token)
+    messenger_client = TelegramMessengerClient(bot)
+
+    async def _run() -> None:
+        try:
+            await main_async(config, container, messenger_client)
+        finally:
+            session = getattr(bot, "session", None)
+            if session is not None:
+                await session.close()
+            await container.dispose()
+
+    asyncio.run(_run())
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
