@@ -30,15 +30,26 @@ A single entry point that:
 
 ```
 worker.py
+├── _NoCloseMessengerClient(delegate)
+│     Wraps a MessengerClient; delegates all calls except close().
+│     close() is a no-op. Used to prevent feedback_scheduler.run_loop
+│     from closing the shared Bot session in its finally block.
 ├── _run_with_restart(name, coro_factory, restart_delay=5.0)
 │     Catches any exception, logs it, sleeps restart_delay, then re-runs.
 │     This isolates scheduler failures: one crash does not cancel others.
-├── main_async(config, container, bot, messenger_client)
-│     Checks each scheduler's enabled flag.
-│     Builds task list and calls asyncio.gather(*tasks).
+├── main_async(config, container, messenger_client)
+│     1. Calls install_asyncio_exception_handler("worker") once.
+│     2. Checks each scheduler's enabled flag; builds enabled task list.
+│     3. If task list is empty: logs a warning and blocks indefinitely
+│        (asyncio.sleep(float("inf"))) to avoid a Docker restart loop.
+│     4. Calls asyncio.gather(*tasks) without return_exceptions=True.
+│        Since _run_with_restart catches all Exception, only BaseException
+│        (e.g. CancelledError on SIGTERM) can escape, which correctly
+│        propagates and cancels remaining tasks.
 └── main()
-      load_config → configure_logging → install_exception_hooks
-      → Container → Bot → asyncio.run(main_async(...))
+      load_config → configure_logging → install_exception_hooks("worker")
+      → Container → Bot → TelegramMessengerClient
+      → asyncio.run(main_async(...))
       → finally: dispose container, close bot session
 ```
 
@@ -56,13 +67,52 @@ per-scheduler enable/disable behavior.
 | instagram_stats | `config.instagram.instagram_stats_update_enabled` |
 | instagram_stats_collector | `config.instagram.instagram_stats_collector_enabled` |
 
+**All-disabled edge case:** If no schedulers are enabled, `asyncio.gather` would
+return immediately and the worker process would exit, causing Docker to restart it
+in a loop. Instead, if the task list is empty, `main_async` logs a warning and
+calls `await asyncio.sleep(float("inf"))` so the container stays alive.
+
+### Messenger client teardown
+
+`feedback_scheduler.run_loop` has a `finally` block that closes the messenger
+client (Bot HTTP session). In the unified worker all schedulers share one Bot.
+If `feedback_scheduler.run_loop` exits or is cancelled, its `finally` would close
+the shared session while other schedulers are still running.
+
+**Fix:** `worker.py` passes a `_NoCloseMessengerClient` wrapper to
+`feedback_scheduler.run_loop`. The wrapper delegates all operations but makes
+`close()` a no-op. The shared Bot session is closed only in `worker.main()`'s
+`finally` block after all tasks have completed.
+
+### Asyncio exception handler
+
+Each scheduler's `run_loop` calls `install_asyncio_exception_handler(service_name)`
+internally. When run via `asyncio.gather`, they overwrite the loop's exception
+handler in sequence. `worker.py` calls `install_asyncio_exception_handler("worker")`
+once at the start of `main_async` before any tasks are created. The subsequent
+per-scheduler registrations overwrite it, but all handlers behave identically
+(they log the exception), so this has no practical effect. The handler name in logs
+will reflect whichever scheduler registered last, which is acceptable.
+
 ### Container change: `build_role_reminder_scheduler_deps()`
 
-`role_reminder_scheduler` currently builds its deps manually (not via Container).
-Add `Container.build_role_reminder_scheduler_deps()` returning a dict with
-`user_role_service`, `transaction_manager`, and `messenger_client` (or the
-relevant deps that `role_reminder_scheduler.run_loop` needs). This makes the
-pattern uniform across all schedulers.
+`role_reminder_scheduler` currently builds `SqlAlchemyUserRepository` and
+`SessionTransactionManager` directly without using `Container`. Add
+`Container.build_role_reminder_scheduler_deps()` following the existing delegation
+pattern: the method on `Container` delegates to a new function
+`service_factory.build_role_reminder_scheduler_deps(session_factory)`, consistent
+with all other `build_*_deps()` methods. The method returns:
+
+```python
+{
+    "user_role_service": UserRoleService,
+    "transaction_manager": SessionTransactionManager,
+}
+```
+
+`messenger_client` is NOT included (it requires a Bot instance, which lives
+outside Container). `config` is NOT included (passed directly). Worker.py
+calls `run_loop(messenger_client, deps["user_role_service"], config)`.
 
 ### Existing scheduler files
 
@@ -72,9 +122,10 @@ for standalone use or testing.
 
 ## Docker Compose changes
 
-### docker-compose.yml and docker-compose.dev.yml
+### docker-compose.yml
 
-Remove five scheduler service definitions and replace with one:
+Remove five scheduler service definitions and replace with one. The `depends_on`
+matches the existing pattern (`db: service_healthy`, `pgbouncer: service_started`):
 
 ```yaml
 worker:
@@ -86,13 +137,21 @@ worker:
   volumes:
     - instagram_session_data:/app/instagram_session
   depends_on:
-    - pgbouncer
-    - redis
+    db:
+      condition: service_healthy
+    pgbouncer:
+      condition: service_started
   command: ["python", "-m", "ugc_bot.worker"]
   restart: unless-stopped
 ```
 
-Services removed: `feedback_scheduler`, `role_reminder_scheduler`,
+### docker-compose.dev.yml
+
+Apply the same change: remove the five scheduler services, add the `worker` service
+with the same definition as above. The dev file has no scheduler-specific overrides,
+so it mirrors the production snippet exactly.
+
+Services removed from both files: `feedback_scheduler`, `role_reminder_scheduler`,
 `referral_reconciliation_scheduler`, `instagram_stats_scheduler`,
 `instagram_stats_collector_scheduler`.
 
@@ -126,6 +185,12 @@ New test file: `tests/unit/test_worker.py`
   assert its `run_loop` is not called
 - `test_run_with_restart_restarts_on_exception` — coro_factory raises once then
   returns; assert it was called twice (one failure + one success)
+- `test_worker_all_disabled_does_not_exit` — set all enabled flags to False;
+  assert `asyncio.sleep(float("inf"))` is called (i.e., process does not exit
+  immediately)
+- `test_no_close_messenger_client_does_not_close_delegate` — call `close()` on
+  `_NoCloseMessengerClient`; assert the underlying delegate's `close()` is NOT
+  called
 
 Existing `test_*_scheduler.py` files remain unchanged.
 
