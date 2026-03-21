@@ -54,6 +54,9 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.referral_income_recorder import (
+    ReferralIncomeRecorder,
+)
 from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
@@ -504,4 +507,22 @@ def build_bot_services(
         ),
         "manager_order_repo": repos["manager_order_repo"],
         "exchange_rate_service": exchange_rate_service,
+    }
+
+
+def build_referral_reconciliation_deps(
+    config: AppConfig, repos, transaction_manager
+):
+    """Build deps for referral reconciliation scheduler."""
+    return {
+        "referral_income_entry_repo": repos["referral_income_entry_repo"],
+        "order_repo": repos["order_repo"],
+        "transaction_manager": transaction_manager,
+        "recorder": ReferralIncomeRecorder(
+            user_referral_binding_repo=repos["user_referral_binding_repo"],
+            user_repo=repos["user_repo"],
+            referral_income_entry_repo=repos["referral_income_entry_repo"],
+            contact_pricing_repo=repos["pricing_repo"],
+            payment_repo=repos["payment_repo"],
+        ),
     }

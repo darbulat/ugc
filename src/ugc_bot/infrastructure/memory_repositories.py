@@ -396,6 +396,23 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         self._seen.add(key)
         self.entries.append(entry)
 
+    async def exists(
+        self,
+        order_id: UUID,
+        referrer_user_id: UUID,
+        income_type: str,
+        session: object | None = None,
+    ) -> bool:
+        """Return True if entry exists for order+referrer+type."""
+        for entry in self.entries:
+            if (
+                entry.order_id == order_id
+                and entry.referrer_user_id == referrer_user_id
+                and entry.income_type == income_type
+            ):
+                return True
+        return False
+
     async def get_totals_by_currency(
         self, referrer_user_id: UUID, session: object | None = None
     ) -> dict[str, Decimal]:
@@ -453,6 +470,20 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     + entry.commission_amount
                 )
         return result
+
+    async def find_missing_creator_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list:
+        return []
+
+    async def find_missing_advertiser_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list:
+        return []
 
 
 @dataclass

@@ -44,6 +44,15 @@ class ReferralIncomeRecorder:
         if binding is None:
             return
 
+        already_recorded = await self.referral_income_entry_repo.exists(
+            order.order_id,
+            binding.referrer_user_id,
+            ReferralIncomeType.CREATOR,
+            session=session,
+        )
+        if already_recorded:
+            return
+
         country = advertiser_country_code.lower()
         pricing = await self.contact_pricing_repo.get_by_bloggers_count(
             order.bloggers_needed,
@@ -106,6 +115,15 @@ class ReferralIncomeRecorder:
             advertiser_id, session=session
         )
         if binding is None:
+            return
+
+        already_recorded = await self.referral_income_entry_repo.exists(
+            order.order_id,
+            binding.referrer_user_id,
+            ReferralIncomeType.ADVERTISER,
+            session=session,
+        )
+        if already_recorded:
             return
 
         country = advertiser_country_code.lower()

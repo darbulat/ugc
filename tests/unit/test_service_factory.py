@@ -13,6 +13,7 @@ from ugc_bot.config import AppConfig
 from ugc_bot.container.service_factory import (
     _build_aiograpi_fetcher,
     build_instagram_stats_collector_scheduler_deps,
+    build_referral_reconciliation_deps,
 )
 
 
@@ -126,3 +127,25 @@ def test_build_aiograpi_fetcher_uses_session_path_when_set(
 
     assert result is not None
     assert result.session_path == Path("/tmp/session")
+
+
+def test_build_referral_reconciliation_deps_returns_all_keys() -> None:
+    """build_referral_reconciliation_deps returns recorder and repos."""
+    config = AppConfig.model_validate({"BOT_TOKEN": "t", "DATABASE_URL": "db"})
+    repos = {
+        "referral_income_entry_repo": MagicMock(),
+        "order_repo": MagicMock(),
+        "user_referral_binding_repo": MagicMock(),
+        "user_repo": MagicMock(),
+        "pricing_repo": MagicMock(),
+        "payment_repo": MagicMock(),
+    }
+    tm = MagicMock()
+
+    deps = build_referral_reconciliation_deps(config, repos, tm)
+
+    assert "referral_income_entry_repo" in deps
+    assert "order_repo" in deps
+    assert "transaction_manager" in deps
+    assert "recorder" in deps
+    assert deps["transaction_manager"] is tm

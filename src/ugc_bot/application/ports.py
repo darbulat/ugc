@@ -26,6 +26,7 @@ from ugc_bot.domain.entities import (
     Interaction,
     Language,
     ManagerOrder,
+    MissingReferralIncome,
     OfferDispatch,
     Order,
     OutboxEvent,
@@ -1001,6 +1002,17 @@ class ReferralIncomeEntryRepository(ABC):
         """Save entry; skip if duplicate key."""
 
     @abstractmethod
+    async def exists(
+        self,
+        order_id: UUID,
+        referrer_user_id: UUID,
+        income_type: str,
+        session: object | None = None,
+    ) -> bool:
+        """Return True if entry already exists for this order+referrer+type."""
+        ...  # pragma: no cover
+
+    @abstractmethod
     async def get_totals_by_currency(
         self, referrer_user_id: UUID, session: object | None = None
     ) -> dict[str, Decimal]:
@@ -1025,6 +1037,24 @@ class ReferralIncomeEntryRepository(ABC):
         session: object | None = None,
     ) -> dict[UUID, Decimal]:
         """Return {referrer_user_id: total_commission} for referrers."""
+        ...  # pragma: no cover
+
+    @abstractmethod
+    async def find_missing_creator_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list[MissingReferralIncome]:
+        """Find creator orders with binding but no income entry."""
+        ...  # pragma: no cover
+
+    @abstractmethod
+    async def find_missing_advertiser_income(
+        self,
+        limit: int = 100,
+        session: object | None = None,
+    ) -> list[MissingReferralIncome]:
+        """Find advertiser orders with binding but no income entry."""
         ...  # pragma: no cover
 
 

@@ -269,17 +269,23 @@ class ReferralStatsService:
             )
             rows = rows_bloggers + rows_advertisers
         now_utc = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
-        income_current_month = 0.0
-        income_total = 0.0
+        income_current_month = Decimal("0")
+        income_total = Decimal("0")
         seen_orders: set[UUID] = set()
         for row in rows:
             if not row.bloggers_needed:
                 continue
-            platform_revenue = row.payment_amount / row.bloggers_needed
-            rate = effective_rate(
-                row.creator_created_at,
-                row.order_completed_at,
-                custom_rate,
+            platform_revenue = Decimal(str(row.payment_amount)) / Decimal(
+                str(row.bloggers_needed)
+            )
+            rate = Decimal(
+                str(
+                    effective_rate(
+                        row.creator_created_at,
+                        row.order_completed_at,
+                        custom_rate,
+                    )
+                )
             )
             commission = platform_revenue * rate
             income_total += commission
@@ -294,7 +300,11 @@ class ReferralStatsService:
                 and completed_utc.year == now_utc.year
             ):
                 income_current_month += commission
-        return income_current_month, income_total, len(seen_orders)
+        return (
+            round(float(income_current_month), 2),
+            round(float(income_total), 2),
+            len(seen_orders),
+        )
 
     async def _income_from_advertiser_orders(
         self,
@@ -305,8 +315,8 @@ class ReferralStatsService:
         custom_rate: Optional[float],
     ) -> tuple[float, float, set[UUID]]:
         """Income from referred user's orders as advertiser."""
-        income_cm = 0.0
-        income_tot = 0.0
+        income_cm = Decimal("0")
+        income_tot = Decimal("0")
         seen: set[UUID] = set()
         orders = list(
             await self.order_repo.list_by_advertiser(
@@ -322,8 +332,14 @@ class ReferralStatsService:
             if payment is None or payment.status != PaymentStatus.PAID:
                 continue
             completed_at = order.completed_at or order.created_at
-            rate = effective_rate(creator.created_at, completed_at, custom_rate)
-            commission = float(payment.amount) * rate
+            rate = Decimal(
+                str(
+                    effective_rate(
+                        creator.created_at, completed_at, custom_rate
+                    )
+                )
+            )
+            commission = Decimal(str(payment.amount)) * rate
             income_tot += commission
             seen.add(order.order_id)
             completed_at_utc = (
@@ -336,7 +352,7 @@ class ReferralStatsService:
                 and completed_at_utc.year == now_utc.year
             ):
                 income_cm += commission
-        return income_cm, income_tot, seen
+        return round(float(income_cm), 2), round(float(income_tot), 2), seen
 
     async def _compute_income_from_bindings(
         self,
@@ -346,8 +362,8 @@ class ReferralStatsService:
         custom_rate: Optional[float] = None,
     ) -> tuple[float, float, int]:
         """Compute income from bindings (fallback, no loader)."""
-        income_current_month = 0.0
-        income_total = 0.0
+        income_current_month = Decimal("0")
+        income_total = Decimal("0")
         seen_orders: set[UUID] = set()
         now_utc = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
         for binding in bindings:
@@ -389,11 +405,15 @@ class ReferralStatsService:
                 if order.bloggers_needed <= 0:
                     continue
                 completed_at = order.completed_at or order.created_at
-                platform_revenue_per_creator = (
-                    float(payment.amount) / order.bloggers_needed
-                )
-                rate = effective_rate(
-                    creator.created_at, completed_at, custom_rate
+                platform_revenue_per_creator = Decimal(
+                    str(payment.amount)
+                ) / Decimal(str(order.bloggers_needed))
+                rate = Decimal(
+                    str(
+                        effective_rate(
+                            creator.created_at, completed_at, custom_rate
+                        )
+                    )
                 )
                 commission = platform_revenue_per_creator * rate
                 income_total += commission
@@ -411,12 +431,12 @@ class ReferralStatsService:
             cm, tot, adv_seen = await self._income_from_advertiser_orders(
                 creator_id, creator, now_utc, session, custom_rate
             )
-            income_current_month += cm
-            income_total += tot
+            income_current_month += Decimal(str(cm))
+            income_total += Decimal(str(tot))
             seen_orders |= adv_seen
         return (
-            income_current_month,
-            income_total,
+            round(float(income_current_month), 2),
+            round(float(income_total), 2),
             len(seen_orders),
         )
 
@@ -502,7 +522,7 @@ class ReferralStatsService:
                 referrer_user_id, session=session
             )
         )
-        paid_total, has_pending_payout, has_request_today = (
+        paid_total, has_pending_payout, has_request_today, paid_by_currency = (
             aggregate_payout_requests(payout_requests, now)
         )
 
@@ -514,4 +534,5 @@ class ReferralStatsService:
             paid_total=round(paid_total, 2),
             has_pending_payout=has_pending_payout,
             has_request_today=has_request_today,
+            paid_by_currency=paid_by_currency,
         )

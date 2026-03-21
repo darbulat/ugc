@@ -2975,5 +2975,222 @@ def test_aggregate_cancelled_does_not_set_has_request_today() -> None:
             currency="RUB",
         ),
     ]
-    _, _, has_request_today = aggregate_payout_requests(requests, now)
+    _, _, has_request_today, _ = aggregate_payout_requests(requests, now)
     assert has_request_today is False
+
+
+def test_aggregate_payout_requests_returns_paid_by_currency() -> None:
+    """aggregate_payout_requests should return per-currency paid breakdown."""
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from uuid import uuid4
+
+    from ugc_bot.application.services.referral_commission import (
+        aggregate_payout_requests,
+    )
+    from ugc_bot.domain.entities import PayoutRequest
+    from ugc_bot.domain.enums import PayoutRequestStatus
+
+    now = datetime.now(timezone.utc)
+    uid = uuid4()
+    requests = [
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=uid,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("100"),
+            currency="USD",
+        ),
+        PayoutRequest(
+            request_id=uuid4(),
+            user_id=uid,
+            requested_at=now,
+            status=PayoutRequestStatus.PAID,
+            amount=Decimal("5000"),
+            currency="RUB",
+        ),
+    ]
+    paid_total, has_pending, has_request_today, paid_by_currency = (
+        aggregate_payout_requests(requests, now)
+    )
+    assert paid_by_currency == {"USD": 100.0, "RUB": 5000.0}
+    assert paid_total == 5100.0
+
+
+@pytest.mark.asyncio
+async def test_compute_income_from_loader_uses_decimal_precision() -> None:
+    """Loader fallback should produce same result as Decimal arithmetic."""
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import AsyncMock, MagicMock
+    from uuid import uuid4
+
+    from ugc_bot.application.services.referral_stats_service import (
+        ReferralStatsService,
+    )
+    from ugc_bot.domain.entities import ReferralOrderIncomeRow
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOfferDispatchRepository,
+        InMemoryOrderRepository,
+        InMemoryPaymentRepository,
+        InMemoryPayoutRequestRepository,
+        InMemoryUserReferralBindingRepository,
+        InMemoryUserRepository,
+    )
+
+    now = datetime.now(timezone.utc)
+    order_id = uuid4()
+    row = ReferralOrderIncomeRow(
+        creator_created_at=now - timedelta(days=30),
+        order_completed_at=now,
+        payment_amount=333.0,
+        bloggers_needed=3,
+        order_id=order_id,
+    )
+
+    loader = MagicMock()
+    loader.load_referral_order_income_rows_combined = AsyncMock(
+        return_value=[row]
+    )
+
+    service = ReferralStatsService(
+        user_referral_binding_repo=InMemoryUserReferralBindingRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=InMemoryPaymentRepository(),
+        interaction_repo=MagicMock(),
+        user_repo=InMemoryUserRepository(),
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        referral_order_income_loader=loader,
+    )
+
+    session = MagicMock()
+    (
+        income_cm,
+        income_total,
+        orders_count,
+    ) = await service._compute_income_from_loader(
+        uuid4(), limit=100, now=now, session=session
+    )
+    assert income_total == 11.1
+    assert orders_count == 1
+
+
+@pytest.mark.asyncio
+async def test_income_entry_exists_returns_true_when_present() -> None:
+    """exists() should return True when entry already recorded."""
+    from datetime import datetime, timezone
+    from decimal import Decimal
+    from uuid import uuid4
+
+    from ugc_bot.domain.entities import ReferralIncomeEntry
+    from ugc_bot.domain.enums import ReferralIncomeType
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryReferralIncomeEntryRepository,
+    )
+
+    repo = InMemoryReferralIncomeEntryRepository()
+    referrer_id = uuid4()
+    order_id = uuid4()
+
+    entry = ReferralIncomeEntry(
+        entry_id=uuid4(),
+        referrer_user_id=referrer_id,
+        referred_user_id=uuid4(),
+        order_id=order_id,
+        income_type=ReferralIncomeType.CREATOR,
+        currency="RUB",
+        platform_revenue=Decimal("1000"),
+        commission_rate=Decimal("0.10"),
+        commission_amount=Decimal("100"),
+        created_at=datetime.now(timezone.utc),
+    )
+    await repo.save(entry)
+
+    assert await repo.exists(order_id, referrer_id, "creator") is True
+    assert await repo.exists(order_id, referrer_id, "advertiser") is False
+    assert await repo.exists(uuid4(), referrer_id, "creator") is False
+
+
+@pytest.mark.asyncio
+async def test_record_creator_skips_when_already_exists() -> None:
+    """record_creator_referral_income should skip if entry already exists."""
+    from datetime import datetime, timedelta, timezone
+    from decimal import Decimal
+    from unittest.mock import AsyncMock
+    from uuid import uuid4
+
+    from ugc_bot.application.services.referral_income_recorder import (
+        ReferralIncomeRecorder,
+    )
+    from ugc_bot.domain.entities import (
+        Order,
+        ReferralIncomeEntry,
+        UserReferralBinding,
+    )
+    from ugc_bot.domain.enums import OrderStatus, OrderType, ReferralIncomeType
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryReferralIncomeEntryRepository,
+    )
+
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+    order_id = uuid4()
+
+    binding = UserReferralBinding(
+        referrer_user_id=referrer_id,
+        referred_user_id=creator_id,
+        created_at=now - timedelta(days=30),
+    )
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    income_repo = InMemoryReferralIncomeEntryRepository()
+    entry = ReferralIncomeEntry(
+        entry_id=uuid4(),
+        referrer_user_id=referrer_id,
+        referred_user_id=creator_id,
+        order_id=order_id,
+        income_type=ReferralIncomeType.CREATOR,
+        currency="RUB",
+        platform_revenue=Decimal("100"),
+        commission_rate=Decimal("0.10"),
+        commission_amount=Decimal("10"),
+        created_at=now,
+    )
+    await income_repo.save(entry)
+
+    binding_repo = AsyncMock()
+    binding_repo.get_by_referred_user = AsyncMock(return_value=binding)
+    user_repo = AsyncMock()
+    pricing_repo = AsyncMock()
+    payment_repo = AsyncMock()
+
+    recorder = ReferralIncomeRecorder(
+        user_referral_binding_repo=binding_repo,
+        user_repo=user_repo,
+        referral_income_entry_repo=income_repo,
+        contact_pricing_repo=pricing_repo,
+        payment_repo=payment_repo,
+    )
+
+    await recorder.record_creator_referral_income(
+        order=order, creator_id=creator_id, advertiser_country_code="ru"
+    )
+
+    # Early exit: these repos should NOT be called
+    pricing_repo.get_by_bloggers_count.assert_not_called()
+    payment_repo.get_by_order.assert_not_called()
+    user_repo.get_by_id.assert_not_called()

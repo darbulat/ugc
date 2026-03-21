@@ -440,6 +440,13 @@ async def payout_button_callback(
     try:
         await with_optional_tx(transaction_manager, _run)
     except (IntegrityError, ValueError):
+        logger.info(
+            "Duplicate payout request (expected race condition)",
+            extra={
+                "user_id": str(user.user_id),
+                "currency": currency,
+            },
+        )
         msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),

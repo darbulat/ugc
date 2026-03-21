@@ -1,6 +1,6 @@
 """Pure functions and dataclasses for referral commission calculation."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
@@ -23,6 +23,7 @@ class UserReferralStats:
     paid_total: float
     has_pending_payout: bool
     has_request_today: bool
+    paid_by_currency: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -78,17 +79,17 @@ def resolve_rate(referred_user: User, order: Order) -> Decimal:
 def aggregate_payout_requests(
     requests: list[PayoutRequest],
     now: datetime,
-) -> tuple[float, bool, bool]:
-    """Return (sum of PAID amounts, has_pending, has_request_today).
+) -> tuple[float, bool, bool, dict[str, float]]:
+    """Return (paid_total, has_pending, has_request_today, paid_by_currency).
 
-    WARNING: paid_total sums amounts across all currencies — use only for
-    single-currency contexts or rough estimates. Use get_multicurrency_stats
-    for accurate per-currency breakdowns.
+    WARNING: paid_total sums amounts across all currencies (deprecated).
+    Use paid_by_currency for accurate per-currency breakdowns.
 
     has_request_today: True if ANY currency has a non-cancelled request today.
     For per-currency check use has_request_today_by_currency() repo method.
     """
     paid_total = 0.0
+    paid_by_currency: dict[str, float] = {}
     has_pending = False
     has_request_today = False
     now_date = (
@@ -100,7 +101,11 @@ def aggregate_payout_requests(
         if req.status == PayoutRequestStatus.PENDING:
             has_pending = True
         if req.status == PayoutRequestStatus.PAID and req.amount is not None:
-            paid_total += float(req.amount)
+            amt = float(req.amount)
+            paid_total += amt
+            paid_by_currency[req.currency] = (
+                paid_by_currency.get(req.currency, 0.0) + amt
+            )
         req_date = (
             req.requested_at.date()
             if req.requested_at.tzinfo
@@ -108,4 +113,4 @@ def aggregate_payout_requests(
         )
         if req_date == now_date:
             has_request_today = True
-    return (paid_total, has_pending, has_request_today)
+    return (paid_total, has_pending, has_request_today, paid_by_currency)
