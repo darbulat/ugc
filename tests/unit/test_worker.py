@@ -239,8 +239,6 @@ def _make_config(
 
 
 def _make_mock_container():
-    from unittest.mock import MagicMock
-
     container = MagicMock()
     container.build_feedback_scheduler_deps.return_value = {
         "interaction_repo": MagicMock(),
@@ -284,8 +282,30 @@ async def test_worker_runs_all_enabled_schedulers() -> None:
 
     async def fake_restart(name, coro_factory, restart_delay=5.0):
         launched.append(name)
+        await (
+            coro_factory()
+        )  # invoke factory to verify it calls the right run_loop
 
-    with patch("ugc_bot.worker._run_with_restart", new=fake_restart):
+    with (
+        patch(
+            "ugc_bot.feedback_scheduler.run_loop", new=AsyncMock()
+        ) as mock_fb,
+        patch(
+            "ugc_bot.role_reminder_scheduler.run_loop", new=AsyncMock()
+        ) as mock_rr,
+        patch(
+            "ugc_bot.referral_reconciliation_scheduler.run_loop",
+            new=AsyncMock(),
+        ) as mock_ref,
+        patch(
+            "ugc_bot.instagram_stats_scheduler.run_loop", new=AsyncMock()
+        ) as mock_ig,
+        patch(
+            "ugc_bot.instagram_stats_collector_scheduler.run_loop",
+            new=AsyncMock(),
+        ) as mock_igc,
+        patch("ugc_bot.worker._run_with_restart", new=fake_restart),
+    ):
         await main_async(config, container, messenger)
 
     assert set(launched) == {
@@ -295,6 +315,11 @@ async def test_worker_runs_all_enabled_schedulers() -> None:
         "instagram_stats",
         "instagram_stats_collector",
     }
+    mock_fb.assert_called_once()
+    mock_rr.assert_called_once()
+    mock_ref.assert_called_once()
+    mock_ig.assert_called_once()
+    mock_igc.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -309,12 +334,32 @@ async def test_worker_skips_disabled_scheduler() -> None:
 
     async def fake_restart(name, coro_factory, restart_delay=5.0):
         launched.append(name)
+        await coro_factory()
 
-    with patch("ugc_bot.worker._run_with_restart", new=fake_restart):
+    with (
+        patch(
+            "ugc_bot.feedback_scheduler.run_loop", new=AsyncMock()
+        ) as mock_fb,
+        patch(
+            "ugc_bot.role_reminder_scheduler.run_loop", new=AsyncMock()
+        ) as mock_rr,
+        patch(
+            "ugc_bot.referral_reconciliation_scheduler.run_loop",
+            new=AsyncMock(),
+        ),
+        patch("ugc_bot.instagram_stats_scheduler.run_loop", new=AsyncMock()),
+        patch(
+            "ugc_bot.instagram_stats_collector_scheduler.run_loop",
+            new=AsyncMock(),
+        ),
+        patch("ugc_bot.worker._run_with_restart", new=fake_restart),
+    ):
         await main_async(config, container, messenger)
 
     assert "feedback" not in launched
     assert len(launched) == 4
+    mock_fb.assert_not_called()
+    mock_rr.assert_called_once()
 
 
 @pytest.mark.asyncio
