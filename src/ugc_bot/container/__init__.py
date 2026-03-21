@@ -198,6 +198,13 @@ class Container:
             self._config, repos, self._transaction_manager
         )
 
+    def build_role_reminder_scheduler_deps(self) -> dict:
+        """Deps for role reminder scheduler: user_role_service and transaction_manager."""
+        repos = self.build_repos()
+        return service_factory.build_role_reminder_scheduler_deps(
+            self._config, repos, self._transaction_manager
+        )
+
     def build_manager_service(self) -> ManagerService:
         """ManagerService for admin panel."""
         repos = self.build_repos()

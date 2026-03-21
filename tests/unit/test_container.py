@@ -417,3 +417,20 @@ async def test_container_dispose_no_session_factory() -> None:
     container = Container(config)
     container._session_factory = None
     await container.dispose()  # Should not raise
+
+
+def test_container_build_role_reminder_scheduler_deps(monkeypatch: pytest.MonkeyPatch) -> None:
+    """build_role_reminder_scheduler_deps returns user_role_service and transaction_manager."""
+    from unittest.mock import Mock, patch
+
+    container = Container(_config(database_url="postgresql+psycopg://x:x@localhost:5432/x"))
+    mock_repos = {"user_repo": Mock()}
+    mock_tm = Mock()
+    container._transaction_manager = mock_tm
+
+    with patch.object(container, "build_repos", return_value=mock_repos):
+        deps = container.build_role_reminder_scheduler_deps()
+
+    assert "user_role_service" in deps
+    assert "transaction_manager" in deps
+    assert deps["transaction_manager"] is mock_tm

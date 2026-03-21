@@ -526,3 +526,14 @@ def build_referral_reconciliation_deps(
             payment_repo=repos["payment_repo"],
         ),
     }
+
+
+def build_role_reminder_scheduler_deps(config: AppConfig, repos, transaction_manager):
+    """Build deps for role reminder scheduler."""
+    return {
+        "user_role_service": UserRoleService(
+            user_repo=repos["user_repo"],
+            transaction_manager=transaction_manager,
+        ),
+        "transaction_manager": transaction_manager,
+    }
