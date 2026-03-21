@@ -4,7 +4,21 @@ import asyncio
 import logging
 from typing import Any, Awaitable, Callable
 
+from aiogram import Bot  # noqa: F401
+from ugc_bot import (  # noqa: F401
+    feedback_scheduler,
+    instagram_stats_collector_scheduler,
+    instagram_stats_scheduler,
+    referral_reconciliation_scheduler,
+    role_reminder_scheduler,
+)
 from ugc_bot.application.messenger.dto import Invoice, Keyboard
+from ugc_bot.config import AppConfig, load_config  # noqa: F401
+from ugc_bot.container import Container  # noqa: F401
+from ugc_bot.exception_hooks import install_asyncio_exception_handler, install_exception_hooks  # noqa: F401
+from ugc_bot.infrastructure.messenger.telegram.client import TelegramMessengerClient  # noqa: F401
+from ugc_bot.logging_setup import configure_logging  # noqa: F401
+from ugc_bot.startup_logging import log_startup_info  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +43,13 @@ class _NoCloseMessengerClient:
         parse_mode: str | None = None,
         disable_preview: bool | None = None,
     ) -> None:
-        kwargs: dict[str, Any] = {"chat_id": chat_id, "text": text}
-        if keyboard is not None:
-            kwargs["keyboard"] = keyboard
-        if parse_mode is not None:
-            kwargs["parse_mode"] = parse_mode
-        if disable_preview is not None:
-            kwargs["disable_preview"] = disable_preview
-        await self._d.send_text(**kwargs)
+        await self._d.send_text(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+            parse_mode=parse_mode,
+            disable_preview=disable_preview,
+        )
 
     async def send_photo(
         self,

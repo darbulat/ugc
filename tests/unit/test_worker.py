@@ -27,7 +27,13 @@ async def test_no_close_messenger_client_delegates_send_text() -> None:
     wrapper = _NoCloseMessengerClient(delegate)
     await wrapper.send_text(chat_id="123", text="hello")
 
-    delegate.send_text.assert_called_once_with(chat_id="123", text="hello")
+    delegate.send_text.assert_called_once_with(
+        chat_id="123",
+        text="hello",
+        keyboard=None,
+        parse_mode=None,
+        disable_preview=None,
+    )
 
 
 @pytest.mark.asyncio
