@@ -1018,8 +1018,8 @@ async def test_send_offer_to_blogger_skips_when_blogger_is_advertiser() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_offer_to_blogger_skips_when_external_id_not_digit() -> None:
-    """Skip sending when blogger external_id is not numeric."""
+async def test_send_offer_to_blogger_skips_when_telegram_id_not_digit() -> None:
+    """Skip sending when blogger telegram_id is not numeric."""
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000950"),

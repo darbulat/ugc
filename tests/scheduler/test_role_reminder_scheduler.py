@@ -105,7 +105,7 @@ async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
 
 @pytest.mark.asyncio
 async def test_run_once_skips_non_telegram_messenger(fake_tm) -> None:
-    """run_once only processes telegram users (external_id is digit)."""
+    """run_once only processes telegram users (telegram_id is digit)."""
 
     from ugc_bot.infrastructure.messenger.telegram.client import (
         TelegramMessengerClient,

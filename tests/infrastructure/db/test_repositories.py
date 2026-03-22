@@ -218,7 +218,7 @@ async def test_user_repository_get_by_external() -> None:
 
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000111"),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
         status=UserStatus.ACTIVE,
@@ -231,7 +231,7 @@ async def test_user_repository_get_by_external() -> None:
         "123", MessengerType.TELEGRAM, session=_repo_session(repo)
     )
     assert user is not None
-    assert user.external_id == "123"
+    assert user.telegram_id == "123"
 
 
 @pytest.mark.asyncio
@@ -240,7 +240,7 @@ async def test_user_repository_get_by_id() -> None:
 
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000115"),
-        external_id="321",
+        telegram_id="321",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
         status=UserStatus.ACTIVE,
@@ -259,7 +259,7 @@ async def test_user_repository_get_by_ids() -> None:
     """Fetch users by ids (batch)."""
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000116"),
-        external_id="get_by_ids",
+        telegram_id="get_by_ids",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
         status=UserStatus.ACTIVE,
@@ -292,7 +292,7 @@ async def test_user_repository_save() -> None:
     )
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000112"),
-        external_id="555",
+        telegram_id="555",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
         status=UserStatus.ACTIVE,
@@ -813,7 +813,7 @@ async def test_user_repository_list_pending_role_reminders() -> None:
 
     user_model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000160"),
-        external_id="160",
+        telegram_id="160",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
         status=UserStatus.ACTIVE,
@@ -841,7 +841,7 @@ async def test_user_repository_list_admins() -> None:
 
     admin_model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000161"),
-        external_id="161",
+        telegram_id="161",
         messenger_type=MessengerType.TELEGRAM,
         username="admin_user",
         status=UserStatus.ACTIVE,
@@ -863,7 +863,7 @@ async def test_user_repository_list_admins_with_messenger_type() -> None:
 
     admin_model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000162"),
-        external_id="162",
+        telegram_id="162",
         messenger_type=MessengerType.TELEGRAM,
         username="tg_admin",
         status=UserStatus.ACTIVE,
@@ -1223,7 +1223,7 @@ async def test_repo_uses_session_factory_when_no_session() -> None:
     """Calling repo method without session uses session_factory to open one."""
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000199"),
-        external_id="199",
+        telegram_id="199",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1233,7 +1233,7 @@ async def test_repo_uses_session_factory_when_no_session() -> None:
     repo = SqlAlchemyUserRepository(session_factory=_session_factory(model))
     user = await repo.get_by_id(model.user_id)
     assert user is not None
-    assert user.external_id == "199"
+    assert user.telegram_id == "199"
 
 
 @pytest.mark.asyncio
@@ -2175,7 +2175,7 @@ async def test_user_repository_get_by_referral_code() -> None:
     """get_by_referral_code returns user when found."""
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000301"),
-        external_id="ext",
+        telegram_id="ext",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2246,7 +2246,7 @@ async def test_user_repository_get_by_telegram() -> None:
     """get_by_telegram returns user (case-insensitive, @ stripped)."""
     model = UserModel(
         user_id=UUID("00000000-0000-0000-0000-000000000302"),
-        external_id="ext2",
+        telegram_id="ext2",
         messenger_type=MessengerType.TELEGRAM,
         username="u2",
         status=UserStatus.ACTIVE,
