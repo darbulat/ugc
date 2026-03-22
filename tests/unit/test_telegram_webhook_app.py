@@ -4163,3 +4163,103 @@ async def test_set_webhook_with_retry_raises_after_max_retries() -> None:
         )
 
     assert bot.set_webhook.call_count == 5
+
+
+def test_miniapp_api_register_blogger_user_not_found_404(
+    client: TestClient,
+) -> None:
+    """POST register/blogger when service raises UserNotFoundError -> 404."""
+    from ugc_bot.application.errors import UserNotFoundError
+
+    init_data = _make_valid_init_data("test_token", 55570)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="55570",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        side_effect=UserNotFoundError("User not found")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/blogger570",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "display_name": "Blogger570",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+def test_miniapp_api_ensure_user_race_condition_retries_get(
+    client: TestClient,
+) -> None:
+    """_ensure_user_and_get_id retries GET after set_user raises (race)."""
+    init_data = _make_valid_init_data("test_token", 55571)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="55571",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    # First get_user returns None (user doesn't exist), set_user raises (race),
+    # second get_user returns the user (created by concurrent request)
+    mock_urs.get_user = AsyncMock(side_effect=[None, user])
+    mock_urs.set_user = AsyncMock(
+        side_effect=Exception("duplicate key value violates unique constraint")
+    )
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        return_value=MagicMock()
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/blogger571",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "display_name": "Blogger571",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 200

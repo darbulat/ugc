@@ -256,3 +256,42 @@ async def test_run_loop_runs_once_then_sleeps(fake_tm) -> None:
     ):
         await run_loop({"telegram": messenger_client}, service, config)
     assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_run_once_sends_reminder_to_max_id_user(fake_tm) -> None:
+    """run_once sends a reminder to a user with max_id."""
+    from ugc_bot.infrastructure.messenger.telegram.client import (
+        TelegramMessengerClient,
+    )
+
+    repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        max_id="max-123",
+        messenger_type=MessengerType.MAX,
+        username="maxuser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        role_chosen_at=None,
+        last_role_reminder_at=None,
+    )
+    await repo.save(user)
+
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    cutoff = datetime.now(timezone.utc)
+    bot = MagicMock()
+    messenger_client = TelegramMessengerClient(bot)
+
+    config = MagicMock()
+    config.market = MagicMock()
+    config.market.default_locale = "ru"
+    with patch(
+        "ugc_bot.role_reminder_scheduler.send_with_retry",
+        new_callable=AsyncMock,
+    ) as mock_send:
+        await run_once({"max": messenger_client}, service, cutoff, config)
+
+        mock_send.assert_called_once()
+        assert mock_send.call_args[1]["chat_id"] == "max-123"

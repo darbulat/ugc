@@ -1296,3 +1296,63 @@ async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
     # Verify bot_texts_service was called with the blogger's locale "en"
     locales_used = [locale for _, locale in fake_bot_texts.called_with]
     assert "en" in locales_used
+
+
+@pytest.mark.asyncio
+async def test_send_offer_to_blogger_includes_max_id_target() -> None:
+    """_send_offer_to_blogger appends max_id target when blogger has max_id."""
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001100"),
+        telegram_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001101"),
+        max_id="max-blogger-1",
+        messenger_type=MessengerType.MAX,
+        username="maxblogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000001102"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    max_messenger = Mock()
+    max_messenger.send_text = AsyncMock()
+    dispatch_service = Mock()
+    dispatch_service.format_offer = AsyncMock(return_value="Offer text")
+    dispatch_service.record_offer_dispatch = AsyncMock(return_value=Mock())
+    dispatch_service.record_offer_sent = AsyncMock()
+    with patch(
+        "ugc_bot.kafka_consumer._send_offer_via_client", new_callable=AsyncMock
+    ) as mock_send_via:
+        await _send_offer_to_blogger(
+            blogger,
+            order,
+            "ACTIVE",
+            {"max": max_messenger},
+            dispatch_service,
+            retries=1,
+            retry_delay_seconds=0.0,
+            dlq_producer=None,
+            dlq_topic="dlq",
+        )
+    mock_send_via.assert_called_once()
+    call_kwargs = mock_send_via.call_args
+    assert call_kwargs[0][0] == "max-blogger-1"

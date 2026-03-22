@@ -547,3 +547,113 @@ async def test_step_text_no_target_user_id_in_state(
     assert state.cleared
     assert len(messenger_client.sent_text) == 1
     assert messenger_client.sent_text[0]["text"] == USER_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_require_admin_without_messenger_client_uses_message_answer(
+    user_role_service: UserRoleService,
+    event_adapter,
+) -> None:
+    """_require_admin with no client falls back to message.answer."""
+    from ugc_bot.bot.handlers.admin_message_to_user import _require_admin
+
+    message = FakeMessage(user=FakeUser(999, "nonadmin"))
+    result = await _require_admin(
+        message, event_adapter, user_role_service, None
+    )
+    assert result is False
+    assert len(message.answers) == 1
+
+
+@pytest.mark.asyncio
+async def test_step_user_id_empty_text_is_invalid(
+    user_repo: InMemoryUserRepository,
+    user_role_service: UserRoleService,
+    messenger_client: FakeMessengerClient,
+    event_adapter,
+) -> None:
+    """Empty message text is treated as invalid UUID."""
+    admin = _make_admin_user()
+    await user_repo.save(admin)
+    message = FakeMessage(text="", user=FakeUser(100, "admin"))
+    state = FakeFSMContext()
+    await state.set_state(AdminWriteStates.waiting_user_id)
+
+    await step_user_id(
+        message,
+        state=state,
+        user_role_service=user_role_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    assert messenger_client.sent_text[0]["text"] == INVALID_UUID
+
+
+@pytest.mark.asyncio
+async def test_step_user_id_short_text_without_dash_is_invalid(
+    user_repo: InMemoryUserRepository,
+    user_role_service: UserRoleService,
+    messenger_client: FakeMessengerClient,
+    event_adapter,
+) -> None:
+    """Short text without dash is treated as invalid UUID."""
+    admin = _make_admin_user()
+    await user_repo.save(admin)
+    message = FakeMessage(text="abc", user=FakeUser(100, "admin"))
+    state = FakeFSMContext()
+    await state.set_state(AdminWriteStates.waiting_user_id)
+
+    await step_user_id(
+        message,
+        state=state,
+        user_role_service=user_role_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    assert len(messenger_client.sent_text) == 1
+    assert messenger_client.sent_text[0]["text"] == INVALID_UUID
+
+
+@pytest.mark.asyncio
+async def test_step_text_target_without_telegram_id(
+    user_repo: InMemoryUserRepository,
+    user_role_service: UserRoleService,
+    messenger_client: FakeMessengerClient,
+    event_adapter,
+) -> None:
+    """step_text clears state when target has no telegram_id."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    admin = _make_admin_user()
+    no_tg_user = User(
+        user_id=uuid4(),
+        messenger_type=MessengerType.WHATSAPP,
+        username="wa_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=False,
+    )
+    await user_repo.save(admin)
+    await user_repo.save(no_tg_user)
+
+    message = FakeMessage(text="Hello", user=FakeUser(100, "admin"))
+    state = FakeFSMContext()
+    await state.set_state(AdminWriteStates.waiting_text)
+    await state.update_data(target_user_id=str(no_tg_user.user_id))
+
+    await step_text(
+        message,
+        state=state,
+        user_role_service=user_role_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    assert state.cleared
+    assert len(messenger_client.sent_text) == 1
+    assert messenger_client.sent_text[0]["text"] == USER_NOT_TELEGRAM

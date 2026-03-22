@@ -3,7 +3,8 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
-from uuid import UUID
+from uuid import UUID, uuid4
+
 
 import pytest
 
@@ -1287,3 +1288,70 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
     assert "en" in locales_used, (
         f"Expected 'en' locale calls, got: {locales_used}"
     )
+
+
+def test_user_messenger_targets_includes_max_id() -> None:
+    """_user_messenger_targets includes max_id entry when max client present."""
+    from ugc_bot.feedback_scheduler import _user_messenger_targets
+
+    user = User(
+        user_id=uuid4(),
+        max_id="max-99",
+        messenger_type=MessengerType.MAX,
+        username="maxu",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_client = Mock()
+    targets = _user_messenger_targets(user, {"max": mock_client})
+    assert len(targets) == 1
+    assert targets[0][0] == "max-99"
+    assert targets[0][1] is mock_client
+
+
+@pytest.mark.asyncio
+async def test_send_advertiser_feedback_returns_false_when_no_targets() -> None:
+    """_send_advertiser_feedback returns False when no messenger targets."""
+    from ugc_bot.feedback_scheduler import _send_advertiser_feedback
+
+    # User with no telegram_id and no max_id → no targets
+    advertiser = User(
+        user_id=uuid4(),
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    result = await _send_advertiser_feedback(
+        messenger_clients={},
+        interaction=Mock(),
+        advertiser=advertiser,
+        blogger_profile=None,
+        texts={},
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_send_blogger_feedback_returns_false_when_no_targets() -> None:
+    """_send_blogger_feedback returns False when blogger has no messenger."""
+    from ugc_bot.feedback_scheduler import _send_blogger_feedback
+
+    blogger = User(
+        user_id=uuid4(),
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    result = await _send_blogger_feedback(
+        messenger_clients={},
+        interaction=Mock(),
+        blogger=blogger,
+        order=None,
+        texts={},
+    )
+    assert result is False

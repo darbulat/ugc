@@ -432,3 +432,39 @@ class TestConfigEndpointCountries:
         assert len(result.countries) == 1
         assert result.countries[0]["code"] == "ru"
         assert result.countries[0]["currency_code"] == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_currency_symbol_map_returns_code_to_symbol_mapping() -> None:
+    """_currency_symbol_map builds currency_code to currency_symbol dict."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ugc_bot.miniapp.api import _currency_symbol_map
+
+    country1 = MagicMock()
+    country1.currency_code = "RUB"
+    country1.currency_symbol = "₽"
+
+    country2 = MagicMock()
+    country2.currency_code = "USD"
+    country2.currency_symbol = "$"
+
+    # Duplicate currency_code — only first should be kept
+    country3 = MagicMock()
+    country3.currency_code = "RUB"
+    country3.currency_symbol = "RUB"
+
+    country_repo = MagicMock()
+    country_repo.list_enabled = AsyncMock(
+        return_value=[country1, country2, country3]
+    )
+
+    dispatcher = MagicMock()
+    dispatcher.get = MagicMock(return_value=country_repo)
+
+    request = MagicMock()
+    request.app.state.dispatcher = dispatcher
+
+    result = await _currency_symbol_map(request)
+
+    assert result == {"RUB": "₽", "USD": "$"}

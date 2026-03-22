@@ -183,7 +183,7 @@ def referral_multicurrency_data():
             conn.execute(
                 text(
                     "INSERT INTO users "
-                    "(user_id, external_id, messenger_type, "
+                    "(user_id, telegram_id, messenger_type, "
                     "username, status, created_at, updated_at) "
                     "VALUES "
                     "(:uid, :eid, 'telegram', :uname, "

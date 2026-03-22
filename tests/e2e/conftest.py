@@ -93,7 +93,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
                 capture_output=True,
             )
 
-    # Miniapp e2e cleanup: delete test users by external_id
+    # Miniapp e2e cleanup: delete test users by telegram_id
     miniapp_user_ids = []
     for role_ids in MINIAPP_TEST_USER_IDS.values():
         miniapp_user_ids.extend(str(uid) for uid in role_ids.values())
@@ -104,7 +104,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
             engine = create_engine(db_url)
             with engine.begin() as conn:
                 conn.execute(
-                    text("DELETE FROM users WHERE external_id = ANY(:ids)"),
+                    text("DELETE FROM users WHERE telegram_id = ANY(:ids)"),
                     {"ids": miniapp_user_ids},
                 )
             engine.dispose()

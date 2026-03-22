@@ -723,3 +723,97 @@ async def test_outbox_repo_reset_stale_processing_events() -> None:
     assert reset_count == 1
     assert repo.events[event_id].status == OutboxEventStatus.PENDING
     assert event_id not in repo._claimed_at
+
+
+@pytest.mark.asyncio
+async def test_user_repo_get_by_max_type_returns_user() -> None:
+    """get_by_external with MAX messenger type returns the user."""
+    repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        max_id="max-42",
+        messenger_type=MessengerType.MAX,
+        username="maxuser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await repo.save(user)
+    result = await repo.get_by_external("max-42", MessengerType.MAX)
+    assert result == user
+
+
+@pytest.mark.asyncio
+async def test_user_repo_get_by_unsupported_type_returns_none() -> None:
+    """get_by_external with WHATSAPP type returns None (else branch)."""
+    repo = InMemoryUserRepository()
+    result = await repo.get_by_external("wa-42", MessengerType.WHATSAPP)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_user_repo_list_admins_with_max_filter() -> None:
+    """list_admins with MAX filter returns only admins with max_id."""
+    repo = InMemoryUserRepository()
+    admin_max = User(
+        user_id=uuid4(),
+        max_id="max-1",
+        messenger_type=MessengerType.MAX,
+        username="adminmax",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    admin_tg = User(
+        user_id=uuid4(),
+        telegram_id="tg-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admintg",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await repo.save(admin_max)
+    await repo.save(admin_tg)
+    result = list(await repo.list_admins(messenger_type=MessengerType.MAX))
+    assert admin_max in result
+    assert admin_tg not in result
+
+
+@pytest.mark.asyncio
+async def test_referral_income_find_missing_creator_returns_empty() -> None:
+    """find_missing_creator_income returns empty list."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryReferralIncomeEntryRepository,
+    )
+
+    repo = InMemoryReferralIncomeEntryRepository()
+    result = await repo.find_missing_creator_income()
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_referral_income_find_missing_advertiser_returns_empty() -> None:
+    """find_missing_advertiser_income returns empty list."""
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryReferralIncomeEntryRepository,
+    )
+
+    repo = InMemoryReferralIncomeEntryRepository()
+    result = await repo.find_missing_advertiser_income()
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_offer_dispatch_set_manager_noop_when_key_not_found() -> None:
+    """set_manager is a no-op when the dispatch key doesn't exist."""
+    repo = InMemoryOfferDispatchRepository()
+    order_id = uuid4()
+    blogger_id = uuid4()
+    manager_id = uuid4()
+    # No record_sent called — key doesn't exist
+    await repo.set_manager(order_id, blogger_id, manager_id)
+    result = await repo.get_by_order_and_blogger(order_id, blogger_id)
+    assert result is None

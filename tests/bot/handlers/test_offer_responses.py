@@ -3308,3 +3308,122 @@ def test_rejection_reason_callback_data_within_telegram_limit() -> None:
             f"callback_data for {reason.name!r} is {len(data.encode())} bytes "
             f"(max 64): {data!r}"
         )
+
+
+def test_parse_offer_skip_order_id_returns_none_for_invalid_prefix() -> None:
+    """_parse_offer_skip_order_id returns None when prefix is wrong."""
+    from ugc_bot.bot.handlers.offer_responses import _parse_offer_skip_order_id
+
+    assert _parse_offer_skip_order_id("") is None
+    assert _parse_offer_skip_order_id("other:prefix") is None
+
+
+@pytest.mark.asyncio
+async def test_reply_offer_response_result_fetches_manager(
+    user_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    interaction_repo,
+    bot_texts_service,
+    messenger_client,
+) -> None:
+    """_reply_offer_response_result fetches manager when manager_id set."""
+    from ugc_bot.application.messenger.dto import IncomingUser
+    from ugc_bot.application.services.offer_response_service import (
+        OfferResponseResult,
+    )
+    from ugc_bot.bot.handlers.offer_responses import (
+        _reply_offer_response_result,
+    )
+
+    now = datetime.now(timezone.utc)
+    manager_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001200"),
+        telegram_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="manager",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001201"),
+        telegram_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    advertiser_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001203"),
+        telegram_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(manager_user)
+    await user_repo.save(blogger_user)
+    await user_repo.save(advertiser_user)
+
+    order_repo = InMemoryOrderRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000001202"),
+        advertiser_id=advertiser_user.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Test offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    from ugc_bot.domain.entities import OfferDispatch
+
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    dispatch = OfferDispatch(
+        order_id=order.order_id,
+        blogger_id=blogger_user.user_id,
+        created_at=now,
+        accepted=True,
+        in_offer=True,
+    )
+
+    result = OfferResponseResult(
+        order=order,
+        response=dispatch,
+        response_count=1,
+        order_closed=False,
+        completed_at=None,
+        accepted=True,
+        manager_id=manager_user.user_id,
+    )
+    incoming = IncomingCallback(
+        callback_id="cb1",
+        chat_id="1",
+        user=IncomingUser(
+            external_id="1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="blogger",
+        ),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+    await _reply_offer_response_result(
+        incoming=incoming,
+        result=result,
+        blogger_id=blogger_user.user_id,
+        messenger_client=messenger_client,
+        user_role_service=user_role_service,
+        profile_service=profile_service,
+        interaction_service=interaction_service,
+        bot_texts_service=bot_texts_service,
+        locale="ru",
+    )
