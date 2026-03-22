@@ -2172,3 +2172,74 @@ async def test_dashboard_link_view_redirect() -> None:
 
     assert response.status_code in (302, 307)
     assert response.headers.get("location") == "/admin/dashboard"
+
+
+def test_admin_flowchart_redirects_when_unauthenticated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GET /admin/flowchart redirects to login when not authenticated."""
+    import ugc_bot.admin.app as admin_app
+    from ugc_bot.admin.app import _register_flowchart_route
+
+    fake_path = MagicMock()
+    fake_path.exists.return_value = True
+    monkeypatch.setattr(admin_app, "_FLOWCHART_PATH", fake_path)
+
+    app = FastAPI()
+    auth = AsyncMock()
+    auth.authenticate.return_value = False
+    _register_flowchart_route(app, auth)
+
+    client = TestClient(app, raise_server_exceptions=True)
+    response = client.get("/admin/flowchart", follow_redirects=False)
+
+    assert response.status_code in (302, 307)
+    assert "/admin/login" in response.headers.get("location", "")
+
+
+def test_admin_flowchart_returns_404_when_file_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GET /admin/flowchart returns 404 when HTML file has not been generated."""
+    import ugc_bot.admin.app as admin_app
+    from ugc_bot.admin.app import _register_flowchart_route
+
+    fake_path = MagicMock()
+    fake_path.exists.return_value = False
+    monkeypatch.setattr(admin_app, "_FLOWCHART_PATH", fake_path)
+
+    app = FastAPI()
+    auth = AsyncMock()
+    auth.authenticate.return_value = True
+    _register_flowchart_route(app, auth)
+
+    client = TestClient(app, raise_server_exceptions=False)
+    response = client.get("/admin/flowchart")
+
+    assert response.status_code == 404
+
+
+def test_admin_flowchart_returns_html_when_authenticated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GET /admin/flowchart returns HTML content when authenticated and file exists."""
+    import ugc_bot.admin.app as admin_app
+    from ugc_bot.admin.app import _register_flowchart_route
+
+    html_content = "<html><body>Flowchart</body></html>"
+
+    fake_path = MagicMock()
+    fake_path.exists.return_value = True
+    fake_path.read_text.return_value = html_content
+    monkeypatch.setattr(admin_app, "_FLOWCHART_PATH", fake_path)
+
+    app = FastAPI()
+    auth = AsyncMock()
+    auth.authenticate.return_value = True
+    _register_flowchart_route(app, auth)
+
+    client = TestClient(app)
+    response = client.get("/admin/flowchart")
+
+    assert response.status_code == 200
+    assert "Flowchart" in response.text
