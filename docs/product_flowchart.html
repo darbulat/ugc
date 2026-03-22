@@ -38,6 +38,37 @@ header h1 { font-size: 1.5rem }
   padding:30px;
 }
 #ts { font-size:.75rem; color:#666; padding:8px 30px }
+#drawer-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.3); z-index:100;
+}
+#drawer-overlay.open { display:block }
+#drawer {
+  position:fixed; bottom:0; left:0; right:0;
+  background:#fff; border-radius:16px 16px 0 0;
+  padding:20px 24px 32px;
+  box-shadow:0 -4px 24px rgba(0,0,0,0.15);
+  z-index:101; transform:translateY(100%);
+  transition:transform 0.25s ease;
+  max-height:45vh; overflow-y:auto;
+}
+#drawer.open { transform:translateY(0) }
+#drawer-handle {
+  width:40px; height:4px; background:#dee2e6;
+  border-radius:2px; margin:0 auto 16px; cursor:pointer;
+}
+#drawer-key {
+  font-size:.75rem; color:#868e96;
+  font-family:monospace; margin-bottom:4px;
+}
+#drawer-title {
+  font-size:1rem; font-weight:700;
+  color:#212529; margin-bottom:8px;
+}
+#drawer-text {
+  font-size:.9rem; color:#495057;
+  line-height:1.6; white-space:pre-wrap;
+}
 </style>
 </head>
 <body>
@@ -216,7 +247,7 @@ flowchart TB
     FEEDBACK_START["Feedback Request"]:::action
     FB_REASON{"Feedback Reason"}:::action
     FB_ISSUE["Describe Issue"]:::regStep
-    FB_NPS["NPS Score 1-10"]:::regStep
+    FB_NPS["NPS Score 1-5"]:::regStep
     FB_NPS_COMMENT["NPS Comment"]:::regStep
     FB_COMPLETE["Feedback Saved"]:::service
 
@@ -274,9 +305,92 @@ flowchart TB
     VERIFY_IG -.-> IG_STATS
     SCHEDULER -.-> IG_STATS
 
+    %% CLICK HANDLERS
+    click START showNodeInfo
+    click LANG_SELECT showNodeInfo
+    click COUNTRY_SELECT showNodeInfo
+    click ROLE_SELECT showNodeInfo
+    click CREATOR_BRANCH showNodeInfo
+    click BR_name showNodeInfo
+    click BR_phone showNodeInfo
+    click BR_instagram showNodeInfo
+    click BR_city showNodeInfo
+    click BR_birth_date showNodeInfo
+    click BR_blogger_gender showNodeInfo
+    click BR_topics showNodeInfo
+    click BR_audience_gender showNodeInfo
+    click BR_audience_age showNodeInfo
+    click BR_audience_geo showNodeInfo
+    click BR_price showNodeInfo
+    click BR_barter showNodeInfo
+    click BR_work_format showNodeInfo
+    click BR_agreements showNodeInfo
+    click VERIFY_IG showNodeInfo
+    click ADV_BRANCH showNodeInfo
+    click AR_name showNodeInfo
+    click AR_phone showNodeInfo
+    click AR_city showNodeInfo
+    click AR_brand showNodeInfo
+    click AR_company_activity showNodeInfo
+    click AR_site_link showNodeInfo
+    click AR_agreements showNodeInfo
+    click CREATOR_MENU showNodeInfo
+    click ADV_MENU showNodeInfo
+    click ORDER_CREATE_START showNodeInfo
+    click OC_order_type showNodeInfo
+    click OC_offer_text showNodeInfo
+    click OC_cooperation_format showNodeInfo
+    click OC_price showNodeInfo
+    click OC_barter_description showNodeInfo
+    click OC_bloggers_needed showNodeInfo
+    click OC_product_link showNodeInfo
+    click OC_order_photo showNodeInfo
+    click OC_content_usage showNodeInfo
+    click OC_deadlines showNodeInfo
+    click OC_geography showNodeInfo
+    click ORDER_FINALIZE showNodeInfo
+    click PAYMENT showNodeInfo
+    click PAYMENT_INVOICE showNodeInfo
+    click MODERATION showNodeInfo
+    click ORDER_ACTIVE showNodeInfo
+    click OFFER_SENT showNodeInfo
+    click OFFER_RESPONSE showNodeInfo
+    click OFFER_ACCEPT showNodeInfo
+    click OFFER_SKIP showNodeInfo
+    click SKIP_REASON showNodeInfo
+    click DESIRED_PRICE showNodeInfo
+    click INTERACTION showNodeInfo
+    click FEEDBACK_START showNodeInfo
+    click FB_REASON showNodeInfo
+    click FB_ISSUE showNodeInfo
+    click FB_NPS showNodeInfo
+    click FB_NPS_COMMENT showNodeInfo
+    click FB_COMPLETE showNodeInfo
+    click COMPLAINT_START showNodeInfo
+    click COMPLAINT_TARGET showNodeInfo
+    click COMPLAINT_REASON showNodeInfo
+    click COMPLAINT_SAVED showNodeInfo
+    click PROFILE_VIEW showNodeInfo
+    click MY_ORDERS showNodeInfo
+    click EDIT_PROFILE showNodeInfo
+    click EDIT_TYPE showNodeInfo
+    click EDIT_FIELD showNodeInfo
+    click EDIT_VALUE showNodeInfo
+    click SUPPORT showNodeInfo
+    click MINIAPP showNodeInfo
+    click MINIAPP_AUTH showNodeInfo
+    click MINIAPP_REG showNodeInfo
+    click MINIAPP_ORDERS showNodeInfo
+    click KAFKA showNodeInfo
+    click IG_STATS showNodeInfo
+    click SCHEDULER showNodeInfo
+    click REFERRAL showNodeInfo
+    click ADMIN_PANEL showNodeInfo
+
 </pre>
 </div>
 <div id="ts"></div>
+<script>const NODE_DATA = {"START": {"title": "/start", "text": "UMC — сервис для UGC.\nБизнесу — подбор креаторов, креаторам — заказы.", "key": "start_message"}, "LANG_SELECT": {"title": "Язык", "text": "Выберите язык / Choose language:", "key": "language_prompt"}, "COUNTRY_SELECT": {"title": "Страна", "text": "Выберите вашу страну:", "key": "country_prompt"}, "ROLE_SELECT": {"title": "Выбор роли", "text": "Выбор роли: Я креатор / Мне нужны UGC-креаторы", "key": null}, "CREATOR_BRANCH": {"title": "Создать профиль", "text": "Ты — UGC‑креатор. Заказчики уже ищут креаторов здесь — полный профиль помогает попасть в подбор и получать подходящие заказы.\n\nЗаполним профиль за пару минут — и ты в подборе.", "key": "msg_creator_intro"}, "BR_name": {"title": "Имя", "text": "Как вас зовут?\n\nШаг 1 из 12", "key": "msg_step_ask_name"}, "BR_phone": {"title": "Телефон", "text": "Укажите номер телефона для связи по заказу.\nНажмите кнопку ниже или введите номер вручную (пример: 89001110777).", "key": "msg_phone_request"}, "BR_instagram": {"title": "Instagram", "text": "Пришлите ссылку в формате instagram.com/name\n\nШаг 2 из 12", "key": "msg_step_ask_instagram"}, "BR_city": {"title": "Город", "text": "Заказчики подбирают креаторов по городу: для доставки продукта и для офлайн взаимодействия. Из какого вы города?\n\nШаг 3 из 12", "key": "msg_step_ask_city"}, "BR_birth_date": {"title": "Дата рождения", "text": "Укажите дату рождения в формате ДД.ММ.ГГГГ (например 15.05.1995):\n\nШаг 4 из 12", "key": "msg_step_ask_birth_date"}, "BR_blogger_gender": {"title": "Пол", "text": "Укажите ваш пол:\n\nШаг 5 из 12", "key": "msg_step_ask_gender"}, "BR_topics": {"title": "Тематики", "text": "О чём ваш контент?\nНапишите 1–5 тематики через запятую: бизнес, инвестиции, фитнес, питание, бьюти, уход за кожей, путешествия, еда, рестораны, мода, стиль, дети, семья, технологии, гаджеты, лайфстайл, мероприятия, другое\n\nШаг 6 из 12", "key": "msg_step_ask_topics"}, "BR_audience_gender": {"title": "Пол аудитории", "text": "Кто в основном смотрит ваш контент? По наблюдениям или статистике\n\nШаг 7 из 12", "key": "msg_step_ask_audience_gender"}, "BR_audience_age": {"title": "Возраст аудитории", "text": "Основной возраст вашей аудитории?\n\nШаг 8 из 12", "key": "msg_step_ask_audience_age"}, "BR_audience_geo": {"title": "География аудитории", "text": "В каких городах в основном аудитория? До 3 городов через запятую, например: Москва, Казань, Санкт‑Петербург\n\nШаг 9 из 12", "key": "msg_step_ask_audience_geo"}, "BR_price": {"title": "Цена за UGC", "text": "Заказчики отбирают креаторов по бюджету — указанная цена ускоряет сделку. Сколько стоит одно UGC‑видео? Цена ({currency}), например: 500, 1000, 2000\n\nШаг 10 из 12", "key": "msg_step_ask_price"}, "BR_barter": {"title": "Бартер", "text": "Много заказов с бартером — ответ «Да» увеличит число офферов. Готов иногда работать с брендами по бартеру?\n\nШаг 11 из 12", "key": "msg_step_ask_barter"}, "BR_work_format": {"title": "Формат работы", "text": "Помимо UGC, как ещё готов работать с брендами? Последний шаг перед подбором.\n\nШаг 12 из 12", "key": "msg_step_ask_work_format"}, "BR_agreements": {"title": "Согласие с документами", "text": "Почти готово. Пожалуйста, ознакомьтесь с документами и подтвердите согласие.", "key": "msg_agreements_intro_creator"}, "VERIFY_IG": {"title": "Верификация Instagram", "text": "Подтверждение Instagram: отправьте код в DM аккаунту UMC в Instagram", "key": null}, "ADV_BRANCH": {"title": "Начать регистрацию", "text": "Вы выбрали роль «Мне нужны UGC‑креаторы».\nДавайте создадим профиль, чтобы вы могли размещать заказы.", "key": "msg_advertiser_intro"}, "AR_name": {"title": "Имя", "text": "Как вас зовут?", "key": "msg_whats_your_name"}, "AR_phone": {"title": "Телефон", "text": "Укажите номер телефона для связи по заказу.\nНажмите кнопку ниже или введите номер вручную (пример: 89001110777).", "key": "msg_phone_request"}, "AR_city": {"title": "Город", "text": "Из какого вы города?\nПример: Казань / Москва / Санкт‑Петербург", "key": "msg_what_city"}, "AR_brand": {"title": "Бренд", "text": "Название вашего бренда / компании / бизнеса:", "key": "msg_brand_name"}, "AR_company_activity": {"title": "Деятельность компании", "text": "Чем занимается ваша компания?", "key": "msg_company_activity"}, "AR_site_link": {"title": "Ссылка на сайт", "text": "Ссылка на сайт, продукт или соцсети бренда:", "key": "msg_brand_link"}, "AR_agreements": {"title": "Согласие с документами", "text": "Пожалуйста, подтвердите согласие с документами платформы.", "key": "msg_confirm_agreement"}, "CREATOR_MENU": {"title": "Меню креатора", "text": "Главное меню креатора: профиль, заказы, верификация Instagram, поддержка", "key": null}, "ADV_MENU": {"title": "Меню рекламодателя", "text": "Главное меню рекламодателя: создание заказа, профиль, мои заказы, поддержка", "key": null}, "ORDER_CREATE_START": {"title": "Создать заказ", "text": "Начало создания нового заказа", "key": null}, "OC_order_type": {"title": "Тип заказа", "text": "Что вам нужно?", "key": "msg_what_do_you_need"}, "OC_offer_text": {"title": "Описание задачи", "text": "Кратко опишите задачу для креаторов.\nЧто снять и в каком формате. Пример: Видео с распаковкой.", "key": "msg_order_task_description"}, "OC_cooperation_format": {"title": "Формат сотрудничества", "text": "Какой формат сотрудничества вам подходит?", "key": "msg_coop_format"}, "OC_price": {"title": "Бюджет", "text": "Бюджет за 1 UGC-видео? Укажите цену ({currency}): 500, 1000, 2000", "key": "msg_order_budget"}, "OC_barter_description": {"title": "Описание бартера", "text": "Что вы предлагаете по бартеру?\nПродукт бренда (опишите коротко) + доставка", "key": "msg_order_barter_ask"}, "OC_bloggers_needed": {"title": "Количество креаторов", "text": "Сколько креаторов вам нужно?", "key": "msg_how_many_creators"}, "OC_product_link": {"title": "Ссылка на продукт", "text": "Введите ссылку на продукт (для откликнувшихся креаторов):", "key": "msg_product_link"}, "OC_order_photo": {"title": "Фото продукта", "text": "Прикрепите фото (по желанию).\nФотография поможет креатору быстрее понять заказ и повысит отклик на ваше предложение", "key": "msg_order_photo_intro"}, "OC_content_usage": {"title": "Использование контента", "text": "Где вы планируете использовать UGC-видео?", "key": "msg_where_use_ugc"}, "OC_deadlines": {"title": "Сроки", "text": "В какие сроки вам нужен контент? Укажите, через сколько дней после согласования вы ожидаете превью.", "key": "msg_order_deadline"}, "OC_geography": {"title": "География", "text": "В каком городе, регионе или стране может находиться креатор? Укажите один вариант: например, Казань, Москва, Татарстан или РФ. Нужно для бартерных заказов и доставки продукта.", "key": "msg_order_geo"}, "ORDER_FINALIZE": {"title": "Заказ сохранён", "text": "Заказ создан ✅\n\nМы отправим предложение подходящим UGC-креаторам после оплаты.\n\n🔄 **Как это работает**\n\n• Креаторы получают оффер с зафиксированными условиями\n• Откликаются только те, кто готов работать на ваших условиях\n• Вы получите отклики со ссылками на профили креаторов\n• Связь начинается с вашей стороны\n\n⚠️ **Важно**\n\n• Оплату креатору рекомендуем производить после превью с водяным знаком\n• Платформа не участвует в переговорах и оплате\n• Мы не гарантируем, что креатор не изменит своё решение\n• Креатор не видит ваши контакты и не может написать первым", "key": "msg_order_created"}, "PAYMENT": {"title": "Проверка оплаты", "text": "Система проверяет необходимость оплаты за заказ", "key": null}, "PAYMENT_INVOICE": {"title": "Счёт Telegram", "text": "Оплата заказа", "key": "msg_title_payment"}, "MODERATION": {"title": "На модерации", "text": "На модерации", "key": "msg_status_pending_moderation"}, "ORDER_ACTIVE": {"title": "Заказ активен", "text": "Активен", "key": "msg_status_active"}, "OFFER_SENT": {"title": "Офферы отправлены", "text": "Оффер отправлен подходящим креаторам через Kafka", "key": null}, "OFFER_RESPONSE": {"title": "Ответ блогера", "text": "Ожидание ответа блогера на оффер", "key": null}, "OFFER_ACCEPT": {"title": "Принять", "text": "Отклик принят! Ожидайте связи от рекламодателя.", "key": "msg_offer_accepted"}, "OFFER_SKIP": {"title": "Пропустить", "text": "Ок, пропущено.", "key": "msg_offer_skipped"}, "SKIP_REASON": {"title": "Причина отказа", "text": "Укажите причину отказа:", "key": "msg_offer_skip_reason_prompt"}, "DESIRED_PRICE": {"title": "Желаемая цена", "text": "Укажите, за какую стоимость вы готовы разместить рекламу:", "key": "msg_enter_desired_price"}, "INTERACTION": {"title": "Взаимодействие", "text": "Период взаимодействия креатора и рекламодателя", "key": null}, "FEEDBACK_START": {"title": "Запрос обратной связи", "text": "Запрос обратной связи: удалось ли связаться с контрагентом?", "key": null}, "FB_REASON": {"title": "Тип обратной связи", "text": "Выбор типа обратной связи", "key": null}, "FB_ISSUE": {"title": "Описание проблемы", "text": "Опишите проблему и приложите скриншоты переписки или другие подтверждения. Это поможет разобраться.\n👉 Напишите текст, прикрепите фото и нажмите «Отправить».", "key": "msg_fb_issue_prompt"}, "FB_NPS": {"title": "NPS-оценка", "text": "NPS-оценка по шкале от 1 до 5 ⭐", "key": null}, "FB_NPS_COMMENT": {"title": "Комментарий к оценке", "text": "Комментарий к NPS-оценке: развёрнутый отзыв об опыте работы с платформой", "key": null}, "FB_COMPLETE": {"title": "Отзыв сохранён", "text": "Спасибо, ответ сохранен.", "key": "msg_fb_thanks_saved"}, "COMPLAINT_START": {"title": "Жалоба", "text": "Начало процесса подачи жалобы", "key": null}, "COMPLAINT_TARGET": {"title": "Выбор блогера", "text": "Выберите блогера, на которого хотите пожаловаться:", "key": "msg_choose_blogger_complain"}, "COMPLAINT_REASON": {"title": "Причина жалобы", "text": "Выберите причину жалобы:", "key": "msg_choose_complaint_reason"}, "COMPLAINT_SAVED": {"title": "Жалоба принята", "text": "Мы приняли вашу заявку. Поддержка разберётся в ситуации. При необходимости нажмите «Поддержка» в меню.", "key": "msg_fb_complaint_accepted"}, "PROFILE_VIEW": {"title": "Мой профиль", "text": "👤 Ваш профиль", "key": "lbl_profile_your"}, "MY_ORDERS": {"title": "Мои заказы", "text": "Ваши заказы (страница {page}/{total_pages}):", "key": "msg_orders_title"}, "EDIT_PROFILE": {"title": "Редактировать профиль", "text": "Выберите раздел для редактирования:", "key": "msg_choose_section_edit"}, "EDIT_TYPE": {"title": "Выбор профиля", "text": "Выберите профиль для редактирования:", "key": "msg_choose_profile_edit"}, "EDIT_FIELD": {"title": "Выбор поля", "text": "Выбор конкретного поля для редактирования внутри раздела", "key": null}, "EDIT_VALUE": {"title": "Ввод значения", "text": "Введите новое значение:", "key": "prompt_edit_generic"}, "SUPPORT": {"title": "Поддержка", "text": "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!", "key": "support_response"}, "MINIAPP": {"title": "Mini App", "text": "Mini App — веб-интерфейс бота в Telegram", "key": null}, "MINIAPP_AUTH": {"title": "Авторизация Mini App", "text": "Авторизация через Telegram initData", "key": null}, "MINIAPP_REG": {"title": "Регистрация в вебе", "text": "Веб-регистрация профиля", "key": null}, "MINIAPP_ORDERS": {"title": "Заказы в вебе", "text": "Просмотр и управление заказами в вебе", "key": null}, "KAFKA": {"title": "Kafka Outbox", "text": "Kafka Outbox — событийная доставка офферов блогерам", "key": null}, "IG_STATS": {"title": "Instagram статистика", "text": "Сбор статистики Instagram через Graph API", "key": null}, "SCHEDULER": {"title": "Планировщики", "text": "Планировщики: опросы обратной связи, напоминания", "key": null}, "REFERRAL": {"title": "Реферальная система", "text": "Реферальная система — начисление и выплата вознаграждений", "key": null}, "ADMIN_PANEL": {"title": "Панель администратора", "text": "Панель администратора (SQLAdmin)", "key": null}};</script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>
 mermaid.initialize({{
@@ -288,5 +402,30 @@ mermaid.initialize({{
 document.getElementById('ts').textContent =
   'Generated: ' + new Date().toLocaleString();
 </script>
+<script>
+function showNodeInfo(nodeId) {
+  var node = NODE_DATA[nodeId];
+  if (!node) return;
+  document.getElementById('drawer-key').textContent = node.key || '';
+  document.getElementById('drawer-title').textContent = node.title;
+  document.getElementById('drawer-text').textContent = node.text;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeDrawer();
+});
+</script>
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div id="drawer-handle" onclick="closeDrawer()"></div>
+  <div id="drawer-key"></div>
+  <div id="drawer-title"></div>
+  <div id="drawer-text"></div>
+</div>
 </body>
 </html>

@@ -224,7 +224,7 @@
     FEEDBACK_START["Feedback Request"]:::action
     FB_REASON{"Feedback Reason"}:::action
     FB_ISSUE["Describe Issue"]:::regStep
-    FB_NPS["NPS Score 1-10"]:::regStep
+    FB_NPS["NPS Score 1-5"]:::regStep
     FB_NPS_COMMENT["NPS Comment"]:::regStep
     FB_COMPLETE["Feedback Saved"]:::service
 
@@ -281,5 +281,87 @@
     KAFKA -.-> OFFER_SENT
     VERIFY_IG -.-> IG_STATS
     SCHEDULER -.-> IG_STATS
+
+    %% CLICK HANDLERS
+    click START showNodeInfo
+    click LANG_SELECT showNodeInfo
+    click COUNTRY_SELECT showNodeInfo
+    click ROLE_SELECT showNodeInfo
+    click CREATOR_BRANCH showNodeInfo
+    click BR_name showNodeInfo
+    click BR_phone showNodeInfo
+    click BR_instagram showNodeInfo
+    click BR_city showNodeInfo
+    click BR_birth_date showNodeInfo
+    click BR_blogger_gender showNodeInfo
+    click BR_topics showNodeInfo
+    click BR_audience_gender showNodeInfo
+    click BR_audience_age showNodeInfo
+    click BR_audience_geo showNodeInfo
+    click BR_price showNodeInfo
+    click BR_barter showNodeInfo
+    click BR_work_format showNodeInfo
+    click BR_agreements showNodeInfo
+    click VERIFY_IG showNodeInfo
+    click ADV_BRANCH showNodeInfo
+    click AR_name showNodeInfo
+    click AR_phone showNodeInfo
+    click AR_city showNodeInfo
+    click AR_brand showNodeInfo
+    click AR_company_activity showNodeInfo
+    click AR_site_link showNodeInfo
+    click AR_agreements showNodeInfo
+    click CREATOR_MENU showNodeInfo
+    click ADV_MENU showNodeInfo
+    click ORDER_CREATE_START showNodeInfo
+    click OC_order_type showNodeInfo
+    click OC_offer_text showNodeInfo
+    click OC_cooperation_format showNodeInfo
+    click OC_price showNodeInfo
+    click OC_barter_description showNodeInfo
+    click OC_bloggers_needed showNodeInfo
+    click OC_product_link showNodeInfo
+    click OC_order_photo showNodeInfo
+    click OC_content_usage showNodeInfo
+    click OC_deadlines showNodeInfo
+    click OC_geography showNodeInfo
+    click ORDER_FINALIZE showNodeInfo
+    click PAYMENT showNodeInfo
+    click PAYMENT_INVOICE showNodeInfo
+    click MODERATION showNodeInfo
+    click ORDER_ACTIVE showNodeInfo
+    click OFFER_SENT showNodeInfo
+    click OFFER_RESPONSE showNodeInfo
+    click OFFER_ACCEPT showNodeInfo
+    click OFFER_SKIP showNodeInfo
+    click SKIP_REASON showNodeInfo
+    click DESIRED_PRICE showNodeInfo
+    click INTERACTION showNodeInfo
+    click FEEDBACK_START showNodeInfo
+    click FB_REASON showNodeInfo
+    click FB_ISSUE showNodeInfo
+    click FB_NPS showNodeInfo
+    click FB_NPS_COMMENT showNodeInfo
+    click FB_COMPLETE showNodeInfo
+    click COMPLAINT_START showNodeInfo
+    click COMPLAINT_TARGET showNodeInfo
+    click COMPLAINT_REASON showNodeInfo
+    click COMPLAINT_SAVED showNodeInfo
+    click PROFILE_VIEW showNodeInfo
+    click MY_ORDERS showNodeInfo
+    click EDIT_PROFILE showNodeInfo
+    click EDIT_TYPE showNodeInfo
+    click EDIT_FIELD showNodeInfo
+    click EDIT_VALUE showNodeInfo
+    click SUPPORT showNodeInfo
+    click MINIAPP showNodeInfo
+    click MINIAPP_AUTH showNodeInfo
+    click MINIAPP_REG showNodeInfo
+    click MINIAPP_ORDERS showNodeInfo
+    click KAFKA showNodeInfo
+    click IG_STATS showNodeInfo
+    click SCHEDULER showNodeInfo
+    click REFERRAL showNodeInfo
+    click ADMIN_PANEL showNodeInfo
 
         ```

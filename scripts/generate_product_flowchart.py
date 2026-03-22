@@ -14,6 +14,7 @@ Re-run after changing handlers/states/keyboards to update.
 from __future__ import annotations
 
 import ast
+import json
 import textwrap
 from pathlib import Path
 
@@ -152,6 +153,57 @@ def count_handlers(
     return counts
 
 
+def extract_ru_texts(
+    ru_path: Path,
+) -> dict[str, str]:
+    """Extract {key: value} from the RU dict in ru.py using ast."""
+    tree = ast.parse(ru_path.read_text())
+    for node in ast.walk(tree):
+        # RU uses annotated assignment: RU: dict[str, str] = {...}
+        if not isinstance(node, ast.AnnAssign):
+            continue
+        if not (
+            isinstance(node.target, ast.Name)
+            and node.target.id == "RU"
+            and node.value is not None
+            and isinstance(node.value, ast.Dict)
+        ):
+            continue
+        result: dict[str, str] = {}
+        for k, v in zip(node.value.keys, node.value.values, strict=False):
+            if (
+                isinstance(k, ast.Constant)
+                and isinstance(k.value, str)
+                and isinstance(v, ast.Constant)
+                and isinstance(v.value, str)
+            ):
+                result[k.value] = v.value
+        return result
+    return {}
+
+
+def build_node_data(
+    ru_texts: dict[str, str],
+) -> dict[str, dict[str, str | None]]:
+    """Build {node_id: {title, text, key}} from _NODE_MESSAGES."""
+    result: dict[str, dict[str, str | None]] = {}
+    for node_id, (kind, value) in _NODE_MESSAGES.items():
+        title = _NODE_LABELS.get(node_id, node_id)
+        if kind == "key":
+            result[node_id] = {
+                "title": title,
+                "text": ru_texts.get(value, value),
+                "key": value,
+            }
+        else:
+            result[node_id] = {
+                "title": title,
+                "text": value,
+                "key": None,
+            }
+    return result
+
+
 # -- State labels --
 
 _BLOGGER_LABELS: dict[str, str] = {
@@ -204,6 +256,222 @@ _ALL_LABELS: dict[str, dict[str, str]] = {
 
 def _state_label(context: str, state: str) -> str:
     return _ALL_LABELS.get(context, {}).get(state, state)
+
+
+# -- Node → ru.py message mapping --
+
+_NODE_LABELS: dict[str, str] = {
+    # Entry
+    "START": "/start",
+    "LANG_SELECT": "Язык",
+    "COUNTRY_SELECT": "Страна",
+    "ROLE_SELECT": "Выбор роли",
+    # Creator registration
+    "CREATOR_BRANCH": "Создать профиль",
+    "BR_name": "Имя",
+    "BR_phone": "Телефон",
+    "BR_instagram": "Instagram",
+    "BR_city": "Город",
+    "BR_birth_date": "Дата рождения",
+    "BR_blogger_gender": "Пол",
+    "BR_topics": "Тематики",
+    "BR_audience_gender": "Пол аудитории",
+    "BR_audience_age": "Возраст аудитории",
+    "BR_audience_geo": "География аудитории",
+    "BR_price": "Цена за UGC",
+    "BR_barter": "Бартер",
+    "BR_work_format": "Формат работы",
+    "BR_agreements": "Согласие с документами",
+    "VERIFY_IG": "Верификация Instagram",
+    # Advertiser registration
+    "ADV_BRANCH": "Начать регистрацию",
+    "AR_name": "Имя",
+    "AR_phone": "Телефон",
+    "AR_city": "Город",
+    "AR_brand": "Бренд",
+    "AR_company_activity": "Деятельность компании",
+    "AR_site_link": "Ссылка на сайт",
+    "AR_agreements": "Согласие с документами",
+    # Menus
+    "CREATOR_MENU": "Меню креатора",
+    "ADV_MENU": "Меню рекламодателя",
+    # Order creation
+    "ORDER_CREATE_START": "Создать заказ",
+    "OC_order_type": "Тип заказа",
+    "OC_offer_text": "Описание задачи",
+    "OC_cooperation_format": "Формат сотрудничества",
+    "OC_price": "Бюджет",
+    "OC_barter_description": "Описание бартера",
+    "OC_bloggers_needed": "Количество креаторов",
+    "OC_product_link": "Ссылка на продукт",
+    "OC_order_photo": "Фото продукта",
+    "OC_content_usage": "Использование контента",
+    "OC_deadlines": "Сроки",
+    "OC_geography": "География",
+    # Order lifecycle
+    "ORDER_FINALIZE": "Заказ сохранён",
+    "PAYMENT": "Проверка оплаты",
+    "PAYMENT_INVOICE": "Счёт Telegram",
+    "MODERATION": "На модерации",
+    "ORDER_ACTIVE": "Заказ активен",
+    # Offer responses
+    "OFFER_SENT": "Офферы отправлены",
+    "OFFER_RESPONSE": "Ответ блогера",
+    "OFFER_ACCEPT": "Принять",
+    "OFFER_SKIP": "Пропустить",
+    "SKIP_REASON": "Причина отказа",
+    "DESIRED_PRICE": "Желаемая цена",
+    # Feedback
+    "INTERACTION": "Взаимодействие",
+    "FEEDBACK_START": "Запрос обратной связи",
+    "FB_REASON": "Тип обратной связи",
+    "FB_ISSUE": "Описание проблемы",
+    "FB_NPS": "NPS-оценка",
+    "FB_NPS_COMMENT": "Комментарий к оценке",
+    "FB_COMPLETE": "Отзыв сохранён",
+    # Complaints
+    "COMPLAINT_START": "Жалоба",
+    "COMPLAINT_TARGET": "Выбор блогера",
+    "COMPLAINT_REASON": "Причина жалобы",
+    "COMPLAINT_SAVED": "Жалоба принята",
+    # Shared
+    "PROFILE_VIEW": "Мой профиль",
+    "MY_ORDERS": "Мои заказы",
+    "EDIT_PROFILE": "Редактировать профиль",
+    "EDIT_TYPE": "Выбор профиля",
+    "EDIT_FIELD": "Выбор поля",
+    "EDIT_VALUE": "Ввод значения",
+    "SUPPORT": "Поддержка",
+    # Infrastructure
+    "MINIAPP": "Mini App",
+    "MINIAPP_AUTH": "Авторизация Mini App",
+    "MINIAPP_REG": "Регистрация в вебе",
+    "MINIAPP_ORDERS": "Заказы в вебе",
+    "KAFKA": "Kafka Outbox",
+    "IG_STATS": "Instagram статистика",
+    "SCHEDULER": "Планировщики",
+    "REFERRAL": "Реферальная система",
+    "ADMIN_PANEL": "Панель администратора",
+}
+
+_NODE_MESSAGES: dict[str, tuple[str, str]] = {
+    # ("key", ru_key)  or  ("desc", literal description)
+    # Entry
+    "START": ("key", "start_message"),
+    "LANG_SELECT": ("key", "language_prompt"),
+    "COUNTRY_SELECT": ("key", "country_prompt"),
+    "ROLE_SELECT": ("desc", "Выбор роли: Я креатор / Мне нужны UGC-креаторы"),
+    # Creator registration
+    "CREATOR_BRANCH": ("key", "msg_creator_intro"),
+    "BR_name": ("key", "msg_step_ask_name"),
+    "BR_phone": ("key", "msg_phone_request"),
+    "BR_instagram": ("key", "msg_step_ask_instagram"),
+    "BR_city": ("key", "msg_step_ask_city"),
+    "BR_birth_date": ("key", "msg_step_ask_birth_date"),
+    "BR_blogger_gender": ("key", "msg_step_ask_gender"),
+    "BR_topics": ("key", "msg_step_ask_topics"),
+    "BR_audience_gender": ("key", "msg_step_ask_audience_gender"),
+    "BR_audience_age": ("key", "msg_step_ask_audience_age"),
+    "BR_audience_geo": ("key", "msg_step_ask_audience_geo"),
+    "BR_price": ("key", "msg_step_ask_price"),
+    "BR_barter": ("key", "msg_step_ask_barter"),
+    "BR_work_format": ("key", "msg_step_ask_work_format"),
+    "BR_agreements": ("key", "msg_agreements_intro_creator"),
+    "VERIFY_IG": (
+        "desc",
+        "Подтверждение Instagram: отправьте код в DM аккаунту UMC в Instagram",
+    ),
+    # Advertiser registration
+    "ADV_BRANCH": ("key", "msg_advertiser_intro"),
+    "AR_name": ("key", "msg_whats_your_name"),
+    "AR_phone": ("key", "msg_phone_request"),
+    "AR_city": ("key", "msg_what_city"),
+    "AR_brand": ("key", "msg_brand_name"),
+    "AR_company_activity": ("key", "msg_company_activity"),
+    "AR_site_link": ("key", "msg_brand_link"),
+    "AR_agreements": ("key", "msg_confirm_agreement"),
+    # Menus
+    "CREATOR_MENU": (
+        "desc",
+        "Главное меню креатора: профиль, заказы,"
+        " верификация Instagram, поддержка",
+    ),
+    "ADV_MENU": (
+        "desc",
+        "Главное меню рекламодателя: создание заказа,"
+        " профиль, мои заказы, поддержка",
+    ),
+    # Order creation
+    "ORDER_CREATE_START": ("desc", "Начало создания нового заказа"),
+    "OC_order_type": ("key", "msg_what_do_you_need"),
+    "OC_offer_text": ("key", "msg_order_task_description"),
+    "OC_cooperation_format": ("key", "msg_coop_format"),
+    "OC_price": ("key", "msg_order_budget"),
+    "OC_barter_description": ("key", "msg_order_barter_ask"),
+    "OC_bloggers_needed": ("key", "msg_how_many_creators"),
+    "OC_product_link": ("key", "msg_product_link"),
+    "OC_order_photo": ("key", "msg_order_photo_intro"),
+    "OC_content_usage": ("key", "msg_where_use_ugc"),
+    "OC_deadlines": ("key", "msg_order_deadline"),
+    "OC_geography": ("key", "msg_order_geo"),
+    # Order lifecycle
+    "ORDER_FINALIZE": ("key", "msg_order_created"),
+    "PAYMENT": ("desc", "Система проверяет необходимость оплаты за заказ"),
+    "PAYMENT_INVOICE": ("key", "msg_title_payment"),
+    "MODERATION": ("key", "msg_status_pending_moderation"),
+    "ORDER_ACTIVE": ("key", "msg_status_active"),
+    # Offer responses
+    "OFFER_SENT": ("desc", "Оффер отправлен подходящим креаторам через Kafka"),
+    "OFFER_RESPONSE": ("desc", "Ожидание ответа блогера на оффер"),
+    "OFFER_ACCEPT": ("key", "msg_offer_accepted"),
+    "OFFER_SKIP": ("key", "msg_offer_skipped"),
+    "SKIP_REASON": ("key", "msg_offer_skip_reason_prompt"),
+    "DESIRED_PRICE": ("key", "msg_enter_desired_price"),
+    # Feedback
+    "INTERACTION": ("desc", "Период взаимодействия креатора и рекламодателя"),
+    "FEEDBACK_START": (
+        "desc",
+        "Запрос обратной связи: удалось ли связаться с контрагентом?",
+    ),
+    "FB_REASON": ("desc", "Выбор типа обратной связи"),
+    "FB_ISSUE": ("key", "msg_fb_issue_prompt"),
+    "FB_NPS": ("desc", "NPS-оценка по шкале от 1 до 5 ⭐"),
+    "FB_NPS_COMMENT": (
+        "desc",
+        "Комментарий к NPS-оценке: развёрнутый отзыв"
+        " об опыте работы с платформой",
+    ),
+    "FB_COMPLETE": ("key", "msg_fb_thanks_saved"),
+    # Complaints
+    "COMPLAINT_START": ("desc", "Начало процесса подачи жалобы"),
+    "COMPLAINT_TARGET": ("key", "msg_choose_blogger_complain"),
+    "COMPLAINT_REASON": ("key", "msg_choose_complaint_reason"),
+    "COMPLAINT_SAVED": ("key", "msg_fb_complaint_accepted"),
+    # Shared
+    "PROFILE_VIEW": ("key", "lbl_profile_your"),
+    "MY_ORDERS": ("key", "msg_orders_title"),
+    "EDIT_PROFILE": ("key", "msg_choose_section_edit"),
+    "EDIT_TYPE": ("key", "msg_choose_profile_edit"),
+    "EDIT_FIELD": (
+        "desc",
+        "Выбор конкретного поля для редактирования внутри раздела",
+    ),
+    "EDIT_VALUE": ("key", "prompt_edit_generic"),
+    "SUPPORT": ("key", "support_response"),
+    # Infrastructure
+    "MINIAPP": ("desc", "Mini App — веб-интерфейс бота в Telegram"),
+    "MINIAPP_AUTH": ("desc", "Авторизация через Telegram initData"),
+    "MINIAPP_REG": ("desc", "Веб-регистрация профиля"),
+    "MINIAPP_ORDERS": ("desc", "Просмотр и управление заказами в вебе"),
+    "KAFKA": ("desc", "Kafka Outbox — событийная доставка офферов блогерам"),
+    "IG_STATS": ("desc", "Сбор статистики Instagram через Graph API"),
+    "SCHEDULER": ("desc", "Планировщики: опросы обратной связи, напоминания"),
+    "REFERRAL": (
+        "desc",
+        "Реферальная система — начисление и выплата вознаграждений",
+    ),
+    "ADMIN_PANEL": ("desc", "Панель администратора (SQLAdmin)"),
+}
 
 
 # -- Mermaid builder helpers --
@@ -376,7 +644,7 @@ def _emit_feedback(lines: list[str]) -> None:
     lines.append('    FEEDBACK_START["Feedback Request"]:::action')
     lines.append('    FB_REASON{"Feedback Reason"}:::action')
     lines.append('    FB_ISSUE["Describe Issue"]:::regStep')
-    lines.append('    FB_NPS["NPS Score 1-10"]:::regStep')
+    lines.append('    FB_NPS["NPS Score 1-5"]:::regStep')
     lines.append('    FB_NPS_COMMENT["NPS Comment"]:::regStep')
     lines.append('    FB_COMPLETE["Feedback Saved"]:::service')
     lines.append("")
@@ -507,6 +775,11 @@ def build_mermaid(
     _emit_shared(lines)
     _emit_infra(lines)
 
+    lines.append("    %% CLICK HANDLERS")
+    for node_id in _NODE_MESSAGES:
+        lines.append(f"    click {node_id} showNodeInfo")
+    lines.append("")
+
     return "\n".join(lines)
 
 
@@ -551,6 +824,37 @@ header h1 { font-size: 1.5rem }
   padding:30px;
 }
 #ts { font-size:.75rem; color:#666; padding:8px 30px }
+#drawer-overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(0,0,0,0.3); z-index:100;
+}
+#drawer-overlay.open { display:block }
+#drawer {
+  position:fixed; bottom:0; left:0; right:0;
+  background:#fff; border-radius:16px 16px 0 0;
+  padding:20px 24px 32px;
+  box-shadow:0 -4px 24px rgba(0,0,0,0.15);
+  z-index:101; transform:translateY(100%);
+  transition:transform 0.25s ease;
+  max-height:45vh; overflow-y:auto;
+}
+#drawer.open { transform:translateY(0) }
+#drawer-handle {
+  width:40px; height:4px; background:#dee2e6;
+  border-radius:2px; margin:0 auto 16px; cursor:pointer;
+}
+#drawer-key {
+  font-size:.75rem; color:#868e96;
+  font-family:monospace; margin-bottom:4px;
+}
+#drawer-title {
+  font-size:1rem; font-weight:700;
+  color:#212529; margin-bottom:8px;
+}
+#drawer-text {
+  font-size:.9rem; color:#495057;
+  line-height:1.6; white-space:pre-wrap;
+}
 </style>
 </head>
 <body>
@@ -579,6 +883,7 @@ MERMAID_PLACEHOLDER
 </pre>
 </div>
 <div id="ts"></div>
+<script>const NODE_DATA = NODE_DATA_PLACEHOLDER;</script>
 <script src=\
 "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"\
 ></script>
@@ -592,14 +897,47 @@ mermaid.initialize({{
 document.getElementById('ts').textContent =
   'Generated: ' + new Date().toLocaleString();
 </script>
+<script>
+function showNodeInfo(nodeId) {
+  var node = NODE_DATA[nodeId];
+  if (!node) return;
+  document.getElementById('drawer-key').textContent = node.key || '';
+  document.getElementById('drawer-title').textContent = node.title;
+  document.getElementById('drawer-text').textContent = node.text;
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-overlay').classList.add('open');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-overlay').classList.remove('open');
+}
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeDrawer();
+});
+</script>
+<div id="drawer-overlay" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div id="drawer-handle" onclick="closeDrawer()"></div>
+  <div id="drawer-key"></div>
+  <div id="drawer-title"></div>
+  <div id="drawer-text"></div>
+</div>
 </body>
 </html>
 """
 
 
-def build_html(mermaid_code: str) -> str:
+def build_html(
+    mermaid_code: str,
+    node_data: dict[str, dict[str, str | None]],
+) -> str:
     """Build self-contained HTML viewer."""
-    return _HTML_TEMPLATE.replace("MERMAID_PLACEHOLDER", mermaid_code)
+    json_data = json.dumps(node_data, ensure_ascii=False)
+    return (
+        _HTML_TEMPLATE.replace("MERMAID_PLACEHOLDER", mermaid_code).replace(
+            "NODE_DATA_PLACEHOLDER", json_data
+        )
+    )
 
 
 def build_stats_md(
@@ -649,6 +987,11 @@ def main() -> None:
     services = extract_service_names(SERVICES_DIR)
     enums = extract_enums(DOMAIN_DIR)
     handler_counts = count_handlers(HANDLERS_DIR)
+    ru_path = (
+        ROOT / "src" / "ugc_bot" / "bot" / "texts" / "defaults" / "ru.py"
+    )
+    ru_texts = extract_ru_texts(ru_path)
+    node_data = build_node_data(ru_texts)
 
     mermaid = build_mermaid(states)
     stats = build_stats_md(
@@ -678,7 +1021,7 @@ def main() -> None:
     md_path.write_text(md_content)
 
     html_path = DOCS_DIR / "product_flowchart.html"
-    html_path.write_text(build_html(mermaid))
+    html_path.write_text(build_html(mermaid, node_data))
 
     total = sum(len(v) for v in states.values())
     print(f"Generated: {md_path}")  # noqa: T201
