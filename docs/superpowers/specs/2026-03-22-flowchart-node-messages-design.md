@@ -40,7 +40,7 @@ _NODE_MESSAGES: dict[str, tuple[str, str]] = {
     "BR_barter":          ("key",  "msg_step_ask_barter"),
     "BR_work_format":     ("key",  "msg_step_ask_work_format"),
     "BR_agreements":      ("key",  "msg_agreements_intro_creator"),
-    "VERIFY_IG":          ("key",  "msg_instagram_verify_instruction"),
+    "VERIFY_IG":          ("desc", "Подтверждение Instagram: отправьте код в DM аккаунту UMC в Instagram"),
     # Advertiser registration
     "ADV_BRANCH":         ("key",  "msg_advertiser_intro"),
     "AR_name":            ("key",  "msg_whats_your_name"),
@@ -78,11 +78,11 @@ _NODE_MESSAGES: dict[str, tuple[str, str]] = {
     "DESIRED_PRICE":      ("key",  "msg_enter_desired_price"),
     # Feedback
     "INTERACTION":        ("desc", "Период взаимодействия креатора и рекламодателя"),
-    "FEEDBACK_START":     ("key",  "msg_feedback_request_adv"),
+    "FEEDBACK_START":     ("desc", "Запрос обратной связи: удалось ли связаться с контрагентом?"),
     "FB_REASON":          ("desc", "Выбор типа обратной связи"),
     "FB_ISSUE":           ("key",  "msg_fb_issue_prompt"),
     "FB_NPS":             ("key",  "msg_fb_nps_question"),
-    "FB_NPS_COMMENT":     ("key",  "msg_fb_nps_prompt_5_adv"),
+    "FB_NPS_COMMENT":     ("desc", "Комментарий к NPS-оценке: развёрнутый отзыв об опыте работы с платформой"),
     "FB_COMPLETE":        ("key",  "msg_fb_thanks_saved"),
     # Complaints
     "COMPLAINT_START":    ("desc", "Начало процесса подачи жалобы"),
@@ -94,9 +94,14 @@ _NODE_MESSAGES: dict[str, tuple[str, str]] = {
     "MY_ORDERS":          ("key",  "msg_orders_title"),
     "EDIT_PROFILE":       ("key",  "msg_choose_section_edit"),
     "EDIT_TYPE":          ("key",  "msg_choose_profile_edit"),
-    "EDIT_FIELD":         ("key",  "msg_choose_section_edit"),
+    "EDIT_FIELD":         ("desc", "Выбор конкретного поля для редактирования внутри раздела"),
     "EDIT_VALUE":         ("key",  "prompt_edit_generic"),
     "SUPPORT":            ("key",  "support_response"),
+    # Entry decision nodes
+    "ROLE_SELECT":        ("desc", "Выбор роли: Я креатор / Мне нужны UGC-креаторы"),
+    # Creator/Advertiser menus
+    "CREATOR_MENU":       ("desc", "Главное меню креатора: профиль, заказы, верификация Instagram, поддержка"),
+    "ADV_MENU":           ("desc", "Главное меню рекламодателя: создание заказа, профиль, мои заказы, поддержка"),
     # Infrastructure
     "MINIAPP":            ("desc", "Mini App — веб-интерфейс бота в Telegram"),
     "MINIAPP_AUTH":       ("desc", "Авторизация через Telegram initData"),
@@ -112,7 +117,9 @@ _NODE_MESSAGES: dict[str, tuple[str, str]] = {
 
 ### `extract_ru_texts(ru_path: Path) -> dict[str, str]`
 
-Parses `ru.py` using `ast`, walks the `RU` dict literal, returns `{key: value}`. Uses the same `ast`-based approach as other extraction functions in the script. Handles multi-line string concatenation via `ast.literal_eval` on the value node.
+Parses `ru.py` using `ast`, walks the `RU` dict literal, returns `{key: value}`. Uses the same `ast`-based approach as other extraction functions in the script.
+
+Implementation: find the `RU = {...}` assignment, iterate its `keys` and `values`. For each value node, read `.value` directly — Python's parser folds adjacent string literals (including parenthesized multi-line concatenation) into a single `ast.Constant` at parse time, so every value in `RU` is already an `ast.Constant` with a `str` value. No `ast.literal_eval` or `ast.unparse` needed. Only keys with `str` values are included (all values in `RU` qualify).
 
 ### `build_node_data(...) -> dict[str, dict]`
 
@@ -143,13 +150,27 @@ One `click <NODE_ID> showNodeInfo` line per entry in `_NODE_MESSAGES`. Requires 
 
 ### Embedded data
 
-In `build_html()`, `NODE_DATA` is injected as a JSON constant before the closing `</script>`:
+`_HTML_TEMPLATE` gains a second placeholder `NODE_DATA_PLACEHOLDER`. In `build_html(mermaid_code, node_data)`, two replacements are performed:
+
+```python
+def build_html(mermaid_code: str, node_data: dict) -> str:
+    json_data = json.dumps(node_data, ensure_ascii=False)
+    return (
+        _HTML_TEMPLATE
+        .replace("MERMAID_PLACEHOLDER", mermaid_code)
+        .replace("NODE_DATA_PLACEHOLDER", json_data)
+    )
+```
+
+In `_HTML_TEMPLATE`, the placeholder lives in a dedicated `<script>` block placed **before** the existing Mermaid `<script src=...>` tag:
 
 ```html
 <script>
-const NODE_DATA = { /* json.dumps(node_data, ensure_ascii=False) */ };
+const NODE_DATA = NODE_DATA_PLACEHOLDER;
 </script>
 ```
+
+This avoids any risk of colliding with the `mermaid.initialize` block or its `{{`/`}}` escaping.
 
 ### Drawer HTML
 
@@ -236,9 +257,9 @@ document.addEventListener('keydown', e => {
 
 ## Implementation Notes
 
-- `extract_ru_texts` uses `ast.literal_eval` on the `RU` dict value node — handles string concatenation in parentheses correctly.
-- `msg_step_ask_price` and `msg_order_budget` contain `{currency}` placeholder — shown as-is in the drawer (context is clear).
-- `msg_orders_title` contains `{page}/{total_pages}` placeholder — shown as-is.
+- `extract_ru_texts` reads `ast.Constant.value` directly — no `ast.literal_eval` needed; Python folds adjacent string literals at parse time.
+- Several keys contain unresolved placeholders — all shown as-is (context is clear in the drawer): `{currency}` in `msg_step_ask_price`, `msg_order_budget`; `{page}/{total_pages}` in `msg_orders_title`.
+- `VERIFY_IG`, `FEEDBACK_START`, `FB_NPS_COMMENT` use `"desc"` entries because their `ru.py` keys contain user-specific placeholders (`{url}`, `{creator_link}`) or are role/score-specific, making a single key misleading.
 - Node labels for `title` field: reuse `_ALL_LABELS` where available, otherwise use the human-readable label already defined inline in `_emit_*` functions. For simplicity, `title` for "key" nodes is derived from the node's Mermaid label string (already in the emit functions).
 - No new files created — all changes go into `generate_product_flowchart.py`.
 
