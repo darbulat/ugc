@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 # Inline callback_data (Telegram limit 64 bytes)
 CALLBACK_SURVEY_MESSENGER_TG = "survey:msg:tg"
 CALLBACK_SURVEY_MESSENGER_MAX = "survey:msg:max"
+CALLBACK_SURVEY_MESSENGER_OWN_APP = "survey:msg:own_app"
 CALLBACK_SURVEY_MESSENGER_OTHER = "survey:msg:other"
 CALLBACK_ROLE_CREATOR = "role:creator"
 CALLBACK_ROLE_ADVERTISER = "role:advertiser"

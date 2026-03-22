@@ -21,6 +21,7 @@ from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_SURVEY_MESSENGER_MAX,
     CALLBACK_SURVEY_MESSENGER_OTHER,
+    CALLBACK_SURVEY_MESSENGER_OWN_APP,
     CALLBACK_SURVEY_MESSENGER_TG,
 )
 from ugc_bot.config import load_config
@@ -62,6 +63,12 @@ def _survey_keyboard() -> Keyboard:
                 Button(
                     text="переходим в MAX",
                     callback_data=CALLBACK_SURVEY_MESSENGER_MAX,
+                )
+            ],
+            [
+                Button(
+                    text="своё приложение",
+                    callback_data=CALLBACK_SURVEY_MESSENGER_OWN_APP,
                 )
             ],
             [

@@ -17,6 +17,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_SURVEY_MESSENGER_MAX,
     CALLBACK_SURVEY_MESSENGER_OTHER,
+    CALLBACK_SURVEY_MESSENGER_OWN_APP,
     CALLBACK_SURVEY_MESSENGER_TG,
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
@@ -74,6 +75,25 @@ async def on_survey_telegram(
         await callback.answer()
         return
     await nps_service.save(user.user_id, score=0, comment="telegram")
+    await _remove_inline_keyboard(callback)
+    await callback.answer(_THANK_YOU)
+
+
+@router.callback_query(F.data == CALLBACK_SURVEY_MESSENGER_OWN_APP)
+async def on_survey_own_app(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    nps_service: NpsService,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    user = await _get_user(
+        callback, user_role_service, messenger_client, event_adapter
+    )
+    if user is None:
+        await callback.answer()
+        return
+    await nps_service.save(user.user_id, score=0, comment="own_app")
     await _remove_inline_keyboard(callback)
     await callback.answer(_THANK_YOU)
 

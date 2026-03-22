@@ -16,6 +16,7 @@ from ugc_bot.bot.handlers.survey_messenger import (
     on_survey_max,
     on_survey_other,
     on_survey_other_text,
+    on_survey_own_app,
     on_survey_telegram,
 )
 from ugc_bot.domain.enums import MessengerType
@@ -284,3 +285,57 @@ async def test_get_user_returns_none_for_empty_external_id(
     )
 
     assert len(nps_repo.scores) == 0
+
+
+@pytest.mark.asyncio
+async def test_survey_own_app_saves_nps_and_answers(event_adapter) -> None:
+    """Pressing 'своё приложение' saves NPS(score=0, comment='own_app')."""
+    user_service, nps_repo, nps_service = await _make_user("10")
+    client = FakeMessengerClient()
+    message = FakeMessage(user=FakeUser(10, "t", "T"))
+    callback = FakeCallback(
+        data="survey:msg:own_app", user=FakeUser(10, "t", "T"), message=message
+    )
+
+    await on_survey_own_app(
+        callback,
+        user_role_service=user_service,
+        nps_service=nps_service,
+        messenger_client=client,
+        event_adapter=event_adapter,
+    )
+
+    user = await user_service.get_user("10", MessengerType.TELEGRAM)
+    assert user is not None
+    saved = nps_repo.scores.get(user.user_id)
+    assert saved == [(0, "own_app")]
+    assert len(message.edit_reply_markup_calls) == 1
+    assert len(callback.answers) == 1
+
+
+@pytest.mark.asyncio
+async def test_survey_own_app_user_not_found_still_answers(
+    event_adapter,
+) -> None:
+    user_repo = InMemoryUserRepository()
+    user_service = UserRoleService(user_repo=user_repo)
+    nps_repo = InMemoryNpsRepository()
+    nps_service = NpsService(nps_repo=nps_repo)
+    client = FakeMessengerClient()
+    message = FakeMessage(user=FakeUser(99, "ghost", "Ghost"))
+    callback = FakeCallback(
+        data="survey:msg:own_app",
+        user=FakeUser(99, "ghost", "Ghost"),
+        message=message,
+    )
+
+    await on_survey_own_app(
+        callback,
+        user_role_service=user_service,
+        nps_service=nps_service,
+        messenger_client=client,
+        event_adapter=event_adapter,
+    )
+
+    assert len(nps_repo.scores) == 0
+    assert len(callback.answers) == 1
