@@ -297,9 +297,8 @@ async def _start_registration_flow_impl(
     locale = user_locale
     step_name = await bot_texts_service.get("msg_step_ask_name", locale)
     user_id = getattr(user, "user_id", None)
-    external_id = (
-        getattr(user, "telegram_id", None)
-        or getattr(user, "max_id", None)
+    external_id = getattr(user, "telegram_id", None) or getattr(
+        user, "max_id", None
     )
     await state_store.update_data(
         user_id=user_id,

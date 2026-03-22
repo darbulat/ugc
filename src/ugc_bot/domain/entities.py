@@ -78,14 +78,6 @@ class User:
     country: Optional[str] = None
     language: Optional[str] = None
 
-    def get_chat_id(self, messenger_type: "MessengerType") -> Optional[str]:
-        """Return the chat ID for the given messenger, or None."""
-        if messenger_type == MessengerType.TELEGRAM:
-            return self.telegram_id
-        if messenger_type == MessengerType.MAX:
-            return self.max_id
-        return None
-
 
 @dataclass(frozen=True)
 class BloggerProfile:

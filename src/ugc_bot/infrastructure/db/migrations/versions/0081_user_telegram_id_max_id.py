@@ -29,7 +29,7 @@ def upgrade() -> None:
 
     # 3. Drop old constraint and index
     op.drop_constraint(
-        "uq_users_external_id_messenger_type", "users", type_="unique"
+        "users_external_id_messenger_type_key", "users", type_="unique"
     )
     op.drop_index("ix_users_external_messenger_status", table_name="users")
 
