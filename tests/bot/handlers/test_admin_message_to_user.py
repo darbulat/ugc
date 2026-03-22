@@ -48,7 +48,7 @@ def _make_admin_user() -> User:
     """Create admin user entity (caller must save to repo)."""
     return User(
         user_id=uuid4(),
-        external_id="100",
+        telegram_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -62,7 +62,7 @@ def _make_target_user() -> User:
     """Create target Telegram user entity (caller must save to repo)."""
     return User(
         user_id=uuid4(),
-        external_id="200",
+        telegram_id="200",
         messenger_type=MessengerType.TELEGRAM,
         username="target",
         status=UserStatus.ACTIVE,
@@ -188,7 +188,7 @@ async def test_step_user_id_user_not_telegram_rejected(
     await user_repo.save(admin)
     other_messenger = User(
         user_id=uuid4(),
-        external_id="300",
+        telegram_id="300",
         messenger_type=MessengerType.WHATSAPP,
         username="wa_user",
         status=UserStatus.ACTIVE,
@@ -405,7 +405,7 @@ async def test_step_text_send_failure_returns_error_to_admin(
             parse_mode: str | None = None,
             disable_preview: bool | None = None,
         ) -> None:
-            if chat_id == target.external_id:
+            if chat_id == target.telegram_id:
                 raise RuntimeError("Telegram API error")
             await super().send_text(
                 chat_id=chat_id,

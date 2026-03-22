@@ -1363,7 +1363,7 @@ async def handle_profile_edit_callback(
     locale = user_locale
     user = await profile_service.get_user_by_external(
         external_id=incoming.user.external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=incoming.user.messenger_type,
     )
     if user is None:
         msg_not_found = await bot_texts_service.get(

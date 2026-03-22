@@ -61,12 +61,13 @@ class User:
     """
 
     user_id: UUID
-    external_id: str
     messenger_type: MessengerType
     username: str
     status: UserStatus
     issue_count: int
     created_at: datetime
+    telegram_id: Optional[str] = None
+    max_id: Optional[str] = None
     role_chosen_at: Optional[datetime] = None
     last_role_reminder_at: Optional[datetime] = None
     telegram: Optional[str] = None
@@ -76,6 +77,14 @@ class User:
     updated_at: Optional[datetime] = None
     country: Optional[str] = None
     language: Optional[str] = None
+
+    def get_chat_id(self, messenger_type: "MessengerType") -> Optional[str]:
+        """Return the chat ID for the given messenger, or None."""
+        if messenger_type == MessengerType.TELEGRAM:
+            return self.telegram_id
+        if messenger_type == MessengerType.MAX:
+            return self.max_id
+        return None
 
 
 @dataclass(frozen=True)

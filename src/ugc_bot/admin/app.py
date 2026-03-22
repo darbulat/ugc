@@ -1307,7 +1307,8 @@ class UserAdmin(ModelView, model=UserModel):
     name_plural = "Пользователи"
     column_list = [
         UserModel.user_id,
-        UserModel.external_id,
+        UserModel.telegram_id,
+        UserModel.max_id,
         UserModel.messenger_type,
         UserModel.username,
         UserModel.telegram,
@@ -1322,7 +1323,8 @@ class UserAdmin(ModelView, model=UserModel):
     column_default_sort = (UserModel.created_at, True)
     column_labels = {
         UserModel.user_id: "ID пользователя",
-        UserModel.external_id: "Внешний ID",
+        UserModel.telegram_id: "Telegram ID",
+        UserModel.max_id: "Max ID",
         UserModel.messenger_type: "Мессенджер",
         UserModel.username: "Имя пользователя",
         UserModel.telegram: "Telegram",
@@ -1362,7 +1364,8 @@ class UserAdmin(ModelView, model=UserModel):
                             "User blocked via admin",
                             extra={
                                 "user_id": str(user.user_id),
-                                "external_id": user.external_id,
+                                "telegram_id": user.telegram_id,
+                                "max_id": user.max_id,
                                 "username": user.username,
                                 "previous_status": old_status.value
                                 if old_status

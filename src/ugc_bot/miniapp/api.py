@@ -430,7 +430,7 @@ async def _notify_ugc_video_saved(
         )
         await send_with_retry(
             messenger_client,
-            chat_id=creator.external_id,
+            chat_id=creator.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,
@@ -446,7 +446,7 @@ async def _notify_ugc_video_saved(
             f"@{creator.telegram}"
             if creator is not None and creator.telegram
             else (
-                f"tg://user?id={creator.external_id}"
+                f"tg://user?id={creator.telegram_id}"
                 if creator is not None
                 else "—"
             )
@@ -454,7 +454,7 @@ async def _notify_ugc_video_saved(
         text = template.format(telegram=creator_handle, url=video_url)
         await send_with_retry(
             messenger_client,
-            chat_id=advertiser.external_id,
+            chat_id=advertiser.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,
@@ -540,7 +540,7 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         is_manager = await manager_service.is_manager(user_id)
     return MeResponse(
         user_id=str(user_id),
-        external_id=user.external_id,
+        external_id=user.telegram_id or user.max_id or "",
         role=role,
         has_advertiser_profile=advertiser is not None,
         has_blogger_profile=blogger is not None,
@@ -1737,7 +1737,7 @@ async def manager_remove_creator(
         messenger_client = dispatcher["messenger_client"]
         await send_with_retry(
             messenger_client,
-            chat_id=creator.external_id,
+            chat_id=creator.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,
@@ -1812,7 +1812,7 @@ async def manager_add_creator(
             f"@{manager.telegram}"
             if manager is not None and manager.telegram
             else (
-                f"tg://user?id={manager.external_id}"
+                f"tg://user?id={manager.telegram_id}"
                 if manager is not None
                 else "—"
             )
@@ -1826,7 +1826,7 @@ async def manager_add_creator(
         messenger_client = dispatcher["messenger_client"]
         await send_with_retry(
             messenger_client,
-            chat_id=creator.external_id,
+            chat_id=creator.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,

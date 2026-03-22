@@ -27,7 +27,7 @@ async def test_set_user_creates_new_user() -> None:
         username="alice",
     )
 
-    assert user.external_id == "123"
+    assert user.telegram_id == "123"
     assert await repo.get_by_id(user.user_id) is not None
 
 
@@ -38,7 +38,7 @@ async def test_set_user_updates_existing_user() -> None:
     repo = InMemoryUserRepository()
     existing = User(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
         status=UserStatus.ACTIVE,
@@ -65,7 +65,7 @@ async def test_set_user_preserves_country() -> None:
     repo = InMemoryUserRepository()
     existing = User(
         user_id=UUID("00000000-0000-0000-0000-000000000002"),
-        external_id="cnt-1",
+        telegram_id="cnt-1",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
         status=UserStatus.ACTIVE,
@@ -136,7 +136,7 @@ async def test_update_status_preserves_optional_fields() -> None:
     now = datetime.now(timezone.utc)
     user = User(
         user_id=uuid4(),
-        external_id="opt-1",
+        telegram_id="opt-1",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -181,7 +181,7 @@ async def test_set_user_with_transaction_manager(fake_tm: object) -> None:
         messenger_type=MessengerType.TELEGRAM,
         username="tm_user",
     )
-    assert user.external_id == "tm-123"
+    assert user.telegram_id == "tm-123"
     updated = await service.set_user(
         external_id="tm-123",
         messenger_type=MessengerType.TELEGRAM,
@@ -295,9 +295,9 @@ async def test_list_pending_role_reminders_returns_users_without_role_chosen(
     )
     cutoff = datetime.now(timezone.utc)
     pending = await service.list_pending_role_reminders(cutoff)
-    external_ids = {u.external_id for u in pending}
-    assert "p1" in external_ids
-    assert "p2" not in external_ids
+    telegram_ids = {u.telegram_id for u in pending}
+    assert "p1" in telegram_ids
+    assert "p2" not in telegram_ids
 
 
 @pytest.mark.asyncio
@@ -308,7 +308,7 @@ async def test_user_repo_iter_all() -> None:
     await repo.save(
         User(
             user_id=uuid4(),
-            external_id="1",
+            telegram_id="1",
             messenger_type=MessengerType.TELEGRAM,
             username="u1",
             status=UserStatus.ACTIVE,
@@ -347,7 +347,7 @@ async def test_update_last_role_reminder_at_preserves_optional_fields() -> None:
     now = datetime.now(timezone.utc)
     user = User(
         user_id=uuid4(),
-        external_id="rem-opt",
+        telegram_id="rem-opt",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -420,7 +420,7 @@ async def test_set_user_raises_when_referral_code_collision() -> None:
     mock_repo.get_by_referral_code = AsyncMock(
         return_value=User(
             user_id=uuid4(),
-            external_id="other",
+            telegram_id="other",
             messenger_type=MessengerType.TELEGRAM,
             username="other",
             status=UserStatus.ACTIVE,

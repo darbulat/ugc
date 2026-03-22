@@ -46,7 +46,7 @@ async def create_test_user(
     Args:
         user_repo: User repository
         user_id: Optional user ID (generated if not provided)
-        external_id: External user ID
+        external_id: External user ID (set to telegram_id or max_id based on type)
         messenger_type: Messenger type
         username: Username
         status: User status
@@ -59,14 +59,23 @@ async def create_test_user(
     if user_id is None:
         user_id = uuid4()
 
+    telegram_id = kwargs.pop("telegram_id", None)
+    max_id = kwargs.pop("max_id", None)
+    if telegram_id is None and max_id is None:
+        if messenger_type == MessengerType.TELEGRAM:
+            telegram_id = external_id
+        elif messenger_type == MessengerType.MAX:
+            max_id = external_id
+
     user = User(
         user_id=user_id,
-        external_id=external_id,
         messenger_type=messenger_type,
         username=username,
         status=status,
         issue_count=issue_count,
         created_at=kwargs.get("created_at", datetime.now(timezone.utc)),
+        telegram_id=telegram_id,
+        max_id=max_id,
         telegram=kwargs.get("telegram"),
         admin=kwargs.get("admin", False),
         referral_payout_rate=kwargs.get("referral_payout_rate"),

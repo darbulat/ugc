@@ -197,10 +197,10 @@ async def _notify_user_verification_success(
             )
             return
 
-        if not user.external_id.isdigit():
+        if not user.telegram_id:
             logger.warning(
-                "User external_id is not a Telegram chat id",
-                extra={"user_id": user_id, "external_id": user.external_id},
+                "User has no telegram_id for notification",
+                extra={"user_id": user_id},
             )
             return
 
@@ -226,7 +226,7 @@ async def _notify_user_verification_success(
                 "Бренды могут отправлять предложения.",
             )
             await messenger_client.send_text(
-                chat_id=user.external_id,
+                chat_id=user.telegram_id,
                 text=msg_confirmed,
                 keyboard=blogger_menu_inline_keyboard(
                     texts, confirmed=confirmed, verification_started=False
@@ -270,10 +270,10 @@ async def _notify_user_verification_mismatch(
             )
             return
 
-        if not user.external_id.isdigit():
+        if not user.telegram_id:
             logger.warning(
-                "User external_id is not a Telegram chat id",
-                extra={"user_id": user_id, "external_id": user.external_id},
+                "User has no telegram_id for notification",
+                extra={"user_id": user_id},
             )
             return
 
@@ -299,7 +299,7 @@ async def _notify_user_verification_mismatch(
                 "msg_instagram_mismatch", default_mismatch
             )
             await messenger_client.send_text(
-                chat_id=user.external_id,
+                chat_id=user.telegram_id,
                 text=msg_mismatch,
                 keyboard=blogger_profile_view_inline_keyboard(
                     texts, confirmed=False

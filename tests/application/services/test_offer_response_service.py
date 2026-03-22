@@ -533,7 +533,7 @@ async def test_respond_and_finalize_closed_triggers_advertiser_referral(
 
     advertiser = User(
         user_id=advertiser_id,
-        external_id="adv_ext_3",
+        telegram_id="adv_ext_3",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser3",
         status=UserStatus.ACTIVE,

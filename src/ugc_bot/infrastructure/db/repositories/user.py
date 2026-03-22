@@ -59,14 +59,17 @@ class SqlAlchemyUserRepository(UserRepository):
         session: object | None = None,
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
+        if messenger_type == MessengerType.TELEGRAM:
+            col = UserModel.telegram_id
+        elif messenger_type == MessengerType.MAX:
+            col = UserModel.max_id
+        else:
+            return None
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
             exec_result = await db_session.execute(
-                select(UserModel).where(
-                    UserModel.external_id == external_id,
-                    UserModel.messenger_type == messenger_type.value,
-                )
+                select(UserModel).where(col == external_id)
             )
             result = exec_result.scalar_one_or_none()
             return _to_user_entity(result) if result else None
@@ -139,10 +142,10 @@ class SqlAlchemyUserRepository(UserRepository):
             self.session_factory, session
         ) as db_session:
             query = select(UserModel).where(UserModel.admin.is_(True))
-            if messenger_type is not None:
-                query = query.where(
-                    UserModel.messenger_type == messenger_type.value
-                )
+            if messenger_type == MessengerType.TELEGRAM:
+                query = query.where(UserModel.telegram_id.isnot(None))
+            elif messenger_type == MessengerType.MAX:
+                query = query.where(UserModel.max_id.isnot(None))
             exec_result = await db_session.execute(query)
             results = exec_result.scalars().all()
             return [_to_user_entity(row) for row in results]
@@ -152,12 +155,13 @@ def _to_user_entity(model: UserModel) -> User:
     """Map user ORM model to domain entity."""
     return User(
         user_id=model.user_id,
-        external_id=model.external_id,
         messenger_type=model.messenger_type,
         username=model.username,
         status=model.status,
         issue_count=model.issue_count,
         created_at=model.created_at,
+        telegram_id=model.telegram_id,
+        max_id=model.max_id,
         role_chosen_at=model.role_chosen_at,
         last_role_reminder_at=model.last_role_reminder_at,
         telegram=model.telegram,
@@ -176,7 +180,8 @@ def _to_user_model(user: User) -> UserModel:
 
     return UserModel(
         user_id=user.user_id,
-        external_id=user.external_id,
+        telegram_id=user.telegram_id,
+        max_id=user.max_id,
         messenger_type=user.messenger_type,
         username=user.username,
         status=user.status,

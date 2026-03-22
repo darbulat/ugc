@@ -160,7 +160,7 @@ async def step_user_id(
             text=USER_NOT_FOUND,
         )
         return
-    if target.messenger_type != MessengerType.TELEGRAM:
+    if not target.telegram_id:
         await messenger_client.send_text(
             chat_id=chat_id,
             text=USER_NOT_TELEGRAM,
@@ -226,7 +226,7 @@ async def step_text(
         return
     try:
         await messenger_client.send_text(
-            chat_id=target.external_id,
+            chat_id=target.telegram_id,
             text=text_to_send,
         )
         logger.info(

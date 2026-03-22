@@ -127,11 +127,11 @@ async def test_cancel_interaction_noop_when_not_found() -> None:
 
 
 def _make_test_user(
-    user_id: UUID, external_id: str = "11111", **kwargs
+    user_id: UUID, telegram_id: str = "11111", **kwargs
 ) -> User:
     return User(
         user_id=user_id,
-        external_id=external_id,
+        telegram_id=telegram_id,
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -375,9 +375,9 @@ class TestManagerAddCreatorEndpoint:
     def test_add_notifies_creator_with_manager_telegram(self) -> None:
         """Notification sent when creator found; manager_telegram included."""
         creator = _make_test_user(
-            self._BLOGGER_ID, external_id="999", language="ru"
+            self._BLOGGER_ID, telegram_id="999", language="ru"
         )
-        manager = _make_test_user(MGR_ID, external_id="888", telegram="mgr_tg")
+        manager = _make_test_user(MGR_ID, telegram_id="888", telegram="mgr_tg")
         dispatch = _make_dispatch(
             self._ORDER_ID,
             self._BLOGGER_ID,
@@ -426,7 +426,7 @@ class TestManagerRemoveNotification:
     def test_remove_notifies_creator_when_found(self) -> None:
         """Notification is sent when creator User is found."""
         creator = _make_test_user(
-            self._BLOGGER_ID, external_id="777", language="ru"
+            self._BLOGGER_ID, telegram_id="777", language="ru"
         )
         dispatch = _make_dispatch(
             self._ORDER_ID, self._BLOGGER_ID, in_offer=True

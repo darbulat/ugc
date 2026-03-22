@@ -78,12 +78,21 @@ class UserRoleService:
             referral_code = await self._generate_unique_referral_code(session)
             new_user = User(
                 user_id=uuid4(),
-                external_id=external_id,
                 messenger_type=messenger_type,
                 username=username,
                 status=status,
                 issue_count=0,
                 created_at=now,
+                telegram_id=(
+                    external_id
+                    if messenger_type == MessengerType.TELEGRAM
+                    else None
+                ),
+                max_id=(
+                    external_id
+                    if messenger_type == MessengerType.MAX
+                    else None
+                ),
                 role_chosen_at=role_chosen_at,
                 last_role_reminder_at=None,
                 telegram=telegram_username,
@@ -179,7 +188,8 @@ class UserRoleService:
                 "User blocked",
                 extra={
                     "user_id": str(user.user_id),
-                    "external_id": user.external_id,
+                    "telegram_id": user.telegram_id,
+                    "max_id": user.max_id,
                     "username": user.username,
                     "previous_status": user.status.value,
                     "event_type": "user.blocked",
@@ -210,12 +220,21 @@ class UserRoleService:
             referral_code = await self._generate_unique_referral_code(session)
             new_user = User(
                 user_id=uuid4(),
-                external_id=external_id,
                 messenger_type=messenger_type,
                 username=username,
                 status=status,
                 issue_count=0,
                 created_at=datetime.now(timezone.utc),
+                telegram_id=(
+                    external_id
+                    if messenger_type == MessengerType.TELEGRAM
+                    else None
+                ),
+                max_id=(
+                    external_id
+                    if messenger_type == MessengerType.MAX
+                    else None
+                ),
                 role_chosen_at=None,
                 last_role_reminder_at=None,
                 telegram=None,
