@@ -98,7 +98,9 @@ async def run_once(
             )
             targets: list[tuple[str, MessengerClient]] = []
             if user.telegram_id and "telegram" in messenger_clients:
-                targets.append((user.telegram_id, messenger_clients["telegram"]))
+                targets.append(
+                    (user.telegram_id, messenger_clients["telegram"])
+                )
             if user.max_id and "max" in messenger_clients:
                 targets.append((user.max_id, messenger_clients["max"]))
             for chat_id, client in targets:

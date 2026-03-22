@@ -114,8 +114,8 @@ async def test_run_once_skips_non_telegram_messenger(fake_tm) -> None:
     repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        telegram_id="non_digit",
-        messenger_type=MessengerType.TELEGRAM,
+        max_id="max_only_user",
+        messenger_type=MessengerType.MAX,
         username="u",
         status=UserStatus.ACTIVE,
         issue_count=0,

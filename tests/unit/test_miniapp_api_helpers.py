@@ -329,7 +329,7 @@ class TestMeEndpointCountryResolution:
         country_repo.get_by_code = AsyncMock(return_value=ru)
 
         user = MagicMock()
-        user.external_id = "123"
+        user.telegram_id = "123"
         user.country = "ru"
         user.language = None
 

@@ -423,7 +423,7 @@ async def _notify_ugc_video_saved(
     Called only when ugc_video_url was previously None.
     Silently skips a recipient when their User record is None.
     """
-    if creator is not None:
+    if creator is not None and creator.telegram_id:
         locale = creator.language or "ru"
         text = await bot_texts_service.get(
             "msg_ugc_video_saved_creator", locale
@@ -437,7 +437,7 @@ async def _notify_ugc_video_saved(
             logger=logger,
             extra={"event": "ugc_video_saved_creator"},
         )
-    if advertiser is not None:
+    if advertiser is not None and advertiser.telegram_id:
         locale = advertiser.language or "ru"
         template = await bot_texts_service.get(
             "msg_ugc_video_saved_advertiser", locale
@@ -1728,7 +1728,7 @@ async def manager_remove_creator(
 
     user_repo = dispatcher["user_repo"]
     creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
-    if creator is not None:
+    if creator is not None and creator.telegram_id:
         locale = creator.language or "ru"
         bot_texts_service = dispatcher["bot_texts_service"]
         text = await bot_texts_service.get(
@@ -1804,7 +1804,7 @@ async def manager_add_creator(
 
     user_repo = dispatcher["user_repo"]
     creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
-    if creator is not None:
+    if creator is not None and creator.telegram_id:
         manager: UserEntity | None = None
         if dispatch.manager_id is not None:
             manager = await user_repo.get_by_id(dispatch.manager_id)

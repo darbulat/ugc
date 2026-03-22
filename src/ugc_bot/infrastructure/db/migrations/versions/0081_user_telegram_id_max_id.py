@@ -20,7 +20,8 @@ def upgrade() -> None:
 
     # 2. Migrate data: existing users are all Telegram users
     op.execute(
-        "UPDATE users SET telegram_id = external_id WHERE messenger_type = 'telegram'"
+        "UPDATE users SET telegram_id = external_id"
+        " WHERE messenger_type = 'telegram'"
     )
     op.execute(
         "UPDATE users SET max_id = external_id WHERE messenger_type = 'max'"
@@ -46,13 +47,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # 1. Re-add external_id column
-    op.add_column(
-        "users", sa.Column("external_id", sa.String(), nullable=True)
-    )
+    op.add_column("users", sa.Column("external_id", sa.String(), nullable=True))
 
     # 2. Restore data
     op.execute(
-        "UPDATE users SET external_id = telegram_id WHERE telegram_id IS NOT NULL"
+        "UPDATE users SET external_id = telegram_id"
+        " WHERE telegram_id IS NOT NULL"
     )
     op.execute(
         "UPDATE users SET external_id = max_id "

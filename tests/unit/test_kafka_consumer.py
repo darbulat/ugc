@@ -1018,8 +1018,8 @@ async def test_send_offer_to_blogger_skips_when_blogger_is_advertiser() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_offer_to_blogger_skips_when_telegram_id_not_digit() -> None:
-    """Skip sending when blogger telegram_id is not numeric."""
+async def test_send_offer_to_blogger_skips_when_no_messenger_ids() -> None:
+    """Skip sending when blogger has no messenger IDs."""
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000950"),
@@ -1032,7 +1032,6 @@ async def test_send_offer_to_blogger_skips_when_telegram_id_not_digit() -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000951"),
-        telegram_id="not_a_number",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,

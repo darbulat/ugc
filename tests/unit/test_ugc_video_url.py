@@ -73,12 +73,12 @@ def messenger_client() -> FakeMessengerClient:
 
 
 def _make_user(
-    user_id: UUID, external_id: str, username: str, **kwargs
+    user_id: UUID, telegram_id: str, username: str, **kwargs
 ) -> User:
     """Helper to build a User with required fields."""
     return User(
         user_id=user_id,
-        external_id=external_id,
+        telegram_id=telegram_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,
         status=UserStatus.ACTIVE,

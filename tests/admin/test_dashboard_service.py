@@ -382,6 +382,7 @@ async def test_get_user_card_returns_user_data(service) -> None:
     user_ns = SimpleNamespace(
         user_id=uid,
         telegram_id="ext123",
+        max_id=None,
         messenger_type=SimpleNamespace(value="telegram"),
         username="john",
         status=UserStatus.ACTIVE,
@@ -415,6 +416,7 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
     user_ns = SimpleNamespace(
         user_id=uid,
         telegram_id="ext1",
+        max_id=None,
         messenger_type=SimpleNamespace(value="telegram"),
         username="jane",
         status=UserStatus.ACTIVE,
@@ -1464,6 +1466,7 @@ async def test_search_users_returns_matches(service) -> None:
         username="john",
         telegram="@john",
         telegram_id="123",
+        max_id=None,
     )
     svc = service([_FakeResult(all_rows=[row])])
     result = await svc.search_users("john", limit=10)
@@ -1491,6 +1494,7 @@ async def test_search_users_by_uuid(service) -> None:
         username="u",
         telegram="@u",
         telegram_id="1",
+        max_id=None,
     )
     svc = service([_FakeResult(all_rows=[row])])
     result = await svc.search_users(str(uid))
@@ -1507,6 +1511,7 @@ async def test_search_users_by_digit_telegram_id(service) -> None:
         username="u",
         telegram="@u",
         telegram_id="999",
+        max_id=None,
     )
     svc = service([_FakeResult(all_rows=[row])])
     result = await svc.search_users("999")

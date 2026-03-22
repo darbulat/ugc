@@ -89,9 +89,7 @@ class UserRoleService:
                     else None
                 ),
                 max_id=(
-                    external_id
-                    if messenger_type == MessengerType.MAX
-                    else None
+                    external_id if messenger_type == MessengerType.MAX else None
                 ),
                 role_chosen_at=role_chosen_at,
                 last_role_reminder_at=None,
@@ -231,9 +229,7 @@ class UserRoleService:
                     else None
                 ),
                 max_id=(
-                    external_id
-                    if messenger_type == MessengerType.MAX
-                    else None
+                    external_id if messenger_type == MessengerType.MAX else None
                 ),
                 role_chosen_at=None,
                 last_role_reminder_at=None,

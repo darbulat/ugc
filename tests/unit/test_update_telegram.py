@@ -14,7 +14,7 @@ from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
 def _make_user(telegram: str | None = None) -> User:
     return User(
         user_id=uuid4(),
-        external_id=str(uuid4()),
+        telegram_id=str(uuid4()),
         messenger_type=MessengerType.TELEGRAM,
         username="testuser",
         status=UserStatus.ACTIVE,

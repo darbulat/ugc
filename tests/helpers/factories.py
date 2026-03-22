@@ -46,7 +46,7 @@ async def create_test_user(
     Args:
         user_repo: User repository
         user_id: Optional user ID (generated if not provided)
-        external_id: External user ID (set to telegram_id or max_id based on type)
+        external_id: External user ID (mapped to telegram_id/max_id)
         messenger_type: Messenger type
         username: Username
         status: User status

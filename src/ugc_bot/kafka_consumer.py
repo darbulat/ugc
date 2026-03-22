@@ -212,9 +212,7 @@ async def _send_offer_to_blogger(
             (blogger.telegram_id, messenger_clients["telegram"], "telegram")
         )
     if blogger.max_id and "max" in messenger_clients:
-        targets.append(
-            (blogger.max_id, messenger_clients["max"], "max")
-        )
+        targets.append((blogger.max_id, messenger_clients["max"], "max"))
 
     if not targets:
         logger.debug(

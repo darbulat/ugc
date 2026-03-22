@@ -188,7 +188,6 @@ async def test_step_user_id_user_not_telegram_rejected(
     await user_repo.save(admin)
     other_messenger = User(
         user_id=uuid4(),
-        telegram_id="300",
         messenger_type=MessengerType.WHATSAPP,
         username="wa_user",
         status=UserStatus.ACTIVE,
