@@ -29,7 +29,7 @@ def test_user_mapping_roundtrip() -> None:
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000010"),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
         status=UserStatus.ACTIVE,
@@ -40,7 +40,7 @@ def test_user_mapping_roundtrip() -> None:
     model = _to_user_model(user)
     entity = _to_user_entity(model)
 
-    assert entity.external_id == user.external_id
+    assert entity.telegram_id == user.telegram_id
     assert entity.messenger_type == user.messenger_type
     assert entity.username == user.username
 
@@ -49,7 +49,7 @@ def test_user_mapping_roundtrip_preserves_referral_payout_rate() -> None:
     """Ensure user mapping preserves referral_payout_rate."""
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000010"),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
         status=UserStatus.ACTIVE,

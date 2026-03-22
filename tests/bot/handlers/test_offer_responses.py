@@ -142,11 +142,11 @@ async def test_contact_sent_immediately(
         order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
-    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
+    bot = FakeMessage(user=FakeUser(int(advertiser.telegram_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -238,7 +238,7 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -251,7 +251,7 @@ async def test_blogger_receives_advertiser_contacts_when_accepted(
     sent_to_blogger = [
         s
         for s in messenger_client.sent_text
-        if s["chat_id"] == blogger.external_id
+        if s["chat_id"] == blogger.telegram_id
     ]
     assert len(sent_to_blogger) >= 1
     contact_msg = next(
@@ -279,7 +279,7 @@ async def test_offer_skip_handler(
 
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000749"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -462,7 +462,7 @@ async def test_offer_response_handler_blocked_user(
     profile_service = build_profile_service(user_repo, blogger_repo)
     blocked_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000710"),
-        external_id="11",
+        telegram_id="11",
         messenger_type=MessengerType.TELEGRAM,
         username="blocked",
         status=UserStatus.BLOCKED,
@@ -519,7 +519,7 @@ async def test_offer_response_handler_order_not_active(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000711"),
-        external_id="12",
+        telegram_id="12",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -616,7 +616,7 @@ async def test_offer_response_handler_order_not_found(
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000714"),
-        external_id="13",
+        telegram_id="13",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -675,7 +675,7 @@ async def test_offer_response_handler_already_responded(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000715"),
-        external_id="14",
+        telegram_id="14",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -755,7 +755,7 @@ async def test_offer_response_handler_overflow_saved_no_contact(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000719"),
-        external_id="15",
+        telegram_id="15",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -946,7 +946,7 @@ async def test_offer_response_handler_paused_user(
     profile_service = build_profile_service(user_repo, blogger_repo)
     paused_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000730"),
-        external_id="16",
+        telegram_id="16",
         messenger_type=MessengerType.TELEGRAM,
         username="paused",
         status=UserStatus.PAUSE,
@@ -998,7 +998,7 @@ async def test_offer_response_handler_no_blogger_profile(
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000731"),
-        external_id="17",
+        telegram_id="17",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1053,7 +1053,7 @@ async def test_offer_response_handler_unconfirmed_profile(
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000732"),
-        external_id="18",
+        telegram_id="18",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1183,7 +1183,7 @@ async def test_offer_response_handler_invalid_uuid(
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000733"),
-        external_id="19",
+        telegram_id="19",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1242,7 +1242,7 @@ async def test_offer_response_handler_exception(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000734"),
-        external_id="20",
+        telegram_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1367,7 +1367,7 @@ async def test_send_contact_order_not_active(
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000802"),
-        external_id="30",
+        telegram_id="30",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1397,7 +1397,7 @@ async def test_send_contact_order_not_active(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1425,7 +1425,7 @@ async def test_maybe_send_contacts_missing_user_or_profile(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000810"),
-        external_id="810",
+        telegram_id="810",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -1718,11 +1718,11 @@ async def test_send_contact_ugc_plus_placement_format(
         order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
-    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
+    bot = FakeMessage(user=FakeUser(int(advertiser.telegram_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1783,11 +1783,11 @@ async def test_send_contact_empty_instagram_url(
         order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
-    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
+    bot = FakeMessage(user=FakeUser(int(advertiser.telegram_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1851,11 +1851,11 @@ async def test_send_contact_instagram_url_without_http(
         order.order_id, blogger.user_id, accepted=True, in_offer=True
     )
 
-    bot = FakeMessage(user=FakeUser(int(advertiser.external_id)))
+    bot = FakeMessage(user=FakeUser(int(advertiser.telegram_id)))
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -1904,7 +1904,7 @@ async def test_offer_skip_shows_reason_menu(
     """Pressing skip shows 4-button rejection reason keyboard."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a01"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1959,7 +1959,7 @@ async def test_rejection_reason_non_price_records_skip(
     """Selecting WRONG_FORMAT records skip immediately with reason."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a10"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2029,7 +2029,7 @@ async def test_rejection_reason_low_price_enters_fsm(
     """Selecting LOW_PRICE enters FSM waiting_desired_price state."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a20"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2087,7 +2087,7 @@ async def test_desired_price_valid(
     """Entering a valid price records skip with price and sends confirmation."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a30"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2159,7 +2159,7 @@ async def test_desired_price_below_min(
     """Entering a price below the offer price shows error."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a40"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2228,7 +2228,7 @@ async def test_desired_price_above_max(
     """Entering a price above 10x the offer price shows error."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a50"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2297,7 +2297,7 @@ async def test_desired_price_non_numeric(
     """Entering non-numeric text shows error."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a60"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2366,7 +2366,7 @@ async def test_desired_price_equal_to_offer_rejected(
     """Price equal to offer price is rejected (must be strictly greater)."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a63"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2434,7 +2434,7 @@ async def test_desired_price_order_not_found(
     """If order not found, FSM is cleared and skip message sent."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a66"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2487,7 +2487,7 @@ async def test_cancel_price_entry(
     """Pressing cancel records skip without reason and clears FSM."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000a70"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2592,7 +2592,7 @@ async def test_offer_skip_order_id_is_none(
     """Skip returns early when order_id cannot be parsed."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b02"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2982,7 +2982,7 @@ async def test_desired_price_manager_notification(
     """Desired price notifies manager when assigned."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b50"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2991,7 +2991,7 @@ async def test_desired_price_manager_notification(
     )
     manager_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b51"),
-        external_id="9001",
+        telegram_id="9001",
         messenger_type=MessengerType.TELEGRAM,
         username="manager",
         status=UserStatus.ACTIVE,
@@ -3083,7 +3083,7 @@ async def test_cancel_price_entry_invalid_uuid(
     """Cancel handles invalid UUID in callback data."""
     blogger_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000b60"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -3181,7 +3181,7 @@ async def test_send_contact_with_telegram_handle(
     await _send_contact_immediately(
         order=order,
         blogger_id=blogger.user_id,
-        blogger_chat_id=blogger.external_id,
+        blogger_chat_id=blogger.telegram_id,
         response_count=1,
         user_role_service=user_service,
         profile_service=profile_service,
@@ -3195,7 +3195,7 @@ async def test_send_contact_with_telegram_handle(
     adv_msgs = [
         s
         for s in messenger_client.sent_text
-        if s["chat_id"] == advertiser.external_id
+        if s["chat_id"] == advertiser.telegram_id
     ]
     assert len(adv_msgs) >= 1
     # At least one message has a keyboard with a Telegram URL button
@@ -3308,3 +3308,122 @@ def test_rejection_reason_callback_data_within_telegram_limit() -> None:
             f"callback_data for {reason.name!r} is {len(data.encode())} bytes "
             f"(max 64): {data!r}"
         )
+
+
+def test_parse_offer_skip_order_id_returns_none_for_invalid_prefix() -> None:
+    """_parse_offer_skip_order_id returns None when prefix is wrong."""
+    from ugc_bot.bot.handlers.offer_responses import _parse_offer_skip_order_id
+
+    assert _parse_offer_skip_order_id("") is None
+    assert _parse_offer_skip_order_id("other:prefix") is None
+
+
+@pytest.mark.asyncio
+async def test_reply_offer_response_result_fetches_manager(
+    user_repo,
+    blogger_repo,
+    offer_dispatch_repo,
+    interaction_repo,
+    bot_texts_service,
+    messenger_client,
+) -> None:
+    """_reply_offer_response_result fetches manager when manager_id set."""
+    from ugc_bot.application.messenger.dto import IncomingUser
+    from ugc_bot.application.services.offer_response_service import (
+        OfferResponseResult,
+    )
+    from ugc_bot.bot.handlers.offer_responses import (
+        _reply_offer_response_result,
+    )
+
+    now = datetime.now(timezone.utc)
+    manager_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001200"),
+        telegram_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="manager",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    blogger_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001201"),
+        telegram_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    advertiser_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001203"),
+        telegram_id="2",
+        messenger_type=MessengerType.TELEGRAM,
+        username="advertiser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(manager_user)
+    await user_repo.save(blogger_user)
+    await user_repo.save(advertiser_user)
+
+    order_repo = InMemoryOrderRepository()
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000001202"),
+        advertiser_id=advertiser_user.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Test offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    await order_repo.save(order)
+
+    from ugc_bot.domain.entities import OfferDispatch
+
+    await offer_dispatch_repo.record_sent(order.order_id, blogger_user.user_id)
+    dispatch = OfferDispatch(
+        order_id=order.order_id,
+        blogger_id=blogger_user.user_id,
+        created_at=now,
+        accepted=True,
+        in_offer=True,
+    )
+
+    result = OfferResponseResult(
+        order=order,
+        response=dispatch,
+        response_count=1,
+        order_closed=False,
+        completed_at=None,
+        accepted=True,
+        manager_id=manager_user.user_id,
+    )
+    incoming = IncomingCallback(
+        callback_id="cb1",
+        chat_id="1",
+        user=IncomingUser(
+            external_id="1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="blogger",
+        ),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+    await _reply_offer_response_result(
+        incoming=incoming,
+        result=result,
+        blogger_id=blogger_user.user_id,
+        messenger_client=messenger_client,
+        user_role_service=user_role_service,
+        profile_service=profile_service,
+        interaction_service=interaction_service,
+        bot_texts_service=bot_texts_service,
+        locale="ru",
+    )

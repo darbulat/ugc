@@ -444,7 +444,7 @@ async def _notify_manager_low_price(
     """Notify manager about low-price rejection."""
     assert result.manager_id is not None
     manager = await user_role_service.get_user_by_id(result.manager_id)
-    if manager and manager.external_id.isdigit():
+    if manager and manager.telegram_id:
         mgr_locale = manager.language or "ru"
         mgr_msg_tpl = await bot_texts_service.get(
             "msg_manager_low_price_notification", mgr_locale
@@ -461,7 +461,7 @@ async def _notify_manager_low_price(
         )
         await send_with_retry(
             messenger_client,
-            chat_id=manager.external_id,
+            chat_id=manager.telegram_id,
             text=mgr_msg,
             retries=_send_retries,
             delay_seconds=_send_retry_delay_seconds,
@@ -639,7 +639,7 @@ async def handle_offer_response(
         )
         return
 
-    if not await offer_response_rate_limiter.allow_async(user.external_id):
+    if not await offer_response_rate_limiter.allow_async(str(user.user_id)):
         msg_too_many = await bot_texts_service.get(
             "msg_too_many_requests", locale
         )
@@ -827,13 +827,13 @@ async def _send_contact_immediately(
         has_telegram=bool(user.telegram and user.telegram.strip()),
         telegram_handle=user.telegram or "",
         texts=t_adv,
-        creator_external_id=user.external_id,
+        creator_external_id=user.telegram_id,
     )
 
-    if advertiser and advertiser.external_id.isdigit():
+    if advertiser and advertiser.telegram_id:
         await send_with_retry(
             messenger_client,
-            chat_id=advertiser.external_id,
+            chat_id=advertiser.telegram_id,
             text=contact_text,
             keyboard=open_profile_kb,
             retries=_send_retries,
@@ -846,7 +846,7 @@ async def _send_contact_immediately(
             if warning:
                 await send_with_retry(
                     messenger_client,
-                    chat_id=advertiser.external_id,
+                    chat_id=advertiser.telegram_id,
                     text=warning,
                     parse_mode="Markdown",
                     retries=_send_retries,
@@ -855,7 +855,7 @@ async def _send_contact_immediately(
                     extra={"order_id": str(order.order_id)},
                 )
 
-    if manager and manager.external_id.isdigit():
+    if manager and manager.telegram_id:
         mgr_locale = manager.language or "ru"
         mgr_texts = await bot_texts_service.get_many(
             list(_SEND_CONTACT_TEXTS_KEYS), mgr_locale
@@ -874,12 +874,12 @@ async def _send_contact_immediately(
             has_telegram=bool(user.telegram and user.telegram.strip()),
             telegram_handle=user.telegram or "",
             texts=t_mgr,
-            creator_external_id=user.external_id,
+            creator_external_id=user.telegram_id,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
         await send_with_retry(
             messenger_client,
-            chat_id=manager.external_id,
+            chat_id=manager.telegram_id,
             text=mgr_contact_text,
             keyboard=mgr_kb,
             retries=_send_retries,
@@ -896,7 +896,7 @@ async def _send_contact_immediately(
             advertiser_telegram=manager.telegram,
             advertiser_phone=None,
             texts=texts,
-            advertiser_external_id=manager.external_id,
+            advertiser_external_id=manager.telegram_id,
         )
     else:
         advertiser_profile = await profile_service.get_advertiser_profile(
@@ -908,7 +908,7 @@ async def _send_contact_immediately(
             if advertiser_profile
             else None,
             texts=texts,
-            advertiser_external_id=advertiser.external_id
+            advertiser_external_id=advertiser.telegram_id
             if advertiser
             else None,
         )

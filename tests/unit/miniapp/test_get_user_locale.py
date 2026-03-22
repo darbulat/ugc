@@ -33,7 +33,7 @@ def _make_user(language: str | None = "ru") -> User:
     """Create a minimal User entity."""
     return User(
         user_id=uuid4(),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="testuser",
         status=UserStatus.ACTIVE,

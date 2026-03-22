@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -81,7 +81,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000960"),
-        external_id="10",
+        telegram_id="10",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -90,7 +90,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000961"),
-        external_id="11",
+        telegram_id="11",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -151,7 +151,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -180,7 +180,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000965"),
-        external_id="12",
+        telegram_id="12",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -189,7 +189,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000966"),
-        external_id="13",
+        telegram_id="13",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -248,7 +248,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -281,7 +281,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000969"),
-        external_id="14",
+        telegram_id="14",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -290,7 +290,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
     )
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-00000000096a"),
-        external_id="15",
+        telegram_id="15",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -344,7 +344,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -391,7 +391,7 @@ async def test_run_once_skips_active_orders() -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -418,7 +418,7 @@ async def test_run_once_skips_orders_without_responses() -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -444,7 +444,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000980"),
-        external_id="20",
+        telegram_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -453,7 +453,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000981"),
-        external_id="21",
+        telegram_id="21",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -500,7 +500,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -527,7 +527,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000990"),
-        external_id="30",
+        telegram_id="30",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -536,7 +536,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000991"),
-        external_id="31",
+        telegram_id="31",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -591,7 +591,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -620,7 +620,7 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000985"),
-        external_id="985",
+        telegram_id="985",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -674,7 +674,7 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -702,7 +702,7 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000989"),
-        external_id="989",
+        telegram_id="989",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -753,7 +753,7 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -783,7 +783,7 @@ async def test_run_loop_closes_session() -> None:
 
     feedback_config = FeedbackConfig()
     await run_loop(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -817,7 +817,7 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
     order_repo = InMemoryOrderRepository()
     feedback_config = FeedbackConfig()
     await run_loop(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -951,7 +951,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000990"),
-        external_id="30",
+        telegram_id="30",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -960,7 +960,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000991"),
-        external_id="31",
+        telegram_id="31",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1036,7 +1036,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1124,7 +1124,7 @@ async def test_run_once_skips_when_both_users_not_found(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1158,7 +1158,7 @@ async def test_run_loop_uses_close_method_when_available() -> None:
 
     feedback_config = FeedbackConfig()
     await run_loop(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1187,7 +1187,7 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-0000000099b0"),
-        external_id="9910",
+        telegram_id="9910",
         messenger_type=MessengerType.TELEGRAM,
         username="adv_en",
         status=UserStatus.ACTIVE,
@@ -1197,7 +1197,7 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-0000000099b1"),
-        external_id="9911",
+        telegram_id="9911",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_en",
         status=UserStatus.ACTIVE,
@@ -1270,7 +1270,7 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1287,3 +1287,70 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
     assert "en" in locales_used, (
         f"Expected 'en' locale calls, got: {locales_used}"
     )
+
+
+def test_user_messenger_targets_includes_max_id() -> None:
+    """_user_messenger_targets includes max_id entry when max client present."""
+    from ugc_bot.feedback_scheduler import _user_messenger_targets
+
+    user = User(
+        user_id=uuid4(),
+        max_id="max-99",
+        messenger_type=MessengerType.MAX,
+        username="maxu",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_client = Mock()
+    targets = _user_messenger_targets(user, {"max": mock_client})
+    assert len(targets) == 1
+    assert targets[0][0] == "max-99"
+    assert targets[0][1] is mock_client
+
+
+@pytest.mark.asyncio
+async def test_send_advertiser_feedback_returns_false_when_no_targets() -> None:
+    """_send_advertiser_feedback returns False when no messenger targets."""
+    from ugc_bot.feedback_scheduler import _send_advertiser_feedback
+
+    # User with no telegram_id and no max_id → no targets
+    advertiser = User(
+        user_id=uuid4(),
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    result = await _send_advertiser_feedback(
+        messenger_clients={},
+        interaction=Mock(),
+        advertiser=advertiser,
+        blogger_profile=None,
+        texts={},
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_send_blogger_feedback_returns_false_when_no_targets() -> None:
+    """_send_blogger_feedback returns False when blogger has no messenger."""
+    from ugc_bot.feedback_scheduler import _send_blogger_feedback
+
+    blogger = User(
+        user_id=uuid4(),
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    result = await _send_blogger_feedback(
+        messenger_clients={},
+        interaction=Mock(),
+        blogger=blogger,
+        order=None,
+        texts={},
+    )
+    assert result is False

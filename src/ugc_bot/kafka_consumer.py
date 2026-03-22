@@ -105,87 +105,42 @@ def _parse_order_id(data: dict[str, Any]) -> UUID | None:
         return None
 
 
-async def _send_offer_to_blogger(
-    blogger: User,
-    order: Order,
-    advertisers_status: str,
+async def _send_offer_via_client(
+    chat_id: str,
     messenger_client: MessengerClient,
-    offer_dispatch_service: OfferDispatchService,
+    offer_text: str,
+    reply_markup: Keyboard,
+    order: Order,
+    blogger: User,
     retries: int,
     retry_delay_seconds: float,
+    offer_dispatch_service: OfferDispatchService,
     dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
-    locale: str = "ru",
-    bot_texts_service: BotTextsService | None = None,
+    messenger_label: str,
 ) -> None:
-    """Send offer to one blogger with retries."""
-    if blogger.user_id == order.advertiser_id:
-        logger.debug(
-            "Skipping blogger: is advertiser",
-            extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
-        )
-        return
-    if not blogger.external_id.isdigit():
-        logger.debug(
-            "Skipping blogger: invalid external_id",
-            extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
-        )
-        return
-
+    """Send offer to one chat_id via one messenger client with retries."""
     for attempt in range(1, retries + 1):
         try:
-            offer_text = await offer_dispatch_service.format_offer(
-                order,
-                advertisers_status,
-                locale=locale,
-                bot_texts_service=bot_texts_service,
-            )
-            btn_accept = "Готов снять UGC"
-            btn_skip = "Пропустить"
-            if bot_texts_service is not None:
-                txts = await bot_texts_service.get_many(
-                    ["btn_offer_accept", "btn_offer_skip"], locale
-                )
-                btn_accept = txts.get("btn_offer_accept") or btn_accept
-                btn_skip = txts.get("btn_offer_skip") or btn_skip
-            reply_markup = Keyboard(
-                kind=KeyboardKind.INLINE,
-                rows=[
-                    [
-                        Button(
-                            text=btn_accept,
-                            callback_data=f"offer:{order.order_id}",
-                        )
-                    ],
-                    [
-                        Button(
-                            text=btn_skip,
-                            callback_data=f"offer_skip:{order.order_id}",
-                        )
-                    ],
-                ],
-            )
             if order.product_photo_file_id:
                 await messenger_client.send_photo(
-                    chat_id=blogger.external_id,
+                    chat_id=chat_id,
                     file_id=order.product_photo_file_id,
                     caption=offer_text,
                     keyboard=reply_markup,
                 )
             else:
                 await messenger_client.send_text(
-                    chat_id=blogger.external_id,
+                    chat_id=chat_id,
                     text=offer_text,
                     keyboard=reply_markup,
                 )
-            await offer_dispatch_service.record_offer_sent(
-                order.order_id, blogger.user_id
-            )
             logger.info(
                 "Offer sent to blogger",
                 extra={
                     "order_id": order.order_id,
                     "blogger_id": blogger.user_id,
+                    "messenger": messenger_label,
                     "attempt": attempt,
                 },
             )
@@ -196,6 +151,7 @@ async def _send_offer_to_blogger(
                 extra={
                     "order_id": order.order_id,
                     "blogger_id": blogger.user_id,
+                    "messenger": messenger_label,
                     "attempt": attempt,
                     "error": str(exc),
                 },
@@ -208,6 +164,7 @@ async def _send_offer_to_blogger(
                     extra={
                         "order_id": order.order_id,
                         "blogger_id": blogger.user_id,
+                        "messenger": messenger_label,
                         "retries": retries,
                     },
                 )
@@ -218,7 +175,8 @@ async def _send_offer_to_blogger(
                         "event": "offer_send_failed",
                         "order_id": str(order.order_id),
                         "blogger_id": str(blogger.user_id),
-                        "external_id": blogger.external_id,
+                        "chat_id": chat_id,
+                        "messenger": messenger_label,
                         "error": str(exc),
                     },
                 )
@@ -226,9 +184,99 @@ async def _send_offer_to_blogger(
                 await asyncio.sleep(retry_delay_seconds)
 
 
+async def _send_offer_to_blogger(
+    blogger: User,
+    order: Order,
+    advertisers_status: str,
+    messenger_clients: dict[str, MessengerClient],
+    offer_dispatch_service: OfferDispatchService,
+    retries: int,
+    retry_delay_seconds: float,
+    dlq_producer: AIOKafkaProducer | None,
+    dlq_topic: str,
+    locale: str = "ru",
+    bot_texts_service: BotTextsService | None = None,
+) -> None:
+    """Send offer to one blogger via all available messengers."""
+    if blogger.user_id == order.advertiser_id:
+        logger.debug(
+            "Skipping blogger: is advertiser",
+            extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
+        )
+        return
+
+    # Build list of (chat_id, client, label) for all available messengers
+    targets: list[tuple[str, MessengerClient, str]] = []
+    if blogger.telegram_id and "telegram" in messenger_clients:
+        targets.append(
+            (blogger.telegram_id, messenger_clients["telegram"], "telegram")
+        )
+    if blogger.max_id and "max" in messenger_clients:
+        targets.append((blogger.max_id, messenger_clients["max"], "max"))
+
+    if not targets:
+        logger.debug(
+            "Skipping blogger: no valid messenger IDs",
+            extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
+        )
+        return
+
+    offer_text = await offer_dispatch_service.format_offer(
+        order,
+        advertisers_status,
+        locale=locale,
+        bot_texts_service=bot_texts_service,
+    )
+    btn_accept = "Готов снять UGC"
+    btn_skip = "Пропустить"
+    if bot_texts_service is not None:
+        txts = await bot_texts_service.get_many(
+            ["btn_offer_accept", "btn_offer_skip"], locale
+        )
+        btn_accept = txts.get("btn_offer_accept") or btn_accept
+        btn_skip = txts.get("btn_offer_skip") or btn_skip
+    reply_markup = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=btn_accept,
+                    callback_data=f"offer:{order.order_id}",
+                )
+            ],
+            [
+                Button(
+                    text=btn_skip,
+                    callback_data=f"offer_skip:{order.order_id}",
+                )
+            ],
+        ],
+    )
+
+    for chat_id, client, label in targets:
+        await _send_offer_via_client(
+            chat_id,
+            client,
+            offer_text,
+            reply_markup,
+            order,
+            blogger,
+            retries,
+            retry_delay_seconds,
+            offer_dispatch_service,
+            dlq_producer,
+            dlq_topic,
+            label,
+        )
+
+    await offer_dispatch_service.record_offer_sent(
+        order.order_id, blogger.user_id
+    )
+
+
 async def _send_offers(
     order_id: UUID,
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     offer_dispatch_service: OfferDispatchService,
     dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
@@ -273,7 +321,7 @@ async def _send_offers(
             blogger,
             order,
             advertisers_status,
-            messenger_client,
+            messenger_clients,
             offer_dispatch_service,
             retries,
             retry_delay_seconds,
@@ -339,7 +387,7 @@ async def _consume_forever(
     consumer: AIOKafkaConsumer,
     dlq_producer: AIOKafkaProducer,
     bot: Bot,
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     offer_dispatch_service: OfferDispatchService,
     config: AppConfig,
     bot_texts_service: BotTextsService | None = None,
@@ -381,7 +429,7 @@ async def _consume_forever(
                 )
                 await _send_offers(
                     order_id,
-                    messenger_client,
+                    messenger_clients,
                     offer_dispatch_service,
                     dlq_producer,
                     config.kafka.kafka_dlq_topic,
@@ -441,13 +489,15 @@ async def run_consumer() -> None:
     )
 
     bot = Bot(token=config.bot.bot_token)
-    messenger_client = TelegramMessengerClient(bot)
+    messenger_clients: dict[str, MessengerClient] = {
+        "telegram": TelegramMessengerClient(bot),
+    }
     try:
         await _consume_forever(
             consumer=consumer,
             dlq_producer=dlq_producer,
             bot=bot,
-            messenger_client=messenger_client,
+            messenger_clients=messenger_clients,
             offer_dispatch_service=offer_dispatch_service,
             config=config,
             bot_texts_service=bot_texts_service,

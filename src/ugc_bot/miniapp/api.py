@@ -423,21 +423,21 @@ async def _notify_ugc_video_saved(
     Called only when ugc_video_url was previously None.
     Silently skips a recipient when their User record is None.
     """
-    if creator is not None:
+    if creator is not None and creator.telegram_id:
         locale = creator.language or "ru"
         text = await bot_texts_service.get(
             "msg_ugc_video_saved_creator", locale
         )
         await send_with_retry(
             messenger_client,
-            chat_id=creator.external_id,
+            chat_id=creator.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,
             logger=logger,
             extra={"event": "ugc_video_saved_creator"},
         )
-    if advertiser is not None:
+    if advertiser is not None and advertiser.telegram_id:
         locale = advertiser.language or "ru"
         template = await bot_texts_service.get(
             "msg_ugc_video_saved_advertiser", locale
@@ -446,7 +446,7 @@ async def _notify_ugc_video_saved(
             f"@{creator.telegram}"
             if creator is not None and creator.telegram
             else (
-                f"tg://user?id={creator.external_id}"
+                f"tg://user?id={creator.telegram_id}"
                 if creator is not None
                 else "—"
             )
@@ -454,7 +454,7 @@ async def _notify_ugc_video_saved(
         text = template.format(telegram=creator_handle, url=video_url)
         await send_with_retry(
             messenger_client,
-            chat_id=advertiser.external_id,
+            chat_id=advertiser.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,
@@ -540,7 +540,7 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         is_manager = await manager_service.is_manager(user_id)
     return MeResponse(
         user_id=str(user_id),
-        external_id=user.external_id,
+        external_id=user.telegram_id or user.max_id or "",
         role=role,
         has_advertiser_profile=advertiser is not None,
         has_blogger_profile=blogger is not None,
@@ -1728,7 +1728,7 @@ async def manager_remove_creator(
 
     user_repo = dispatcher["user_repo"]
     creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
-    if creator is not None:
+    if creator is not None and creator.telegram_id:
         locale = creator.language or "ru"
         bot_texts_service = dispatcher["bot_texts_service"]
         text = await bot_texts_service.get(
@@ -1737,7 +1737,7 @@ async def manager_remove_creator(
         messenger_client = dispatcher["messenger_client"]
         await send_with_retry(
             messenger_client,
-            chat_id=creator.external_id,
+            chat_id=creator.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,
@@ -1804,7 +1804,7 @@ async def manager_add_creator(
 
     user_repo = dispatcher["user_repo"]
     creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
-    if creator is not None:
+    if creator is not None and creator.telegram_id:
         manager: UserEntity | None = None
         if dispatch.manager_id is not None:
             manager = await user_repo.get_by_id(dispatch.manager_id)
@@ -1812,7 +1812,7 @@ async def manager_add_creator(
             f"@{manager.telegram}"
             if manager is not None and manager.telegram
             else (
-                f"tg://user?id={manager.external_id}"
+                f"tg://user?id={manager.telegram_id}"
                 if manager is not None
                 else "—"
             )
@@ -1826,7 +1826,7 @@ async def manager_add_creator(
         messenger_client = dispatcher["messenger_client"]
         await send_with_retry(
             messenger_client,
-            chat_id=creator.external_id,
+            chat_id=creator.telegram_id,
             text=text,
             retries=3,
             delay_seconds=1.0,

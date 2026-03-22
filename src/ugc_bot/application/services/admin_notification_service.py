@@ -128,7 +128,7 @@ async def notify_admins_about_complaint(
 
     for admin in admins:
         try:
-            chat_id = admin.external_id
+            chat_id = admin.telegram_id or admin.max_id or ""
             if complaint.file_ids:
                 await _send_admin_photo(
                     messenger_client,
@@ -264,7 +264,7 @@ async def notify_admins_about_order_created(
 
     for admin in admins:
         try:
-            chat_id = admin.external_id
+            chat_id = admin.telegram_id or admin.max_id or ""
             if order.product_photo_file_id:
                 await _send_admin_photo(
                     messenger_client,
@@ -356,7 +356,7 @@ async def notify_admins_about_order_paid(
 
     for admin in admins:
         try:
-            chat_id = admin.external_id
+            chat_id = admin.telegram_id or admin.max_id or ""
             if order.product_photo_file_id:
                 await _send_admin_photo(
                     messenger_client,
@@ -410,8 +410,8 @@ async def notify_support_chat_about_new_order(
     phone = advertiser_profile.phone if advertiser_profile else "—"
     if advertiser_user.telegram:
         telegram = f"@{html.escape(advertiser_user.telegram)}"
-    elif advertiser_user.external_id.isdigit():
-        telegram = f'<a href="tg://user?id={advertiser_user.external_id}">tg://user?id={advertiser_user.external_id}</a>'
+    elif advertiser_user.telegram_id and advertiser_user.telegram_id.isdigit():
+        telegram = f'<a href="tg://user?id={advertiser_user.telegram_id}">tg://user?id={advertiser_user.telegram_id}</a>'
     else:
         telegram = "—"
     order_type_label = _format_order_type_for_moderation(order)

@@ -697,7 +697,7 @@ async def test_record_advertiser_feedback_ok_triggers_referral_income() -> None:
 
     advertiser = User(
         user_id=advertiser_id,
-        external_id="adv_ext",
+        telegram_id="adv_ext",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -804,7 +804,7 @@ async def test_referral_income_error_does_not_break_feedback() -> None:
 
     advertiser = User(
         user_id=advertiser_id,
-        external_id="adv_err",
+        telegram_id="adv_err",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser_err",
         status=UserStatus.ACTIVE,
@@ -876,7 +876,7 @@ async def test_record_blogger_feedback_ok_triggers_referral_income() -> None:
 
     advertiser = User(
         user_id=advertiser_id,
-        external_id="adv_ext_2",
+        telegram_id="adv_ext_2",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser2",
         status=UserStatus.ACTIVE,

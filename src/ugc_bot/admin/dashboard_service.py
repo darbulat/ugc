@@ -981,13 +981,15 @@ class AdminDashboardService:
             with contextlib.suppress(ValueError, TypeError):
                 conditions.append(UserModel.user_id == UUID(q))  # type: ignore[arg-type]
             if q.isdigit():
-                conditions.append(UserModel.external_id == q)  # type: ignore[arg-type]
+                conditions.append(UserModel.telegram_id == q)  # type: ignore[arg-type]
+                conditions.append(UserModel.max_id == q)  # type: ignore[arg-type]
             stmt = (
                 select(
                     UserModel.user_id,
                     UserModel.username,
                     UserModel.telegram,
-                    UserModel.external_id,
+                    UserModel.telegram_id,
+                    UserModel.max_id,
                 )
                 .where(or_(*conditions))
                 .limit(limit)
@@ -999,7 +1001,8 @@ class AdminDashboardService:
                     "user_id": str(row.user_id),
                     "username": row.username or "",
                     "telegram": row.telegram or "",
-                    "external_id": row.external_id or "",
+                    "telegram_id": row.telegram_id or "",
+                    "max_id": row.max_id or "",
                 }
                 for row in rows
             ]
@@ -1027,7 +1030,8 @@ class AdminDashboardService:
         user, blogger, advertiser = row
         card: dict = {
             "user_id": str(user.user_id),
-            "external_id": user.external_id,
+            "telegram_id": user.telegram_id or "",
+            "max_id": user.max_id or "",
             "messenger_type": user.messenger_type.value
             if user.messenger_type
             else "",
@@ -1212,7 +1216,8 @@ class AdminDashboardService:
         with contextlib.suppress(ValueError, TypeError):
             conditions.append(UserModel.user_id == UUID(search_query))  # type: ignore[arg-type]
         if search_query.isdigit():
-            conditions.append(UserModel.external_id == search_query)  # type: ignore[arg-type]
+            conditions.append(UserModel.telegram_id == search_query)  # type: ignore[arg-type]
+            conditions.append(UserModel.max_id == search_query)  # type: ignore[arg-type]
         return or_(*conditions)
 
     async def _count_creators(

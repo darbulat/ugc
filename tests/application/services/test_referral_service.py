@@ -86,7 +86,7 @@ async def test_save_pending_referral_when_referrer_exists() -> None:
     user_repo = InMemoryUserRepository()
     referrer = User(
         user_id=uuid4(),
-        external_id="ref",
+        telegram_id="ref",
         messenger_type=MessengerType.TELEGRAM,
         username="referrer",
         status=UserStatus.ACTIVE,
@@ -136,7 +136,7 @@ async def test_save_pending_referral_self_referral_returns_false() -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="me",
+        telegram_id="me",
         messenger_type=MessengerType.TELEGRAM,
         username="me",
         status=UserStatus.ACTIVE,
@@ -165,7 +165,7 @@ async def test_save_pending_referral_when_pending_exists_returns_true() -> None:
     user_repo = InMemoryUserRepository()
     referrer = User(
         user_id=uuid4(),
-        external_id="r",
+        telegram_id="r",
         messenger_type=MessengerType.TELEGRAM,
         username="ref",
         status=UserStatus.ACTIVE,
@@ -199,7 +199,7 @@ async def test_save_pending_referral_skips_if_already_bound() -> None:
     user_repo = InMemoryUserRepository()
     referrer = User(
         user_id=uuid4(),
-        external_id="r",
+        telegram_id="r",
         messenger_type=MessengerType.TELEGRAM,
         username="ref",
         status=UserStatus.ACTIVE,

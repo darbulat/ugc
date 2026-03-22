@@ -290,7 +290,7 @@ class TestMeEndpointIsManager:
         from ugc_bot.miniapp.api import InitDataBody, me
 
         user = MagicMock()
-        user.external_id = "123"
+        user.telegram_id = "123"
         user.country = None
         user.language = None
 

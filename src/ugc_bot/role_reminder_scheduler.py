@@ -75,7 +75,7 @@ def _reminder_text_and_keyboard(config, user_locale: str | None = None):
 
 
 async def run_once(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     user_role_service: UserRoleService,
     reminder_cutoff: datetime,
     config,
@@ -90,38 +90,44 @@ async def run_once(
 
     users = await user_role_service.list_pending_role_reminders(reminder_cutoff)
     for user in users:
-        if user.messenger_type.value != "telegram":  # pragma: no cover
-            continue
         try:
             await user_role_service.update_last_role_reminder_at(user.user_id)
-            chat_id = int(user.external_id)
             user_locale = user.language or None
             start_text, keyboard = _reminder_text_and_keyboard(
                 config, user_locale=user_locale
             )
-            await send_with_retry(
-                messenger_client,
-                chat_id=str(chat_id),
-                text=start_text,
-                keyboard=keyboard,
-                retries=_send_retries,
-                delay_seconds=_send_retry_delay_seconds,
-                logger=logger,
-                extra={"user_id": str(user.user_id)},
-            )
+            targets: list[tuple[str, MessengerClient]] = []
+            if user.telegram_id and "telegram" in messenger_clients:
+                targets.append(
+                    (user.telegram_id, messenger_clients["telegram"])
+                )
+            if user.max_id and "max" in messenger_clients:
+                targets.append((user.max_id, messenger_clients["max"]))
+            for chat_id, client in targets:
+                await send_with_retry(
+                    client,
+                    chat_id=chat_id,
+                    text=start_text,
+                    keyboard=keyboard,
+                    retries=_send_retries,
+                    delay_seconds=_send_retry_delay_seconds,
+                    logger=logger,
+                    extra={"user_id": str(user.user_id)},
+                )
         except Exception as exc:
             logger.warning(
                 "Role reminder send failed",
                 extra={
                     "user_id": str(user.user_id),
-                    "external_id": user.external_id,
+                    "telegram_id": user.telegram_id,
+                    "max_id": user.max_id,
                     "error": str(exc),
                 },
             )
 
 
 async def run_loop(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     user_role_service: UserRoleService,
     config,
 ) -> None:
@@ -130,7 +136,7 @@ async def run_loop(
     while True:
         reminder_cutoff = _reminder_cutoff(config)
         await run_once(
-            messenger_client, user_role_service, reminder_cutoff, config
+            messenger_clients, user_role_service, reminder_cutoff, config
         )
         sleep_seconds = _seconds_until_next_run(config)
         logger.info(
@@ -169,11 +175,13 @@ def main() -> None:  # pragma: no cover
         transaction_manager=transaction_manager,
     )
     bot = Bot(token=config.bot.bot_token)
-    messenger_client = TelegramMessengerClient(bot)
+    messenger_clients: dict[str, MessengerClient] = {
+        "telegram": TelegramMessengerClient(bot),
+    }
 
     async def _run_with_cleanup() -> None:
         try:
-            await run_loop(messenger_client, user_role_service, config)
+            await run_loop(messenger_clients, user_role_service, config)
         finally:
             session = getattr(bot, "session", None)
             if session is not None:

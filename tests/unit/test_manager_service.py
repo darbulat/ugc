@@ -26,7 +26,7 @@ def _make_user(telegram: str | None = None) -> User:
     """Create a minimal User entity for testing."""
     return User(
         user_id=uuid4(),
-        external_id=str(uuid4()),
+        telegram_id=str(uuid4()),
         messenger_type=MessengerType.TELEGRAM,
         username=telegram or "testuser",
         status=UserStatus.ACTIVE,

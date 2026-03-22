@@ -40,7 +40,7 @@ async def _seed_user(user_repo: InMemoryUserRepository) -> UUID:
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000130"),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,

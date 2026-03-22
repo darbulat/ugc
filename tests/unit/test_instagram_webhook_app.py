@@ -125,7 +125,7 @@ async def test_notify_user_verification_missing_telegram_user(
     user_repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        external_id="external",
+        max_id="external",
         messenger_type=MessengerType.MAX,
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -163,7 +163,7 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user = User(
         user_id=uuid4(),
-        external_id="12345",
+        telegram_id="12345",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -223,7 +223,7 @@ async def test_notify_user_verification_mismatch_missing_telegram_user(
     user_repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        external_id="external",
+        max_id="external",
         messenger_type=MessengerType.MAX,
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -263,7 +263,7 @@ async def test_notify_user_verification_mismatch_success(
     blogger_repo = InMemoryBloggerProfileRepository()
     user = User(
         user_id=uuid4(),
-        external_id="12345",
+        telegram_id="12345",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -404,7 +404,7 @@ async def test_webhook_event_processing_success(
 
     user = User(
         user_id=uuid4(),
-        external_id="123456",
+        telegram_id="123456",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -1048,7 +1048,7 @@ async def test_notify_user_verification_mismatch_exception_is_logged(
     user_repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        external_id="12345",
+        telegram_id="12345",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
         status=UserStatus.ACTIVE,

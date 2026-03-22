@@ -58,7 +58,7 @@ class TestOutboxIntegration:
 
         user = User(
             user_id=UUID("00000000-0000-0000-0000-000000000001"),
-            external_id="123",
+            telegram_id="123",
             messenger_type=MessengerType.TELEGRAM,
             username="testuser",
             status=UserStatus.ACTIVE,
@@ -317,7 +317,7 @@ class TestOutboxIntegration:
         # Setup user and profile
         user = User(
             user_id=UUID("00000000-0000-0000-0000-000000000001"),
-            external_id="123",
+            telegram_id="123",
             messenger_type=MessengerType.TELEGRAM,
             username="testuser",
             status=UserStatus.ACTIVE,

@@ -15,7 +15,6 @@ from ugc_bot.application.messenger.ports import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
-from ugc_bot.domain.enums import MessengerType
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +159,7 @@ async def step_user_id(
             text=USER_NOT_FOUND,
         )
         return
-    if target.messenger_type != MessengerType.TELEGRAM:
+    if not target.telegram_id:
         await messenger_client.send_text(
             chat_id=chat_id,
             text=USER_NOT_TELEGRAM,
@@ -217,6 +216,13 @@ async def step_text(
             text=USER_NOT_FOUND,
         )
         return
+    if not target.telegram_id:
+        await state.clear()
+        await messenger_client.send_text(
+            chat_id=chat_id,
+            text=USER_NOT_TELEGRAM,
+        )
+        return
     text_to_send = (message.text or "").strip()
     if not text_to_send:
         await messenger_client.send_text(
@@ -226,7 +232,7 @@ async def step_text(
         return
     try:
         await messenger_client.send_text(
-            chat_id=target.external_id,
+            chat_id=target.telegram_id,
             text=text_to_send,
         )
         logger.info(

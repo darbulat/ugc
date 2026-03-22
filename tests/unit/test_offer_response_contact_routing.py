@@ -56,7 +56,7 @@ async def test_send_contact_uses_manager_telegram_when_manager_present(
 
     manager = User(
         user_id=MANAGER_ID,
-        external_id="803",
+        telegram_id="803",
         messenger_type=MessengerType.TELEGRAM,
         username="manager_user",
         status=UserStatus.ACTIVE,
@@ -85,7 +85,7 @@ async def test_send_contact_uses_manager_telegram_when_manager_present(
         await _send_contact_immediately(
             order=order,
             blogger_id=BLOGGER_ID,
-            blogger_chat_id=blogger.external_id,
+            blogger_chat_id=blogger.telegram_id,
             response_count=1,
             user_role_service=user_service,
             profile_service=profile_service,
@@ -99,7 +99,7 @@ async def test_send_contact_uses_manager_telegram_when_manager_present(
     sent_to_blogger = [
         s
         for s in messenger_client.sent_text
-        if s["chat_id"] == blogger.external_id
+        if s["chat_id"] == blogger.telegram_id
     ]
     contact_msg = next(
         (

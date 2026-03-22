@@ -233,7 +233,7 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
     order_id = UUID("00000000-0000-0000-0000-000000000502")
     user = User(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,

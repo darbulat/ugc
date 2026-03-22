@@ -238,7 +238,7 @@ async def test_user_admin_update_model_status_change() -> None:
     user_id = UUID("00000000-0000-0000-0000-000000000001")
     old_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -247,7 +247,7 @@ async def test_user_admin_update_model_status_change() -> None:
     )
     new_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.BLOCKED,
@@ -281,7 +281,7 @@ async def test_user_admin_update_model_exception_in_logging_suppressed() -> (
     user_id = UUID("00000000-0000-0000-0000-000000000001")
     old_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -290,7 +290,7 @@ async def test_user_admin_update_model_exception_in_logging_suppressed() -> (
     )
     new_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.BLOCKED,
@@ -338,7 +338,7 @@ async def test_user_admin_update_model_sync_session() -> None:
     user_id = UUID("00000000-0000-0000-0000-000000000001")
     old_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -347,7 +347,7 @@ async def test_user_admin_update_model_sync_session() -> None:
     )
     new_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.BLOCKED,
@@ -849,7 +849,7 @@ async def test_user_admin_update_model_logs_when_blocked_and_user_found(
     user_id = UUID("00000000-0000-0000-0000-000000000029")
     old_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -858,7 +858,7 @@ async def test_user_admin_update_model_logs_when_blocked_and_user_found(
     )
     new_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.BLOCKED,
@@ -871,7 +871,7 @@ async def test_user_admin_update_model_logs_when_blocked_and_user_found(
 
     domain_user = User(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="test_user",
         status=UserStatus.BLOCKED,
@@ -912,7 +912,7 @@ async def test_user_admin_update_model_user_not_found() -> None:
     user_id = UUID("00000000-0000-0000-0000-000000000030")
     old_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.ACTIVE,
@@ -921,7 +921,7 @@ async def test_user_admin_update_model_user_not_found() -> None:
     )
     new_user = UserModel(
         user_id=user_id,
-        external_id="123",
+        telegram_id="123",
         messenger_type="telegram",
         username="test_user",
         status=UserStatus.BLOCKED,
@@ -2200,7 +2200,7 @@ def test_admin_flowchart_redirects_when_unauthenticated(
 def test_admin_flowchart_returns_404_when_file_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GET /admin/flowchart returns 404 when HTML file has not been generated."""
+    """GET /admin/flowchart returns 404 when missing."""
     import ugc_bot.admin.app as admin_app
     from ugc_bot.admin.app import _register_flowchart_route
 
@@ -2222,7 +2222,7 @@ def test_admin_flowchart_returns_404_when_file_missing(
 def test_admin_flowchart_returns_html_when_authenticated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GET /admin/flowchart returns HTML content when authenticated and file exists."""
+    """GET /admin/flowchart returns HTML when OK."""
     import ugc_bot.admin.app as admin_app
     from ugc_bot.admin.app import _register_flowchart_route
 

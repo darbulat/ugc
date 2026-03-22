@@ -69,9 +69,8 @@ class InMemoryUserRepository(UserRepository):
     """In-memory implementation of user repository."""
 
     users: Dict[UUID, User] = field(default_factory=dict)
-    external_index: Dict[Tuple[str, MessengerType], UUID] = field(
-        default_factory=dict
-    )
+    telegram_index: Dict[str, UUID] = field(default_factory=dict)
+    max_index: Dict[str, UUID] = field(default_factory=dict)
 
     async def get_by_id(
         self, user_id: UUID, session: object | None = None
@@ -88,8 +87,12 @@ class InMemoryUserRepository(UserRepository):
     ) -> Optional[User]:
         """Fetch a user by external messenger id."""
 
-        key = (external_id, messenger_type)
-        user_id = self.external_index.get(key)
+        if messenger_type == MessengerType.TELEGRAM:
+            user_id = self.telegram_index.get(external_id)
+        elif messenger_type == MessengerType.MAX:
+            user_id = self.max_index.get(external_id)
+        else:
+            return None
         return self.users.get(user_id) if user_id else None
 
     async def get_by_referral_code(
@@ -119,9 +122,10 @@ class InMemoryUserRepository(UserRepository):
         """Persist a user in memory."""
 
         self.users[user.user_id] = user
-        self.external_index[(user.external_id, user.messenger_type)] = (
-            user.user_id
-        )
+        if user.telegram_id:
+            self.telegram_index[user.telegram_id] = user.user_id
+        if user.max_id:
+            self.max_index[user.max_id] = user.user_id
 
     async def list_pending_role_reminders(
         self, reminder_cutoff: datetime, session: object | None = None
@@ -151,8 +155,10 @@ class InMemoryUserRepository(UserRepository):
         """List users with admin=True. Optionally filter by messenger_type."""
 
         result = [u for u in self.users.values() if getattr(u, "admin", False)]
-        if messenger_type is not None:
-            result = [u for u in result if u.messenger_type == messenger_type]
+        if messenger_type == MessengerType.TELEGRAM:
+            result = [u for u in result if u.telegram_id is not None]
+        elif messenger_type == MessengerType.MAX:
+            result = [u for u in result if u.max_id is not None]
         return result
 
 

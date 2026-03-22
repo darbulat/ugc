@@ -26,7 +26,7 @@ async def test_get_user_by_external_without_tm() -> None:
     user_repo = InMemoryUserRepository()
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        external_id="ext1",
+        telegram_id="ext1",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -41,7 +41,7 @@ async def test_get_user_by_external_without_tm() -> None:
     )
     result = await service.get_user_by_external("ext1", MessengerType.TELEGRAM)
     assert result is not None
-    assert result.external_id == "ext1"
+    assert result.telegram_id == "ext1"
 
 
 @pytest.mark.asyncio
@@ -50,7 +50,7 @@ async def test_get_user_by_external_with_transaction_manager(fake_tm) -> None:
     user_repo = InMemoryUserRepository()
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000002"),
-        external_id="ext2",
+        telegram_id="ext2",
         messenger_type=MessengerType.TELEGRAM,
         username="u2",
         status=UserStatus.ACTIVE,
@@ -66,7 +66,7 @@ async def test_get_user_by_external_with_transaction_manager(fake_tm) -> None:
     )
     result = await service.get_user_by_external("ext2", MessengerType.TELEGRAM)
     assert result is not None
-    assert result.external_id == "ext2"
+    assert result.telegram_id == "ext2"
 
 
 @pytest.mark.asyncio

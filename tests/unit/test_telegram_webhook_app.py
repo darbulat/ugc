@@ -169,7 +169,7 @@ def test_miniapp_api_me_success_returns_user_and_profiles(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id=str(telegram_id),
+        telegram_id=str(telegram_id),
         messenger_type=MessengerType.TELEGRAM,
         username="testuser",
         status=UserStatus.ACTIVE,
@@ -225,7 +225,7 @@ def test_miniapp_api_me_404_when_user_not_found_by_external(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11116",
+        telegram_id="11116",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -252,7 +252,7 @@ def test_miniapp_api_me_creates_user_when_missing(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id=str(telegram_id),
+        telegram_id=str(telegram_id),
         messenger_type=MessengerType.TELEGRAM,
         username="testuser",
         status=UserStatus.ACTIVE,
@@ -284,7 +284,7 @@ def test_miniapp_api_me_returns_advertiser_role(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11113",
+        telegram_id="11113",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -325,7 +325,7 @@ def test_miniapp_api_me_returns_blogger_role(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11114",
+        telegram_id="11114",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -355,7 +355,7 @@ def test_miniapp_api_me_returns_blogger_profile_with_birth_date(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11115",
+        telegram_id="11115",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_u",
         status=UserStatus.ACTIVE,
@@ -408,7 +408,7 @@ def test_miniapp_api_register_advertiser_user_not_found_404(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="99998",
+        telegram_id="99998",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -445,7 +445,7 @@ def test_miniapp_api_register_advertiser_registration_error_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="99997",
+        telegram_id="99997",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -482,7 +482,7 @@ def test_miniapp_api_register_advertiser_success(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="99999",
+        telegram_id="99999",
         messenger_type=MessengerType.TELEGRAM,
         username="advuser",
         status=UserStatus.ACTIVE,
@@ -528,7 +528,7 @@ def test_miniapp_api_confirm_advertiser_agreement_success(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="99999",
+        telegram_id="99999",
         messenger_type=MessengerType.TELEGRAM,
         username="advuser",
         status=UserStatus.ACTIVE,
@@ -563,7 +563,7 @@ def test_miniapp_api_confirm_advertiser_agreement_user_not_found_404(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="99998",
+        telegram_id="99998",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -594,7 +594,7 @@ def test_miniapp_api_confirm_blogger_agreement_success(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55555",
+        telegram_id="55555",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -627,7 +627,7 @@ def test_miniapp_api_confirm_blogger_agreement_user_not_found_404(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55554",
+        telegram_id="55554",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -658,7 +658,7 @@ def test_miniapp_api_instagram_verification_start_success(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55553",
+        telegram_id="55553",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -718,7 +718,7 @@ def test_miniapp_api_instagram_verification_start_already_confirmed(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55552",
+        telegram_id="55552",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -764,7 +764,7 @@ def test_miniapp_api_instagram_verification_start_no_blogger_404(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55551",
+        telegram_id="55551",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -792,7 +792,7 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88888",
+        telegram_id="88888",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -867,7 +867,7 @@ def test_miniapp_api_create_order_support_chat_notified(
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88889",
+        telegram_id="88889",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -943,7 +943,7 @@ def test_miniapp_api_create_order_notification_error_logged(
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88890",
+        telegram_id="88890",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -1021,7 +1021,7 @@ def test_miniapp_api_config_success(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55555",
+        telegram_id="55555",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1051,7 +1051,7 @@ def test_miniapp_api_create_order_invalid_bloggers_needed_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88882",
+        telegram_id="88882",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -1094,7 +1094,7 @@ def test_miniapp_api_orders_list_success(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77777",
+        telegram_id="77777",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1127,7 +1127,7 @@ def test_miniapp_api_orders_list_includes_payment_link(
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77778",
+        telegram_id="77778",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1182,7 +1182,7 @@ def test_miniapp_api_geocode_reverse_success(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77781",
+        telegram_id="77781",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1217,7 +1217,7 @@ def test_miniapp_api_geocode_reverse_404_when_not_resolved(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77782",
+        telegram_id="77782",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1257,7 +1257,7 @@ def test_miniapp_api_geocode_forward_success(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77784",
+        telegram_id="77784",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1356,7 +1356,7 @@ def test_miniapp_api_geocode_forward_400_empty_city(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77786",
+        telegram_id="77786",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1382,7 +1382,7 @@ def test_miniapp_api_geocode_forward_404_when_not_found(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77785",
+        telegram_id="77785",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1412,7 +1412,7 @@ def test_miniapp_api_orders_list_creator_success(client: TestClient) -> None:
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77780",
+        telegram_id="77780",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1474,7 +1474,7 @@ def test_miniapp_api_orders_list_creator_deduplicates_and_skips_missing(
     order_id_b = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77787",
+        telegram_id="77787",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1552,7 +1552,7 @@ def test_miniapp_api_orders_get_success(client: TestClient) -> None:
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77779",
+        telegram_id="77779",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1596,7 +1596,7 @@ def test_miniapp_api_orders_get_404_when_not_found(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77780",
+        telegram_id="77780",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1625,7 +1625,7 @@ def test_miniapp_api_orders_get_404_wrong_owner(client: TestClient) -> None:
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77781",
+        telegram_id="77781",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1664,7 +1664,7 @@ def test_miniapp_api_orders_get_400_invalid_id(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77782",
+        telegram_id="77782",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1689,7 +1689,7 @@ def test_miniapp_api_orders_update_success(client: TestClient) -> None:
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77783",
+        telegram_id="77783",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1751,7 +1751,7 @@ def test_miniapp_api_orders_update_404(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77784",
+        telegram_id="77784",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1799,7 +1799,7 @@ def test_miniapp_api_orders_update_400_bad_price(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77791",
+        telegram_id="77791",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1844,7 +1844,7 @@ def test_miniapp_api_orders_update_400_validation_error(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77789",
+        telegram_id="77789",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1889,7 +1889,7 @@ def test_miniapp_api_orders_update_400_invalid_geography(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77790",
+        telegram_id="77790",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1935,7 +1935,7 @@ def test_miniapp_api_orders_update_400_invalid_order_id(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77786",
+        telegram_id="77786",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -1982,7 +1982,7 @@ def test_miniapp_api_orders_update_400_invalid_bloggers_needed(
     order_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77788",
+        telegram_id="77788",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2028,7 +2028,7 @@ def test_miniapp_api_orders_update_400_creation_error(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77787",
+        telegram_id="77787",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2078,7 +2078,7 @@ def test_miniapp_api_orders_update_403_no_advertiser(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="77785",
+        telegram_id="77785",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2115,7 +2115,7 @@ def test_miniapp_api_orders_returns_403_without_advertiser_profile(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="66666",
+        telegram_id="66666",
         messenger_type=MessengerType.TELEGRAM,
         username="noadv",
         status=UserStatus.ACTIVE,
@@ -2152,7 +2152,7 @@ def test_miniapp_api_register_advertiser_invalid_phone(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11111",
+        telegram_id="11111",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2187,7 +2187,7 @@ def test_miniapp_api_register_blogger_age_range_invalid_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55554",
+        telegram_id="55554",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2230,7 +2230,7 @@ def test_miniapp_api_register_blogger_invalid_work_format_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55553",
+        telegram_id="55553",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2275,7 +2275,7 @@ def test_miniapp_api_register_blogger_invalid_audience_gender_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55552",
+        telegram_id="55552",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2320,7 +2320,7 @@ def test_miniapp_api_register_blogger_omitted_blogger_gender_uses_default(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55550",
+        telegram_id="55550",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2369,7 +2369,7 @@ def test_miniapp_api_register_blogger_invalid_blogger_gender_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55551",
+        telegram_id="55551",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2412,7 +2412,7 @@ def test_miniapp_api_register_blogger_success(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55555",
+        telegram_id="55555",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2463,7 +2463,7 @@ def test_miniapp_api_register_blogger_with_lat_lon_passes_location_geometry(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55555",
+        telegram_id="55555",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2521,7 +2521,7 @@ def test_miniapp_api_register_blogger_lat_lon_out_of_range_skips_geometry(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55556",
+        telegram_id="55556",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2576,7 +2576,7 @@ def test_miniapp_api_register_blogger_update_raises_user_not_found_404(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55558",
+        telegram_id="55558",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2641,7 +2641,7 @@ def test_miniapp_api_register_blogger_create_requires_birth_date(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55558",
+        telegram_id="55558",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2691,7 +2691,7 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55557",
+        telegram_id="55557",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2759,7 +2759,7 @@ def test_miniapp_api_register_blogger_invalid_birth_date_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55559",
+        telegram_id="55559",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2806,7 +2806,7 @@ def test_miniapp_api_register_blogger_update_empty_birth_date_ok(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55562",
+        telegram_id="55562",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2875,7 +2875,7 @@ def test_miniapp_api_register_blogger_update_city_not_resolved_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55560",
+        telegram_id="55560",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -2944,7 +2944,7 @@ def test_miniapp_api_register_blogger_update_raises_registration_error_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55561",
+        telegram_id="55561",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3008,7 +3008,7 @@ def test_miniapp_api_register_blogger_instagram_taken(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55556",
+        telegram_id="55556",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3055,7 +3055,7 @@ def test_miniapp_api_register_blogger_service_error(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55560",
+        telegram_id="55560",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3103,7 +3103,7 @@ def test_miniapp_api_register_blogger_invalid_instagram_format(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55559",
+        telegram_id="55559",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3148,7 +3148,7 @@ def test_miniapp_api_register_blogger_validation_empty_topics(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55557",
+        telegram_id="55557",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3193,7 +3193,7 @@ def test_miniapp_api_orders_invalid_order_type_returns_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="44444",
+        telegram_id="44444",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3239,7 +3239,7 @@ def test_miniapp_api_create_order_invalid_geography_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88892",
+        telegram_id="88892",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -3286,7 +3286,7 @@ def test_miniapp_api_create_order_validation_fails(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88889",
+        telegram_id="88889",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -3334,7 +3334,7 @@ def test_miniapp_api_create_order_service_raises_user_not_found_404(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88891",
+        telegram_id="88891",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -3386,7 +3386,7 @@ def test_miniapp_api_create_order_service_raises_order_creation_error(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88890",
+        telegram_id="88890",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -3436,7 +3436,7 @@ def test_miniapp_api_register_advertiser_service_error(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11117",
+        telegram_id="11117",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3476,7 +3476,7 @@ def test_miniapp_api_register_advertiser_invalid_display_name_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11113",
+        telegram_id="11113",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3511,7 +3511,7 @@ def test_miniapp_api_register_advertiser_company_activity_too_long_400(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11114",
+        telegram_id="11114",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3549,7 +3549,7 @@ def test_miniapp_api_register_advertiser_site_link_validation(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="11112",
+        telegram_id="11112",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3584,7 +3584,7 @@ def test_miniapp_api_register_blogger_invalid_birth_date(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="55558",
+        telegram_id="55558",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -3627,7 +3627,7 @@ def test_miniapp_api_create_order_barter_required(client: TestClient) -> None:
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88890",
+        telegram_id="88890",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -3674,7 +3674,7 @@ def test_miniapp_api_create_order_service_error(
     user_id = uuid4()
     user = User(
         user_id=user_id,
-        external_id="88891",
+        telegram_id="88891",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -4163,3 +4163,103 @@ async def test_set_webhook_with_retry_raises_after_max_retries() -> None:
         )
 
     assert bot.set_webhook.call_count == 5
+
+
+def test_miniapp_api_register_blogger_user_not_found_404(
+    client: TestClient,
+) -> None:
+    """POST register/blogger when service raises UserNotFoundError -> 404."""
+    from ugc_bot.application.errors import UserNotFoundError
+
+    init_data = _make_valid_init_data("test_token", 55570)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="55570",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        side_effect=UserNotFoundError("User not found")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/blogger570",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "display_name": "Blogger570",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 404
+    assert "detail" in response.json()
+
+
+def test_miniapp_api_ensure_user_race_condition_retries_get(
+    client: TestClient,
+) -> None:
+    """_ensure_user_and_get_id retries GET after set_user raises (race)."""
+    init_data = _make_valid_init_data("test_token", 55571)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="55571",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    # First get_user returns None (user doesn't exist), set_user raises (race),
+    # second get_user returns the user (created by concurrent request)
+    mock_urs.get_user = AsyncMock(side_effect=[None, user])
+    mock_urs.set_user = AsyncMock(
+        side_effect=Exception("duplicate key value violates unique constraint")
+    )
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.get_profile_by_instagram_url = AsyncMock(return_value=None)
+    mock_blogger_svc.save_blogger_before_agreement = AsyncMock(
+        return_value=MagicMock()
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger",
+        json={
+            "init_data": init_data,
+            "instagram_url": "https://instagram.com/blogger571",
+            "city": "Moscow",
+            "audience_geo": "РФ",
+            "audience_age_min": 18,
+            "audience_age_max": 35,
+            "audience_gender": "all",
+            "price": 5000,
+            "barter": False,
+            "work_format": "ugc_only",
+            "topics": ["tech"],
+            "display_name": "Blogger571",
+            "birth_date": "15.05.1995",
+        },
+    )
+    assert response.status_code == 200

@@ -78,7 +78,7 @@ async def test_notify_admins_sends_message_when_no_photos() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="123456789",
+        telegram_id="123456789",
         messenger_type=MessengerType.TELEGRAM,
         username="admin1",
         status=UserStatus.ACTIVE,
@@ -91,7 +91,7 @@ async def test_notify_admins_sends_message_when_no_photos() -> None:
     messenger_client = FakeMessengerClient()
     reporter = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="reporter",
         status=UserStatus.ACTIVE,
@@ -100,7 +100,7 @@ async def test_notify_admins_sends_message_when_no_photos() -> None:
     )
     reported = User(
         user_id=uuid4(),
-        external_id="222",
+        telegram_id="222",
         messenger_type=MessengerType.TELEGRAM,
         username="reported",
         status=UserStatus.ACTIVE,
@@ -135,7 +135,7 @@ async def test_notify_admins_sends_photos_when_file_ids_present() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -176,7 +176,7 @@ async def test_notify_admins_uses_id_when_user_not_found() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -211,7 +211,7 @@ async def test_notify_admins_continues_on_send_failure() -> None:
     user_repo = InMemoryUserRepository()
     admin1 = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="a1",
         status=UserStatus.ACTIVE,
@@ -221,7 +221,7 @@ async def test_notify_admins_continues_on_send_failure() -> None:
     )
     admin2 = User(
         user_id=uuid4(),
-        external_id="222",
+        telegram_id="222",
         messenger_type=MessengerType.TELEGRAM,
         username="a2",
         status=UserStatus.ACTIVE,
@@ -305,7 +305,7 @@ async def test_notify_admins_about_order_paid_sends_message() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="12345",
+        telegram_id="12345",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -316,7 +316,7 @@ async def test_notify_admins_about_order_paid_sends_message() -> None:
     await user_repo.save(admin)
     advertiser = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -348,7 +348,7 @@ async def test_notify_admins_about_order_paid_includes_admin_link() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -359,7 +359,7 @@ async def test_notify_admins_about_order_paid_includes_admin_link() -> None:
     await user_repo.save(admin)
     advertiser = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -406,7 +406,7 @@ async def test_notify_admins_about_order_paid_includes_all_fields() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="555",
+        telegram_id="555",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -417,7 +417,7 @@ async def test_notify_admins_about_order_paid_includes_all_fields() -> None:
     await user_repo.save(admin)
     advertiser = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -463,7 +463,7 @@ async def test_notify_admins_about_order_paid_with_banned_content() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -474,7 +474,7 @@ async def test_notify_admins_about_order_paid_with_banned_content() -> None:
     await user_repo.save(admin)
     advertiser = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -505,7 +505,7 @@ async def test_notify_admins_about_order_paid_with_product_photo() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -516,7 +516,7 @@ async def test_notify_admins_about_order_paid_with_product_photo() -> None:
     await user_repo.save(admin)
     advertiser = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -549,7 +549,7 @@ async def test_notify_admins_about_order_paid_continues_on_send_failure() -> (
     user_repo = InMemoryUserRepository()
     admin1 = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="a1",
         status=UserStatus.ACTIVE,
@@ -559,7 +559,7 @@ async def test_notify_admins_about_order_paid_continues_on_send_failure() -> (
     )
     admin2 = User(
         user_id=uuid4(),
-        external_id="222",
+        telegram_id="222",
         messenger_type=MessengerType.TELEGRAM,
         username="a2",
         status=UserStatus.ACTIVE,
@@ -657,7 +657,7 @@ async def test_send_admin_photo_uses_raw_bot_send_photo() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="777",
+        telegram_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -707,7 +707,7 @@ async def test_notify_admins_about_order_created_header() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="12345",
+        telegram_id="12345",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -737,7 +737,7 @@ async def test_notify_admins_about_order_created_no_activate_button() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -772,7 +772,7 @@ async def test_notify_admins_about_order_created_open_in_admin_button() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -808,7 +808,7 @@ async def test_notify_admins_about_order_created_no_admin_url_no_keyboard() -> (
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -840,7 +840,7 @@ async def test_notify_admins_about_order_created_with_product_photo() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -870,7 +870,7 @@ async def test_notify_admins_about_order_created_with_banned_content() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -899,7 +899,7 @@ async def test_notify_admins_about_order_created_continues_on_failure() -> None:
     user_repo = InMemoryUserRepository()
     admin1 = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="a1",
         status=UserStatus.ACTIVE,
@@ -909,7 +909,7 @@ async def test_notify_admins_about_order_created_continues_on_failure() -> None:
     )
     admin2 = User(
         user_id=uuid4(),
-        external_id="222",
+        telegram_id="222",
         messenger_type=MessengerType.TELEGRAM,
         username="a2",
         status=UserStatus.ACTIVE,
@@ -950,7 +950,7 @@ async def test_notify_admins_about_order_paid_ugc_plus_placement() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -998,7 +998,7 @@ def _make_advertiser_user(
 ) -> User:
     return User(
         user_id=user_id or uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1176,12 +1176,12 @@ async def test_notify_support_chat_resolves_currency_from_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_support_chat_non_digit_external_id_shows_dash() -> None:
-    """When telegram is None and external_id is not a digit, shows dash."""
+async def test_notify_support_chat_non_digit_telegram_id_shows_dash() -> None:
+    """When telegram is None and telegram_id is not a digit, shows dash."""
     messenger_client = FakeMessengerClient()
     user = User(
         user_id=uuid4(),
-        external_id="non_digit",
+        telegram_id="non_digit",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1211,7 +1211,7 @@ async def test_notify_admins_about_order_created_resolves_currency() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,

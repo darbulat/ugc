@@ -116,7 +116,12 @@ class UserModel(Base):
         primary_key=True,
         server_default=text("uuid_generate_v4()"),
     )
-    external_id: Mapped[str] = mapped_column(String, nullable=False)
+    telegram_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, unique=True, index=True
+    )
+    max_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, unique=True, index=True
+    )
     messenger_type: Mapped[MessengerType] = mapped_column(
         _enum_column(MessengerType),
         nullable=False,

@@ -104,14 +104,30 @@ async def _iter_due_interactions(
     return interactions_list
 
 
+def _user_messenger_targets(
+    user: User,
+    messenger_clients: dict[str, MessengerClient],
+) -> list[tuple[str, MessengerClient]]:
+    """Return (chat_id, client) pairs for all available messengers."""
+    targets: list[tuple[str, MessengerClient]] = []
+    if user.telegram_id and "telegram" in messenger_clients:
+        targets.append((user.telegram_id, messenger_clients["telegram"]))
+    if user.max_id and "max" in messenger_clients:
+        targets.append((user.max_id, messenger_clients["max"]))
+    return targets
+
+
 async def _send_advertiser_feedback(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     interaction: Interaction,
     advertiser: User,
     blogger_profile: Optional[BloggerProfile],
     texts: dict[str, str],
 ) -> bool:
     """Send feedback request to advertiser. Return True if sent."""
+    targets = _user_messenger_targets(advertiser, messenger_clients)
+    if not targets:
+        return False
     creator_link = ""
     if blogger_profile and blogger_profile.instagram_url:
         url = blogger_profile.instagram_url.strip()
@@ -125,17 +141,20 @@ async def _send_advertiser_feedback(
         "Выберите подходящий вариант:",
     )
     text = template.format(creator_link=creator_link)
-    await send_with_retry(
-        messenger_client,
-        chat_id=advertiser.external_id,
-        text=text,
-        parse_mode="Markdown",
-        keyboard=_feedback_keyboard("adv", interaction.interaction_id, texts),
-        retries=_send_retries,
-        delay_seconds=_send_retry_delay_seconds,
-        logger=logger,
-        extra={"interaction_id": str(interaction.interaction_id)},
-    )
+    for chat_id, client in targets:
+        await send_with_retry(
+            client,
+            chat_id=chat_id,
+            text=text,
+            parse_mode="Markdown",
+            keyboard=_feedback_keyboard(
+                "adv", interaction.interaction_id, texts
+            ),
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={"interaction_id": str(interaction.interaction_id)},
+        )
     logger.info(
         "Sent interaction feedback request to advertiser",
         extra={
@@ -147,13 +166,16 @@ async def _send_advertiser_feedback(
 
 
 async def _send_blogger_feedback(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     interaction: Interaction,
     blogger: User,
     order: Optional[Order],
     texts: dict[str, str],
 ) -> bool:
     """Send feedback request to blogger. Return True if sent."""
+    targets = _user_messenger_targets(blogger, messenger_clients)
+    if not targets:
+        return False
     order_link_part = "по заказу?"
     if order and order.product_link:
         url = order.product_link.strip()
@@ -166,17 +188,20 @@ async def _send_blogger_feedback(
         "Удалось ли вам связаться с заказчиком {order_link_part}",
     )
     text = template.format(order_link_part=order_link_part)
-    await send_with_retry(
-        messenger_client,
-        chat_id=blogger.external_id,
-        text=text,
-        parse_mode="Markdown",
-        keyboard=_feedback_keyboard("blog", interaction.interaction_id, texts),
-        retries=_send_retries,
-        delay_seconds=_send_retry_delay_seconds,
-        logger=logger,
-        extra={"interaction_id": str(interaction.interaction_id)},
-    )
+    for chat_id, client in targets:
+        await send_with_retry(
+            client,
+            chat_id=chat_id,
+            text=text,
+            parse_mode="Markdown",
+            keyboard=_feedback_keyboard(
+                "blog", interaction.interaction_id, texts
+            ),
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={"interaction_id": str(interaction.interaction_id)},
+        )
     logger.info(
         "Sent interaction feedback request to blogger",
         extra={
@@ -212,7 +237,7 @@ _FEEDBACK_TEXT_KEYS = [
 
 
 async def _send_feedback_requests(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     interaction: Interaction,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
@@ -263,7 +288,7 @@ async def _send_feedback_requests(
     if (
         advertiser
         and needs_feedback_reminder(interaction.from_advertiser)
-        and advertiser.external_id.isdigit()
+        and (advertiser.telegram_id or advertiser.max_id)
     ):
         adv_locale = getattr(advertiser, "language", None) or locale
         if bot_texts_service is not None:
@@ -273,7 +298,7 @@ async def _send_feedback_requests(
         else:
             adv_texts = _feedback_texts_for_locale(adv_locale)
         sent_to_adv = await _send_advertiser_feedback(
-            messenger_client,
+            messenger_clients,
             interaction,
             advertiser,
             blogger_profile,
@@ -283,7 +308,7 @@ async def _send_feedback_requests(
     if (
         blogger
         and needs_feedback_reminder(interaction.from_blogger)
-        and blogger.external_id.isdigit()
+        and (blogger.telegram_id or blogger.max_id)
     ):
         blog_locale = getattr(blogger, "language", None) or locale
         if bot_texts_service is not None:
@@ -293,7 +318,7 @@ async def _send_feedback_requests(
         else:
             blog_texts = _feedback_texts_for_locale(blog_locale)
         sent_to_blog = await _send_blogger_feedback(
-            messenger_client, interaction, blogger, order, blog_texts
+            messenger_clients, interaction, blogger, order, blog_texts
         )
 
     if sent_to_adv or sent_to_blog:
@@ -312,7 +337,7 @@ async def _send_feedback_requests(
 
 
 async def run_once(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     interaction_repo,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
@@ -343,7 +368,7 @@ async def run_once(
                     interaction.order_id, session=session
                 )
             await _send_feedback_requests(
-                messenger_client,
+                messenger_clients,
                 interaction,
                 interaction_service,
                 user_role_service,
@@ -373,7 +398,7 @@ async def run_once(
 
 
 async def run_loop(
-    messenger_client: MessengerClient,
+    messenger_clients: dict[str, MessengerClient],
     interaction_repo,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
@@ -399,7 +424,7 @@ async def run_loop(
                 "Feedback loop iteration", extra={"iteration": iterations}
             )
             await run_once(
-                messenger_client,
+                messenger_clients,
                 interaction_repo,
                 interaction_service,
                 user_role_service,
@@ -419,13 +444,14 @@ async def run_loop(
             "Feedback scheduler loop stopped",
             extra={"total_iterations": iterations},
         )
-        close_method = getattr(messenger_client, "close", None)
-        if callable(close_method):
-            await close_method()
-        else:
-            session = getattr(messenger_client, "session", None)
-            if session is not None and hasattr(session, "close"):
-                await session.close()
+        for client in messenger_clients.values():
+            close_method = getattr(client, "close", None)
+            if callable(close_method):
+                await close_method()
+            else:
+                session = getattr(client, "session", None)
+                if session is not None and hasattr(session, "close"):
+                    await session.close()
 
 
 def main() -> None:
@@ -463,14 +489,16 @@ def main() -> None:
     bot_texts_service = container.build_bot_texts_service()
 
     bot = Bot(token=config.bot.bot_token)
-    messenger_client = TelegramMessengerClient(bot)
+    messenger_clients: dict[str, MessengerClient] = {
+        "telegram": TelegramMessengerClient(bot),
+    }
     default_locale = (
         getattr(getattr(config, "market", None), "default_locale", "ru") or "ru"
     )
     try:
         asyncio.run(
             run_loop(
-                messenger_client,
+                messenger_clients,
                 deps["interaction_repo"],
                 deps["interaction_service"],
                 deps["user_role_service"],

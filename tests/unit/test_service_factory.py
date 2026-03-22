@@ -149,3 +149,48 @@ def test_build_referral_reconciliation_deps_returns_all_keys() -> None:
     assert "transaction_manager" in deps
     assert "recorder" in deps
     assert deps["transaction_manager"] is tm
+
+
+def test_build_exchange_rate_service_returns_none_without_redis_url() -> None:
+    """build_exchange_rate_service returns None without redis_url."""
+    from ugc_bot.container.service_factory import build_exchange_rate_service
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    # By default, REDIS_URL is not set → should return None
+    result = build_exchange_rate_service(config)
+    assert result is None
+
+
+def test_build_exchange_rate_service_returns_instance_when_mocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """build_exchange_rate_service returns service when mocks succeed."""
+    import sys
+    from unittest.mock import MagicMock
+
+    from ugc_bot.container.service_factory import build_exchange_rate_service
+
+    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/0")
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "test_token", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+
+    mock_aiohttp = MagicMock()
+    mock_redis_module = MagicMock()
+
+    with patch.dict(
+        sys.modules,
+        {
+            "aiohttp": mock_aiohttp,
+            "redis": mock_redis_module,
+            "redis.asyncio": mock_redis_module,
+        },
+    ):
+        result = build_exchange_rate_service(config)
+
+    assert result is not None

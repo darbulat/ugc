@@ -85,7 +85,7 @@ async def test_send_offers_sends_messages() -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000900"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -110,7 +110,7 @@ async def test_send_offers_sends_messages() -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000902"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -160,7 +160,7 @@ async def test_send_offers_sends_messages() -> None:
     messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -190,7 +190,7 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000930"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -216,7 +216,7 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000932"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -266,7 +266,7 @@ async def test_send_offers_with_photo_uses_send_photo() -> None:
     messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -303,7 +303,7 @@ async def test_send_offers_returns_when_order_not_found() -> None:
     messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -348,7 +348,7 @@ async def test_send_offers_returns_when_advertiser_not_found() -> None:
     messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -368,7 +368,7 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000900"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -409,7 +409,7 @@ async def test_send_offers_returns_when_no_verified_bloggers() -> None:
         messenger_client = TelegramMessengerClient(bot)
         await _send_offers(
             order.order_id,
-            messenger_client,
+            {"telegram": messenger_client},
             offer_service,
             dlq_producer=None,
             dlq_topic="dlq",
@@ -646,7 +646,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000910"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -670,7 +670,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
     await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000912"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -709,7 +709,7 @@ async def test_send_offers_retries_then_succeeds() -> None:
     messenger_client = TelegramMessengerClient(bot)
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -741,7 +741,7 @@ async def test_send_offers_sends_to_dlq(
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000920"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -765,7 +765,7 @@ async def test_send_offers_sends_to_dlq(
     await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000922"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -805,7 +805,7 @@ async def test_send_offers_sends_to_dlq(
     messenger_client = TelegramMessengerClient(AlwaysFailBot())
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -834,7 +834,7 @@ async def test_send_offers_user_blocked_bot_no_retry_no_dlq(
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000923"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -858,7 +858,7 @@ async def test_send_offers_user_blocked_bot_no_retry_no_dlq(
     await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000925"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -906,7 +906,7 @@ async def test_send_offers_user_blocked_bot_no_retry_no_dlq(
     messenger_client = TelegramMessengerClient(BlockedUserBot())
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -980,7 +980,7 @@ async def test_send_offer_to_blogger_skips_when_blogger_is_advertiser() -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000940"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -1006,7 +1006,7 @@ async def test_send_offer_to_blogger_skips_when_blogger_is_advertiser() -> None:
         advertiser,
         order,
         "ACTIVE",
-        messenger,
+        {"telegram": messenger},
         dispatch_service,
         retries=1,
         retry_delay_seconds=0.0,
@@ -1018,12 +1018,12 @@ async def test_send_offer_to_blogger_skips_when_blogger_is_advertiser() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_offer_to_blogger_skips_when_external_id_not_digit() -> None:
-    """Skip sending when blogger external_id is not numeric."""
+async def test_send_offer_to_blogger_skips_when_no_messenger_ids() -> None:
+    """Skip sending when blogger has no messenger IDs."""
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000950"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -1032,7 +1032,6 @@ async def test_send_offer_to_blogger_skips_when_external_id_not_digit() -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000951"),
-        external_id="not_a_number",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1058,7 +1057,7 @@ async def test_send_offer_to_blogger_skips_when_external_id_not_digit() -> None:
         blogger,
         order,
         "ACTIVE",
-        messenger,
+        {"telegram": messenger},
         dispatch_service,
         retries=1,
         retry_delay_seconds=0.0,
@@ -1208,7 +1207,7 @@ async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001001"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -1233,7 +1232,7 @@ async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001003"),
-        external_id="3",
+        telegram_id="3",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_en",
         status=UserStatus.ACTIVE,
@@ -1284,7 +1283,7 @@ async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
     fake_bot_texts = FakeBotTexts()
     await _send_offers(
         order.order_id,
-        messenger_client,
+        {"telegram": messenger_client},
         offer_service,
         dlq_producer=None,
         dlq_topic="dlq",
@@ -1297,3 +1296,63 @@ async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
     # Verify bot_texts_service was called with the blogger's locale "en"
     locales_used = [locale for _, locale in fake_bot_texts.called_with]
     assert "en" in locales_used
+
+
+@pytest.mark.asyncio
+async def test_send_offer_to_blogger_includes_max_id_target() -> None:
+    """_send_offer_to_blogger appends max_id target when blogger has max_id."""
+    now = datetime.now(timezone.utc)
+    advertiser = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001100"),
+        telegram_id="1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="adv",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000001101"),
+        max_id="max-blogger-1",
+        messenger_type=MessengerType.MAX,
+        username="maxblogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000001102"),
+        advertiser_id=advertiser.user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    max_messenger = Mock()
+    max_messenger.send_text = AsyncMock()
+    dispatch_service = Mock()
+    dispatch_service.format_offer = AsyncMock(return_value="Offer text")
+    dispatch_service.record_offer_dispatch = AsyncMock(return_value=Mock())
+    dispatch_service.record_offer_sent = AsyncMock()
+    with patch(
+        "ugc_bot.kafka_consumer._send_offer_via_client", new_callable=AsyncMock
+    ) as mock_send_via:
+        await _send_offer_to_blogger(
+            blogger,
+            order,
+            "ACTIVE",
+            {"max": max_messenger},
+            dispatch_service,
+            retries=1,
+            retry_delay_seconds=0.0,
+            dlq_producer=None,
+            dlq_topic="dlq",
+        )
+    mock_send_via.assert_called_once()
+    call_kwargs = mock_send_via.call_args
+    assert call_kwargs[0][0] == "max-blogger-1"

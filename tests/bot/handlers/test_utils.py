@@ -249,7 +249,7 @@ async def test_get_user_and_ensure_allowed_blocked() -> None:
 
     blocked_user = User(
         user_id=uuid4(),
-        external_id="456",
+        telegram_id="456",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.BLOCKED,
@@ -290,7 +290,7 @@ async def test_get_user_and_ensure_allowed_ok() -> None:
 
     ok_user = User(
         user_id=uuid4(),
-        external_id="789",
+        telegram_id="789",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -331,7 +331,7 @@ async def test_get_user_and_ensure_allowed_callback_ok() -> None:
 
     ok_user = User(
         user_id=uuid4(),
-        external_id="999",
+        telegram_id="999",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -537,7 +537,7 @@ async def test_resolve_currency_symbol_with_country() -> None:
     )
     user = User(
         user_id=uuid4(),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="u1",
         status=UserStatus.ACTIVE,
@@ -564,7 +564,7 @@ async def test_resolve_currency_symbol_unknown_country_returns_default() -> (
     country_repo = InMemoryCountryRepository(countries={})
     user = User(
         user_id=uuid4(),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="u2",
         status=UserStatus.ACTIVE,
@@ -589,7 +589,7 @@ async def test_resolve_currency_symbol_no_country_returns_default() -> None:
     country_repo = InMemoryCountryRepository(countries={})
     user = User(
         user_id=uuid4(),
-        external_id="3",
+        telegram_id="3",
         messenger_type=MessengerType.TELEGRAM,
         username="u3",
         status=UserStatus.ACTIVE,

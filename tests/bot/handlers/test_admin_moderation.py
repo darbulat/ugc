@@ -81,7 +81,7 @@ async def test_handle_moderate_activate_success(
     """Admin can activate order; outbox event is created."""
     admin = User(
         user_id=uuid4(),
-        external_id="12345",
+        telegram_id="12345",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -141,7 +141,7 @@ async def test_handle_moderate_activate_non_admin_rejected(
     """Non-admin gets access denied."""
     regular_user = User(
         user_id=uuid4(),
-        external_id="99999",
+        telegram_id="99999",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -196,7 +196,7 @@ async def test_handle_moderate_activate_banned_content_rejected(
     """Order with banned content is not activated."""
     admin = User(
         user_id=uuid4(),
-        external_id="111",
+        telegram_id="111",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -252,7 +252,7 @@ async def test_handle_moderate_activate_already_processed(
     """Already active order returns 'already processed' message."""
     admin = User(
         user_id=uuid4(),
-        external_id="222",
+        telegram_id="222",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -364,7 +364,7 @@ async def test_handle_moderate_activate_invalid_order_id_format(
     """Invalid order ID format returns error."""
     admin = User(
         user_id=uuid4(),
-        external_id="333",
+        telegram_id="333",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -405,7 +405,7 @@ async def test_handle_moderate_activate_empty_data(
     """Empty callback data returns error."""
     admin = User(
         user_id=uuid4(),
-        external_id="444",
+        telegram_id="444",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -445,7 +445,7 @@ async def test_handle_moderate_activate_none_data(
     """None callback data returns error."""
     admin = User(
         user_id=uuid4(),
-        external_id="445",
+        telegram_id="445",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -486,7 +486,7 @@ async def test_handle_moderate_activate_order_id_wrong_length(
     """Order ID with wrong length returns error."""
     admin = User(
         user_id=uuid4(),
-        external_id="444",
+        telegram_id="444",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -527,7 +527,7 @@ async def test_handle_moderate_activate_order_id_invalid_hex(
     """Order ID with invalid hex characters returns error."""
     admin = User(
         user_id=uuid4(),
-        external_id="555",
+        telegram_id="555",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -568,7 +568,7 @@ async def test_handle_moderate_activate_order_not_found(
     """Order not found in repository returns error."""
     admin = User(
         user_id=uuid4(),
-        external_id="666",
+        telegram_id="666",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,
@@ -615,7 +615,7 @@ async def test_remove_moderation_keyboard_no_message(
 
     admin = User(
         user_id=uuid4(),
-        external_id="777",
+        telegram_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="admin",
         status=UserStatus.ACTIVE,

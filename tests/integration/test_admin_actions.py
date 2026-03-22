@@ -85,7 +85,7 @@ def sample_user(db_session: Session):
     user_repo = SqlAlchemyUserRepository(lambda: db_session)
     user = User(
         user_id=None,
-        external_id="test_user_123",
+        telegram_id="test_user_123",
         messenger_type="telegram",
         username="testuser",
         status=UserStatus.ACTIVE,
