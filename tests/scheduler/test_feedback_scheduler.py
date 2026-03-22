@@ -151,7 +151,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -248,7 +248,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -344,7 +344,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -391,7 +391,7 @@ async def test_run_once_skips_active_orders() -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -418,7 +418,7 @@ async def test_run_once_skips_orders_without_responses() -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -500,7 +500,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -591,7 +591,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -674,7 +674,7 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -753,7 +753,7 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -783,7 +783,7 @@ async def test_run_loop_closes_session() -> None:
 
     feedback_config = FeedbackConfig()
     await run_loop(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -817,7 +817,7 @@ async def test_run_loop_sleeps(monkeypatch: pytest.MonkeyPatch) -> None:
     order_repo = InMemoryOrderRepository()
     feedback_config = FeedbackConfig()
     await run_loop(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1036,7 +1036,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1124,7 +1124,7 @@ async def test_run_once_skips_when_both_users_not_found(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1158,7 +1158,7 @@ async def test_run_loop_uses_close_method_when_available() -> None:
 
     feedback_config = FeedbackConfig()
     await run_loop(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
@@ -1270,7 +1270,7 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
     feedback_config = FeedbackConfig()
     bot = FakeBot()
     await run_once(
-        bot,
+        {"telegram": bot},
         interaction_repo,
         interaction_service,
         user_service,
