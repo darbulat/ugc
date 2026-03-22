@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport"
+  content="width=device-width, initial-scale=1.0">
+<title>UGC Bot Product Flowchart</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box }
+body {
+  font-family: -apple-system, sans-serif;
+  background: #1a1a2e; color: #eee;
+  min-height: 100vh;
+}
+header {
+  background: #16213e; padding: 20px 30px;
+  border-bottom: 2px solid #0f3460;
+}
+header h1 { font-size: 1.5rem }
+.legend {
+  display:flex; gap:16px; flex-wrap:wrap;
+  padding:12px 30px; background:#16213e;
+}
+.legend span {
+  display:flex; align-items:center;
+  gap:6px; font-size:.8rem;
+}
+.dot {
+  width:14px; height:14px;
+  border-radius:3px; display:inline-block;
+}
+.diagram-container {
+  padding:30px; overflow:auto;
+  min-height: calc(100vh - 140px);
+}
+.mermaid {
+  background:#fff; border-radius:12px;
+  padding:30px;
+}
+#ts { font-size:.75rem; color:#666; padding:8px 30px }
+</style>
+</head>
+<body>
+<header><h1>UGC Bot Product Flowchart</h1></header>
+<div class="legend">
+  <span><span class="dot"
+    style="background:#4CAF50"></span> Entry</span>
+  <span><span class="dot"
+    style="background:#2196F3"></span> Role</span>
+  <span><span class="dot"
+    style="background:#FFF9C4"></span> Registration</span>
+  <span><span class="dot"
+    style="background:#E1BEE7"></span> Order</span>
+  <span><span class="dot"
+    style="background:#FFCCBC"></span> Action</span>
+  <span><span class="dot"
+    style="background:#B2DFDB"></span> Menu</span>
+  <span><span class="dot"
+    style="background:#CFD8DC"></span> Service</span>
+  <span><span class="dot"
+    style="background:#D7CCC8"></span> Infra</span>
+</div>
+<div class="diagram-container">
+<pre class="mermaid">
+flowchart TB
+
+    %% Styles
+    classDef entry fill:#4CAF50,stroke:#388E3C,color:#fff,font-weight:bold
+    classDef role fill:#2196F3,stroke:#1565C0,color:#fff
+    classDef regStep fill:#FFF9C4,stroke:#F9A825,color:#333
+    classDef orderStep fill:#E1BEE7,stroke:#8E24AA,color:#333
+    classDef action fill:#FFCCBC,stroke:#E64A19,color:#333
+    classDef menu fill:#B2DFDB,stroke:#00695C,color:#333
+    classDef service fill:#CFD8DC,stroke:#455A64,color:#333
+    classDef infra fill:#D7CCC8,stroke:#5D4037,color:#333
+    classDef country fill:#C8E6C9,stroke:#2E7D32,color:#333
+
+    %% ENTRY POINT
+    START["/start"]:::entry
+    LANG_SELECT{"Language<br/>ru|en|be|kk|uz"}:::country
+    COUNTRY_SELECT{"Country<br/>RU|BY|KZ|UZ"}:::country
+    ROLE_SELECT{"Role Selection"}:::role
+
+    START --> LANG_SELECT
+    LANG_SELECT --> COUNTRY_SELECT
+    COUNTRY_SELECT --> ROLE_SELECT
+
+    ROLE_SELECT -->|"Creator"| CREATOR_BRANCH
+    ROLE_SELECT -->|"Advertiser"| ADV_BRANCH
+
+    %% CREATOR REGISTRATION
+    CREATOR_BRANCH["Create Profile"]:::role
+    BR_name["Name"]:::regStep
+    BR_phone["Phone"]:::regStep
+    BR_instagram["Instagram URL"]:::regStep
+    BR_city["City + Region"]:::regStep
+    BR_birth_date["Birth Date"]:::regStep
+    BR_blogger_gender["Gender (M/F)"]:::regStep
+    BR_topics["Topics"]:::regStep
+    BR_audience_gender["Audience Gender"]:::regStep
+    BR_audience_age["Audience Age Range"]:::regStep
+    BR_audience_geo["Audience Geography"]:::regStep
+    BR_price["Price per UGC"]:::regStep
+    BR_barter["Barter? (Y/N)"]:::regStep
+    BR_work_format["Work Format (UGC/Ads)"]:::regStep
+    BR_agreements["Agreement Confirmation"]:::regStep
+
+    CREATOR_BRANCH --> BR_name
+    BR_name --> BR_phone
+    BR_phone --> BR_instagram
+    BR_instagram --> BR_city
+    BR_city --> BR_birth_date
+    BR_birth_date --> BR_blogger_gender
+    BR_blogger_gender --> BR_topics
+    BR_topics --> BR_audience_gender
+    BR_audience_gender --> BR_audience_age
+    BR_audience_age --> BR_audience_geo
+    BR_audience_geo --> BR_price
+    BR_price --> BR_barter
+    BR_barter --> BR_work_format
+    BR_work_format --> BR_agreements
+    BR_agreements --> CREATOR_MENU
+
+    CREATOR_MENU["Creator Menu"]:::menu
+    VERIFY_IG["Instagram Verify"]:::action
+    CREATOR_MENU --> VERIFY_IG
+    CREATOR_MENU --> PROFILE_VIEW
+    CREATOR_MENU --> MY_ORDERS
+    CREATOR_MENU --> EDIT_PROFILE
+    CREATOR_MENU --> SUPPORT
+
+    %% ADVERTISER REGISTRATION
+    ADV_BRANCH["Start Registration"]:::role
+    AR_name["Name"]:::regStep
+    AR_phone["Phone"]:::regStep
+    AR_city["City"]:::regStep
+    AR_brand["Brand Name"]:::regStep
+    AR_company_activity["Company Activity"]:::regStep
+    AR_site_link["Website URL"]:::regStep
+    AR_agreements["Agreement Confirmation"]:::regStep
+
+    ADV_BRANCH --> AR_name
+    AR_name --> AR_phone
+    AR_phone --> AR_city
+    AR_city --> AR_brand
+    AR_brand --> AR_company_activity
+    AR_company_activity --> AR_site_link
+    AR_site_link --> AR_agreements
+    AR_agreements --> ADV_MENU
+
+    ADV_MENU["Advertiser Menu"]:::menu
+    ADV_MENU --> ORDER_CREATE_START
+    ADV_MENU --> PROFILE_VIEW
+    ADV_MENU --> MY_ORDERS
+    ADV_MENU --> EDIT_PROFILE
+    ADV_MENU --> SUPPORT
+
+    %% ORDER CREATION
+    ORDER_CREATE_START["Create Order"]:::action
+    OC_order_type["Order Type"]:::orderStep
+    OC_offer_text["Order Description"]:::orderStep
+    OC_cooperation_format["Cooperation Format"]:::orderStep
+    OC_price["Price"]:::orderStep
+    OC_barter_description["Barter Description"]:::orderStep
+    OC_bloggers_needed["Bloggers Needed"]:::orderStep
+    OC_product_link["Product Link"]:::orderStep
+    OC_order_photo["Order Photo"]:::orderStep
+    OC_content_usage["Content Usage"]:::orderStep
+    OC_deadlines["Deadlines"]:::orderStep
+    OC_geography["Creator Geography"]:::orderStep
+
+    ORDER_CREATE_START --> OC_order_type
+    OC_order_type --> OC_offer_text
+    OC_offer_text --> OC_cooperation_format
+    OC_cooperation_format --> OC_price
+    OC_price -->|"Barter"| OC_barter_description
+    OC_barter_description --> OC_bloggers_needed
+    OC_bloggers_needed --> OC_product_link
+    OC_product_link --> OC_order_photo
+    OC_order_photo --> OC_content_usage
+    OC_content_usage --> OC_deadlines
+    OC_deadlines --> OC_geography
+    OC_cooperation_format -->|"Payment only"| OC_price
+    OC_geography --> ORDER_FINALIZE
+
+    %% ORDER LIFECYCLE
+    ORDER_FINALIZE["Order Saved"]:::action
+    PAYMENT_INVOICE["Telegram Invoice"]:::action
+    MODERATION["Pending Moderation"]:::service
+    ORDER_ACTIVE["Order ACTIVE"]:::service
+    PAYMENT{"Payment Required?"}:::action
+
+    ORDER_FINALIZE --> PAYMENT
+    PAYMENT -->|"Yes"| PAYMENT_INVOICE
+    PAYMENT -->|"No (barter)"| MODERATION
+    PAYMENT_INVOICE --> MODERATION
+    MODERATION --> ORDER_ACTIVE
+
+    %% OFFER DISPATCH & RESPONSES
+    OFFER_SENT["Offers Sent"]:::service
+    OFFER_RESPONSE{"Blogger Response"}:::role
+    OFFER_ACCEPT["Accept"]:::action
+    OFFER_SKIP["Skip"]:::action
+    SKIP_REASON{"Rejection Reason"}:::action
+    DESIRED_PRICE["Desired Price"]:::regStep
+
+    ORDER_ACTIVE --> OFFER_SENT
+    OFFER_SENT --> OFFER_RESPONSE
+    OFFER_RESPONSE -->|"Accept"| OFFER_ACCEPT
+    OFFER_RESPONSE -->|"Skip"| OFFER_SKIP
+    OFFER_SKIP --> SKIP_REASON
+    SKIP_REASON -->|"Low Price"| DESIRED_PRICE
+
+    %% INTERACTION & FEEDBACK
+    INTERACTION["Interaction"]:::service
+    FEEDBACK_START["Feedback Request"]:::action
+    FB_REASON{"Feedback Reason"}:::action
+    FB_ISSUE["Describe Issue"]:::regStep
+    FB_NPS["NPS Score 1-10"]:::regStep
+    FB_NPS_COMMENT["NPS Comment"]:::regStep
+    FB_COMPLETE["Feedback Saved"]:::service
+
+    OFFER_ACCEPT --> INTERACTION
+    INTERACTION --> FEEDBACK_START
+    FEEDBACK_START --> FB_REASON
+    FB_REASON -->|"Problem"| FB_ISSUE
+    FB_REASON -->|"Great"| FB_NPS
+    FB_ISSUE --> FB_NPS
+    FB_NPS --> FB_NPS_COMMENT
+    FB_NPS_COMMENT --> FB_COMPLETE
+    FB_NPS -->|"Score 7-10"| FB_COMPLETE
+
+    %% COMPLAINTS
+    COMPLAINT_START["Complaint"]:::action
+    COMPLAINT_TARGET["Select Target"]:::action
+    COMPLAINT_REASON{"Reason"}:::action
+    COMPLAINT_SAVED["Saved"]:::service
+
+    INTERACTION --> COMPLAINT_START
+    COMPLAINT_START --> COMPLAINT_TARGET
+    COMPLAINT_TARGET --> COMPLAINT_REASON
+    COMPLAINT_REASON --> COMPLAINT_SAVED
+
+    %% SHARED FLOWS
+    PROFILE_VIEW["View Profile"]:::menu
+    MY_ORDERS["My Orders"]:::menu
+    EDIT_PROFILE["Edit Profile"]:::action
+    EDIT_TYPE{"Profile Type"}:::action
+    EDIT_FIELD["Select Field"]:::regStep
+    EDIT_VALUE["Enter Value"]:::regStep
+    SUPPORT["Support"]:::menu
+
+    EDIT_PROFILE --> EDIT_TYPE
+    EDIT_TYPE --> EDIT_FIELD
+    EDIT_FIELD --> EDIT_VALUE
+    EDIT_VALUE --> PROFILE_VIEW
+
+    %% INFRASTRUCTURE
+    MINIAPP["Mini App Web UI"]:::infra
+    MINIAPP_AUTH["Auth"]:::infra
+    MINIAPP_REG["Web Registration"]:::infra
+    MINIAPP_ORDERS["Web Orders"]:::infra
+    KAFKA["Kafka Outbox"]:::infra
+    IG_STATS["IG Stats"]:::infra
+    SCHEDULER["Schedulers"]:::infra
+    REFERRAL["Referral System"]:::infra
+    ADMIN_PANEL["Admin Panel"]:::infra
+
+    MINIAPP --> MINIAPP_AUTH
+    MINIAPP_AUTH --> MINIAPP_REG
+    MINIAPP_AUTH --> MINIAPP_ORDERS
+    ORDER_ACTIVE -.-> KAFKA
+    KAFKA -.-> OFFER_SENT
+    VERIFY_IG -.-> IG_STATS
+    SCHEDULER -.-> IG_STATS
+
+</pre>
+</div>
+<div id="ts"></div>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({{
+  startOnLoad: true,
+  theme: 'default',
+  flowchart: {{ curve:'basis', useMaxWidth:false }},
+  securityLevel: 'loose'
+}});
+document.getElementById('ts').textContent =
+  'Generated: ' + new Date().toLocaleString();
+</script>
+</body>
+</html>
