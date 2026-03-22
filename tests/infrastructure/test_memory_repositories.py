@@ -231,7 +231,7 @@ async def test_user_repo_get_by_telegram_returns_none_for_empty_string() -> (
     await repo.save(
         User(
             user_id=uuid4(),
-            external_id="100",
+            telegram_id="100",
             messenger_type=MessengerType.TELEGRAM,
             username="testuser",
             status=UserStatus.ACTIVE,
@@ -255,7 +255,7 @@ async def test_user_repo_get_by_telegram_finds_user_case_insensitive() -> None:
     await repo.save(
         User(
             user_id=user_id,
-            external_id="101",
+            telegram_id="101",
             messenger_type=MessengerType.TELEGRAM,
             username="testuser",
             status=UserStatus.ACTIVE,

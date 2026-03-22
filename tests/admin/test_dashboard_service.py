@@ -134,7 +134,7 @@ def _make_user(user_id=None, status=UserStatus.ACTIVE) -> UserModel:
     """Create UserModel for tests."""
     return UserModel(
         user_id=user_id or uuid4(),
-        external_id="ext1",
+        telegram_id="ext1",
         messenger_type="telegram",
         username="user1",
         status=status,
@@ -381,7 +381,7 @@ async def test_get_user_card_returns_user_data(service) -> None:
     created = datetime.now(timezone.utc)
     user_ns = SimpleNamespace(
         user_id=uid,
-        external_id="ext123",
+        telegram_id="ext123",
         messenger_type=SimpleNamespace(value="telegram"),
         username="john",
         status=UserStatus.ACTIVE,
@@ -399,7 +399,7 @@ async def test_get_user_card_returns_user_data(service) -> None:
     assert card["user_id"] == str(uid)
     assert card["username"] == "john"
     assert card["telegram"] == "@john"
-    assert card["external_id"] == "ext123"
+    assert card["telegram_id"] == "ext123"
     assert card["referral_code"] == "ref1"
     assert card["blogger_profile"] is None
     assert card["advertiser_profile"] is None
@@ -414,7 +414,7 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
     created = datetime.now(timezone.utc)
     user_ns = SimpleNamespace(
         user_id=uid,
-        external_id="ext1",
+        telegram_id="ext1",
         messenger_type=SimpleNamespace(value="telegram"),
         username="jane",
         status=UserStatus.ACTIVE,
@@ -1463,7 +1463,7 @@ async def test_search_users_returns_matches(service) -> None:
         user_id=uid,
         username="john",
         telegram="@john",
-        external_id="123",
+        telegram_id="123",
     )
     svc = service([_FakeResult(all_rows=[row])])
     result = await svc.search_users("john", limit=10)
@@ -1471,7 +1471,7 @@ async def test_search_users_returns_matches(service) -> None:
     assert result[0]["user_id"] == str(uid)
     assert result[0]["username"] == "john"
     assert result[0]["telegram"] == "@john"
-    assert result[0]["external_id"] == "123"
+    assert result[0]["telegram_id"] == "123"
 
 
 @pytest.mark.asyncio
@@ -1490,7 +1490,7 @@ async def test_search_users_by_uuid(service) -> None:
         user_id=uid,
         username="u",
         telegram="@u",
-        external_id="1",
+        telegram_id="1",
     )
     svc = service([_FakeResult(all_rows=[row])])
     result = await svc.search_users(str(uid))
@@ -1499,19 +1499,19 @@ async def test_search_users_by_uuid(service) -> None:
 
 
 @pytest.mark.asyncio
-async def test_search_users_by_digit_external_id(service) -> None:
-    """search_users includes external_id when query is digit."""
+async def test_search_users_by_digit_telegram_id(service) -> None:
+    """search_users includes telegram_id when query is digit."""
     uid = uuid4()
     row = SimpleNamespace(
         user_id=uid,
         username="u",
         telegram="@u",
-        external_id="999",
+        telegram_id="999",
     )
     svc = service([_FakeResult(all_rows=[row])])
     result = await svc.search_users("999")
     assert len(result) == 1
-    assert result[0]["external_id"] == "999"
+    assert result[0]["telegram_id"] == "999"
 
 
 @pytest.mark.asyncio
@@ -1662,7 +1662,7 @@ async def test_apply_referrers_filter_top_by_earnings_period(service) -> None:
 async def test_list_creators_with_digit_search_hits_user_search_condition(
     service,
 ) -> None:
-    """list_creators with digit q uses _user_search_condition (external_id)."""
+    """list_creators with digit q uses _user_search_condition (telegram_id)."""
     user = _make_user()
     rows = [(user, "https://instagram.com/u", "", None, 0, 0)]
     results = [

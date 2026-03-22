@@ -31,7 +31,7 @@ async def _seed_user(repo: InMemoryUserRepository) -> UUID:
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000002"),
-        external_id="555",
+        telegram_id="555",
         messenger_type=MessengerType.TELEGRAM,
         username="bob",
         status=UserStatus.ACTIVE,
@@ -348,7 +348,7 @@ async def test_register_blogger_duplicate_instagram_url() -> None:
     # Create first user and profile
     user1 = User(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user1",
         status=UserStatus.ACTIVE,
@@ -376,7 +376,7 @@ async def test_register_blogger_duplicate_instagram_url() -> None:
     # Create second user
     user2 = User(
         user_id=UUID("00000000-0000-0000-0000-000000000002"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="user2",
         status=UserStatus.ACTIVE,
@@ -1719,7 +1719,7 @@ async def test_register_blogger_duplicate_instagram_with_transaction_manager(
     blogger_repo = InMemoryBloggerProfileRepository()
     user1 = User(
         user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user1",
         status=UserStatus.ACTIVE,
@@ -1729,7 +1729,7 @@ async def test_register_blogger_duplicate_instagram_with_transaction_manager(
     await user_repo.save(user1)
     user2 = User(
         user_id=UUID("00000000-0000-0000-0000-000000000002"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="user2",
         status=UserStatus.ACTIVE,
@@ -1921,7 +1921,7 @@ async def _seed_user_with_country(
     """Seed a user with the given country code."""
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000010"),
-        external_id="777",
+        telegram_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="alice",
         status=UserStatus.ACTIVE,

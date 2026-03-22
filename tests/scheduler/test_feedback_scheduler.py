@@ -81,7 +81,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000960"),
-        external_id="10",
+        telegram_id="10",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -90,7 +90,7 @@ async def test_run_once_sends_feedback_requests(fake_tm) -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000961"),
-        external_id="11",
+        telegram_id="11",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -180,7 +180,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000965"),
-        external_id="12",
+        telegram_id="12",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -189,7 +189,7 @@ async def test_run_once_blogger_message_adds_https_to_product_link(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000966"),
-        external_id="13",
+        telegram_id="13",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -281,7 +281,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000969"),
-        external_id="14",
+        telegram_id="14",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -290,7 +290,7 @@ async def test_run_once_blogger_second_order_gets_product_link(fake_tm) -> None:
     )
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-00000000096a"),
-        external_id="15",
+        telegram_id="15",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -444,7 +444,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000980"),
-        external_id="20",
+        telegram_id="20",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -453,7 +453,7 @@ async def test_run_once_existing_feedback_no_messages() -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000981"),
-        external_id="21",
+        telegram_id="21",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -527,7 +527,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000990"),
-        external_id="30",
+        telegram_id="30",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -536,7 +536,7 @@ async def test_run_once_sends_reminder_after_postpone(fake_tm) -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000991"),
-        external_id="31",
+        telegram_id="31",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -620,7 +620,7 @@ async def test_run_once_skips_when_blogger_not_in_user_repo(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000985"),
-        external_id="985",
+        telegram_id="985",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -702,7 +702,7 @@ async def test_run_once_skips_when_advertiser_not_in_user_repo(fake_tm) -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000989"),
-        external_id="989",
+        telegram_id="989",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -951,7 +951,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000990"),
-        external_id="30",
+        telegram_id="30",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -960,7 +960,7 @@ async def test_run_once_advertiser_gets_creator_link_when_blogger_has_instagram(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000991"),
-        external_id="31",
+        telegram_id="31",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1187,7 +1187,7 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-0000000099b0"),
-        external_id="9910",
+        telegram_id="9910",
         messenger_type=MessengerType.TELEGRAM,
         username="adv_en",
         status=UserStatus.ACTIVE,
@@ -1197,7 +1197,7 @@ async def test_feedback_message_uses_user_locale(fake_tm) -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-0000000099b1"),
-        external_id="9911",
+        telegram_id="9911",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_en",
         status=UserStatus.ACTIVE,

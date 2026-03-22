@@ -84,7 +84,7 @@ async def test_dispatch_selects_confirmed_bloggers() -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000602"),
-        external_id="100",
+        telegram_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -146,7 +146,7 @@ async def test_dispatch_with_transaction_manager(fake_tm: object) -> None:
     await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000652"),
-        external_id="200",
+        telegram_id="200",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_tm",
         status=UserStatus.ACTIVE,
@@ -264,7 +264,7 @@ async def test_get_order_and_advertiser_with_transaction_manager(
     await order_repo.save(order)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000613"),
-        external_id="adv",
+        telegram_id="adv",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -557,7 +557,7 @@ async def test_dispatch_skips_ineligible_bloggers() -> None:
     await user_repo.save(
         User(
             user_id=UUID("00000000-0000-0000-0000-000000000623"),
-            external_id="101",
+            telegram_id="101",
             messenger_type=MessengerType.TELEGRAM,
             username="advertiser",
             status=UserStatus.BLOCKED,
@@ -654,7 +654,7 @@ async def test_dispatch_geography_country_includes_all() -> None:
 
     blogger1 = User(
         user_id=UUID("00000000-0000-0000-0000-000000000682"),
-        external_id="b1",
+        telegram_id="b1",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger1",
         status=UserStatus.ACTIVE,
@@ -663,7 +663,7 @@ async def test_dispatch_geography_country_includes_all() -> None:
     )
     blogger2 = User(
         user_id=UUID("00000000-0000-0000-0000-000000000683"),
-        external_id="b2",
+        telegram_id="b2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger2",
         status=UserStatus.ACTIVE,
@@ -728,7 +728,7 @@ async def test_dispatch_geography_empty_no_filter() -> None:
 
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000692"),
-        external_id="b",
+        telegram_id="b",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -794,7 +794,7 @@ async def test_dispatch_excludes_order_author() -> None:
     # Advertiser who is also a blogger
     advertiser_blogger = User(
         user_id=advertiser_id,
-        external_id="200",
+        telegram_id="200",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser_blogger",
         status=UserStatus.ACTIVE,
@@ -823,7 +823,7 @@ async def test_dispatch_excludes_order_author() -> None:
     # Another blogger
     other_blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000652"),
-        external_id="201",
+        telegram_id="201",
         messenger_type=MessengerType.TELEGRAM,
         username="other_blogger",
         status=UserStatus.ACTIVE,
@@ -882,7 +882,7 @@ async def test_dispatch_excludes_bloggers_who_already_received_offer() -> None:
 
     blogger_sent = User(
         user_id=UUID("00000000-0000-0000-0000-000000000662"),
-        external_id="100",
+        telegram_id="100",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_sent",
         status=UserStatus.ACTIVE,
@@ -891,7 +891,7 @@ async def test_dispatch_excludes_bloggers_who_already_received_offer() -> None:
     )
     blogger_new = User(
         user_id=UUID("00000000-0000-0000-0000-000000000663"),
-        external_id="101",
+        telegram_id="101",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_new",
         status=UserStatus.ACTIVE,
@@ -1008,7 +1008,7 @@ async def test_dispatch_excludes_bloggers_with_unfulfilled_interaction() -> (
 
     blogger_with_pending = User(
         user_id=UUID("00000000-0000-0000-0000-000000000702"),
-        external_id="102",
+        telegram_id="102",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_pending",
         status=UserStatus.ACTIVE,
@@ -1088,7 +1088,7 @@ async def test_dispatch_includes_bloggers_with_only_ok_or_no_deal() -> None:
 
     blogger_ok = User(
         user_id=UUID("00000000-0000-0000-0000-000000000722"),
-        external_id="122",
+        telegram_id="122",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ok",
         status=UserStatus.ACTIVE,
@@ -1169,7 +1169,7 @@ async def test_dispatch_min_followers_excludes_below_threshold() -> None:
 
     blogger_low = User(
         user_id=UUID("00000000-0000-0000-0000-000000000742"),
-        external_id="142",
+        telegram_id="142",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_low",
         status=UserStatus.ACTIVE,
@@ -1235,7 +1235,7 @@ async def test_dispatch_min_followers_includes_at_or_above_threshold() -> None:
 
     blogger_ok = User(
         user_id=UUID("00000000-0000-0000-0000-000000000752"),
-        external_id="152",
+        telegram_id="152",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ok",
         status=UserStatus.ACTIVE,
@@ -1302,7 +1302,7 @@ async def test_dispatch_min_followers_excludes_none_when_enabled() -> None:
 
     blogger_no_stats = User(
         user_id=UUID("00000000-0000-0000-0000-000000000762"),
-        external_id="162",
+        telegram_id="162",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_nostats",
         status=UserStatus.ACTIVE,
@@ -1368,7 +1368,7 @@ async def test_dispatch_max_followers_excludes_above_threshold() -> None:
 
     blogger_high = User(
         user_id=UUID("00000000-0000-0000-0000-000000000772"),
-        external_id="172",
+        telegram_id="172",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_high",
         status=UserStatus.ACTIVE,
@@ -1434,7 +1434,7 @@ async def test_dispatch_max_followers_excludes_none_when_enabled() -> None:
 
     blogger_nostats = User(
         user_id=UUID("00000000-0000-0000-0000-000000000777"),
-        external_id="177",
+        telegram_id="177",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_nostats",
         status=UserStatus.ACTIVE,
@@ -1500,7 +1500,7 @@ async def test_dispatch_uses_order_min_max_followers(fake_tm: object) -> None:
 
     blogger_in_range = User(
         user_id=UUID("00000000-0000-0000-0000-000000000782"),
-        external_id="182",
+        telegram_id="182",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ok",
         status=UserStatus.ACTIVE,
@@ -1584,7 +1584,7 @@ async def test_dispatch_skips_when_profile_fetch_returns_none() -> None:
     await user_repo.save(
         User(
             user_id=user_id,
-            external_id="790",
+            telegram_id="790",
             messenger_type=MessengerType.TELEGRAM,
             username="u",
             status=UserStatus.ACTIVE,
@@ -1655,7 +1655,7 @@ async def test_dispatch_age_filter_includes_in_range() -> None:
     await order_repo.save(order)
     blogger_ok = User(
         user_id=UUID("00000000-0000-0000-0000-000000000802"),
-        external_id="802",
+        telegram_id="802",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ok",
         status=UserStatus.ACTIVE,
@@ -1717,7 +1717,7 @@ async def test_dispatch_age_filter_excludes_out_of_range() -> None:
     await order_repo.save(order)
     blogger_old = User(
         user_id=UUID("00000000-0000-0000-0000-000000000812"),
-        external_id="812",
+        telegram_id="812",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_old",
         status=UserStatus.ACTIVE,
@@ -1778,7 +1778,7 @@ async def test_dispatch_gender_filter_includes_match() -> None:
     await order_repo.save(order)
     blogger_male = User(
         user_id=UUID("00000000-0000-0000-0000-000000000822"),
-        external_id="822",
+        telegram_id="822",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_male",
         status=UserStatus.ACTIVE,
@@ -1840,7 +1840,7 @@ async def test_dispatch_gender_filter_excludes_mismatch() -> None:
     await order_repo.save(order)
     blogger_female = User(
         user_id=UUID("00000000-0000-0000-0000-000000000832"),
-        external_id="832",
+        telegram_id="832",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_female",
         status=UserStatus.ACTIVE,
@@ -1903,7 +1903,7 @@ async def test_dispatch_min_publications_includes_above() -> None:
     await order_repo.save(order)
     blogger_ok = User(
         user_id=UUID("00000000-0000-0000-0000-000000000842"),
-        external_id="842",
+        telegram_id="842",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ok",
         status=UserStatus.ACTIVE,
@@ -1974,7 +1974,7 @@ async def test_dispatch_age_filter_excludes_no_birth_date() -> None:
     await order_repo.save(order)
     blogger_no_birth = User(
         user_id=UUID("00000000-0000-0000-0000-000000000815"),
-        external_id="815",
+        telegram_id="815",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_nobirth",
         status=UserStatus.ACTIVE,
@@ -2035,7 +2035,7 @@ async def test_dispatch_age_filter_excludes_below_min() -> None:
     await order_repo.save(order)
     blogger_young = User(
         user_id=UUID("00000000-0000-0000-0000-000000000818"),
-        external_id="818",
+        telegram_id="818",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_young",
         status=UserStatus.ACTIVE,
@@ -2096,7 +2096,7 @@ async def test_dispatch_min_publications_excludes_below() -> None:
     await order_repo.save(order)
     blogger_low = User(
         user_id=UUID("00000000-0000-0000-0000-000000000845"),
-        external_id="845",
+        telegram_id="845",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_low",
         status=UserStatus.ACTIVE,
@@ -2156,7 +2156,7 @@ async def test_dispatch_max_publications_excludes_above() -> None:
     await order_repo.save(order)
     blogger_high = User(
         user_id=UUID("00000000-0000-0000-0000-000000000848"),
-        external_id="848",
+        telegram_id="848",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_high",
         status=UserStatus.ACTIVE,
@@ -2216,7 +2216,7 @@ async def test_dispatch_min_publications_excludes_none_media_count() -> None:
     await order_repo.save(order)
     blogger_no_media = User(
         user_id=UUID("00000000-0000-0000-0000-000000000855"),
-        external_id="855",
+        telegram_id="855",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_nomedia",
         status=UserStatus.ACTIVE,
@@ -2276,7 +2276,7 @@ async def test_dispatch_gender_filter_excludes_no_gender() -> None:
     await order_repo.save(order)
     blogger_no_gender = User(
         user_id=UUID("00000000-0000-0000-0000-000000000835"),
-        external_id="835",
+        telegram_id="835",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_nogender",
         status=UserStatus.ACTIVE,
@@ -2339,7 +2339,7 @@ async def test_dispatch_uses_instagram_stats_when_repo_provided() -> None:
     await order_repo.save(order)
     blogger_ok = User(
         user_id=UUID("00000000-0000-0000-0000-000000000852"),
-        external_id="852",
+        telegram_id="852",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ok",
         status=UserStatus.ACTIVE,
@@ -2412,7 +2412,7 @@ async def test_dispatch_filter_by_price_excludes_out_of_range() -> None:
     await order_repo.save(order)
     blogger_expensive = User(
         user_id=UUID("00000000-0000-0000-0000-000000000903"),
-        external_id="903",
+        telegram_id="903",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_expensive",
         status=UserStatus.ACTIVE,
@@ -2473,7 +2473,7 @@ async def test_dispatch_filter_by_price_includes_in_range() -> None:
     await order_repo.save(order)
     blogger_in_range = User(
         user_id=UUID("00000000-0000-0000-0000-000000000913"),
-        external_id="913",
+        telegram_id="913",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_in_range",
         status=UserStatus.ACTIVE,
@@ -2535,7 +2535,7 @@ async def test_dispatch_filter_by_price_no_delta_skips_filter() -> None:
     await order_repo.save(order)
     blogger_any_price = User(
         user_id=UUID("00000000-0000-0000-0000-000000000917"),
-        external_id="917",
+        telegram_id="917",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_any",
         status=UserStatus.ACTIVE,
@@ -2596,7 +2596,7 @@ async def test_dispatch_filter_by_placement_excludes_mismatch() -> None:
     await order_repo.save(order)
     blogger_ugc_only = User(
         user_id=UUID("00000000-0000-0000-0000-000000000923"),
-        external_id="923",
+        telegram_id="923",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ugc_only",
         status=UserStatus.ACTIVE,
@@ -2656,7 +2656,7 @@ async def test_dispatch_filter_by_placement_includes_match() -> None:
     await order_repo.save(order)
     blogger_placement = User(
         user_id=UUID("00000000-0000-0000-0000-000000000933"),
-        external_id="933",
+        telegram_id="933",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_placement",
         status=UserStatus.ACTIVE,
@@ -2717,7 +2717,7 @@ async def test_dispatch_filter_by_barter_excludes_no_barter() -> None:
     await order_repo.save(order)
     blogger_no_barter = User(
         user_id=UUID("00000000-0000-0000-0000-000000000943"),
-        external_id="943",
+        telegram_id="943",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_no_barter",
         status=UserStatus.ACTIVE,
@@ -2777,7 +2777,7 @@ async def test_dispatch_filter_by_barter_includes_barter() -> None:
     await order_repo.save(order)
     blogger_barter = User(
         user_id=UUID("00000000-0000-0000-0000-000000000953"),
-        external_id="953",
+        telegram_id="953",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_barter",
         status=UserStatus.ACTIVE,
@@ -2837,7 +2837,7 @@ async def test_count_eligible_bloggers_returns_count_for_new_order() -> None:
     await order_repo.save(order)
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000993"),
-        external_id="993",
+        telegram_id="993",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -3008,7 +3008,7 @@ async def test_dispatch_filter_by_placement_ugc_only_includes_ugc_creator() -> (
     await order_repo.save(order)
     blogger_ugc = User(
         user_id=UUID("00000000-0000-0000-0000-000000000983"),
-        external_id="983",
+        telegram_id="983",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger_ugc",
         status=UserStatus.ACTIVE,

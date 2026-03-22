@@ -25,7 +25,7 @@ async def _seed_user(repo: InMemoryUserRepository) -> UUID:
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000120"),
-        external_id="777",
+        telegram_id="777",
         messenger_type=MessengerType.TELEGRAM,
         username="adv",
         status=UserStatus.ACTIVE,
@@ -521,7 +521,7 @@ async def _seed_user_with_country(
     """Seed a user with the given country code."""
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000121"),
-        external_id="778",
+        telegram_id="778",
         messenger_type=MessengerType.TELEGRAM,
         username="adv_cnt",
         status=UserStatus.ACTIVE,

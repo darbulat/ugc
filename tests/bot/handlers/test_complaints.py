@@ -214,7 +214,7 @@ async def test_handle_complaint_reason_success(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000971"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -223,7 +223,7 @@ async def test_handle_complaint_reason_success(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000972"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -307,7 +307,7 @@ async def test_select_complaint_target_advertiser(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000981"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -316,7 +316,7 @@ async def test_select_complaint_target_advertiser(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000982"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -402,7 +402,7 @@ async def test_select_complaint_target_invalid_format(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000980"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -459,7 +459,7 @@ async def test_select_complaint_target_blogger(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000985"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -468,7 +468,7 @@ async def test_select_complaint_target_blogger(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000986"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -554,7 +554,7 @@ async def test_select_complaint_target_no_bloggers(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000989"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -626,7 +626,7 @@ async def test_handle_complaint_reason_text(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000991"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -635,7 +635,7 @@ async def test_handle_complaint_reason_text(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000992"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -711,7 +711,7 @@ async def test_handle_complaint_reason_other(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000000994"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -720,7 +720,7 @@ async def test_handle_complaint_reason_other(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000000995"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -895,7 +895,7 @@ async def test_handle_complaint_reason_duplicate(
 
     reporter = User(
         user_id=UUID("00000000-0000-0000-0000-000000000999"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="reporter",
         status=UserStatus.ACTIVE,
@@ -1157,7 +1157,7 @@ async def test_start_complaint_invalid_reported_id(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001020"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1166,7 +1166,7 @@ async def test_start_complaint_invalid_reported_id(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001021"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1249,7 +1249,7 @@ async def test_start_complaint_invalid_uuid(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001120"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -1353,7 +1353,7 @@ async def test_select_complaint_target_invalid_uuid(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001010"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -1413,7 +1413,7 @@ async def test_select_complaint_target_no_data(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001030"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -1468,7 +1468,7 @@ async def test_select_complaint_target_order_not_found(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001031"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1526,7 +1526,7 @@ async def test_select_complaint_target_blogger_no_access(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001032"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1535,7 +1535,7 @@ async def test_select_complaint_target_blogger_no_access(
     )
     blogger_responded = User(
         user_id=UUID("00000000-0000-0000-0000-000000001033"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger1",
         status=UserStatus.ACTIVE,
@@ -1544,7 +1544,7 @@ async def test_select_complaint_target_blogger_no_access(
     )
     blogger_no_access = User(
         user_id=UUID("00000000-0000-0000-0000-000000001034"),
-        external_id="3",
+        telegram_id="3",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger2",
         status=UserStatus.ACTIVE,
@@ -1628,7 +1628,7 @@ async def test_start_complaint_advertiser_success(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001040"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1637,7 +1637,7 @@ async def test_start_complaint_advertiser_success(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001041"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -1882,7 +1882,7 @@ async def test_handle_complaint_reason_with_notify(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001060"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -1891,7 +1891,7 @@ async def test_handle_complaint_reason_with_notify(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001061"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2060,7 +2060,7 @@ async def test_handle_complaint_reason_text_base_reason_not_drugoe(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001090"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -2069,7 +2069,7 @@ async def test_handle_complaint_reason_text_base_reason_not_drugoe(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001091"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2142,7 +2142,7 @@ async def test_handle_complaint_reason_text_with_bot(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001100"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -2151,7 +2151,7 @@ async def test_handle_complaint_reason_text_with_bot(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001101"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2266,7 +2266,7 @@ async def test_handle_complaint_reason_text_duplicate(
 
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001130"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="advertiser",
         status=UserStatus.ACTIVE,
@@ -2275,7 +2275,7 @@ async def test_handle_complaint_reason_text_duplicate(
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001131"),
-        external_id="2",
+        telegram_id="2",
         messenger_type=MessengerType.TELEGRAM,
         username="blogger",
         status=UserStatus.ACTIVE,
@@ -2350,7 +2350,7 @@ async def test_start_complaint_no_colon_in_data(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001140"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,
@@ -2403,7 +2403,7 @@ async def test_start_complaint_invalid_uuid_in_state(
 
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000001141"),
-        external_id="1",
+        telegram_id="1",
         messenger_type=MessengerType.TELEGRAM,
         username="user",
         status=UserStatus.ACTIVE,

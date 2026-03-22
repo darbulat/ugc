@@ -1322,7 +1322,7 @@ async def test_referral_list_command_with_one_referral_sends_page(
     referrer = __user(external_id="999", username="referrer")
     referred = User(
         user_id=uuid4(),
-        external_id="refd",
+        telegram_id="refd",
         messenger_type=MessengerType.TELEGRAM,
         username="referred_user",
         status=UserStatus.ACTIVE,
@@ -1404,7 +1404,7 @@ async def test_referral_list_pagination_callback_edits_message(
     for i in range(11):
         referred = User(
             user_id=uuid4(),
-            external_id=f"ref{i}",
+            telegram_id=f"ref{i}",
             messenger_type=MessengerType.TELEGRAM,
             username=f"referred_{i}",
             status=UserStatus.ACTIVE,
@@ -1489,7 +1489,7 @@ async def test_referral_list_pagination_callback_with_uuid_admin_ok(
     for i in range(11):
         referred = User(
             user_id=uuid4(),
-            external_id=f"r{i}",
+            telegram_id=f"r{i}",
             messenger_type=MessengerType.TELEGRAM,
             username=f"u{i}",
             status=UserStatus.ACTIVE,
@@ -1616,7 +1616,7 @@ async def test_referral_list_command_only_pending_shows_block2_with_names(
     referrer = __user(external_id="888", username="manager")
     pending_user = User(
         user_id=uuid4(),
-        external_id="pend1",
+        telegram_id="pend1",
         messenger_type=MessengerType.TELEGRAM,
         username="pending_blogger",
         status=UserStatus.ACTIVE,
@@ -1698,7 +1698,7 @@ async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
     referrer = __user(external_id="777", username="manager2")
     referred = User(
         user_id=uuid4(),
-        external_id="refd2",
+        telegram_id="refd2",
         messenger_type=MessengerType.TELEGRAM,
         username="referred_user",
         status=UserStatus.ACTIVE,
@@ -1707,7 +1707,7 @@ async def test_referral_list_command_both_bindings_and_pending_shows_two_blocks(
     )
     pending_user = User(
         user_id=uuid4(),
-        external_id="pend2",
+        telegram_id="pend2",
         messenger_type=MessengerType.TELEGRAM,
         username="pending_user",
         status=UserStatus.ACTIVE,
@@ -1846,7 +1846,7 @@ async def test_referral_list_command_admin_sees_another_user_list(
     for i in range(11):
         referred = User(
             user_id=uuid4(),
-            external_id=f"refd{i}",
+            telegram_id=f"refd{i}",
             messenger_type=MessengerType.TELEGRAM,
             username=f"referred_{i}",
             status=UserStatus.ACTIVE,
@@ -1927,7 +1927,7 @@ async def test_referral_list_pagination_callback_invalid_page_uses_one(
     for i in range(3):
         u = User(
             user_id=uuid4(),
-            external_id=f"x{i}",
+            telegram_id=f"x{i}",
             messenger_type=MessengerType.TELEGRAM,
             username=f"u{i}",
             status=UserStatus.ACTIVE,
@@ -2002,7 +2002,7 @@ async def test_referral_list_command_page1_shows_forward_button(
     for i in range(11):
         u = User(
             user_id=uuid4(),
-            external_id=f"y{i}",
+            telegram_id=f"y{i}",
             messenger_type=MessengerType.TELEGRAM,
             username=f"u{i}",
             status=UserStatus.ACTIVE,
@@ -2100,7 +2100,7 @@ def __user(
 
     return User(
         user_id=uuid4(),
-        external_id=external_id,
+        telegram_id=external_id,
         messenger_type=MessengerType.TELEGRAM,
         username=username,
         status=UserStatus.ACTIVE,
@@ -2354,7 +2354,7 @@ async def test_resolve_target_non_admin() -> None:
 
     user = User(
         user_id=uuid4(),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="test",
         status=UserStatus.ACTIVE,
@@ -2383,7 +2383,7 @@ async def test_resolve_target_admin_no_arg() -> None:
 
     user = User(
         user_id=uuid4(),
-        external_id="456",
+        telegram_id="456",
         messenger_type=MessengerType.TELEGRAM,
         username="admin_user",
         status=UserStatus.ACTIVE,

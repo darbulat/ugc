@@ -71,7 +71,7 @@ async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
     repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -94,7 +94,7 @@ async def test_run_once_sends_reminder_and_updates_timestamp(fake_tm) -> None:
         "ugc_bot.role_reminder_scheduler.send_with_retry",
         new_callable=AsyncMock,
     ) as mock_send:
-        await run_once(messenger_client, service, cutoff, config)
+        await run_once({"telegram": messenger_client}, service, cutoff, config)
 
         mock_send.assert_called_once()
         assert mock_send.call_args[1]["chat_id"] == "123"
@@ -114,7 +114,7 @@ async def test_run_once_skips_non_telegram_messenger(fake_tm) -> None:
     repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        external_id="non_digit",
+        telegram_id="non_digit",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -137,7 +137,7 @@ async def test_run_once_skips_non_telegram_messenger(fake_tm) -> None:
         "ugc_bot.role_reminder_scheduler.send_with_retry",
         new_callable=AsyncMock,
     ) as mock_send:
-        await run_once(messenger_client, service, cutoff, config)
+        await run_once({"telegram": messenger_client}, service, cutoff, config)
         mock_send.assert_not_called()
 
 
@@ -187,7 +187,7 @@ async def test_run_once_handles_send_failure(fake_tm) -> None:
     repo = InMemoryUserRepository()
     user = User(
         user_id=uuid4(),
-        external_id="123",
+        telegram_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -211,7 +211,7 @@ async def test_run_once_handles_send_failure(fake_tm) -> None:
         new_callable=AsyncMock,
         side_effect=Exception("send failed"),
     ):
-        await run_once(messenger_client, service, cutoff, config)
+        await run_once({"telegram": messenger_client}, service, cutoff, config)
 
     updated = await service.get_user_by_id(user.user_id)
     assert updated is not None
@@ -254,5 +254,5 @@ async def test_run_loop_runs_once_then_sleeps(fake_tm) -> None:
         ),
         pytest.raises(asyncio.CancelledError),
     ):
-        await run_loop(messenger_client, service, config)
+        await run_loop({"telegram": messenger_client}, service, config)
     assert call_count == 1

@@ -347,7 +347,7 @@ def create_test_user(session):
 
         return User(
             user_id=uuid4(),
-            external_id=external_id,
+            telegram_id=external_id,
             messenger_type=MessengerType.TELEGRAM,
             username=f"user_{external_id}",
             status=UserStatus.ACTIVE,

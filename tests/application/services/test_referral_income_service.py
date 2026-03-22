@@ -145,7 +145,7 @@ async def test_get_user_referral_stats_with_one_binding_no_orders() -> None:
     await user_repo.save(
         User(
             user_id=referred_id,
-            external_id="refd",
+            telegram_id="refd",
             messenger_type=MessengerType.TELEGRAM,
             username="referred",
             status=UserStatus.ACTIVE,
@@ -195,7 +195,7 @@ async def test_get_user_referral_stats_with_completed_order_counts_income() -> (
     await user_repo.save(
         User(
             user_id=referred_id,
-            external_id="r",
+            telegram_id="r",
             messenger_type=MessengerType.TELEGRAM,
             username="ref",
             status=UserStatus.ACTIVE,
@@ -518,7 +518,7 @@ async def test_get_user_referral_stats_stats_limit_zero_unlimited() -> None:
     await user_repo.save(
         User(
             user_id=referred_id,
-            external_id="refd",
+            telegram_id="refd",
             messenger_type=MessengerType.TELEGRAM,
             username="referred",
             status=UserStatus.ACTIVE,
@@ -860,7 +860,7 @@ async def test_get_user_referral_stats_uses_custom_rate_when_set() -> None:
     await user_repo.save(
         User(
             user_id=referrer_id,
-            external_id="ref",
+            telegram_id="ref",
             messenger_type=MessengerType.TELEGRAM,
             username="referrer",
             status=UserStatus.ACTIVE,
@@ -926,7 +926,7 @@ async def test_get_user_referral_stats_custom_rate_none_keeps_default() -> None:
     await user_repo.save(
         User(
             user_id=referrer_id,
-            external_id="ref",
+            telegram_id="ref",
             messenger_type=MessengerType.TELEGRAM,
             username="referrer",
             status=UserStatus.ACTIVE,
@@ -967,7 +967,7 @@ async def test_get_user_referral_stats_counts_advertiser_order_income() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv",
+            telegram_id="adv",
             messenger_type=MessengerType.TELEGRAM,
             username="advertiser",
             status=UserStatus.ACTIVE,
@@ -1096,7 +1096,7 @@ async def test_advertiser_order_ignored_when_payment_not_paid() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv",
+            telegram_id="adv",
             messenger_type=MessengerType.TELEGRAM,
             username="advertiser",
             status=UserStatus.ACTIVE,
@@ -1236,7 +1236,7 @@ async def test_get_referral_balances_batch_fallback_when_no_batch_loader() -> (
     await user_repo.save(
         User(
             user_id=user_id,
-            external_id="e1",
+            telegram_id="e1",
             telegram="u1",
             username="u1",
             status=UserStatus.ACTIVE,
@@ -1281,7 +1281,7 @@ async def test_record_creator_referral_income_creates_entry() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="creator1",
+            telegram_id="creator1",
             messenger_type=MessengerType.TELEGRAM,
             username="creator1",
             status=UserStatus.ACTIVE,
@@ -1379,7 +1379,7 @@ async def test_record_creator_referral_income_no_binding() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="creator2",
+            telegram_id="creator2",
             messenger_type=MessengerType.TELEGRAM,
             username="creator2",
             status=UserStatus.ACTIVE,
@@ -1438,7 +1438,7 @@ async def test_record_advertiser_referral_income_creates_entry() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv1",
+            telegram_id="adv1",
             messenger_type=MessengerType.TELEGRAM,
             username="adv1",
             status=UserStatus.ACTIVE,
@@ -1537,7 +1537,7 @@ async def test_record_creator_referral_income_idempotent() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="creator3",
+            telegram_id="creator3",
             messenger_type=MessengerType.TELEGRAM,
             username="creator3",
             status=UserStatus.ACTIVE,
@@ -1803,7 +1803,7 @@ async def test_record_creator_no_binding_skips() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="c1",
+            telegram_id="c1",
             messenger_type=MessengerType.TELEGRAM,
             username="c1",
             status=UserStatus.ACTIVE,
@@ -1878,7 +1878,7 @@ async def test_record_creator_no_pricing_skips() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="c2",
+            telegram_id="c2",
             messenger_type=MessengerType.TELEGRAM,
             username="c2",
             status=UserStatus.ACTIVE,
@@ -2022,7 +2022,7 @@ async def test_record_advertiser_no_binding_skips() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv2",
+            telegram_id="adv2",
             messenger_type=MessengerType.TELEGRAM,
             username="adv2",
             status=UserStatus.ACTIVE,
@@ -2098,7 +2098,7 @@ async def test_record_advertiser_no_pricing_skips() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv3",
+            telegram_id="adv3",
             messenger_type=MessengerType.TELEGRAM,
             username="adv3",
             status=UserStatus.ACTIVE,
@@ -2234,7 +2234,7 @@ async def test_record_creator_custom_rate() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="c_custom",
+            telegram_id="c_custom",
             messenger_type=MessengerType.TELEGRAM,
             username="c_custom",
             status=UserStatus.ACTIVE,
@@ -2329,7 +2329,7 @@ async def test_record_advertiser_custom_rate() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv_custom",
+            telegram_id="adv_custom",
             messenger_type=MessengerType.TELEGRAM,
             username="adv_custom",
             status=UserStatus.ACTIVE,
@@ -2424,7 +2424,7 @@ async def test_record_creator_zero_bloggers_skips() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="c_zero",
+            telegram_id="c_zero",
             messenger_type=MessengerType.TELEGRAM,
             username="c_zero",
             status=UserStatus.ACTIVE,
@@ -2716,7 +2716,7 @@ async def test_record_creator_no_payment_skips() -> None:
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="c_nopay",
+            telegram_id="c_nopay",
             messenger_type=MessengerType.TELEGRAM,
             username="c_nopay",
             status=UserStatus.ACTIVE,
@@ -2791,7 +2791,7 @@ async def test_record_advertiser_no_payment_skips() -> None:
     await user_repo.save(
         User(
             user_id=advertiser_id,
-            external_id="adv_nopay",
+            telegram_id="adv_nopay",
             messenger_type=MessengerType.TELEGRAM,
             username="adv_nopay",
             status=UserStatus.ACTIVE,
@@ -2875,7 +2875,7 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
     await user_repo.save(
         User(
             user_id=creator_id,
-            external_id="old_creator",
+            telegram_id="old_creator",
             messenger_type=MessengerType.TELEGRAM,
             username="old_creator",
             status=UserStatus.ACTIVE,
