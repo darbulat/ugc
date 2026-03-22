@@ -10,6 +10,9 @@ if TYPE_CHECKING:
 # Keys per keyboard in docstrings. Use bot_texts_service.get_many(keys, locale).
 
 # Inline callback_data (Telegram limit 64 bytes)
+CALLBACK_SURVEY_MESSENGER_TG = "survey:msg:tg"
+CALLBACK_SURVEY_MESSENGER_MAX = "survey:msg:max"
+CALLBACK_SURVEY_MESSENGER_OTHER = "survey:msg:other"
 CALLBACK_ROLE_CREATOR = "role:creator"
 CALLBACK_ROLE_ADVERTISER = "role:advertiser"
 CALLBACK_CREATOR_CREATE = "creator:create"

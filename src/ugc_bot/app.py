@@ -31,6 +31,7 @@ from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.bot.handlers.profile import router as profile_router
 from ugc_bot.bot.handlers.referral import router as referral_router
+from ugc_bot.bot.handlers.survey_messenger import router as survey_messenger_router
 
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.start import router as start_router
@@ -117,4 +118,5 @@ def build_dispatcher(
         dispatcher.include_router(feedback_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(complaints_router)
+        dispatcher.include_router(survey_messenger_router)
     return dispatcher
