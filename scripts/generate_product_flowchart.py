@@ -888,12 +888,12 @@ MERMAID_PLACEHOLDER
 "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"\
 ></script>
 <script>
-mermaid.initialize({{
+mermaid.initialize({
   startOnLoad: true,
   theme: 'default',
-  flowchart: {{ curve:'basis', useMaxWidth:false }},
+  flowchart: { curve:'basis', useMaxWidth:false },
   securityLevel: 'loose'
-}});
+});
 document.getElementById('ts').textContent =
   'Generated: ' + new Date().toLocaleString();
 </script>
