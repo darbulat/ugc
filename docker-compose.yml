@@ -93,19 +93,16 @@ services:
       pgbouncer:
         condition: service_started
     command:
-      [
-        "uvicorn",
-        "ugc_bot.admin.app:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8001",
-        "--log-config",
-        "config/uvicorn_log_config.json",
-        "--proxy-headers",
-        "--forwarded-allow-ips",
-        "127.0.0.1,172.16.0.0/12,10.0.0.0/8",
-      ]
+      - /bin/sh
+      - -c
+      - |
+        python scripts/generate_product_flowchart.py &&
+        exec uvicorn ugc_bot.admin.app:app \
+          --host 0.0.0.0 \
+          --port 8001 \
+          --log-config config/uvicorn_log_config.json \
+          --proxy-headers \
+          --forwarded-allow-ips '127.0.0.1,172.16.0.0/12,10.0.0.0/8'
     expose:
       - "8001"
     healthcheck:

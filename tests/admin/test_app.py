@@ -2200,7 +2200,7 @@ def test_admin_flowchart_redirects_when_unauthenticated(
 def test_admin_flowchart_returns_404_when_file_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GET /admin/flowchart returns 404 when HTML file has not been generated."""
+    """GET /admin/flowchart returns 404 when missing."""
     import ugc_bot.admin.app as admin_app
     from ugc_bot.admin.app import _register_flowchart_route
 
@@ -2222,7 +2222,7 @@ def test_admin_flowchart_returns_404_when_file_missing(
 def test_admin_flowchart_returns_html_when_authenticated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GET /admin/flowchart returns HTML content when authenticated and file exists."""
+    """GET /admin/flowchart returns HTML when OK."""
     import ugc_bot.admin.app as admin_app
     from ugc_bot.admin.app import _register_flowchart_route
 

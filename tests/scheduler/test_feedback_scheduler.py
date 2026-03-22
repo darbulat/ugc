@@ -5,7 +5,6 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 from uuid import UUID, uuid4
 
-
 import pytest
 
 from tests.helpers.fakes import FakeBot, FakeBotWithSession
