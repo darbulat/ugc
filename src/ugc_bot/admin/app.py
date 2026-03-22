@@ -1159,6 +1159,27 @@ def _register_dashboard_html_routes(
         )
 
 
+_FLOWCHART_PATH = (
+    Path(__file__).resolve().parents[3] / "docs" / "product_flowchart.html"
+)
+
+
+def _register_flowchart_route(app: FastAPI, auth: AdminAuth) -> None:
+    @app.get("/admin/flowchart", response_class=HTMLResponse)
+    async def admin_flowchart(request: Request):
+        if not await auth.authenticate(request):
+            return RedirectResponse(url="/admin/login")
+        if not _FLOWCHART_PATH.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Flowchart not found. Run:"
+                    " python scripts/generate_product_flowchart.py"
+                ),
+            )
+        return HTMLResponse(content=_FLOWCHART_PATH.read_text())
+
+
 def _register_dashboard_api_routes(
     app: FastAPI,
     require_admin,
@@ -1276,6 +1297,7 @@ def _register_dashboard_routes(
     _register_dashboard_html_routes(
         app, auth, dashboard_service, templates, cache, _LIST_CACHE_TTL
     )
+    _register_flowchart_route(app, auth)
     _register_dashboard_api_routes(
         app, require_admin, dashboard_service, cache, _LIST_CACHE_TTL
     )

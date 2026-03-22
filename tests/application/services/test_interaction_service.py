@@ -921,3 +921,90 @@ async def test_record_blogger_feedback_ok_triggers_referral_income() -> None:
     )
     assert call_kwargs["creator_id"] == blogger_id
     assert call_kwargs["advertiser_country_code"] == "ru"
+
+
+@pytest.mark.asyncio
+async def test_record_advertiser_feedback_max_postpone_non_pending() -> None:
+    """Non-pending feedback with maxed postpone_count forces outcome=NO_DEAL."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    # Both sides have already responded with NO_DEAL; postpone_count is maxed.
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000002001"),
+        order_id=UUID("00000000-0000-0000-0000-000000002002"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000002003"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000002004"),
+        status=InteractionStatus.PENDING,
+        from_advertiser=None,
+        from_blogger="❌ Не договорились",
+        postpone_count=3,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await repo.save(interaction)
+
+    updated = await service.record_advertiser_feedback(
+        interaction.interaction_id, "❌ Не договорились"
+    )
+    assert updated.from_advertiser == "❌ Не договорились"
+    assert updated.status == InteractionStatus.NO_DEAL
+
+
+@pytest.mark.asyncio
+async def test_record_blogger_feedback_max_postpone_non_pending() -> None:
+    """Non-pending feedback with maxed postpone_count forces outcome=NO_DEAL."""
+
+    repo = InMemoryInteractionRepository()
+    service = InteractionService(interaction_repo=repo, max_postpone_count=3)
+    # Both sides have already responded with NO_DEAL; postpone_count is maxed.
+    interaction = Interaction(
+        interaction_id=UUID("00000000-0000-0000-0000-000000002011"),
+        order_id=UUID("00000000-0000-0000-0000-000000002012"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000002013"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000002014"),
+        status=InteractionStatus.PENDING,
+        from_advertiser="❌ Не договорились",
+        from_blogger=None,
+        postpone_count=3,
+        next_check_at=None,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    await repo.save(interaction)
+
+    updated = await service.record_blogger_feedback(
+        interaction.interaction_id, "❌ Не договорились"
+    )
+    assert updated.from_blogger == "❌ Не договорились"
+    assert updated.status == InteractionStatus.NO_DEAL
+
+
+@pytest.mark.asyncio
+async def test_postpone_interaction_records_metric() -> None:
+    """metrics_collector.record_feedback_postponement is called on postpone."""
+
+    from unittest.mock import MagicMock
+
+    repo = InMemoryInteractionRepository()
+    metrics = MagicMock()
+    service = InteractionService(
+        interaction_repo=repo,
+        max_postpone_count=3,
+        metrics_collector=metrics,
+    )
+    interaction = await service.get_or_create(
+        order_id=UUID("00000000-0000-0000-0000-000000002021"),
+        blogger_id=UUID("00000000-0000-0000-0000-000000002022"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000002023"),
+    )
+
+    await service.record_advertiser_feedback(
+        interaction.interaction_id, "⏳ Еще не связался"
+    )
+
+    metrics.record_feedback_postponement.assert_called_once_with(
+        interaction_id=str(interaction.interaction_id),
+        postpone_count=1,
+    )

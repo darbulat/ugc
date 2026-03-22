@@ -34,6 +34,9 @@ from ugc_bot.bot.handlers.referral import router as referral_router
 
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.start import router as start_router
+from ugc_bot.bot.handlers.survey_messenger import (
+    router as survey_messenger_router,
+)
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.bot.middleware.locale import LocaleMiddleware
 from ugc_bot.config import AppConfig
@@ -117,4 +120,5 @@ def build_dispatcher(
         dispatcher.include_router(feedback_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(complaints_router)
+        dispatcher.include_router(survey_messenger_router)
     return dispatcher

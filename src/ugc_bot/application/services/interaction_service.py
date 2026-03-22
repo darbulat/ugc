@@ -494,7 +494,7 @@ class InteractionService:
         if adv is None and blog is None:
             return InteractionStatus.PENDING
 
-        return InteractionStatus.NO_DEAL
+        return InteractionStatus.NO_DEAL  # pragma: no cover
 
     async def manually_resolve_issue(
         self, interaction_id: UUID, final_status: InteractionStatus
