@@ -81,7 +81,7 @@ _NODE_MESSAGES: dict[str, tuple[str, str]] = {
     "FEEDBACK_START":     ("desc", "Запрос обратной связи: удалось ли связаться с контрагентом?"),
     "FB_REASON":          ("desc", "Выбор типа обратной связи"),
     "FB_ISSUE":           ("key",  "msg_fb_issue_prompt"),
-    "FB_NPS":             ("key",  "msg_fb_nps_question"),
+    "FB_NPS":             ("desc", "NPS-оценка по шкале от 1 до 5 ⭐"),
     "FB_NPS_COMMENT":     ("desc", "Комментарий к NPS-оценке: развёрнутый отзыв об опыте работы с платформой"),
     "FB_COMPLETE":        ("key",  "msg_fb_thanks_saved"),
     # Complaints
@@ -121,13 +121,29 @@ Parses `ru.py` using `ast`, walks the `RU` dict literal, returns `{key: value}`.
 
 Implementation: find the `RU = {...}` assignment, iterate its `keys` and `values`. For each value node, read `.value` directly — Python's parser folds adjacent string literals (including parenthesized multi-line concatenation) into a single `ast.Constant` at parse time, so every value in `RU` is already an `ast.Constant` with a `str` value. No `ast.literal_eval` or `ast.unparse` needed. Only keys with `str` values are included (all values in `RU` qualify).
 
+### `_NODE_LABELS: dict[str, str]`
+
+A companion constant mapping every node ID in `_NODE_MESSAGES` to its human-readable display title shown in the drawer header. Defined alongside `_NODE_MESSAGES`. Examples:
+
+```python
+_NODE_LABELS: dict[str, str] = {
+    "START": "/start",
+    "LANG_SELECT": "Язык",
+    "COUNTRY_SELECT": "Страна",
+    "ROLE_SELECT": "Выбор роли",
+    "BR_name": "Имя",
+    "BR_phone": "Телефон",
+    # ... one entry per node ID in _NODE_MESSAGES
+}
+```
+
 ### `build_node_data(...) -> dict[str, dict]`
 
 Called in `main()`. For each entry in `_NODE_MESSAGES`:
-- `"key"` entries: look up text from `extract_ru_texts()`, use the human-readable label from `_ALL_LABELS` (or the key itself) as `title`
-- `"desc"` entries: use the literal string as `text`, derive `title` from the node label in the diagram
+- `"key"` entries: `text` = look up from `extract_ru_texts()`, `title` = `_NODE_LABELS[node_id]`, `key` = the ru key string
+- `"desc"` entries: `text` = the literal description string, `title` = `_NODE_LABELS[node_id]`, `key` = `None`
 
-Returns `{node_id: {"title": str, "text": str, "key": str|None}}`.
+Returns `{node_id: {"title": str, "text": str, "key": str | None}}`.
 
 ---
 
@@ -259,7 +275,9 @@ document.addEventListener('keydown', e => {
 
 - `extract_ru_texts` reads `ast.Constant.value` directly — no `ast.literal_eval` needed; Python folds adjacent string literals at parse time.
 - Several keys contain unresolved placeholders — all shown as-is (context is clear in the drawer): `{currency}` in `msg_step_ask_price`, `msg_order_budget`; `{page}/{total_pages}` in `msg_orders_title`.
-- `VERIFY_IG`, `FEEDBACK_START`, `FB_NPS_COMMENT` use `"desc"` entries because their `ru.py` keys contain user-specific placeholders (`{url}`, `{creator_link}`) or are role/score-specific, making a single key misleading.
+- `VERIFY_IG`, `FEEDBACK_START`, `FB_NPS`, `FB_NPS_COMMENT` use `"desc"` entries because their `ru.py` keys contain user-specific placeholders (`{url}`, `{creator_link}`) or are role/score-specific, making a single key misleading.
+- The existing diagram label `"NPS Score 1-10"` in `_emit_feedback` is incorrect — the actual bot scale is 1–5. Fix it to `"NPS Score 1-5"` as part of this implementation.
+- Node labels for `title` field come from `_NODE_LABELS` — an explicit dict, not derived dynamically from `_emit_*` functions or `_ALL_LABELS`.
 - Node labels for `title` field: reuse `_ALL_LABELS` where available, otherwise use the human-readable label already defined inline in `_emit_*` functions. For simplicity, `title` for "key" nodes is derived from the node's Mermaid label string (already in the emit functions).
 - No new files created — all changes go into `generate_product_flowchart.py`.
 
