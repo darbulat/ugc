@@ -31,10 +31,12 @@ from ugc_bot.bot.handlers.order_creation import router as order_router
 from ugc_bot.bot.handlers.payments import router as payments_router
 from ugc_bot.bot.handlers.profile import router as profile_router
 from ugc_bot.bot.handlers.referral import router as referral_router
-from ugc_bot.bot.handlers.survey_messenger import router as survey_messenger_router
 
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.handlers.start import router as start_router
+from ugc_bot.bot.handlers.survey_messenger import (
+    router as survey_messenger_router,
+)
 from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.bot.middleware.locale import LocaleMiddleware
 from ugc_bot.config import AppConfig
