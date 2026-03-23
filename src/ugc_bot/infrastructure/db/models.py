@@ -92,6 +92,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     PaymentStatus: "payment_status",
     PayoutRequestStatus: "payout_request_status",
     WorkFormat: "work_format",
+    AuditAction: "audit_action",
 }
 
 
