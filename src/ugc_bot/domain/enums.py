@@ -18,6 +18,7 @@ class UserStatus(StrEnum):
     ACTIVE = "active"
     PAUSE = "pause"
     BLOCKED = "blocked"
+    BOT_BLOCKED = "bot_blocked"
     DELETED = "deleted"
 
 

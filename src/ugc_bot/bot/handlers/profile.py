@@ -157,6 +157,7 @@ _STATUS_KEY: dict[UserStatus, str] = {
     UserStatus.ACTIVE: "lbl_status_active",
     UserStatus.PAUSE: "lbl_status_pause",
     UserStatus.BLOCKED: "lbl_status_blocked",
+    UserStatus.BOT_BLOCKED: "lbl_status_active",
 }
 _AUDIENCE_KEY: dict[AudienceGender, str] = {
     AudienceGender.MALE: "lbl_audience_male",
