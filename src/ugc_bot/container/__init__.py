@@ -88,6 +88,14 @@ class Container:
             currency_symbol=self._config.market.currency_symbol,
         )
 
+    def build_user_role_service(self) -> UserRoleService:
+        """UserRoleService for status updates (e.g. bot-blocked marking)."""
+        repos = self.build_repos()
+        return UserRoleService(
+            user_repo=repos["user_repo"],
+            transaction_manager=self._transaction_manager,
+        )
+
     def build_bot_texts_service(self) -> BotTextsService:
         """BotTextsService for localized text lookup."""
         repos = self.build_repos()
