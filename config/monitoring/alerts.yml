@@ -122,13 +122,3 @@ groups:
           summary: Telegram API errors
           description: Telegram API error rate is {{ $value | humanize }}/sec for 5 minutes.
 
-  - name: replication
-    rules:
-      - alert: ReplicationSlotInactive
-        expr: (count(pg_replication_slots_active) - sum(pg_replication_slots_active)) > 0
-        for: 5m
-        labels:
-          severity: warning
-        annotations:
-          summary: Logical replication slot inactive
-          description: At least one logical replication slot is inactive. Subscriber (e.g. Beget) may be disconnected or unable to connect to the publisher.
