@@ -713,3 +713,162 @@ class TestManagerFeedbackEndpoint:
         interaction_service.record_advertiser_feedback.assert_awaited_once_with(
             INTERACTION_ID, "✅ Всё прошло хорошо"
         )
+
+    @pytest.mark.asyncio
+    async def test_feedback_no_deal_records_advertiser_feedback(self) -> None:
+        order = _make_order()
+        interaction = MagicMock()
+        interaction.interaction_id = INTERACTION_ID
+
+        updated = MagicMock()
+        updated.interaction_id = INTERACTION_ID
+
+        interaction_service = MagicMock()
+        interaction_service.get_or_create = AsyncMock(return_value=interaction)
+        interaction_service.record_advertiser_feedback = AsyncMock(
+            return_value=updated
+        )
+
+        deps = {
+            "manager_service": MagicMock(
+                is_manager_for_order=AsyncMock(return_value=True)
+            ),
+            "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "interaction_service": interaction_service,
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = ManagerFeedbackRequest(init_data="x", status="no_deal")
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ):
+            result = await manager_feedback(
+                request, ORDER_ID, BLOGGER_ID, body
+            )
+
+        assert result["ok"] is True
+        call_args = interaction_service.record_advertiser_feedback.call_args
+        assert "❌" in call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_feedback_issue_creates_complaint(self) -> None:
+        order = _make_order()
+        interaction = MagicMock()
+        interaction.interaction_id = INTERACTION_ID
+
+        updated = MagicMock()
+        updated.interaction_id = INTERACTION_ID
+
+        interaction_service = MagicMock()
+        interaction_service.get_or_create = AsyncMock(return_value=interaction)
+        interaction_service.record_advertiser_feedback = AsyncMock(
+            return_value=updated
+        )
+
+        complaint = MagicMock()
+        complaint_service = MagicMock()
+        complaint_service.create_complaint = AsyncMock(return_value=complaint)
+
+        deps = {
+            "manager_service": MagicMock(
+                is_manager_for_order=AsyncMock(return_value=True)
+            ),
+            "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "interaction_service": interaction_service,
+            "complaint_service": complaint_service,
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+        dispatcher.get = lambda k, default=None: deps.get(k, default)
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = ManagerFeedbackRequest(
+            init_data="x", status="issue", issue_description="Обман"
+        )
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ):
+            result = await manager_feedback(
+                request, ORDER_ID, BLOGGER_ID, body
+            )
+
+        assert result["ok"] is True
+        complaint_service.create_complaint.assert_awaited_once()
+        call_kwargs = complaint_service.create_complaint.call_args.kwargs
+        assert call_kwargs["reporter_id"] == MANAGER_ID
+        assert call_kwargs["reported_id"] == BLOGGER_ID
+        assert "Обман" in call_kwargs["reason"]
+
+    @pytest.mark.asyncio
+    async def test_feedback_issue_without_description_returns_422(self) -> None:
+        order = _make_order()
+        interaction = MagicMock()
+        interaction.interaction_id = INTERACTION_ID
+
+        deps = {
+            "manager_service": MagicMock(
+                is_manager_for_order=AsyncMock(return_value=True)
+            ),
+            "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "interaction_service": MagicMock(
+                get_or_create=AsyncMock(return_value=interaction)
+            ),
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = ManagerFeedbackRequest(init_data="x", status="issue")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_feedback(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_feedback_403_when_not_manager(self) -> None:
+        deps = {
+            "manager_service": MagicMock(
+                is_manager_for_order=AsyncMock(return_value=False)
+            ),
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = ManagerFeedbackRequest(init_data="x", status="ok")
+
+        with (
+            patch(
+                "ugc_bot.miniapp.api._ensure_user_and_get_id",
+                new=AsyncMock(return_value=MANAGER_ID),
+            ),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await manager_feedback(request, ORDER_ID, BLOGGER_ID, body)
+
+        assert exc_info.value.status_code == 403
