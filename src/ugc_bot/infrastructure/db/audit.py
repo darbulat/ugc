@@ -60,7 +60,9 @@ def _get_changes(
     return changes
 
 
-def _get_all_values(obj: Any, skip: frozenset[str] = _SKIP_ATTRS) -> dict[str, Any]:
+def _get_all_values(
+    obj: Any, skip: frozenset[str] = _SKIP_ATTRS
+) -> dict[str, Any]:
     """Return all column values for a new object."""
     insp = inspect(obj)
     result: dict[str, Any] = {}
@@ -75,6 +77,8 @@ def _get_all_values(obj: Any, skip: frozenset[str] = _SKIP_ATTRS) -> dict[str, A
 
 def _before_flush(session: Session, flush_context: Any, instances: Any) -> None:
     """Capture changes to tracked models before they are flushed."""
+    if not session.info.get("audit_enabled", True):
+        return
     actor = session.info.get("audit_actor")
     entries: list[AuditLogModel] = []
 
@@ -136,6 +140,13 @@ def _before_flush(session: Session, flush_context: Any, instances: Any) -> None:
         session.add(entry)
 
 
+_registered = False
+
+
 def register_audit_listener() -> None:
-    """Register the audit listener on all Sessions (class-level)."""
+    """Register the audit listener on all Sessions (class-level, once)."""
+    global _registered  # noqa: PLW0603
+    if _registered:
+        return
+    _registered = True
     event.listen(Session, "before_flush", _before_flush)

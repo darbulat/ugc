@@ -1,10 +1,10 @@
 """SQLAlchemy ORM models for persistence."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from enum import StrEnum
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import sqlalchemy as sa
 from geoalchemy2 import Geometry
@@ -77,6 +77,18 @@ class _GeometryOrText(TypeDecorator):
     def process_result_value(self, value, dialect):
         """Return value as-is (string from SQLite, WKB from PostgreSQL)."""
         return value
+
+
+class _JsonbOrJson(TypeDecorator):
+    """PostgreSQL: JSONB; SQLite: JSON so tests run without PostgreSQL."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return JSONB()
+        return JSON()
 
 
 _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
@@ -923,6 +935,7 @@ class AuditLogModel(Base):
     id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         primary_key=True,
+        default=uuid4,
         server_default=text("uuid_generate_v4()"),
     )
     entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -932,8 +945,10 @@ class AuditLogModel(Base):
     action: Mapped[AuditAction] = mapped_column(
         _enum_column(AuditAction), nullable=False
     )
-    old_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
-    new_values: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    old_values: Mapped[Optional[dict]] = mapped_column(
+        _JsonbOrJson(), nullable=True
+    )
+    new_values: Mapped[dict] = mapped_column(_JsonbOrJson(), nullable=False)
     changed_by: Mapped[Optional[UUID]] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="SET NULL"),
@@ -942,6 +957,7 @@ class AuditLogModel(Base):
     changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+        default=lambda: datetime.now(tz=timezone.utc),
         server_default=text("now()"),
     )
 

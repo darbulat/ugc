@@ -53,6 +53,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    AuditLogModel,
     BloggerProfileModel,
     BotTextModel,
     ComplaintModel,
@@ -65,7 +66,6 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     PayoutRequestModel,
-    AuditLogModel,
     ReferralIncomeEntryModel,
     UserModel,
 )

@@ -4,12 +4,12 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.db.audit import register_audit_listener
 from ugc_bot.infrastructure.db.session import (
     SessionTransactionManager,
     create_db_engine,
     create_session_factory,
 )
-from ugc_bot.infrastructure.db.audit import register_audit_listener
 from ugc_bot.infrastructure.redis_lock import IssueDescriptionLockManager
 from ugc_bot.metrics.collector import MetricsCollector
 
