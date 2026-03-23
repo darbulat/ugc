@@ -17,6 +17,7 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.geography import get_cities_list_for_miniapp
 from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_complaint,
     notify_admins_about_order_created,
     notify_support_chat_about_new_order,
 )
@@ -1909,17 +1910,21 @@ async def manager_feedback(
             reason=body.issue_description.strip(),
         )
 
-        from ugc_bot.application.services.admin_notification_service import (
-            notify_admins_about_complaint,
-        )
-
-        user_role_service = dispatcher.get("user_role_service")
-        messenger_client = dispatcher.get("messenger_client")
-        if user_role_service and messenger_client:
+        user_role_service = dispatcher["user_role_service"]
+        messenger_client = dispatcher["messenger_client"]
+        try:
             await notify_admins_about_complaint(
                 complaint=complaint,
                 messenger_client=messenger_client,
                 user_role_service=user_role_service,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to notify admins about complaint",
+                extra={
+                    "order_id": str(order_id),
+                    "blogger_id": str(blogger_id),
+                },
             )
 
     updated = await interaction_service.record_advertiser_feedback(
