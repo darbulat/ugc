@@ -2374,6 +2374,157 @@
           });
       }
 
+      function sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription) {
+        var payload = { status: feedbackStatus };
+        if (issueDescription) payload.issue_description = issueDescription;
+        return api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/feedback', payload);
+      }
+
+      function setBlockMessage(block, text, color) {
+        while (block.firstChild) block.removeChild(block.firstChild);
+        var p = document.createElement('p');
+        p.style.cssText = 'font-size:13px;margin:0;color:' + color;
+        p.textContent = text;
+        block.appendChild(p);
+      }
+
+      function showFeedbackAfterUgcVideo(orderId, bloggerId, container) {
+        while (container.firstChild) container.removeChild(container.firstChild);
+        var block = document.createElement('div');
+        block.style.cssText = 'background:#e8f5e9;border:1.5px solid #a5d6a7;border-radius:9px;padding:12px';
+
+        var title = document.createElement('p');
+        title.textContent = 'Сделка состоялась?';
+        title.style.cssText = 'font-size:14px;font-weight:600;color:#2e7d32;margin:0 0 10px';
+        block.appendChild(title);
+
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px';
+
+        var yesBtn = document.createElement('button');
+        yesBtn.setAttribute('type', 'button');
+        yesBtn.style.cssText = 'flex:1;padding:9px;background:#2e7d32;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        yesBtn.textContent = 'Да, всё хорошо';
+        yesBtn.addEventListener('click', function() {
+          yesBtn.disabled = true;
+          sendManagerFeedback(orderId, bloggerId, 'ok')
+            .then(function() {
+              setBlockMessage(block, '✅ Спасибо за отзыв!', '#2e7d32');
+            })
+            .catch(function() {
+              setBlockMessage(block, '❌ Ошибка отправки', '#c62828');
+            });
+        });
+
+        var skipBtn = document.createElement('button');
+        skipBtn.setAttribute('type', 'button');
+        skipBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        skipBtn.textContent = 'Пропустить';
+        skipBtn.addEventListener('click', function() {
+          block.parentNode.removeChild(block);
+        });
+
+        btnRow.appendChild(yesBtn);
+        btnRow.appendChild(skipBtn);
+        block.appendChild(btnRow);
+        container.appendChild(block);
+      }
+
+      function showFeedbackAfterRemove(orderId, bloggerId, container) {
+        while (container.firstChild) container.removeChild(container.firstChild);
+        var block = document.createElement('div');
+        block.style.cssText = 'background:#fff3e0;border:1.5px solid #ffcc80;border-radius:9px;padding:12px';
+
+        var title = document.createElement('p');
+        title.textContent = 'Причина удаления?';
+        title.style.cssText = 'font-size:14px;font-weight:600;color:#5d4037;margin:0 0 10px';
+        block.appendChild(title);
+
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:0';
+
+        var noDealBtn = document.createElement('button');
+        noDealBtn.setAttribute('type', 'button');
+        noDealBtn.style.cssText = 'flex:1;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        noDealBtn.textContent = 'Не договорились';
+        noDealBtn.addEventListener('click', function() {
+          noDealBtn.disabled = true;
+          issueBtn.disabled = true;
+          sendManagerFeedback(orderId, bloggerId, 'no_deal')
+            .then(function() {
+              setBlockMessage(block, '✅ Спасибо за отзыв!', '#2e7d32');
+              setTimeout(function() {
+                loadManagerCreators(orderId, true, 0);
+                showScreen('screen-manager-creators');
+              }, 1000);
+            })
+            .catch(function() {
+              setBlockMessage(block, '❌ Ошибка отправки', '#c62828');
+            });
+        });
+
+        var issueBtn = document.createElement('button');
+        issueBtn.setAttribute('type', 'button');
+        issueBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        issueBtn.textContent = 'Проблема';
+        issueBtn.addEventListener('click', function() {
+          btnRow.style.display = 'none';
+          title.textContent = 'Опишите проблему:';
+
+          var textarea = document.createElement('textarea');
+          textarea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid #ffcc80;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box';
+          textarea.placeholder = 'Что произошло?';
+          block.appendChild(textarea);
+
+          var sendRow = document.createElement('div');
+          sendRow.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+
+          var sendBtn = document.createElement('button');
+          sendBtn.setAttribute('type', 'button');
+          sendBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          sendBtn.textContent = 'Отправить';
+          sendBtn.addEventListener('click', function() {
+            var desc = textarea.value.trim();
+            if (!desc) {
+              textarea.style.borderColor = '#c62828';
+              return;
+            }
+            sendBtn.disabled = true;
+            sendManagerFeedback(orderId, bloggerId, 'issue', desc)
+              .then(function() {
+                setBlockMessage(block, '✅ Жалоба отправлена', '#2e7d32');
+                setTimeout(function() {
+                  loadManagerCreators(orderId, true, 0);
+                  showScreen('screen-manager-creators');
+                }, 1000);
+              })
+              .catch(function() {
+                setBlockMessage(block, '❌ Ошибка отправки', '#c62828');
+              });
+          });
+
+          var backBtn = document.createElement('button');
+          backBtn.setAttribute('type', 'button');
+          backBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          backBtn.textContent = 'Назад';
+          backBtn.addEventListener('click', function() {
+            block.removeChild(textarea);
+            block.removeChild(sendRow);
+            btnRow.style.display = 'flex';
+            title.textContent = 'Причина удаления?';
+          });
+
+          sendRow.appendChild(sendBtn);
+          sendRow.appendChild(backBtn);
+          block.appendChild(sendRow);
+        });
+
+        btnRow.appendChild(noDealBtn);
+        btnRow.appendChild(issueBtn);
+        block.appendChild(btnRow);
+        container.appendChild(block);
+      }
+
       function saveCreatorUgcVideo(orderId, bloggerId) {
         var input = document.getElementById('ugc-video-input');
         var status = document.getElementById('ugc-save-status');
@@ -2392,6 +2543,10 @@
             if (data.ok && status) {
               status.textContent = '✅ Сохранено';
               status.style.color = '#2e7d32';
+              var feedbackContainer = document.getElementById('mgmt-action-status');
+              if (feedbackContainer) {
+                showFeedbackAfterUgcVideo(orderId, bloggerId, feedbackContainer);
+              }
             }
           })
           .catch(function() {
@@ -2410,16 +2565,13 @@
               if (status) {
                 status.textContent = '✅ Убрано из заказа';
                 status.style.color = '#2e7d32';
+                showFeedbackAfterRemove(orderId, bloggerId, status);
               }
-              setTimeout(function() {
-                loadManagerCreators(orderId, true, 0);
-                showScreen('screen-manager-creators');
-              }, 1000);
             }
           })
           .catch(function(err) {
             if (status) {
-              var msg = (err && err.detail) ? err.detail : 'Ошибка';
+              var msg = (err && err.message) ? err.message : 'Ошибка';
               status.textContent = '❌ ' + msg;
               status.style.color = '#c62828';
             }
