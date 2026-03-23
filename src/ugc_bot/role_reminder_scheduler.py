@@ -1,6 +1,7 @@
 """Scheduler for daily role-choice reminder at configured time (e.g. 10:00)."""
 
 import asyncio
+import functools
 import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -130,8 +131,8 @@ async def run_once(
                     delay_seconds=_send_retry_delay_seconds,
                     logger=logger,
                     extra={"user_id": str(user.user_id)},
-                    on_bot_blocked=lambda _u=user: _mark_bot_blocked(
-                        _u, user_role_service
+                    on_bot_blocked=functools.partial(
+                        _mark_bot_blocked, user, user_role_service
                     ),
                 )
         except Exception as exc:

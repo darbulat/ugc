@@ -10,9 +10,11 @@ import pytest
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import SendMessage
 
+from ugc_bot.application.messenger.dto import Keyboard, KeyboardKind
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import BloggerProfile, Order, User
 from ugc_bot.domain.enums import (
@@ -1363,10 +1365,6 @@ async def test_send_offer_to_blogger_includes_max_id_target() -> None:
 @pytest.mark.asyncio
 async def test_send_offer_marks_user_bot_blocked_on_forbidden() -> None:
     """_send_offer_via_client sets BOT_BLOCKED on TelegramForbiddenError."""
-    from aiogram.methods import SendMessage
-    from ugc_bot.application.messenger.dto import Keyboard, KeyboardKind
-    from ugc_bot.application.services.user_role_service import UserRoleService
-
     now = datetime.now(timezone.utc)
     user_repo = InMemoryUserRepository()
     blogger = User(

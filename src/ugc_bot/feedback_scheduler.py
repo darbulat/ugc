@@ -171,8 +171,8 @@ async def _send_advertiser_feedback(
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
             extra={"interaction_id": str(interaction.interaction_id)},
-            on_bot_blocked=lambda _u=advertiser: _mark_bot_blocked(
-                _u, user_role_service
+            on_bot_blocked=lambda: _mark_bot_blocked(
+                advertiser, user_role_service
             ),
         )
     logger.info(
@@ -222,8 +222,8 @@ async def _send_blogger_feedback(
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
             extra={"interaction_id": str(interaction.interaction_id)},
-            on_bot_blocked=lambda _u=blogger: _mark_bot_blocked(
-                _u, user_role_service
+            on_bot_blocked=lambda: _mark_bot_blocked(
+                blogger, user_role_service
             ),
         )
     logger.info(

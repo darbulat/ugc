@@ -18,5 +18,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     # PostgreSQL does not support removing enum values.
-    # To roll back: recreate the enum without 'bot_blocked' and migrate the column.
+    # To roll back: recreate the enum without 'bot_blocked'
+    # and migrate the column.
     pass

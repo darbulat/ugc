@@ -1329,6 +1329,7 @@ async def test_send_advertiser_feedback_returns_false_when_no_targets() -> None:
         advertiser=advertiser,
         blogger_profile=None,
         texts={},
+        user_role_service=UserRoleService(user_repo=Mock()),
     )
     assert result is False
 
@@ -1352,5 +1353,6 @@ async def test_send_blogger_feedback_returns_false_when_no_targets() -> None:
         blogger=blogger,
         order=None,
         texts={},
+        user_role_service=UserRoleService(user_repo=Mock()),
     )
     assert result is False
