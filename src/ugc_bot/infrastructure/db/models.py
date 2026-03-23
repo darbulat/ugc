@@ -30,6 +30,7 @@ from sqlalchemy.types import TypeDecorator
 
 from ugc_bot.domain.enums import (
     AudienceGender,
+    AuditAction,
     BloggerGender,
     ComplaintStatus,
     InteractionStatus,
@@ -909,5 +910,45 @@ class ReferralIncomeEntryModel(Base):
             "referrer_user_id",
             "income_type",
             name="uq_referral_income_order_referrer_type",
+        ),
+    )
+
+
+class AuditLogModel(Base):
+    """Generic audit log for tracking entity changes."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    entity_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False
+    )
+    action: Mapped[AuditAction] = mapped_column(
+        _enum_column(AuditAction), nullable=False
+    )
+    old_values: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    new_values: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    changed_by: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        sa.Index(
+            "ix_audit_log_entity",
+            "entity_type",
+            "entity_id",
+            "changed_at",
         ),
     )

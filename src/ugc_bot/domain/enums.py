@@ -122,3 +122,11 @@ class RejectionReason(StrEnum):
     UNINTERESTING_PRODUCT = "uninteresting_product"
     NO_TIME = "no_time"
     ALREADY_WORKING_WITH_BRAND = "already_working"
+
+
+class AuditAction(StrEnum):
+    """Audit log action type."""
+
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
