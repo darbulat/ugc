@@ -416,11 +416,14 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
             self.session_factory, session
         ) as db_session:
             exec_result = await db_session.execute(
-                select(InteractionModel).where(
+                select(InteractionModel)
+                .where(
                     InteractionModel.order_id == order_id,
                     InteractionModel.blogger_id == blogger_id,
                     InteractionModel.advertiser_id == advertiser_id,
                 )
+                .order_by(InteractionModel.created_at.desc())
+                .limit(1)
             )
             result = exec_result.scalar_one_or_none()
             return _to_interaction_entity(result) if result else None
