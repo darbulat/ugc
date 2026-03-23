@@ -3091,12 +3091,13 @@ async def test_income_entry_exists_returns_true_when_present() -> None:
 
     repo = InMemoryReferralIncomeEntryRepository()
     referrer_id = uuid4()
+    referred_id = uuid4()
     order_id = uuid4()
 
     entry = ReferralIncomeEntry(
         entry_id=uuid4(),
         referrer_user_id=referrer_id,
-        referred_user_id=uuid4(),
+        referred_user_id=referred_id,
         order_id=order_id,
         income_type=ReferralIncomeType.CREATOR,
         currency="RUB",
@@ -3107,9 +3108,9 @@ async def test_income_entry_exists_returns_true_when_present() -> None:
     )
     await repo.save(entry)
 
-    assert await repo.exists(order_id, referrer_id, "creator") is True
-    assert await repo.exists(order_id, referrer_id, "advertiser") is False
-    assert await repo.exists(uuid4(), referrer_id, "creator") is False
+    assert await repo.exists(order_id, referrer_id, referred_id, "creator") is True
+    assert await repo.exists(order_id, referrer_id, referred_id, "advertiser") is False
+    assert await repo.exists(uuid4(), referrer_id, referred_id, "creator") is False
 
 
 @pytest.mark.asyncio

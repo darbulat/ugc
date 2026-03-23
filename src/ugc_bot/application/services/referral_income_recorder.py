@@ -47,6 +47,7 @@ class ReferralIncomeRecorder:
         already_recorded = await self.referral_income_entry_repo.exists(
             order.order_id,
             binding.referrer_user_id,
+            creator_id,
             ReferralIncomeType.CREATOR,
             session=session,
         )
@@ -120,6 +121,7 @@ class ReferralIncomeRecorder:
         already_recorded = await self.referral_income_entry_repo.exists(
             order.order_id,
             binding.referrer_user_id,
+            advertiser_id,
             ReferralIncomeType.ADVERTISER,
             session=session,
         )

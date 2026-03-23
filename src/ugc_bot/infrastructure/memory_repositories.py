@@ -396,7 +396,12 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         self, entry: ReferralIncomeEntry, session: object | None = None
     ) -> None:
         """Save entry; skip if duplicate key."""
-        key = (entry.order_id, entry.referrer_user_id, entry.income_type)
+        key = (
+            entry.order_id,
+            entry.referrer_user_id,
+            entry.referred_user_id,
+            entry.income_type,
+        )
         if key in self._seen:
             return
         self._seen.add(key)
@@ -406,14 +411,16 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         self,
         order_id: UUID,
         referrer_user_id: UUID,
+        referred_user_id: UUID,
         income_type: str,
         session: object | None = None,
     ) -> bool:
-        """Return True if entry exists for order+referrer+type."""
+        """Return True if entry exists for order+referrer+referred+type."""
         for entry in self.entries:
             if (
                 entry.order_id == order_id
                 and entry.referrer_user_id == referrer_user_id
+                and entry.referred_user_id == referred_user_id
                 and entry.income_type == income_type
             ):
                 return True

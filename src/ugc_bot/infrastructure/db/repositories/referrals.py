@@ -408,7 +408,7 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                     created_at=entry.created_at,
                 )
                 .on_conflict_do_nothing(
-                    constraint="uq_referral_income_order_referrer_type"
+                    constraint="uq_referral_income_order_referrer_referred_type"
                 )
             )
             await db_session.execute(stmt)
@@ -417,10 +417,11 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
         self,
         order_id: UUID,
         referrer_user_id: UUID,
+        referred_user_id: UUID,
         income_type: str,
         session: object | None = None,
     ) -> bool:
-        """Return True if entry exists for order+referrer+type."""
+        """Return True if entry exists for order+referrer+referred+type."""
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
@@ -429,8 +430,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 .select_from(ReferralIncomeEntryModel)
                 .where(
                     ReferralIncomeEntryModel.order_id == order_id,
-                    ReferralIncomeEntryModel.referrer_user_id
-                    == referrer_user_id,
+                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id,
+                    ReferralIncomeEntryModel.referred_user_id == referred_user_id,
                     ReferralIncomeEntryModel.income_type == income_type,
                 )
                 .limit(1)
