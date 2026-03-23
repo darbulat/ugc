@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import logging
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
@@ -10,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.base import ATTR_EMPTY, NO_VALUE
 
 from ugc_bot.domain.enums import AuditAction
 from ugc_bot.infrastructure.db.models import (
@@ -17,6 +19,8 @@ from ugc_bot.infrastructure.db.models import (
     PaymentModel,
     PayoutRequestModel,
 )
+
+logger = logging.getLogger(__name__)
 
 # Tracked models: model class -> (entity_type, pk_attr)
 _TRACKED: dict[type, tuple[str, str]] = {
@@ -34,13 +38,19 @@ def _serialize_value(value: Any) -> Any:
         return None
     if isinstance(value, UUID):
         return str(value)
-    if isinstance(value, datetime):
+    if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, Enum):
         return value.value
-    return value
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    logger.warning(
+        "Audit: converting %s value to str for serialization",
+        type(value).__name__,
+    )
+    return str(value)
 
 
 def _get_changes(
@@ -63,15 +73,16 @@ def _get_changes(
 def _get_all_values(
     obj: Any, skip: frozenset[str] = _SKIP_ATTRS
 ) -> dict[str, Any]:
-    """Return all column values for a new object."""
+    """Return all column values for an object (including None)."""
     insp = inspect(obj)
     result: dict[str, Any] = {}
     for attr in insp.attrs:
         if attr.key in skip:
             continue
         val = attr.loaded_value
-        if val is not None:
-            result[attr.key] = _serialize_value(val)
+        if val is NO_VALUE or val is ATTR_EMPTY:
+            val = None
+        result[attr.key] = _serialize_value(val)
     return result
 
 
@@ -79,6 +90,18 @@ def _before_flush(session: Session, flush_context: Any, instances: Any) -> None:
     """Capture changes to tracked models before they are flushed."""
     if not session.info.get("audit_enabled", True):
         return
+
+    try:
+        _collect_audit_entries(session)
+    except Exception:
+        logger.exception(
+            "Audit log listener failed; audit entries skipped. "
+            "Business transaction will proceed without audit record."
+        )
+
+
+def _collect_audit_entries(session: Session) -> None:
+    """Collect and add audit entries for tracked model changes."""
     actor = session.info.get("audit_actor")
     entries: list[AuditLogModel] = []
 

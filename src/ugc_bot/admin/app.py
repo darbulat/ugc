@@ -2110,10 +2110,6 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
             PayoutRequestModel.status != PayoutRequestStatus.DELETED
         )
 
-    async def update_model(self, request: Request, pk: str, data: dict) -> Any:
-        """Override to set audit actor for audit log."""
-        return await super().update_model(request, pk, data)
-
 
 class ReferralIncomeEntryAdmin(ModelView, model=ReferralIncomeEntryModel):
     """Read-only admin view for referral income entries."""
