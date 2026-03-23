@@ -9,6 +9,7 @@ from ugc_bot.infrastructure.db.session import (
     create_db_engine,
     create_session_factory,
 )
+from ugc_bot.infrastructure.db.audit import register_audit_listener
 from ugc_bot.infrastructure.redis_lock import IssueDescriptionLockManager
 from ugc_bot.metrics.collector import MetricsCollector
 
@@ -17,6 +18,7 @@ def create_session_factory_from_config(config: AppConfig):
     """Create async session factory from app config."""
     if not config.db.database_url:
         return None
+    register_audit_listener()
     return create_session_factory(
         config.db.database_url,
         pool_size=config.db.pool_size,

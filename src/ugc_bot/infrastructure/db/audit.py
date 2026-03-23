@@ -136,6 +136,6 @@ def _before_flush(session: Session, flush_context: Any, instances: Any) -> None:
         session.add(entry)
 
 
-def register_audit_listener(engine: Any) -> None:
-    """Register the audit listener on the given engine's Session."""
+def register_audit_listener() -> None:
+    """Register the audit listener on all Sessions (class-level)."""
     event.listen(Session, "before_flush", _before_flush)
