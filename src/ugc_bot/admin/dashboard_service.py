@@ -1735,6 +1735,7 @@ class AdminDashboardService:
                 "responded_at": r.updated_at or r.created_at,
                 "accepted": getattr(r, "accepted", None),
                 "in_offer": getattr(r, "in_offer", True),
+                "ugc_video_url": getattr(r, "ugc_video_url", None),
             }
             for r in response_models
             if r.accepted is not None

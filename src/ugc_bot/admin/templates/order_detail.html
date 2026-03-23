@@ -169,6 +169,7 @@
             <th>Креатор</th>
             <th>Дата отклика</th>
             <th>Статус</th>
+            <th>UGC видео</th>
           </tr>
         </thead>
         <tbody>
@@ -177,6 +178,7 @@
             <td><a href="/admin/users/{{ r.blogger_id }}">{{ r.blogger_id }}</a></td>
             <td>{{ r.responded_at }}</td>
             <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
+            <td>{% if r.ugc_video_url %}<a href="{{ r.ugc_video_url }}" target="_blank">Ссылка</a>{% else %}—{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
