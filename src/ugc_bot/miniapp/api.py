@@ -304,8 +304,6 @@ class ManagerFeedbackRequest(BaseModel):
     """Manager records advertiser-side feedback on an interaction."""
 
     init_data: str
-    order_id: UUID
-    blogger_id: UUID
     status: Literal["ok", "no_deal", "issue"]
     issue_description: str | None = None
 
@@ -1852,9 +1850,11 @@ async def manager_add_creator(
     return {"ok": True}
 
 
-@router.post("/manager/feedback")
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/feedback")
 async def manager_feedback(
     request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
     body: ManagerFeedbackRequest,
 ) -> dict[str, Any]:
     """Record advertiser-side feedback from manager on an interaction."""
@@ -1862,25 +1862,25 @@ async def manager_feedback(
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, body.order_id):
+    if not await manager_service.is_manager_for_order(user_id, order_id):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )
 
     order_repo = dispatcher["order_repo"]
-    order = await order_repo.get_by_id(body.order_id)
+    order = await order_repo.get_by_id(order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
 
     interaction_service = dispatcher["interaction_service"]
     interaction = await interaction_service.get_or_create(
-        body.order_id, body.blogger_id, order.advertiser_id
+        order_id, blogger_id, order.advertiser_id
     )
 
     if body.status == "ok":
-        feedback_text = "\u2705 \u0412\u0441\u0451 \u043f\u0440\u043e\u0448\u043b\u043e \u0445\u043e\u0440\u043e\u0448\u043e"
+        feedback_text = "✅ Всё прошло хорошо"
     elif body.status == "no_deal":
-        feedback_text = "\u274c \u041d\u0435 \u0434\u043e\u0433\u043e\u0432\u043e\u0440\u0438\u043b\u0438\u0441\u044c"
+        feedback_text = "❌ Не договорились"
     else:
         # status == "issue"
         if not body.issue_description or not body.issue_description.strip():
@@ -1888,13 +1888,13 @@ async def manager_feedback(
                 status_code=422,
                 detail="issue_description is required for issue status",
             )
-        feedback_text = "\u26a0\ufe0f \u041f\u0440\u043e\u0431\u043b\u0435\u043c\u0430/\u043c\u043e\u0448\u0435\u043d\u043d\u0438\u0447\u0435\u0441\u0442\u0432\u043e"
+        feedback_text = "⚠️ Проблема/мошенничество"
 
         complaint_service = dispatcher["complaint_service"]
         complaint = await complaint_service.create_complaint(
-            reporter_id=order.advertiser_id,
-            reported_id=body.blogger_id,
-            order_id=body.order_id,
+            reporter_id=user_id,
+            reported_id=blogger_id,
+            order_id=order_id,
             reason=body.issue_description.strip(),
         )
 

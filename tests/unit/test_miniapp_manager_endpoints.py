@@ -657,7 +657,7 @@ INTERACTION_ID = UUID("00000000-0000-0000-0000-000000000c01")
 
 
 class TestManagerFeedbackEndpoint:
-    """Tests for POST /manager/feedback."""
+    """Tests for POST /manager/orders/{order_id}/creators/{blogger_id}/feedback."""
 
     @pytest.mark.asyncio
     async def test_feedback_ok_records_advertiser_feedback(self) -> None:
@@ -695,8 +695,6 @@ class TestManagerFeedbackEndpoint:
 
         body = ManagerFeedbackRequest(
             init_data="x",
-            order_id=ORDER_ID,
-            blogger_id=BLOGGER_ID,
             status="ok",
         )
 
@@ -704,12 +702,14 @@ class TestManagerFeedbackEndpoint:
             "ugc_bot.miniapp.api._ensure_user_and_get_id",
             new=AsyncMock(return_value=MANAGER_ID),
         ):
-            result = await manager_feedback(request, body)
+            result = await manager_feedback(
+                request, ORDER_ID, BLOGGER_ID, body
+            )
 
         assert result == {"ok": True, "interaction_id": str(INTERACTION_ID)}
         interaction_service.get_or_create.assert_awaited_once_with(
             ORDER_ID, BLOGGER_ID, order.advertiser_id
         )
         interaction_service.record_advertiser_feedback.assert_awaited_once_with(
-            INTERACTION_ID, "\u2705 \u0412\u0441\u0451 \u043f\u0440\u043e\u0448\u043b\u043e \u0445\u043e\u0440\u043e\u0448\u043e"
+            INTERACTION_ID, "✅ Всё прошло хорошо"
         )
