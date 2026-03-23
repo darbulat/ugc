@@ -2,7 +2,7 @@
 
 import logging
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -298,6 +298,16 @@ class UgcVideoRequest(BaseModel):
 
     init_data: str
     url: AnyHttpUrl
+
+
+class ManagerFeedbackRequest(BaseModel):
+    """Manager records advertiser-side feedback on an interaction."""
+
+    init_data: str
+    order_id: UUID
+    blogger_id: UUID
+    status: Literal["ok", "no_deal", "issue"]
+    issue_description: str | None = None
 
 
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
@@ -1840,3 +1850,68 @@ async def manager_add_creator(
         )
 
     return {"ok": True}
+
+
+@router.post("/manager/feedback")
+async def manager_feedback(
+    request: Request,
+    body: ManagerFeedbackRequest,
+) -> dict[str, Any]:
+    """Record advertiser-side feedback from manager on an interaction."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, body.order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(body.order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    interaction_service = dispatcher["interaction_service"]
+    interaction = await interaction_service.get_or_create(
+        body.order_id, body.blogger_id, order.advertiser_id
+    )
+
+    if body.status == "ok":
+        feedback_text = "\u2705 \u0412\u0441\u0451 \u043f\u0440\u043e\u0448\u043b\u043e \u0445\u043e\u0440\u043e\u0448\u043e"
+    elif body.status == "no_deal":
+        feedback_text = "\u274c \u041d\u0435 \u0434\u043e\u0433\u043e\u0432\u043e\u0440\u0438\u043b\u0438\u0441\u044c"
+    else:
+        # status == "issue"
+        if not body.issue_description or not body.issue_description.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="issue_description is required for issue status",
+            )
+        feedback_text = "\u26a0\ufe0f \u041f\u0440\u043e\u0431\u043b\u0435\u043c\u0430/\u043c\u043e\u0448\u0435\u043d\u043d\u0438\u0447\u0435\u0441\u0442\u0432\u043e"
+
+        complaint_service = dispatcher["complaint_service"]
+        complaint = await complaint_service.create_complaint(
+            reporter_id=order.advertiser_id,
+            reported_id=body.blogger_id,
+            order_id=body.order_id,
+            reason=body.issue_description.strip(),
+        )
+
+        from ugc_bot.application.services.admin_notification_service import (
+            notify_admins_about_complaint,
+        )
+
+        user_role_service = dispatcher.get("user_role_service")
+        messenger_client = dispatcher.get("messenger_client")
+        if user_role_service and messenger_client:
+            await notify_admins_about_complaint(
+                complaint=complaint,
+                messenger_client=messenger_client,
+                user_role_service=user_role_service,
+            )
+
+    updated = await interaction_service.record_advertiser_feedback(
+        interaction.interaction_id, feedback_text
+    )
+    return {"ok": True, "interaction_id": str(updated.interaction_id)}

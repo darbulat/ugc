@@ -12,10 +12,12 @@ from ugc_bot.domain.enums import OrderStatus, OrderType
 from ugc_bot.miniapp.api import (
     CreatorDetailRequest,
     ManagerCreatorsRequest,
+    ManagerFeedbackRequest,
     ManagerOrdersRequest,
     UgcVideoRequest,
     manager_creator_detail,
     manager_creators,
+    manager_feedback,
     manager_orders,
     manager_set_ugc_video,
 )
@@ -649,3 +651,65 @@ class TestManagerSetUgcVideoEndpoint:
         # messenger_client.send_text should NOT have been called
         messenger_client = dispatcher["messenger_client"]
         messenger_client.send_text.assert_not_called()
+
+
+INTERACTION_ID = UUID("00000000-0000-0000-0000-000000000c01")
+
+
+class TestManagerFeedbackEndpoint:
+    """Tests for POST /manager/feedback."""
+
+    @pytest.mark.asyncio
+    async def test_feedback_ok_records_advertiser_feedback(self) -> None:
+        order = _make_order()
+
+        manager_service = MagicMock()
+        manager_service.is_manager_for_order = AsyncMock(return_value=True)
+
+        order_repo = MagicMock()
+        order_repo.get_by_id = AsyncMock(return_value=order)
+
+        interaction = MagicMock()
+        interaction.interaction_id = INTERACTION_ID
+
+        interaction_service = MagicMock()
+        interaction_service.get_or_create = AsyncMock(return_value=interaction)
+
+        updated_interaction = MagicMock()
+        updated_interaction.interaction_id = INTERACTION_ID
+        interaction_service.record_advertiser_feedback = AsyncMock(
+            return_value=updated_interaction
+        )
+
+        deps = {
+            "manager_service": manager_service,
+            "order_repo": order_repo,
+            "interaction_service": interaction_service,
+        }
+
+        dispatcher = MagicMock()
+        dispatcher.__getitem__ = lambda self, k: deps[k]
+
+        request = MagicMock()
+        request.app.state.dispatcher = dispatcher
+
+        body = ManagerFeedbackRequest(
+            init_data="x",
+            order_id=ORDER_ID,
+            blogger_id=BLOGGER_ID,
+            status="ok",
+        )
+
+        with patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ):
+            result = await manager_feedback(request, body)
+
+        assert result == {"ok": True, "interaction_id": str(INTERACTION_ID)}
+        interaction_service.get_or_create.assert_awaited_once_with(
+            ORDER_ID, BLOGGER_ID, order.advertiser_id
+        )
+        interaction_service.record_advertiser_feedback.assert_awaited_once_with(
+            INTERACTION_ID, "\u2705 \u0412\u0441\u0451 \u043f\u0440\u043e\u0448\u043b\u043e \u0445\u043e\u0440\u043e\u0448\u043e"
+        )
