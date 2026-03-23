@@ -10,9 +10,11 @@ import pytest
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import SendMessage
 
+from ugc_bot.application.messenger.dto import Keyboard, KeyboardKind
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import BloggerProfile, Order, User
 from ugc_bot.domain.enums import (
@@ -38,6 +40,7 @@ from ugc_bot.kafka_consumer import (
     _parse_order_id,
     _publish_dlq,
     _send_offer_to_blogger,
+    _send_offer_via_client,
     _send_offers,
     _start_kafka_client_with_retry,
     main,
@@ -499,6 +502,7 @@ async def test_run_consumer_processes_activation_message(
     mock_container = type("Container", (), {})()
     mock_container.build_offer_dispatch_service = lambda: mock_offer  # type: ignore[attr-defined]
     mock_container.build_bot_texts_service = lambda: None  # type: ignore[attr-defined]
+    mock_container.build_user_role_service = lambda: None  # type: ignore[attr-defined]
     mock_container.dispose = AsyncMock()  # type: ignore[attr-defined]
     monkeypatch.setattr(
         "ugc_bot.kafka_consumer.Container",
@@ -1356,3 +1360,123 @@ async def test_send_offer_to_blogger_includes_max_id_target() -> None:
     mock_send_via.assert_called_once()
     call_kwargs = mock_send_via.call_args
     assert call_kwargs[0][0] == "max-blogger-1"
+
+
+@pytest.mark.asyncio
+async def test_send_offer_marks_user_bot_blocked_on_forbidden() -> None:
+    """_send_offer_via_client sets BOT_BLOCKED on TelegramForbiddenError."""
+    now = datetime.now(timezone.utc)
+    user_repo = InMemoryUserRepository()
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        telegram_id="42",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    await user_repo.save(blogger)
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000002"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000003"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    offer_dispatch_service = OfferDispatchService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        interaction_repo=InMemoryInteractionRepository(),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+
+    blocked_error = TelegramForbiddenError(
+        message="Forbidden: bot was blocked by the user",
+        method=SendMessage(chat_id=0, text=""),
+    )
+    client = AsyncMock()
+    client.send_text = AsyncMock(side_effect=blocked_error)
+
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=[])
+
+    result = await _send_offer_via_client(
+        chat_id="42",
+        messenger_client=client,
+        offer_text="hi",
+        reply_markup=keyboard,
+        order=order,
+        blogger=blogger,
+        retries=1,
+        retry_delay_seconds=0,
+        offer_dispatch_service=offer_dispatch_service,
+        dlq_producer=None,
+        dlq_topic="dlq",
+        messenger_label="telegram",
+        user_role_service=user_role_service,
+    )
+
+    assert result is False
+    updated = await user_repo.get_by_id(blogger.user_id)
+    assert updated is not None
+    assert updated.status == UserStatus.BOT_BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_send_offer_to_blogger_skips_record_when_bot_blocked() -> None:
+    """record_offer_sent not called when all sends fail (bot blocked)."""
+    now = datetime.now(timezone.utc)
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000011"),
+        telegram_id="99",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blocked_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000012"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000013"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    dispatch_service = Mock()
+    dispatch_service.format_offer = AsyncMock(return_value="Offer text")
+    dispatch_service.record_offer_sent = AsyncMock()
+    tg_client = Mock()
+    tg_client.send_text = AsyncMock()
+
+    with patch(
+        "ugc_bot.kafka_consumer._send_offer_via_client",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        await _send_offer_to_blogger(
+            blogger,
+            order,
+            "ACTIVE",
+            {"telegram": tg_client},
+            dispatch_service,
+            retries=1,
+            retry_delay_seconds=0.0,
+            dlq_producer=None,
+            dlq_topic="dlq",
+        )
+
+    dispatch_service.record_offer_sent.assert_not_called()

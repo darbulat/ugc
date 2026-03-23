@@ -24,9 +24,11 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.entities import Order, User
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
@@ -118,8 +120,12 @@ async def _send_offer_via_client(
     dlq_producer: AIOKafkaProducer | None,
     dlq_topic: str,
     messenger_label: str,
-) -> None:
-    """Send offer to one chat_id via one messenger client with retries."""
+    user_role_service: UserRoleService | None = None,
+) -> bool:
+    """Send offer to one chat_id via one messenger client with retries.
+
+    Returns True if the message was delivered, False otherwise.
+    """
     for attempt in range(1, retries + 1):
         try:
             if order.product_photo_file_id:
@@ -144,7 +150,7 @@ async def _send_offer_via_client(
                     "attempt": attempt,
                 },
             )
-            return
+            return True
         except Exception as exc:
             logger.warning(
                 "Failed to send offer message",
@@ -157,7 +163,17 @@ async def _send_offer_via_client(
                 },
             )
             if is_user_blocked_bot(exc):
-                return
+                if user_role_service is not None:
+                    try:
+                        await user_role_service.update_status(
+                            blogger.user_id, UserStatus.BOT_BLOCKED
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to mark user as bot_blocked",
+                            extra={"blogger_id": str(blogger.user_id)},
+                        )
+                return False
             if attempt >= retries:
                 logger.error(
                     "All retries failed for offer send, publishing to DLQ",
@@ -182,6 +198,7 @@ async def _send_offer_via_client(
                 )
             else:
                 await asyncio.sleep(retry_delay_seconds)
+    return False
 
 
 async def _send_offer_to_blogger(
@@ -196,6 +213,7 @@ async def _send_offer_to_blogger(
     dlq_topic: str,
     locale: str = "ru",
     bot_texts_service: BotTextsService | None = None,
+    user_role_service: UserRoleService | None = None,
 ) -> None:
     """Send offer to one blogger via all available messengers."""
     if blogger.user_id == order.advertiser_id:
@@ -253,8 +271,9 @@ async def _send_offer_to_blogger(
         ],
     )
 
+    any_sent = False
     for chat_id, client, label in targets:
-        await _send_offer_via_client(
+        sent = await _send_offer_via_client(
             chat_id,
             client,
             offer_text,
@@ -267,11 +286,15 @@ async def _send_offer_to_blogger(
             dlq_producer,
             dlq_topic,
             label,
+            user_role_service=user_role_service,
         )
+        if sent:
+            any_sent = True
 
-    await offer_dispatch_service.record_offer_sent(
-        order.order_id, blogger.user_id
-    )
+    if any_sent:
+        await offer_dispatch_service.record_offer_sent(
+            order.order_id, blogger.user_id
+        )
 
 
 async def _send_offers(
@@ -284,6 +307,7 @@ async def _send_offers(
     retry_delay_seconds: float,
     bot_texts_service: BotTextsService | None = None,
     default_locale: str = "ru",
+    user_role_service: UserRoleService | None = None,
 ) -> None:
     order, advertiser = await offer_dispatch_service.get_order_and_advertiser(
         order_id
@@ -329,6 +353,7 @@ async def _send_offers(
             dlq_topic,
             locale=locale,
             bot_texts_service=bot_texts_service,
+            user_role_service=user_role_service,
         )
 
 
@@ -392,6 +417,7 @@ async def _consume_forever(
     config: AppConfig,
     bot_texts_service: BotTextsService | None = None,
     default_locale: str = "ru",
+    user_role_service: UserRoleService | None = None,
 ) -> None:
     """Start Kafka clients and process activation events forever."""
     producer_started = False
@@ -437,6 +463,7 @@ async def _consume_forever(
                     config.kafka.kafka_send_retry_delay_seconds,
                     bot_texts_service=bot_texts_service,
                     default_locale=default_locale,
+                    user_role_service=user_role_service,
                 )
                 await _commit_message_offset(consumer, msg)
             except Exception:
@@ -481,6 +508,7 @@ async def run_consumer() -> None:
 
     container = Container(config)
     offer_dispatch_service = container.build_offer_dispatch_service()
+    user_role_service = container.build_user_role_service()
     bot_texts_service = container.build_bot_texts_service()
 
     dlq_producer, consumer = _create_kafka_clients(config)
@@ -502,6 +530,7 @@ async def run_consumer() -> None:
             config=config,
             bot_texts_service=bot_texts_service,
             default_locale=config.market.default_locale,
+            user_role_service=user_role_service,
         )
     finally:
         await container.dispose()

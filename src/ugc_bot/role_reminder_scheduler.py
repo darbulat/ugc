@@ -1,6 +1,7 @@
 """Scheduler for daily role-choice reminder at configured time (e.g. 10:00)."""
 
 import asyncio
+import functools
 import logging
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -13,6 +14,8 @@ from ugc_bot.bot.handlers.keyboards import role_inline_keyboard
 from ugc_bot.bot.handlers.utils import send_with_retry
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import load_config
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.db.repositories import SqlAlchemyUserRepository
 from ugc_bot.infrastructure.db.session import (
     SessionTransactionManager,
@@ -27,6 +30,21 @@ from ugc_bot.startup_logging import log_startup_info
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+
+async def _mark_bot_blocked(
+    user: User, user_role_service: UserRoleService
+) -> None:
+    """Mark user as BOT_BLOCKED; log and swallow errors."""
+    try:
+        await user_role_service.update_status(
+            user.user_id, UserStatus.BOT_BLOCKED
+        )
+    except Exception:
+        logger.exception(
+            "Failed to mark user as bot_blocked",
+            extra={"user_id": str(user.user_id)},
+        )
 
 
 def _reminder_cutoff(config) -> datetime:
@@ -113,6 +131,9 @@ async def run_once(
                     delay_seconds=_send_retry_delay_seconds,
                     logger=logger,
                     extra={"user_id": str(user.user_id)},
+                    on_bot_blocked=functools.partial(
+                        _mark_bot_blocked, user, user_role_service
+                    ),
                 )
         except Exception as exc:
             logger.warning(

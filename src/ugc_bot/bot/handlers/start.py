@@ -39,6 +39,7 @@ from ugc_bot.bot.handlers.keyboards import (
 )
 from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
@@ -597,6 +598,11 @@ async def _start_command(
         role_chosen=False,
         telegram_username=incoming.user.username,
     )
+    # Restore user who previously blocked and re-opened the bot
+    if user.status == UserStatus.BOT_BLOCKED:
+        user = await user_role_service.update_status(
+            user.user_id, UserStatus.ACTIVE
+        )
     referral_code = referral_service.parse_referral_code(incoming.text)
     if referral_code:
         await referral_service.save_pending_referral(
