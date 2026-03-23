@@ -2,10 +2,10 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from time import monotonic
-from typing import Any, Callable, cast
+from typing import Any, cast
 from uuid import UUID
 
 from ugc_bot.application.messenger.dto import (
@@ -356,6 +356,7 @@ async def send_with_retry(
     delay_seconds: float,
     logger: logging.Logger,
     extra: dict[str, Any] | None = None,
+    on_bot_blocked: Callable[[], Awaitable[None]] | None = None,
     **kwargs: Any,
 ) -> bool:
     """Send a message with retry on failures."""
@@ -376,7 +377,7 @@ async def send_with_retry(
             else:
                 raise AttributeError("Messenger client lacks send methods")
             return True
-        except Exception as exc:  # pragma: no cover - depends on network errors
+        except Exception as exc:
             logger.warning(
                 "Send message failed",
                 extra={
@@ -388,6 +389,8 @@ async def send_with_retry(
                 },
             )
             if is_user_blocked_bot(exc):
+                if on_bot_blocked is not None:
+                    await on_bot_blocked()
                 return False
             if attempt < retries:
                 await asyncio.sleep(delay_seconds)
