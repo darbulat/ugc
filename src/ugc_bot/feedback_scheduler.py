@@ -23,6 +23,7 @@ from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.entities import BloggerProfile, Interaction, Order, User
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
@@ -37,6 +38,21 @@ from ugc_bot.startup_logging import log_startup_info
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+
+async def _mark_bot_blocked(
+    user: User, user_role_service: UserRoleService
+) -> None:
+    """Mark user as BOT_BLOCKED; log and swallow errors."""
+    try:
+        await user_role_service.update_status(
+            user.user_id, UserStatus.BOT_BLOCKED
+        )
+    except Exception:
+        logger.exception(
+            "Failed to mark user as bot_blocked",
+            extra={"user_id": str(user.user_id)},
+        )
 
 
 def _feedback_keyboard(
@@ -123,6 +139,7 @@ async def _send_advertiser_feedback(
     advertiser: User,
     blogger_profile: Optional[BloggerProfile],
     texts: dict[str, str],
+    user_role_service: UserRoleService,
 ) -> bool:
     """Send feedback request to advertiser. Return True if sent."""
     targets = _user_messenger_targets(advertiser, messenger_clients)
@@ -154,6 +171,9 @@ async def _send_advertiser_feedback(
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
             extra={"interaction_id": str(interaction.interaction_id)},
+            on_bot_blocked=lambda _u=advertiser: _mark_bot_blocked(
+                _u, user_role_service
+            ),
         )
     logger.info(
         "Sent interaction feedback request to advertiser",
@@ -171,6 +191,7 @@ async def _send_blogger_feedback(
     blogger: User,
     order: Optional[Order],
     texts: dict[str, str],
+    user_role_service: UserRoleService,
 ) -> bool:
     """Send feedback request to blogger. Return True if sent."""
     targets = _user_messenger_targets(blogger, messenger_clients)
@@ -201,6 +222,9 @@ async def _send_blogger_feedback(
             delay_seconds=_send_retry_delay_seconds,
             logger=logger,
             extra={"interaction_id": str(interaction.interaction_id)},
+            on_bot_blocked=lambda _u=blogger: _mark_bot_blocked(
+                _u, user_role_service
+            ),
         )
     logger.info(
         "Sent interaction feedback request to blogger",
@@ -303,6 +327,7 @@ async def _send_feedback_requests(
             advertiser,
             blogger_profile,
             adv_texts,
+            user_role_service,
         )
 
     if (
@@ -318,7 +343,12 @@ async def _send_feedback_requests(
         else:
             blog_texts = _feedback_texts_for_locale(blog_locale)
         sent_to_blog = await _send_blogger_feedback(
-            messenger_clients, interaction, blogger, order, blog_texts
+            messenger_clients,
+            interaction,
+            blogger,
+            order,
+            blog_texts,
+            user_role_service,
         )
 
     if sent_to_adv or sent_to_blog:
