@@ -1602,7 +1602,6 @@ async def manager_creators(
     blogger_ids = [d.blogger_id for d in dispatches]
     users_map = await user_repo.get_by_ids(blogger_ids)
     profiles_map = await profile_service.get_blogger_profiles(blogger_ids)
-
     search_q = body.search.strip().lower() if body.search else ""
 
     creators: list[CreatorItem] = []
@@ -1611,7 +1610,7 @@ async def manager_creators(
         d = dispatches_map[bid]
         user = users_map.get(bid)
         profile = profiles_map.get(bid)
-        name = profile.full_name if profile else None
+        name = user.username if user else None
         tg = user.telegram if user else None
         if search_q:
             haystack = " ".join(s for s in [name, tg] if s).lower()

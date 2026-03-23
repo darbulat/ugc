@@ -176,12 +176,12 @@ class TestManagerCreatorsEndpoint:
 
         user = MagicMock()
         user.telegram = "blogger_user"
+        user.username = "Blogger Name"
         user_repo = MagicMock()
         user_repo.get_by_ids = AsyncMock(return_value={BLOGGER_ID: user})
 
         profile = MagicMock()
         profile.instagram_url = "https://instagram.com/blogger"
-        profile.full_name = "Test Blogger"
         profile_service = MagicMock()
         profile_service.get_blogger_profiles = AsyncMock(
             return_value={BLOGGER_ID: profile}
