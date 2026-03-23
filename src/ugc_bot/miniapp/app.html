@@ -2311,40 +2311,7 @@
               removeBtn.textContent = 'Убрать из заказа';
               removeBtn.addEventListener('click', function() {
                 mgmtDiv.removeChild(removeBtn);
-
-                var confirmBlock = document.createElement('div');
-                confirmBlock.style.cssText = 'background:#fff3e0;border:1.5px solid #ffcc80;border-radius:9px;padding:10px 12px';
-
-                var warnText = document.createElement('p');
-                var handle = data.telegram ? '@' + data.telegram : data.blogger_id;
-                warnText.textContent = 'Убрать ' + handle + ' из заказа? Он переместится в резерв.';
-                warnText.style.cssText = 'font-size:13px;color:#5d4037;margin:0 0 10px';
-                confirmBlock.appendChild(warnText);
-
-                var btnRow = document.createElement('div');
-                btnRow.style.cssText = 'display:flex;gap:8px';
-
-                var confirmBtn = document.createElement('button');
-                confirmBtn.setAttribute('type', 'button');
-                confirmBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-                confirmBtn.textContent = 'Убрать';
-                confirmBtn.addEventListener('click', function() {
-                  removeCreatorFromOrder(orderId, bloggerId);
-                });
-
-                var cancelBtn = document.createElement('button');
-                cancelBtn.setAttribute('type', 'button');
-                cancelBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-                cancelBtn.textContent = 'Отмена';
-                cancelBtn.addEventListener('click', function() {
-                  confirmBlock.parentNode.removeChild(confirmBlock);
-                  mgmtDiv.appendChild(removeBtn);
-                });
-
-                btnRow.appendChild(confirmBtn);
-                btnRow.appendChild(cancelBtn);
-                confirmBlock.appendChild(btnRow);
-                mgmtDiv.appendChild(confirmBlock);
+                showRemoveWithFeedback(orderId, bloggerId, mgmtDiv, removeBtn);
               });
               mgmtDiv.appendChild(removeBtn);
             } else {
@@ -2430,8 +2397,7 @@
         container.appendChild(block);
       }
 
-      function showFeedbackAfterRemove(orderId, bloggerId, container) {
-        while (container.firstChild) container.removeChild(container.firstChild);
+      function showRemoveWithFeedback(orderId, bloggerId, mgmtDiv, removeBtn) {
         var block = document.createElement('div');
         block.style.cssText = 'background:#fff3e0;border:1.5px solid #ffcc80;border-radius:9px;padding:12px';
 
@@ -2441,31 +2407,42 @@
         block.appendChild(title);
 
         var btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:0';
+        btnRow.style.cssText = 'display:flex;flex-direction:column;gap:8px';
 
-        var noDealBtn = document.createElement('button');
-        noDealBtn.setAttribute('type', 'button');
-        noDealBtn.style.cssText = 'flex:1;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-        noDealBtn.textContent = 'Не договорились';
-        noDealBtn.addEventListener('click', function() {
-          noDealBtn.disabled = true;
-          issueBtn.disabled = true;
-          sendManagerFeedback(orderId, bloggerId, 'no_deal')
+        function doRemoveAndFeedback(feedbackStatus, issueDescription) {
+          api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
+            .then(function(data) {
+              if (data.ok) {
+                return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription);
+              }
+            })
             .then(function() {
-              setBlockMessage(block, '✅ Спасибо за отзыв!', '#2e7d32');
+              var msg = feedbackStatus === 'issue' ? '✅ Жалоба отправлена' : '✅ Убрано из заказа';
+              setBlockMessage(block, msg, '#2e7d32');
               setTimeout(function() {
                 loadManagerCreators(orderId, true, 0);
                 showScreen('screen-manager-creators');
               }, 1000);
             })
             .catch(function() {
-              setBlockMessage(block, '❌ Ошибка отправки', '#c62828');
+              setBlockMessage(block, '❌ Ошибка', '#c62828');
             });
+        }
+
+        var noDealBtn = document.createElement('button');
+        noDealBtn.setAttribute('type', 'button');
+        noDealBtn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        noDealBtn.textContent = 'Не договорились';
+        noDealBtn.addEventListener('click', function() {
+          noDealBtn.disabled = true;
+          issueBtn.disabled = true;
+          cancelBtn.disabled = true;
+          doRemoveAndFeedback('no_deal');
         });
 
         var issueBtn = document.createElement('button');
         issueBtn.setAttribute('type', 'button');
-        issueBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        issueBtn.style.cssText = 'width:100%;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
         issueBtn.textContent = 'Проблема';
         issueBtn.addEventListener('click', function() {
           btnRow.style.display = 'none';
@@ -2490,17 +2467,8 @@
               return;
             }
             sendBtn.disabled = true;
-            sendManagerFeedback(orderId, bloggerId, 'issue', desc)
-              .then(function() {
-                setBlockMessage(block, '✅ Жалоба отправлена', '#2e7d32');
-                setTimeout(function() {
-                  loadManagerCreators(orderId, true, 0);
-                  showScreen('screen-manager-creators');
-                }, 1000);
-              })
-              .catch(function() {
-                setBlockMessage(block, '❌ Ошибка отправки', '#c62828');
-              });
+            backBtn.disabled = true;
+            doRemoveAndFeedback('issue', desc);
           });
 
           var backBtn = document.createElement('button');
@@ -2519,10 +2487,20 @@
           block.appendChild(sendRow);
         });
 
+        var cancelBtn = document.createElement('button');
+        cancelBtn.setAttribute('type', 'button');
+        cancelBtn.style.cssText = 'width:100%;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        cancelBtn.textContent = 'Отмена';
+        cancelBtn.addEventListener('click', function() {
+          block.parentNode.removeChild(block);
+          mgmtDiv.appendChild(removeBtn);
+        });
+
         btnRow.appendChild(noDealBtn);
         btnRow.appendChild(issueBtn);
+        btnRow.appendChild(cancelBtn);
         block.appendChild(btnRow);
-        container.appendChild(block);
+        mgmtDiv.appendChild(block);
       }
 
       function saveCreatorUgcVideo(orderId, bloggerId) {
@@ -2557,26 +2535,6 @@
           });
       }
 
-      function removeCreatorFromOrder(orderId, bloggerId) {
-        var status = document.getElementById('mgmt-action-status');
-        api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
-          .then(function(data) {
-            if (data.ok) {
-              if (status) {
-                status.textContent = '✅ Убрано из заказа';
-                status.style.color = '#2e7d32';
-                showFeedbackAfterRemove(orderId, bloggerId, status);
-              }
-            }
-          })
-          .catch(function(err) {
-            if (status) {
-              var msg = (err && err.message) ? err.message : 'Ошибка';
-              status.textContent = '❌ ' + msg;
-              status.style.color = '#c62828';
-            }
-          });
-      }
 
       function addCreatorToOrder(orderId, bloggerId) {
         var status = document.getElementById('mgmt-action-status');
