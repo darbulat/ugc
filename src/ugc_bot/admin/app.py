@@ -53,6 +53,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    AuditLogModel,
     BloggerProfileModel,
     BotTextModel,
     ComplaintModel,
@@ -2146,6 +2147,44 @@ class ReferralIncomeEntryAdmin(ModelView, model=ReferralIncomeEntryModel):
     }
 
 
+class AuditLogAdmin(ModelView, model=AuditLogModel):
+    """Read-only audit log viewer."""
+
+    name = "Аудит лог"
+    name_plural = "Аудит логи"
+    icon = "fa-solid fa-clock-rotate-left"
+    can_create = False
+    can_edit = False
+    can_delete = False
+    column_list = [
+        AuditLogModel.id,
+        AuditLogModel.entity_type,
+        AuditLogModel.entity_id,
+        AuditLogModel.action,
+        AuditLogModel.old_values,
+        AuditLogModel.new_values,
+        AuditLogModel.changed_by,
+        AuditLogModel.changed_at,
+    ]
+    column_sortable_list = [
+        AuditLogModel.entity_type,
+        AuditLogModel.action,
+        AuditLogModel.changed_at,
+    ]
+    column_default_sort = (AuditLogModel.changed_at, True)
+    column_labels = {
+        AuditLogModel.id: "ID",
+        AuditLogModel.entity_type: "Тип сущности",
+        AuditLogModel.entity_id: "ID сущности",
+        AuditLogModel.action: "Действие",
+        AuditLogModel.old_values: "Старые значения",
+        AuditLogModel.new_values: "Новые значения",
+        AuditLogModel.changed_by: "Кем изменено",
+        AuditLogModel.changed_at: "Когда",
+    }
+    column_searchable_list = [AuditLogModel.entity_type]
+
+
 class DashboardLinkView(BaseView):
     """Sidebar link: redirect to dashboard (no intermediate page)."""
 
@@ -2340,6 +2379,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(NpsResponseAdmin)
     admin.add_view(PayoutRequestAdmin)
     admin.add_view(ReferralIncomeEntryAdmin)
+    admin.add_view(AuditLogAdmin)
 
 
 def create_admin_app() -> FastAPI:

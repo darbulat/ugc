@@ -4,6 +4,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.db.audit import register_audit_listener
 from ugc_bot.infrastructure.db.session import (
     SessionTransactionManager,
     create_db_engine,
@@ -17,6 +18,7 @@ def create_session_factory_from_config(config: AppConfig):
     """Create async session factory from app config."""
     if not config.db.database_url:
         return None
+    register_audit_listener()
     return create_session_factory(
         config.db.database_url,
         pool_size=config.db.pool_size,

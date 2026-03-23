@@ -16,6 +16,7 @@ from ugc_bot.infrastructure.memory_repositories import (
 def _make_entry(
     *,
     referrer_user_id=None,
+    referred_user_id=None,
     order_id=None,
     income_type=ReferralIncomeType.CREATOR,
     currency="RUB",
@@ -25,7 +26,7 @@ def _make_entry(
     return ReferralIncomeEntry(
         entry_id=uuid4(),
         referrer_user_id=referrer_user_id or uuid4(),
-        referred_user_id=uuid4(),
+        referred_user_id=referred_user_id or uuid4(),
         order_id=order_id or uuid4(),
         income_type=income_type,
         currency=currency,
@@ -75,15 +76,18 @@ async def test_save_idempotent_on_conflict() -> None:
     repo = InMemoryReferralIncomeEntryRepository()
     uid = uuid4()
     oid = uuid4()
+    referred = uuid4()
 
     entry1 = _make_entry(
         referrer_user_id=uid,
+        referred_user_id=referred,
         order_id=oid,
         income_type=ReferralIncomeType.CREATOR,
         commission_amount=Decimal("100.00"),
     )
     entry2 = _make_entry(
         referrer_user_id=uid,
+        referred_user_id=referred,
         order_id=oid,
         income_type=ReferralIncomeType.CREATOR,
         commission_amount=Decimal("999.00"),
