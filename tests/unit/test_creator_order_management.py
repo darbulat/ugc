@@ -199,6 +199,9 @@ def _build_dispatcher(
             get_or_create=AsyncMock(
                 return_value=MagicMock(interaction_id=uuid4())
             ),
+            record_advertiser_feedback=AsyncMock(
+                return_value=MagicMock(interaction_id=uuid4())
+            ),
         ),
         "messenger_client": MagicMock(),
         "bot_texts_service": MagicMock(
@@ -251,7 +254,7 @@ class TestManagerRemoveCreatorEndpoint:
         )
         dispatcher[
             "interaction_service"
-        ].cancel_interaction.assert_not_awaited()
+        ].record_advertiser_feedback.assert_awaited_once()
 
     def test_remove_409_already_in_reserve(self) -> None:
         dispatch = _make_dispatch(

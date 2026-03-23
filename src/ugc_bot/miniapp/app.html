@@ -2397,9 +2397,16 @@
         function doRemoveAndFeedback(feedbackStatus, issueDescription, noDealReason) {
           api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
             .then(function(data) {
-              if (data.ok) {
-                return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason);
-              }
+              if (!data.ok) throw new Error('Ошибка удаления');
+              return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason)
+                .catch(function() {
+                  setBlockMessage(block, '⚠ Убрано, но отзыв не записан', '#e65100');
+                  setTimeout(function() {
+                    loadManagerCreators(orderId, window._mgrCurrentFilter || 'in_offer', 0);
+                    showScreen('screen-manager-creators');
+                  }, 1500);
+                  throw new Error('_handled');
+                });
             })
             .then(function() {
               var msg = feedbackStatus === 'issue' ? '✅ Жалоба отправлена' : '✅ Убрано из заказа';
@@ -2409,8 +2416,10 @@
                 showScreen('screen-manager-creators');
               }, 1000);
             })
-            .catch(function() {
-              setBlockMessage(block, '❌ Ошибка', '#c62828');
+            .catch(function(err) {
+              if (err && err.message === '_handled') return;
+              var msg = (err && err.message) ? '❌ ' + err.message : '❌ Ошибка';
+              setBlockMessage(block, msg, '#c62828');
             });
         }
 
@@ -2575,7 +2584,12 @@
             if (data.ok && status) {
               status.textContent = '✅ Сохранено';
               status.style.color = '#2e7d32';
-              sendManagerFeedback(orderId, bloggerId, 'ok').catch(function() {});
+              sendManagerFeedback(orderId, bloggerId, 'ok').catch(function() {
+                if (status) {
+                  status.textContent = '⚠ Видео сохранено, отзыв не записан';
+                  status.style.color = '#e65100';
+                }
+              });
             }
           })
           .catch(function() {

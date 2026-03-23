@@ -310,8 +310,8 @@ class ManagerFeedbackRequest(BaseModel):
 
     init_data: str
     status: Literal["ok", "no_deal", "issue"]
-    no_deal_reason: str | None = None
-    issue_description: str | None = None
+    no_deal_reason: str | None = Field(None, max_length=1000)
+    issue_description: str | None = Field(None, max_length=5000)
 
 
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
@@ -1581,30 +1581,38 @@ async def manager_creators(
     # Resolve filter: new 'filter' field takes priority, fallback to 'in_offer'
     effective_filter = body.filter
     if effective_filter is None:
-        effective_filter = "in_offer" if body.in_offer else "reserve"
+        if body.in_offer is not None:
+            effective_filter = "in_offer" if body.in_offer else "reserve"
+        else:
+            effective_filter = "in_offer"
+
+    search_q = body.search.strip().lower() if body.search else ""
+
+    # When searching, fetch all results and filter/paginate in Python
+    fetch_limit = 500 if search_q else body.limit
+    fetch_offset = 0 if search_q else body.offset
 
     if effective_filter == "expensive":
         dispatches, total = await manager_service.list_expensive_creators(
             order_id=order_id,
-            limit=body.limit,
-            offset=body.offset,
+            limit=fetch_limit,
+            offset=fetch_offset,
         )
     else:
         dispatches, total = await manager_service.list_creators_for_order(
             order_id=order_id,
             manager_id=user_id,
             in_offer=effective_filter == "in_offer",
-            limit=body.limit,
-            offset=body.offset,
+            limit=fetch_limit,
+            offset=fetch_offset,
         )
 
     user_repo = dispatcher["user_repo"]
     blogger_ids = [d.blogger_id for d in dispatches]
     users_map = await user_repo.get_by_ids(blogger_ids)
     profiles_map = await profile_service.get_blogger_profiles(blogger_ids)
-    search_q = body.search.strip().lower() if body.search else ""
 
-    creators: list[CreatorItem] = []
+    all_creators: list[CreatorItem] = []
     dispatches_map = {d.blogger_id: d for d in dispatches}
     for bid in blogger_ids:
         d = dispatches_map[bid]
@@ -1615,10 +1623,9 @@ async def manager_creators(
         if search_q:
             haystack = " ".join(s for s in [name, tg] if s).lower()
             if search_q not in haystack:
-                total -= 1
                 continue
         price = float(d.desired_price) if d.desired_price is not None else None
-        creators.append(
+        all_creators.append(
             CreatorItem(
                 blogger_id=str(bid),
                 instagram_url=(profile.instagram_url if profile else None),
@@ -1627,6 +1634,12 @@ async def manager_creators(
                 desired_price=price,
             )
         )
+
+    if search_q:
+        total = len(all_creators)
+        creators = all_creators[body.offset : body.offset + body.limit]
+    else:
+        creators = all_creators
 
     return ManagerCreatorsResponse(creators=creators, total=total)
 
@@ -1771,6 +1784,11 @@ async def manager_remove_creator(
     interaction_service = dispatcher["interaction_service"]
     interaction = await interaction_service.get_or_create(
         order_id, blogger_id, order.advertiser_id
+    )
+    # Set default NO_DEAL status; frontend may overwrite with
+    # a more specific reason via the /feedback endpoint afterward.
+    await interaction_service.record_advertiser_feedback(
+        interaction.interaction_id, "❌ Не договорились"
     )
 
     user_repo = dispatcher["user_repo"]
