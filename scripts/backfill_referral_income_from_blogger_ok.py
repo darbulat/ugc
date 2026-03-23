@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Backfill referral_income_entries for interactions where from_blogger = '✅ Всё прошло нормально'.
 
-One-time script. Finds interactions with that exact blogger feedback value,
-looks up the order, and calls record_creator_referral_income for each.
-Idempotent: the recorder skips entries that already exist.
+One-time script. Finds interactions with that exact blogger feedback value and
+creates creator referral income entries for each.
+
+Idempotent: recorder skips entries that already exist.
 
 Usage:
     uv run python scripts/backfill_referral_income_from_blogger_ok.py [--dry-run]
@@ -13,14 +14,23 @@ import argparse
 import asyncio
 import logging
 import sys
+from typing import cast
 
 from sqlalchemy import select
 
+from ugc_bot.application.ports import (
+    ContactPricingRepository,
+    PaymentRepository,
+    ReferralIncomeEntryRepository,
+    UserReferralBindingRepository,
+    UserRepository,
+)
 from ugc_bot.application.services.referral_income_recorder import (
     ReferralIncomeRecorder,
 )
 from ugc_bot.config import load_config
 from ugc_bot.container import repository_factory
+from ugc_bot.domain.enums import ReferralIncomeType
 from ugc_bot.infrastructure.db.models import InteractionModel
 from ugc_bot.infrastructure.db.session import create_session_factory
 
@@ -48,12 +58,23 @@ async def run(dry_run: bool = False) -> int:
     )
     repos = repository_factory.build_repos(session_factory)
 
+    user_referral_binding_repo = cast(
+        UserReferralBindingRepository, repos["user_referral_binding_repo"]
+    )
+    user_repo = cast(UserRepository, repos["user_repo"])
+    referral_income_entry_repo = cast(
+        ReferralIncomeEntryRepository, repos["referral_income_entry_repo"]
+    )
+    pricing_repo = cast(ContactPricingRepository, repos["pricing_repo"])
+    payment_repo = cast(PaymentRepository, repos["payment_repo"])
+    order_repo = cast(UserRepository, repos["order_repo"])  # type: ignore[type-var]
+
     recorder = ReferralIncomeRecorder(
-        user_referral_binding_repo=repos["user_referral_binding_repo"],
-        user_repo=repos["user_repo"],
-        referral_income_entry_repo=repos["referral_income_entry_repo"],
-        contact_pricing_repo=repos["pricing_repo"],
-        payment_repo=repos["payment_repo"],
+        user_referral_binding_repo=user_referral_binding_repo,
+        user_repo=user_repo,
+        referral_income_entry_repo=referral_income_entry_repo,
+        contact_pricing_repo=pricing_repo,
+        payment_repo=payment_repo,
     )
 
     async with session_factory() as session:
@@ -68,34 +89,86 @@ async def run(dry_run: bool = False) -> int:
     logger.info("Found %d interactions with blogger feedback OK", len(rows))
 
     recorded = 0
-    skipped = 0
+    skipped_no_binding = 0
+    skipped_already_exists = 0
+    skipped_no_order = 0
+    skipped_no_country = 0
+    skipped_no_payment = 0
+    skipped_no_pricing = 0
     errors = 0
 
     for row in rows:
         order_id, blogger_id = row.order_id, row.blogger_id
 
-        order = await repos["order_repo"].get_by_id(order_id)
+        order = await order_repo.get_by_id(order_id)  # type: ignore[attr-defined]
         if order is None:
-            logger.warning("Order %s not found, skipping", order_id)
-            skipped += 1
+            logger.warning("order_id=%s not found, skipping", order_id)
+            skipped_no_order += 1
             continue
 
-        advertiser = await repos["user_repo"].get_by_id(order.advertiser_id)
+        advertiser = await user_repo.get_by_id(order.advertiser_id)
         if advertiser is None or not advertiser.country:
             logger.warning(
-                "Advertiser %s has no country for order %s, skipping",
+                "advertiser=%s has no country (order=%s), skipping",
                 order.advertiser_id,
                 order_id,
             )
-            skipped += 1
+            skipped_no_country += 1
+            continue
+
+        binding = await user_referral_binding_repo.get_by_referred_user(blogger_id)
+        if binding is None:
+            logger.debug(
+                "No referral binding for blogger=%s (order=%s), skipping",
+                blogger_id,
+                order_id,
+            )
+            skipped_no_binding += 1
+            continue
+
+        already = await referral_income_entry_repo.exists(
+            order_id, binding.referrer_user_id, ReferralIncomeType.CREATOR
+        )
+        if already:
+            logger.debug(
+                "Entry already exists for order=%s referrer=%s, skipping",
+                order_id,
+                binding.referrer_user_id,
+            )
+            skipped_already_exists += 1
+            continue
+
+        payment = await payment_repo.get_by_order(order_id)
+        if payment is None:
+            logger.warning(
+                "No payment for order=%s (blogger=%s), skipping",
+                order_id,
+                blogger_id,
+            )
+            skipped_no_payment += 1
+            continue
+
+        country = advertiser.country.lower()
+        pricing = await pricing_repo.get_by_bloggers_count(
+            order.bloggers_needed, country_code=country
+        )
+        if pricing is None:
+            logger.warning(
+                "No pricing for bloggers_needed=%d country=%s (order=%s), skipping",
+                order.bloggers_needed,
+                country,
+                order_id,
+            )
+            skipped_no_pricing += 1
             continue
 
         if dry_run:
             logger.info(
-                "[dry-run] Would record creator income: order=%s creator=%s country=%s",
+                "[dry-run] Would record: order=%s creator=%s referrer=%s country=%s",
                 order_id,
                 blogger_id,
-                advertiser.country,
+                binding.referrer_user_id,
+                country,
             )
             recorded += 1
             continue
@@ -105,6 +178,12 @@ async def run(dry_run: bool = False) -> int:
                 order=order,
                 creator_id=blogger_id,
                 advertiser_country_code=advertiser.country,
+            )
+            logger.info(
+                "Recorded: order=%s creator=%s referrer=%s",
+                order_id,
+                blogger_id,
+                binding.referrer_user_id,
             )
             recorded += 1
         except Exception:
@@ -117,9 +196,16 @@ async def run(dry_run: bool = False) -> int:
             errors += 1
 
     logger.info(
-        "Done. recorded=%d skipped=%d errors=%d dry_run=%s",
+        "Done. recorded=%d | "
+        "skipped: no_binding=%d already_exists=%d no_order=%d "
+        "no_country=%d no_payment=%d no_pricing=%d | errors=%d | dry_run=%s",
         recorded,
-        skipped,
+        skipped_no_binding,
+        skipped_already_exists,
+        skipped_no_order,
+        skipped_no_country,
+        skipped_no_payment,
+        skipped_no_pricing,
         errors,
         dry_run,
     )
