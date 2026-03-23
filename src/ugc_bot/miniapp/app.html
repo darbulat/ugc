@@ -2341,9 +2341,10 @@
           });
       }
 
-      function sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription) {
+      function sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason) {
         var payload = { status: feedbackStatus };
         if (issueDescription) payload.issue_description = issueDescription;
+        if (noDealReason) payload.no_deal_reason = noDealReason;
         return api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/feedback', payload);
       }
 
@@ -2353,48 +2354,6 @@
         p.style.cssText = 'font-size:13px;margin:0;color:' + color;
         p.textContent = text;
         block.appendChild(p);
-      }
-
-      function showFeedbackAfterUgcVideo(orderId, bloggerId, container) {
-        while (container.firstChild) container.removeChild(container.firstChild);
-        var block = document.createElement('div');
-        block.style.cssText = 'background:#e8f5e9;border:1.5px solid #a5d6a7;border-radius:9px;padding:12px';
-
-        var title = document.createElement('p');
-        title.textContent = 'Сделка состоялась?';
-        title.style.cssText = 'font-size:14px;font-weight:600;color:#2e7d32;margin:0 0 10px';
-        block.appendChild(title);
-
-        var btnRow = document.createElement('div');
-        btnRow.style.cssText = 'display:flex;gap:8px';
-
-        var yesBtn = document.createElement('button');
-        yesBtn.setAttribute('type', 'button');
-        yesBtn.style.cssText = 'flex:1;padding:9px;background:#2e7d32;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-        yesBtn.textContent = 'Да, всё хорошо';
-        yesBtn.addEventListener('click', function() {
-          yesBtn.disabled = true;
-          sendManagerFeedback(orderId, bloggerId, 'ok')
-            .then(function() {
-              setBlockMessage(block, '✅ Спасибо за отзыв!', '#2e7d32');
-            })
-            .catch(function() {
-              setBlockMessage(block, '❌ Ошибка отправки', '#c62828');
-            });
-        });
-
-        var skipBtn = document.createElement('button');
-        skipBtn.setAttribute('type', 'button');
-        skipBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-        skipBtn.textContent = 'Пропустить';
-        skipBtn.addEventListener('click', function() {
-          block.parentNode.removeChild(block);
-        });
-
-        btnRow.appendChild(yesBtn);
-        btnRow.appendChild(skipBtn);
-        block.appendChild(btnRow);
-        container.appendChild(block);
       }
 
       function showRemoveWithFeedback(orderId, bloggerId, mgmtDiv, removeBtn) {
@@ -2409,11 +2368,11 @@
         var btnRow = document.createElement('div');
         btnRow.style.cssText = 'display:flex;flex-direction:column;gap:8px';
 
-        function doRemoveAndFeedback(feedbackStatus, issueDescription) {
+        function doRemoveAndFeedback(feedbackStatus, issueDescription, noDealReason) {
           api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
             .then(function(data) {
               if (data.ok) {
-                return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription);
+                return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason);
               }
             })
             .then(function() {
@@ -2429,15 +2388,49 @@
             });
         }
 
+        var noDealReasons = [
+          { text: '💰 Не сошлись по условиям', key: 'conditions' },
+          { text: '⏱ Не подошли сроки', key: 'timing' },
+          { text: '📝 Креатор хотел изменить условия', key: 'creator_change' },
+          { text: '🤝 Другое', key: 'other' }
+        ];
+
         var noDealBtn = document.createElement('button');
         noDealBtn.setAttribute('type', 'button');
         noDealBtn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
         noDealBtn.textContent = 'Не договорились';
         noDealBtn.addEventListener('click', function() {
-          noDealBtn.disabled = true;
-          issueBtn.disabled = true;
-          cancelBtn.disabled = true;
-          doRemoveAndFeedback('no_deal');
+          btnRow.style.display = 'none';
+          title.textContent = 'Почему не договорились?';
+
+          var reasonsCol = document.createElement('div');
+          reasonsCol.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+
+          noDealReasons.forEach(function(reason) {
+            var btn = document.createElement('button');
+            btn.setAttribute('type', 'button');
+            btn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left';
+            btn.textContent = reason.text;
+            btn.addEventListener('click', function() {
+              var allBtns = reasonsCol.querySelectorAll('button');
+              for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
+              doRemoveAndFeedback('no_deal', undefined, reason.text);
+            });
+            reasonsCol.appendChild(btn);
+          });
+
+          var reasonBackBtn = document.createElement('button');
+          reasonBackBtn.setAttribute('type', 'button');
+          reasonBackBtn.style.cssText = 'width:100%;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          reasonBackBtn.textContent = 'Назад';
+          reasonBackBtn.addEventListener('click', function() {
+            block.removeChild(reasonsCol);
+            btnRow.style.display = 'flex';
+            title.textContent = 'Причина удаления?';
+          });
+          reasonsCol.appendChild(reasonBackBtn);
+
+          block.appendChild(reasonsCol);
         });
 
         var issueBtn = document.createElement('button');
@@ -2521,10 +2514,7 @@
             if (data.ok && status) {
               status.textContent = '✅ Сохранено';
               status.style.color = '#2e7d32';
-              var feedbackContainer = document.getElementById('mgmt-action-status');
-              if (feedbackContainer) {
-                showFeedbackAfterUgcVideo(orderId, bloggerId, feedbackContainer);
-              }
+              sendManagerFeedback(orderId, bloggerId, 'ok').catch(function() {});
             }
           })
           .catch(function() {

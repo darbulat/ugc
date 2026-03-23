@@ -306,6 +306,7 @@ class ManagerFeedbackRequest(BaseModel):
 
     init_data: str
     status: Literal["ok", "no_deal", "issue"]
+    no_deal_reason: str | None = None
     issue_description: str | None = None
 
 
@@ -1892,7 +1893,10 @@ async def manager_feedback(
     if body.status == "ok":
         feedback_text = "✅ Всё прошло хорошо"
     elif body.status == "no_deal":
-        feedback_text = "❌ Не договорились"
+        reason = body.no_deal_reason.strip() if body.no_deal_reason else ""
+        feedback_text = (
+            f"❌ Не договорились: {reason}" if reason else "❌ Не договорились"
+        )
     else:
         # status == "issue"
         if not body.issue_description or not body.issue_description.strip():
