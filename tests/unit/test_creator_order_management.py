@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi import FastAPI
@@ -196,6 +196,9 @@ def _build_dispatcher(
         "interaction_service": MagicMock(
             cancel_interaction=AsyncMock(),
             reactivate_or_create_for_contacts_sent=AsyncMock(),
+            get_or_create=AsyncMock(
+                return_value=MagicMock(interaction_id=uuid4())
+            ),
         ),
         "messenger_client": MagicMock(),
         "bot_texts_service": MagicMock(
@@ -240,13 +243,15 @@ class TestManagerRemoveCreatorEndpoint:
                 json={"init_data": "test"},
             )
         assert resp.status_code == 200
-        assert resp.json() == {"ok": True}
+        data = resp.json()
+        assert data["ok"] is True
+        assert "interaction_id" in data
         dispatcher["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
             self._ORDER_ID, self._BLOGGER_ID, False
         )
         dispatcher[
             "interaction_service"
-        ].cancel_interaction.assert_awaited_once()
+        ].cancel_interaction.assert_not_awaited()
 
     def test_remove_409_already_in_reserve(self) -> None:
         dispatch = _make_dispatch(

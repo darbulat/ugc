@@ -504,6 +504,11 @@ class TestManagerSetUgcVideoEndpoint:
         bot_texts_service = MagicMock()
         bot_texts_service.get = MagicMock(return_value="msg")
 
+        interaction = MagicMock()
+        interaction.interaction_id = uuid4()
+        interaction_service = MagicMock()
+        interaction_service.get_or_create = AsyncMock(return_value=interaction)
+
         deps = {
             "manager_service": manager_service,
             "order_repo": order_repo,
@@ -511,6 +516,7 @@ class TestManagerSetUgcVideoEndpoint:
             "user_repo": user_repo,
             "messenger_client": messenger_client,
             "bot_texts_service": bot_texts_service,
+            "interaction_service": interaction_service,
         }
 
         dispatcher = MagicMock()
@@ -521,7 +527,7 @@ class TestManagerSetUgcVideoEndpoint:
         return request
 
     @pytest.mark.asyncio
-    async def test_returns_ok_true(self) -> None:
+    async def test_returns_ok_and_interaction_id(self) -> None:
         request = self._make_request()
         body = UgcVideoRequest(init_data="x", url="https://example.com/video")
 
@@ -533,7 +539,8 @@ class TestManagerSetUgcVideoEndpoint:
                 request, ORDER_ID, BLOGGER_ID, body
             )
 
-        assert result == {"ok": True}
+        assert result["ok"] is True
+        assert "interaction_id" in result
 
     @pytest.mark.asyncio
     async def test_403_when_not_manager(self) -> None:
@@ -647,7 +654,8 @@ class TestManagerSetUgcVideoEndpoint:
                 request, ORDER_ID, BLOGGER_ID, body
             )
 
-        assert result == {"ok": True}
+        assert result["ok"] is True
+        assert "interaction_id" in result
         # messenger_client.send_text should NOT have been called
         messenger_client = dispatcher["messenger_client"]
         messenger_client.send_text.assert_not_called()
@@ -657,7 +665,7 @@ INTERACTION_ID = UUID("00000000-0000-0000-0000-000000000c01")
 
 
 class TestManagerFeedbackEndpoint:
-    """Tests for POST /manager/orders/{order_id}/creators/{blogger_id}/feedback."""
+    """Tests for manager feedback endpoint."""
 
     @pytest.mark.asyncio
     async def test_feedback_ok_records_advertiser_feedback(self) -> None:
@@ -702,9 +710,7 @@ class TestManagerFeedbackEndpoint:
             "ugc_bot.miniapp.api._ensure_user_and_get_id",
             new=AsyncMock(return_value=MANAGER_ID),
         ):
-            result = await manager_feedback(
-                request, ORDER_ID, BLOGGER_ID, body
-            )
+            result = await manager_feedback(request, ORDER_ID, BLOGGER_ID, body)
 
         assert result == {"ok": True, "interaction_id": str(INTERACTION_ID)}
         interaction_service.get_or_create.assert_awaited_once_with(
@@ -749,9 +755,7 @@ class TestManagerFeedbackEndpoint:
             "ugc_bot.miniapp.api._ensure_user_and_get_id",
             new=AsyncMock(return_value=MANAGER_ID),
         ):
-            result = await manager_feedback(
-                request, ORDER_ID, BLOGGER_ID, body
-            )
+            result = await manager_feedback(request, ORDER_ID, BLOGGER_ID, body)
 
         assert result["ok"] is True
         call_args = interaction_service.record_advertiser_feedback.call_args
@@ -800,9 +804,7 @@ class TestManagerFeedbackEndpoint:
             "ugc_bot.miniapp.api._ensure_user_and_get_id",
             new=AsyncMock(return_value=MANAGER_ID),
         ):
-            result = await manager_feedback(
-                request, ORDER_ID, BLOGGER_ID, body
-            )
+            result = await manager_feedback(request, ORDER_ID, BLOGGER_ID, body)
 
         assert result["ok"] is True
         complaint_service.create_complaint.assert_awaited_once()

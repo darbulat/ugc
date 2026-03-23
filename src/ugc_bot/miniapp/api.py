@@ -1646,7 +1646,7 @@ async def manager_set_ugc_video(
     order_id: UUID,
     blogger_id: UUID,
     body: UgcVideoRequest,
-) -> dict[str, bool]:
+) -> dict[str, Any]:
     """Save UGC video URL; on first save notifies creator and advertiser."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
@@ -1689,7 +1689,15 @@ async def manager_set_ugc_video(
             bot_texts_service=bot_texts_service,
         )
 
-    return {"ok": True}
+    interaction_service = dispatcher["interaction_service"]
+    interaction = await interaction_service.get_or_create(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    return {
+        "ok": True,
+        "interaction_id": str(interaction.interaction_id),
+    }
 
 
 @router.post("/manager/orders/{order_id}/creators/{blogger_id}/remove")
@@ -1698,8 +1706,8 @@ async def manager_remove_creator(
     order_id: UUID,
     blogger_id: UUID,
     body: InitDataBody,
-) -> dict[str, bool]:
-    """Move creator to reserve; set Interaction to DELETED; notify creator."""
+) -> dict[str, Any]:
+    """Move creator to reserve; notify creator. Returns interaction_id."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
@@ -1730,7 +1738,7 @@ async def manager_remove_creator(
     await dispatch_repo.set_in_offer(order_id, blogger_id, False)
 
     interaction_service = dispatcher["interaction_service"]
-    await interaction_service.cancel_interaction(
+    interaction = await interaction_service.get_or_create(
         order_id, blogger_id, order.advertiser_id
     )
 
@@ -1758,7 +1766,10 @@ async def manager_remove_creator(
             extra={"blogger_id": str(blogger_id)},
         )
 
-    return {"ok": True}
+    return {
+        "ok": True,
+        "interaction_id": str(interaction.interaction_id),
+    }
 
 
 @router.post("/manager/orders/{order_id}/creators/{blogger_id}/add")
