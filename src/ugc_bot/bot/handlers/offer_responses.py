@@ -923,7 +923,7 @@ async def _send_contact_immediately(
     )
 
     if interaction_service:
-        await interaction_service.create_for_contacts_sent(
+        await interaction_service.reactivate_or_create_for_contacts_sent(
             order_id=order.order_id,
             blogger_id=blogger_id,
             advertiser_id=order.advertiser_id,
