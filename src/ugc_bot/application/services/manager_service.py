@@ -161,3 +161,34 @@ class ManagerService:
             return dispatches, total
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def list_expensive_creators(
+        self,
+        order_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[OfferDispatch], int]:
+        """List creators who declined due to low price."""
+        if self.offer_dispatch_repo is None:
+            return [], 0
+
+        repo = self.offer_dispatch_repo
+
+        async def _run(
+            session: object | None,
+        ) -> tuple[list[OfferDispatch], int]:
+            dispatches = await repo.list_by_order_and_rejection_reason(
+                order_id=order_id,
+                rejection_reason="low_price",
+                limit=limit,
+                offset=offset,
+                session=session,
+            )
+            total = await repo.count_by_order_and_rejection_reason(
+                order_id=order_id,
+                rejection_reason="low_price",
+                session=session,
+            )
+            return dispatches, total
+
+        return await with_optional_tx(self.transaction_manager, _run)

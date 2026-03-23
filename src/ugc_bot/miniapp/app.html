@@ -65,6 +65,7 @@
     }
     #orders-list li strong, #blogger-orders-list li strong, #manager-orders-list li strong { display: block; margin-bottom: 4px; }
     #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
+    .themed-link { color: var(--tg-theme-link-color, #2481cc); }
     .pagination-btns { display: flex; gap: 8px; margin-top: 12px; }
     .pagination-btns .btn { flex: 1; margin-top: 0; }
     .instagram-input-group {
@@ -390,13 +391,15 @@
 
   <div id="screen-manager-order-detail" class="screen">
     <h1 id="mgr-order-detail-title">Заказ</h1>
-    <button type="button" class="btn" id="btn-mgr-creators-in-offer">Креаторы в заказе</button>
-    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">Креаторы в резерве</button>
+    <button type="button" class="btn" id="btn-mgr-creators-in-offer">В заказе</button>
+    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">В резерве</button>
+    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-expensive">Дороже</button>
     <button type="button" class="btn btn-secondary" id="mgr-order-detail-back">Назад</button>
   </div>
 
   <div id="screen-manager-creators" class="screen">
     <h1>Креаторы</h1>
+    <input type="text" id="mgr-creators-search" placeholder="Поиск по имени или telegram" style="margin-bottom:10px;">
     <ul id="manager-creators-list"></ul>
     <div class="pagination-btns">
       <button type="button" class="btn btn-secondary" id="mgr-creators-prev" style="display:none;">← Назад</button>
@@ -2156,11 +2159,16 @@
         showScreen('screen-manager-order-detail');
       }
 
-      function loadManagerCreators(orderId, inOffer, offset) {
+      function loadManagerCreators(orderId, filterType, offset) {
         var ul = document.getElementById('manager-creators-list');
         clearList(ul);
         showScreen('screen-manager-creators');
-        api('/manager/orders/' + orderId + '/creators', { in_offer: inOffer, limit: MGR_PAGE_LIMIT, offset: offset }).then(function(data) {
+        window._mgrCurrentFilter = filterType;
+        var searchInput = document.getElementById('mgr-creators-search');
+        var searchQ = searchInput ? searchInput.value.trim() : '';
+        var payload = { filter: filterType, limit: MGR_PAGE_LIMIT, offset: offset };
+        if (searchQ) payload.search = searchQ;
+        api('/manager/orders/' + orderId + '/creators', payload).then(function(data) {
           var creators = data.creators || [];
           var total = data.total || 0;
           clearList(ul);
@@ -2171,24 +2179,40 @@
           } else {
             creators.forEach(function(c) {
               var li = document.createElement('li');
-              if (c.instagram_url) {
-                var a = document.createElement('a');
-                a.href = c.instagram_url;
-                a.target = '_blank';
-                a.rel = 'noopener';
-                a.textContent = c.instagram_url;
-                li.appendChild(a);
+              if (c.name) {
+                var nameSpan = document.createElement('span');
+                nameSpan.style.fontWeight = '600';
+                nameSpan.textContent = c.name;
+                li.appendChild(nameSpan);
+                li.appendChild(document.createTextNode(' '));
               }
               if (c.telegram) {
-                if (c.instagram_url) li.appendChild(document.createTextNode(' \u00b7 '));
                 var tgLink = document.createElement('a');
                 tgLink.href = 'https://t.me/' + c.telegram;
                 tgLink.target = '_blank';
                 tgLink.rel = 'noopener';
+                tgLink.className = 'themed-link';
                 tgLink.textContent = '@' + c.telegram;
                 li.appendChild(tgLink);
               }
-              if (!c.instagram_url && !c.telegram) {
+              if (c.instagram_url) {
+                if (c.name || c.telegram) li.appendChild(document.createTextNode(' \u00b7 '));
+                var a = document.createElement('a');
+                a.href = c.instagram_url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.className = 'themed-link';
+                a.textContent = c.instagram_url;
+                li.appendChild(a);
+              }
+              if (filterType === 'expensive' && c.desired_price != null) {
+                li.appendChild(document.createTextNode(' \u00b7 '));
+                var priceSpan = document.createElement('span');
+                priceSpan.style.cssText = 'color:#e65100;font-weight:600';
+                priceSpan.textContent = c.desired_price + ' \u20bd';
+                li.appendChild(priceSpan);
+              }
+              if (!c.name && !c.instagram_url && !c.telegram) {
                 li.textContent = '\u2014';
               }
               (function(bid) {
@@ -2204,8 +2228,8 @@
           var nextBtn = document.getElementById('mgr-creators-next');
           if (prevBtn) prevBtn.style.display = offset > 0 ? '' : 'none';
           if (nextBtn) nextBtn.style.display = (offset + MGR_PAGE_LIMIT < total) ? '' : 'none';
-          if (prevBtn) prevBtn.onclick = function() { loadManagerCreators(orderId, inOffer, Math.max(0, offset - MGR_PAGE_LIMIT)); };
-          if (nextBtn) nextBtn.onclick = function() { loadManagerCreators(orderId, inOffer, offset + MGR_PAGE_LIMIT); };
+          if (prevBtn) prevBtn.onclick = function() { loadManagerCreators(orderId, filterType, Math.max(0, offset - MGR_PAGE_LIMIT)); };
+          if (nextBtn) nextBtn.onclick = function() { loadManagerCreators(orderId, filterType, offset + MGR_PAGE_LIMIT); };
         }).catch(function() {
           clearList(ul);
           if (ul) {
@@ -2267,38 +2291,40 @@
               body.appendChild(p2);
             }
 
-            var label = document.createElement('p');
-            label.textContent = 'UGC-видео для этого заказа';
-            label.style.cssText = 'font-size:12px;font-weight:600;color:#888;text-transform:uppercase;margin-top:16px';
-            body.appendChild(label);
+            if (data.in_offer) {
+              var label = document.createElement('p');
+              label.textContent = 'UGC-видео для этого заказа';
+              label.style.cssText = 'font-size:12px;font-weight:600;color:#888;text-transform:uppercase;margin-top:16px';
+              body.appendChild(label);
 
-            var input = document.createElement('input');
-            input.setAttribute('type', 'url');
-            input.setAttribute('id', 'ugc-video-input');
-            input.setAttribute('placeholder', 'https://...');
-            input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #d0d0d0;border-radius:8px;font-size:14px';
-            if (data.ugc_video_url) input.value = data.ugc_video_url;
-            body.appendChild(input);
+              var input = document.createElement('input');
+              input.setAttribute('type', 'url');
+              input.setAttribute('id', 'ugc-video-input');
+              input.setAttribute('placeholder', 'https://...');
+              input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #d0d0d0;border-radius:8px;font-size:14px';
+              if (data.ugc_video_url) input.value = data.ugc_video_url;
+              body.appendChild(input);
 
-            var hint = document.createElement('p');
-            hint.textContent = 'Ссылка на готовое видео (Google Drive, YouTube, и т.д.)';
-            hint.style.cssText = 'font-size:12px;color:#999;margin-top:4px';
-            body.appendChild(hint);
+              var hint = document.createElement('p');
+              hint.textContent = 'Ссылка на готовое видео (Google Drive, YouTube, и т.д.)';
+              hint.style.cssText = 'font-size:12px;color:#999;margin-top:4px';
+              body.appendChild(hint);
 
-            var saveBtn = document.createElement('button');
-            saveBtn.setAttribute('type', 'button');
-            saveBtn.className = 'btn';
-            saveBtn.style.cssText = 'width:100%;margin-top:12px';
-            saveBtn.textContent = 'Сохранить';
-            saveBtn.addEventListener('click', function() {
-              saveCreatorUgcVideo(orderId, bloggerId);
-            });
-            body.appendChild(saveBtn);
+              var saveBtn = document.createElement('button');
+              saveBtn.setAttribute('type', 'button');
+              saveBtn.className = 'btn';
+              saveBtn.style.cssText = 'width:100%;margin-top:12px';
+              saveBtn.textContent = 'Сохранить';
+              saveBtn.addEventListener('click', function() {
+                saveCreatorUgcVideo(orderId, bloggerId);
+              });
+              body.appendChild(saveBtn);
 
-            var status = document.createElement('p');
-            status.setAttribute('id', 'ugc-save-status');
-            status.style.cssText = 'font-size:13px;margin-top:8px';
-            body.appendChild(status);
+              var status = document.createElement('p');
+              status.setAttribute('id', 'ugc-save-status');
+              status.style.cssText = 'font-size:13px;margin-top:8px';
+              body.appendChild(status);
+            }
 
             // Management section: remove or add button based on in_offer
             var mgmtDiv = document.createElement('div');
@@ -2379,7 +2405,7 @@
               var msg = feedbackStatus === 'issue' ? '✅ Жалоба отправлена' : '✅ Убрано из заказа';
               setBlockMessage(block, msg, '#2e7d32');
               setTimeout(function() {
-                loadManagerCreators(orderId, true, 0);
+                loadManagerCreators(orderId, window._mgrCurrentFilter || 'in_offer', 0);
                 showScreen('screen-manager-creators');
               }, 1000);
             })
@@ -2412,9 +2438,44 @@
             btn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left';
             btn.textContent = reason.text;
             btn.addEventListener('click', function() {
-              var allBtns = reasonsCol.querySelectorAll('button');
-              for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
-              doRemoveAndFeedback('no_deal', undefined, reason.text);
+              if (reason.key === 'other') {
+                reasonsCol.style.display = 'none';
+                title.textContent = 'Укажите причину:';
+                var otherArea = document.createElement('textarea');
+                otherArea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid #ffcc80;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box';
+                otherArea.placeholder = 'Опишите причину';
+                block.appendChild(otherArea);
+                var otherRow = document.createElement('div');
+                otherRow.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+                var otherSend = document.createElement('button');
+                otherSend.setAttribute('type', 'button');
+                otherSend.style.cssText = 'flex:1;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                otherSend.textContent = 'Отправить';
+                otherSend.addEventListener('click', function() {
+                  var txt = otherArea.value.trim();
+                  if (!txt) { otherArea.style.borderColor = '#c62828'; return; }
+                  otherSend.disabled = true;
+                  otherBack.disabled = true;
+                  doRemoveAndFeedback('no_deal', undefined, '🤝 Другое: ' + txt);
+                });
+                var otherBack = document.createElement('button');
+                otherBack.setAttribute('type', 'button');
+                otherBack.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                otherBack.textContent = 'Назад';
+                otherBack.addEventListener('click', function() {
+                  block.removeChild(otherArea);
+                  block.removeChild(otherRow);
+                  reasonsCol.style.display = 'flex';
+                  title.textContent = 'Почему не договорились?';
+                });
+                otherRow.appendChild(otherSend);
+                otherRow.appendChild(otherBack);
+                block.appendChild(otherRow);
+              } else {
+                var allBtns = reasonsCol.querySelectorAll('button');
+                for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
+                doRemoveAndFeedback('no_deal', undefined, reason.text);
+              }
             });
             reasonsCol.appendChild(btn);
           });
@@ -2536,7 +2597,7 @@
                 status.style.color = '#2e7d32';
               }
               setTimeout(function() {
-                loadManagerCreators(orderId, false, 0);
+                loadManagerCreators(orderId, window._mgrCurrentFilter || 'reserve', 0);
                 showScreen('screen-manager-creators');
               }, 1000);
             }
@@ -2560,21 +2621,44 @@
       document.getElementById('mgr-order-detail-back').addEventListener('click', function() {
         loadManagerOrders(0);
       });
+      function setActiveTab(activeId) {
+        var tabs = ['btn-mgr-creators-in-offer', 'btn-mgr-creators-reserve', 'btn-mgr-creators-expensive'];
+        tabs.forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.className = id === activeId ? 'btn' : 'btn btn-secondary';
+        });
+      }
       document.getElementById('btn-mgr-creators-in-offer').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
-        if (orderId) loadManagerCreators(orderId, true, 0);
+        if (orderId) { setActiveTab('btn-mgr-creators-in-offer'); loadManagerCreators(orderId, 'in_offer', 0); }
       });
       document.getElementById('btn-mgr-creators-reserve').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
-        if (orderId) loadManagerCreators(orderId, false, 0);
+        if (orderId) { setActiveTab('btn-mgr-creators-reserve'); loadManagerCreators(orderId, 'reserve', 0); }
       });
+      document.getElementById('btn-mgr-creators-expensive').addEventListener('click', function() {
+        var orderId = window._mgrCurrentOrderId;
+        if (orderId) { setActiveTab('btn-mgr-creators-expensive'); loadManagerCreators(orderId, 'expensive', 0); }
+      });
+      (function() {
+        var searchTimer = null;
+        document.getElementById('mgr-creators-search').addEventListener('input', function() {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(function() {
+            var orderId = window._mgrCurrentOrderId;
+            var filter = window._mgrCurrentFilter || 'in_offer';
+            if (orderId) loadManagerCreators(orderId, filter, 0);
+          }, 400);
+        });
+      })();
       document.getElementById('mgr-creators-back').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
         if (orderId) openManagerOrder(orderId, '');
       });
       document.getElementById('creator-detail-back').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
-        if (orderId) loadManagerCreators(orderId, true, 0);
+        var filter = window._mgrCurrentFilter || 'in_offer';
+        if (orderId) loadManagerCreators(orderId, filter, 0);
       });
 
       document.getElementById('btn-close-blogger').addEventListener('click', function() {

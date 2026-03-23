@@ -181,6 +181,7 @@ class TestManagerCreatorsEndpoint:
 
         profile = MagicMock()
         profile.instagram_url = "https://instagram.com/blogger"
+        profile.full_name = "Test Blogger"
         profile_service = MagicMock()
         profile_service.get_blogger_profiles = AsyncMock(
             return_value={BLOGGER_ID: profile}

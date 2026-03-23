@@ -302,6 +302,55 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             result = exec_result.scalar_one()
             return int(result)
 
+    async def list_by_order_and_rejection_reason(
+        self,
+        order_id: UUID,
+        rejection_reason: str,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[OfferDispatch]:
+        """List dispatches rejected with a specific reason."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.rejection_reason == rejection_reason,
+                )
+                .order_by(
+                    OfferDispatchModel.updated_at.asc().nullslast(),
+                    OfferDispatchModel.created_at.asc(),
+                )
+                .offset(offset)
+                .limit(limit)
+            )
+            results = exec_result.scalars().all()
+            return [_to_offer_dispatch_entity(m) for m in results]
+
+    async def count_by_order_and_rejection_reason(
+        self,
+        order_id: UUID,
+        rejection_reason: str,
+        session: object | None = None,
+    ) -> int:
+        """Count dispatches rejected with a specific reason."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count())
+                .select_from(OfferDispatchModel)
+                .where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.rejection_reason == rejection_reason,
+                )
+            )
+            result = exec_result.scalar_one()
+            return int(result)
+
     async def get_by_order_and_blogger(
         self,
         order_id: UUID,

@@ -995,6 +995,42 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
             and d.accepted is True
         )
 
+    async def list_by_order_and_rejection_reason(
+        self,
+        order_id: UUID,
+        rejection_reason: str,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[OfferDispatch]:
+        """List dispatches rejected with a specific reason."""
+        matching = sorted(
+            [
+                d
+                for (oid, _), d in self._dispatches.items()
+                if oid == order_id
+                and d.rejection_reason is not None
+                and d.rejection_reason.value == rejection_reason
+            ],
+            key=lambda x: (x.updated_at or x.created_at, x.created_at),
+        )
+        return matching[offset : offset + limit]
+
+    async def count_by_order_and_rejection_reason(
+        self,
+        order_id: UUID,
+        rejection_reason: str,
+        session: object | None = None,
+    ) -> int:
+        """Count dispatches rejected with a specific reason."""
+        return sum(
+            1
+            for (oid, _), d in self._dispatches.items()
+            if oid == order_id
+            and d.rejection_reason is not None
+            and d.rejection_reason.value == rejection_reason
+        )
+
     async def get_by_order_and_blogger(
         self,
         order_id: UUID,
