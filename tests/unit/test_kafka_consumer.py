@@ -1408,7 +1408,7 @@ async def test_send_offer_marks_user_bot_blocked_on_forbidden() -> None:
 
     keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=[])
 
-    await _send_offer_via_client(
+    result = await _send_offer_via_client(
         chat_id="42",
         messenger_client=client,
         offer_text="hi",
@@ -1424,6 +1424,59 @@ async def test_send_offer_marks_user_bot_blocked_on_forbidden() -> None:
         user_role_service=user_role_service,
     )
 
+    assert result is False
     updated = await user_repo.get_by_id(blogger.user_id)
     assert updated is not None
     assert updated.status == UserStatus.BOT_BLOCKED
+
+
+@pytest.mark.asyncio
+async def test_send_offer_to_blogger_skips_record_when_bot_blocked() -> None:
+    """record_offer_sent not called when all sends fail (bot blocked)."""
+    now = datetime.now(timezone.utc)
+    blogger = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000011"),
+        telegram_id="99",
+        messenger_type=MessengerType.TELEGRAM,
+        username="blocked_blogger",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=now,
+    )
+    order = Order(
+        order_id=UUID("00000000-0000-0000-0000-000000000012"),
+        advertiser_id=UUID("00000000-0000-0000-0000-000000000013"),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=100.0,
+        bloggers_needed=1,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        completed_at=None,
+    )
+    dispatch_service = Mock()
+    dispatch_service.format_offer = AsyncMock(return_value="Offer text")
+    dispatch_service.record_offer_sent = AsyncMock()
+    tg_client = Mock()
+    tg_client.send_text = AsyncMock()
+
+    with patch(
+        "ugc_bot.kafka_consumer._send_offer_via_client",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        await _send_offer_to_blogger(
+            blogger,
+            order,
+            "ACTIVE",
+            {"telegram": tg_client},
+            dispatch_service,
+            retries=1,
+            retry_delay_seconds=0.0,
+            dlq_producer=None,
+            dlq_topic="dlq",
+        )
+
+    dispatch_service.record_offer_sent.assert_not_called()

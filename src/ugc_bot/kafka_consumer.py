@@ -121,8 +121,11 @@ async def _send_offer_via_client(
     dlq_topic: str,
     messenger_label: str,
     user_role_service: UserRoleService | None = None,
-) -> None:
-    """Send offer to one chat_id via one messenger client with retries."""
+) -> bool:
+    """Send offer to one chat_id via one messenger client with retries.
+
+    Returns True if the message was delivered, False otherwise.
+    """
     for attempt in range(1, retries + 1):
         try:
             if order.product_photo_file_id:
@@ -147,7 +150,7 @@ async def _send_offer_via_client(
                     "attempt": attempt,
                 },
             )
-            return
+            return True
         except Exception as exc:
             logger.warning(
                 "Failed to send offer message",
@@ -170,7 +173,7 @@ async def _send_offer_via_client(
                             "Failed to mark user as bot_blocked",
                             extra={"blogger_id": str(blogger.user_id)},
                         )
-                return
+                return False
             if attempt >= retries:
                 logger.error(
                     "All retries failed for offer send, publishing to DLQ",
@@ -195,6 +198,7 @@ async def _send_offer_via_client(
                 )
             else:
                 await asyncio.sleep(retry_delay_seconds)
+    return False
 
 
 async def _send_offer_to_blogger(
@@ -267,8 +271,9 @@ async def _send_offer_to_blogger(
         ],
     )
 
+    any_sent = False
     for chat_id, client, label in targets:
-        await _send_offer_via_client(
+        sent = await _send_offer_via_client(
             chat_id,
             client,
             offer_text,
@@ -283,10 +288,13 @@ async def _send_offer_to_blogger(
             label,
             user_role_service=user_role_service,
         )
+        if sent:
+            any_sent = True
 
-    await offer_dispatch_service.record_offer_sent(
-        order.order_id, blogger.user_id
-    )
+    if any_sent:
+        await offer_dispatch_service.record_offer_sent(
+            order.order_id, blogger.user_id
+        )
 
 
 async def _send_offers(
