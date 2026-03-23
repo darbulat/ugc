@@ -1010,7 +1010,7 @@ class ReferralIncomeEntryRepository(ABC):
         income_type: str,
         session: object | None = None,
     ) -> bool:
-        """Return True if entry already exists for this order+referrer+referred+type."""
+        """Return True if entry exists for order+referrer+referred+type."""
         ...  # pragma: no cover
 
     @abstractmethod

@@ -3108,9 +3108,16 @@ async def test_income_entry_exists_returns_true_when_present() -> None:
     )
     await repo.save(entry)
 
-    assert await repo.exists(order_id, referrer_id, referred_id, "creator") is True
-    assert await repo.exists(order_id, referrer_id, referred_id, "advertiser") is False
-    assert await repo.exists(uuid4(), referrer_id, referred_id, "creator") is False
+    assert (
+        await repo.exists(order_id, referrer_id, referred_id, "creator") is True
+    )
+    assert (
+        await repo.exists(order_id, referrer_id, referred_id, "advertiser")
+        is False
+    )
+    assert (
+        await repo.exists(uuid4(), referrer_id, referred_id, "creator") is False
+    )
 
 
 @pytest.mark.asyncio

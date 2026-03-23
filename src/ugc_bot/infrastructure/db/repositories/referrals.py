@@ -430,8 +430,10 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 .select_from(ReferralIncomeEntryModel)
                 .where(
                     ReferralIncomeEntryModel.order_id == order_id,
-                    ReferralIncomeEntryModel.referrer_user_id == referrer_user_id,
-                    ReferralIncomeEntryModel.referred_user_id == referred_user_id,
+                    ReferralIncomeEntryModel.referrer_user_id
+                    == referrer_user_id,
+                    ReferralIncomeEntryModel.referred_user_id
+                    == referred_user_id,
                     ReferralIncomeEntryModel.income_type == income_type,
                 )
                 .limit(1)
