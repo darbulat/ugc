@@ -752,6 +752,11 @@ UZ: dict[str, str] = {
         "Buyurtmalar olish uchun profilingizni tahrirlang "
         "va verifikatsiyadan qaytadan o'ting."
     ),
+    "msg_instagram_verification_api_unavailable": (
+        "Instagram-akkauntingizni tekshirib bo'lmadi. "
+        "Verifikatsiyadan keyinroq qaytadan o'ting yoki "
+        "qo'llab-quvvatlash chatiga yozing."
+    ),
     "msg_instagram_mismatch": (
         "Profilingizdagi Instagram kod yuborgan akkaunt bilan mos kelmadi. "
         "«Mening profilim» ni oching, "

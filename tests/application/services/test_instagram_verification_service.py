@@ -12,6 +12,7 @@ from ugc_bot.application.errors import (
 from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
+    VerificationApiUnavailable,
     VerificationMismatch,
     VerificationSuccess,
 )
@@ -654,17 +655,18 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
 
     verification = await service.generate_code(user_id)
 
-    # Should still succeed even if API fails (fallback behavior)
+    # API unavailable — should NOT verify, returns VerificationApiUnavailable
     result = await service.verify_code_by_instagram_sender(
         instagram_sender_id="instagram_user_123",
         code=verification.code,
         admin_instagram_username="admin_test",
     )
 
-    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
+    assert isinstance(result, VerificationApiUnavailable)
+    assert result.user_id == user_id
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
-    assert updated.confirmed is True
+    assert updated.confirmed is False
 
 
 @pytest.mark.asyncio

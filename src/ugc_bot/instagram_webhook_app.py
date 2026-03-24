@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
+    VerificationApiUnavailable,
     VerificationMismatch,
     VerificationSuccess,
 )
@@ -315,6 +316,53 @@ async def _notify_user_verification_mismatch(
         )
 
 
+async def _notify_user_verification_api_unavailable(
+    user_id: UUID,
+    verification_service: InstagramVerificationService,
+    config: AppConfig,
+) -> None:
+    """Notify user that verification failed due to Instagram API error."""
+    try:
+        from aiogram import Bot
+
+        from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+        from ugc_bot.infrastructure.messenger.telegram.client import (
+            TelegramMessengerClient,
+        )
+
+        (
+            user,
+            _blogger_profile,
+        ) = await verification_service.get_notification_recipient(user_id)
+        if user is None or not user.telegram_id:
+            return
+
+        default_locale = getattr(config.market, "default_locale", "ru") or "ru"
+        locale = (user.language if user.language else None) or default_locale
+        locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+        msg = locale_texts.get(
+            "msg_instagram_verification_api_unavailable",
+            "Не удалось проверить ваш Instagram-аккаунт. "
+            "Попробуйте пройти верификацию позже или напишите "
+            "в чат поддержки.",
+        )
+        bot = Bot(token=config.bot.bot_token)
+        messenger_client = TelegramMessengerClient(bot)
+        try:
+            await messenger_client.send_text(
+                chat_id=user.telegram_id,
+                text=msg,
+            )
+        finally:
+            await bot.session.close()
+    except Exception as exc:
+        logger.exception(
+            "Error sending verification API unavailable notification",
+            extra={"user_id": user_id},
+            exc_info=exc,
+        )
+
+
 async def _process_single_messaging_event(
     event: dict[str, Any],
     verification_service: InstagramVerificationService,
@@ -352,6 +400,10 @@ async def _process_single_messaging_event(
             )
         elif isinstance(result, VerificationMismatch):
             await _notify_user_verification_mismatch(
+                result.user_id, verification_service, config
+            )
+        elif isinstance(result, VerificationApiUnavailable):
+            await _notify_user_verification_api_unavailable(
                 result.user_id, verification_service, config
             )
     except Exception as exc:

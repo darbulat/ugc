@@ -695,6 +695,10 @@ EN: dict[str, str] = {
         "To receive orders, edit your profile "
         "and complete verification again."
     ),
+    "msg_instagram_verification_api_unavailable": (
+        "We couldn't verify your Instagram account. "
+        "Please try verification again later or contact support."
+    ),
     "msg_instagram_mismatch": (
         "The Instagram in your profile doesn't match the account "
         "you sent the code from. Open «My profile», edit the blogger profile "

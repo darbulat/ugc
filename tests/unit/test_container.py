@@ -453,6 +453,21 @@ def test_build_geocode_public_rate_limiter_without_redis() -> None:
     assert isinstance(limiter, RateLimiter)
 
 
+def test_build_exchange_rate_service_without_redis() -> None:
+    """build_exchange_rate_service returns None when Redis URL is empty."""
+    from ugc_bot.container import service_factory
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "REDIS_URL": "",
+        }
+    )
+    result = service_factory.build_exchange_rate_service(config)
+    assert result is None
+
+
 @pytest.mark.asyncio
 async def test_container_dispose_calls_engine_dispose() -> None:
     """Container.dispose() disposes the async engine."""

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
+    VerificationApiUnavailable,
     VerificationMismatch,
 )
 from ugc_bot.config import AppConfig
@@ -28,6 +29,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.instagram_webhook_app import (
+    _notify_user_verification_api_unavailable,
     _notify_user_verification_mismatch,
     _notify_user_verification_success,
     _unhandled_exception_handler,
@@ -1097,3 +1099,94 @@ async def test_notify_user_verification_mismatch_exception_is_logged(
         await _notify_user_verification_mismatch(
             user.user_id, service, test_config
         )
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_api_unavailable(
+    test_config: AppConfig,
+) -> None:
+    """Send api-unavailable notification to user."""
+
+    class DummySession:
+        async def close(self) -> None:
+            return None
+
+    class DummyBot:
+        def __init__(self, token: str) -> None:
+            self.token = token
+            self.session = DummySession()
+            self.sent: list = []
+
+        async def send_message(self, chat_id: int, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
+            self.sent.append((chat_id, text, kwargs))
+
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user = User(
+        user_id=uuid4(),
+        telegram_id="12345",
+        messenger_type=MessengerType.TELEGRAM,
+        username="test_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+
+    with patch("aiogram.Bot", DummyBot):
+        await _notify_user_verification_api_unavailable(
+            user.user_id, service, test_config
+        )
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_api_unavailable_no_user(
+    test_config: AppConfig,
+) -> None:
+    """No crash when user not found for api-unavailable notification."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+
+    await _notify_user_verification_api_unavailable(
+        uuid4(), service, test_config
+    )
+
+
+@pytest.mark.asyncio
+async def test_webhook_api_unavailable_calls_notify(
+    test_config: AppConfig,
+) -> None:
+    """VerificationApiUnavailable triggers api-unavailable notification."""
+    service = MagicMock(spec=InstagramVerificationService)
+    service.verify_code_by_instagram_sender = AsyncMock(
+        return_value=VerificationApiUnavailable(user_id=uuid4())
+    )
+
+    with patch(
+        "ugc_bot.instagram_webhook_app."
+        "_notify_user_verification_api_unavailable",
+        new_callable=AsyncMock,
+    ) as mock_notify:
+        from ugc_bot.instagram_webhook_app import (
+            _process_single_messaging_event,
+        )
+
+        event = {
+            "sender": {"id": "sender_123"},
+            "message": {"text": "ABC123"},
+        }
+        result = await _process_single_messaging_event(
+            event, service, test_config
+        )
+        assert result is True
+        mock_notify.assert_called_once()

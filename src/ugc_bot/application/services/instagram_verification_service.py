@@ -67,6 +67,13 @@ class VerificationMismatch:
 
 
 @dataclass(slots=True)
+class VerificationApiUnavailable:
+    """Instagram API returned an error; cannot verify username match."""
+
+    user_id: UUID
+
+
+@dataclass(slots=True)
 class InstagramVerificationService:
     """Generate and verify Instagram confirmation codes."""
 
@@ -75,6 +82,34 @@ class InstagramVerificationService:
     verification_repo: InstagramVerificationRepository
     instagram_api_client: InstagramGraphApiClient | None = None
     transaction_manager: TransactionManager | None = None
+
+    async def _fetch_profile_and_username(
+        self, instagram_sender_id: str
+    ) -> tuple[Optional[InstagramProfileInfo], str | None]:
+        """Fetch profile info and resolve username. Returns (info, username)."""
+        profile_info: Optional[InstagramProfileInfo] = None
+        if self.instagram_api_client:
+            try:
+                profile_info = (
+                    await self.instagram_api_client.get_profile_by_id(
+                        instagram_sender_id
+                    )
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to get Instagram profile from API",
+                    extra={
+                        "sender_id": instagram_sender_id,
+                        "error": str(exc),
+                    },
+                    exc_info=exc,
+                )
+        api_username = (
+            profile_info.username
+            if profile_info
+            else await self._fetch_api_username(instagram_sender_id)
+        )
+        return profile_info, api_username
 
     async def _fetch_api_username(self, instagram_sender_id: str) -> str | None:
         """Fetch username from Instagram Graph API. Returns None on error."""
@@ -166,7 +201,12 @@ class InstagramVerificationService:
         instagram_sender_id: str,
         code: str,
         admin_instagram_username: str,
-    ) -> VerificationSuccess | VerificationMismatch | None:
+    ) -> (
+        VerificationSuccess
+        | VerificationMismatch
+        | VerificationApiUnavailable
+        | None
+    ):
         """Verify code sent from Instagram webhook by sender ID.
 
         This method:
@@ -214,28 +254,19 @@ class InstagramVerificationService:
         profile_username = _extract_username_from_instagram_url(
             profile.instagram_url
         )
-        profile_info: Optional[InstagramProfileInfo] = None
-        if self.instagram_api_client:
-            try:
-                profile_info = (
-                    await self.instagram_api_client.get_profile_by_id(
-                        instagram_sender_id
-                    )
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Failed to get Instagram profile from API",
-                    extra={
-                        "sender_id": instagram_sender_id,
-                        "error": str(exc),
-                    },
-                    exc_info=exc,
-                )
-        api_username = (
-            profile_info.username
-            if profile_info
-            else await self._fetch_api_username(instagram_sender_id)
+        profile_info, api_username = await self._fetch_profile_and_username(
+            instagram_sender_id
         )
+
+        if not api_username and self.instagram_api_client:
+            logger.warning(
+                "Instagram API unavailable during verification",
+                extra={
+                    "user_id": str(valid_code.user_id),
+                    "sender_id": instagram_sender_id,
+                },
+            )
+            return VerificationApiUnavailable(user_id=valid_code.user_id)
 
         if not _usernames_match(api_username, profile_username):
             logger.warning(
