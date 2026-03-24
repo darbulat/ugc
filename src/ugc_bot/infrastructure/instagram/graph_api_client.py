@@ -340,7 +340,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
         )
         return username_info
 
-    async def get_profile_by_id(
+    async def get_profile_by_id(  # noqa: C901
         self, instagram_user_id: str
     ) -> Optional[InstagramProfileInfo]:
         """Get full profile (username, counts, biography) by user ID.

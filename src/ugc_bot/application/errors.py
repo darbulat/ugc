@@ -68,6 +68,4 @@ class InstagramUserNotFoundError(RuntimeError):
 
     def __init__(self, instagram_user_id: str) -> None:
         self.instagram_user_id = instagram_user_id
-        super().__init__(
-            f"No matching Instagram user: {instagram_user_id}"
-        )
+        super().__init__(f"No matching Instagram user: {instagram_user_id}")

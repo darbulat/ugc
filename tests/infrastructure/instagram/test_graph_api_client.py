@@ -648,17 +648,19 @@ async def test_in_memory_client_get_profile_by_id() -> None:
 
 @pytest.mark.asyncio
 async def test_get_profile_by_id_raises_on_9010_error() -> None:
-    """Error 9010 'No matching Instagram user' raises InstagramUserNotFoundError."""
+    """Error 9010 raises InstagramUserNotFoundError."""
     client = HttpInstagramGraphApiClient(
         access_token="test_token", retry_attempts=3
     )
-    error_body = json.dumps({
-        "error": {
-            "message": "No matching Instagram user",
-            "type": "IGApiException",
-            "code": 9010,
+    error_body = json.dumps(
+        {
+            "error": {
+                "message": "No matching Instagram user",
+                "type": "IGApiException",
+                "code": 9010,
+            }
         }
-    })
+    )
 
     mock_response = MagicMock()
     mock_response.status_code = 500

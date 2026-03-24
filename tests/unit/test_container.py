@@ -395,6 +395,64 @@ def test_build_aiograpi_fetcher_returns_none_on_import_error(
     assert result is None
 
 
+def test_container_build_user_role_service() -> None:
+    """build_user_role_service creates UserRoleService instance."""
+    from ugc_bot.application.services.user_role_service import UserRoleService
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    service = container.build_user_role_service()
+    assert isinstance(service, UserRoleService)
+
+
+def test_container_build_referral_reconciliation_deps() -> None:
+    """build_referral_reconciliation_deps returns expected deps dict."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    deps = container.build_referral_reconciliation_deps()
+    assert isinstance(deps, dict)
+
+
+def test_build_offer_response_rate_limiter_without_redis() -> None:
+    """Rate limiter falls back to in-memory when Redis is not configured."""
+    from ugc_bot.bot.handlers.utils import RateLimiter
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    limiter = infrastructure_factory.build_offer_response_rate_limiter(config)
+    assert isinstance(limiter, RateLimiter)
+
+
+def test_build_geocode_public_rate_limiter_without_redis() -> None:
+    """Geocode rate limiter falls back to in-memory without Redis."""
+    from ugc_bot.bot.handlers.utils import RateLimiter
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    limiter = infrastructure_factory.build_geocode_public_rate_limiter(config)
+    assert isinstance(limiter, RateLimiter)
+
+
 @pytest.mark.asyncio
 async def test_container_dispose_calls_engine_dispose() -> None:
     """Container.dispose() disposes the async engine."""

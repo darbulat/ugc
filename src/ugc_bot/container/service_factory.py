@@ -243,8 +243,7 @@ def build_instagram_stats_scheduler_deps(
     """Build deps for Instagram stats update scheduler."""
     ig_config = config.instagram
     default_locale = (
-        getattr(getattr(config, "market", None), "default_locale", "ru")
-        or "ru"
+        getattr(getattr(config, "market", None), "default_locale", "ru") or "ru"
     )
     return {
         "instagram_stats_update_service": InstagramStatsUpdateService(

@@ -42,9 +42,9 @@ class InstagramStatsUpdateService:
             transaction_manager: Optional transaction manager for saves.
             batch_size: Max profiles to process per run.
             delay_seconds: Delay between API requests to respect rate limits.
-            user_repo: Optional user repository for notification lookup.
-            messenger_client: Optional messenger client for sending notifications.
-            bot_texts_service: Optional bot texts service for localized messages.
+            user_repo: Optional user repository for notifications.
+            messenger_client: Optional messenger for notifications.
+            bot_texts_service: Optional localized texts service.
             default_locale: Default locale for messages.
         """
         self.blogger_repo = blogger_repo
@@ -155,83 +155,91 @@ class InstagramStatsUpdateService:
         now = datetime.now(timezone.utc)
 
         for profile in profiles:
-            ig_id = profile.instagram_user_id or ""
-            try:
-                info = await self.instagram_api_client.get_profile_by_id(ig_id)
-            except InstagramUserNotFoundError:
-                logger.warning(
-                    "Instagram user not found (9010), unconfirming",
-                    extra={
-                        "user_id": str(profile.user_id),
-                        "instagram_user_id": ig_id,
-                    },
-                )
-                await self._handle_user_not_found(profile, ig_id)
+            ok = await self._process_profile(profile, now)
+            if ok:
+                updated += 1
+            else:
                 errors += 1
-                continue
-            except Exception as exc:
-                logger.warning(
-                    "Failed to fetch Instagram profile",
-                    extra={
-                        "user_id": str(profile.user_id),
-                        "instagram_user_id": ig_id,
-                        "error": str(exc),
-                    },
-                    exc_info=exc,
-                )
-                errors += 1
-                continue
-
-            if info is None:
-                logger.debug(
-                    "No profile data returned",
-                    extra={
-                        "user_id": str(profile.user_id),
-                        "instagram_user_id": ig_id,
-                    },
-                )
-                errors += 1
-                continue
-
-            instagram_url = (
-                f"https://instagram.com/{info.username}"
-                if info.username
-                else profile.instagram_url
-            )
-
-            updated_profile = replace(
-                profile,
-                instagram_url=instagram_url,
-                instagram_followers_count=info.followers_count,
-                instagram_username=info.username,
-                instagram_stats_fetched_at=now,
-            )
-
-            async def _save(
-                session: object | None,
-                profile_to_save: BloggerProfile = updated_profile,
-            ) -> None:
-                # Preserve geometry when entity has None (stats-only update).
-                if profile_to_save.location_geometry is None:
-                    current = await self.blogger_repo.get_by_user_id(
-                        profile_to_save.user_id, session=session
-                    )
-                    if current is not None and current.location_geometry:
-                        profile_to_save = replace(
-                            profile_to_save,
-                            location_geometry=current.location_geometry,
-                        )
-                await self.blogger_repo.save(profile_to_save, session=session)
-
-            await with_optional_tx(self.transaction_manager, _save)
-            updated += 1
-            logger.debug(
-                "Updated Instagram stats",
-                extra={
-                    "user_id": str(profile.user_id),
-                    "followers": info.followers_count,
-                },
-            )
-            await asyncio.sleep(random_delay_seconds(self._delay_seconds))
 
         return (updated, errors)
+
+    async def _process_profile(
+        self, profile: BloggerProfile, now: datetime
+    ) -> bool:
+        """Process a single profile. Return True if updated, False on error."""
+        assert self.instagram_api_client is not None
+        ig_id = profile.instagram_user_id or ""
+        try:
+            info = await self.instagram_api_client.get_profile_by_id(ig_id)
+        except InstagramUserNotFoundError:
+            logger.warning(
+                "Instagram user not found (9010), unconfirming",
+                extra={
+                    "user_id": str(profile.user_id),
+                    "instagram_user_id": ig_id,
+                },
+            )
+            await self._handle_user_not_found(profile, ig_id)
+            return False
+        except Exception as exc:
+            logger.warning(
+                "Failed to fetch Instagram profile",
+                extra={
+                    "user_id": str(profile.user_id),
+                    "instagram_user_id": ig_id,
+                    "error": str(exc),
+                },
+                exc_info=exc,
+            )
+            return False
+
+        if info is None:
+            logger.debug(
+                "No profile data returned",
+                extra={
+                    "user_id": str(profile.user_id),
+                    "instagram_user_id": ig_id,
+                },
+            )
+            return False
+
+        instagram_url = (
+            f"https://instagram.com/{info.username}"
+            if info.username
+            else profile.instagram_url
+        )
+
+        updated_profile = replace(
+            profile,
+            instagram_url=instagram_url,
+            instagram_followers_count=info.followers_count,
+            instagram_username=info.username,
+            instagram_stats_fetched_at=now,
+        )
+
+        async def _save(
+            session: object | None,
+            profile_to_save: BloggerProfile = updated_profile,
+        ) -> None:
+            # Preserve geometry when entity has None (stats-only update).
+            if profile_to_save.location_geometry is None:
+                current = await self.blogger_repo.get_by_user_id(
+                    profile_to_save.user_id, session=session
+                )
+                if current is not None and current.location_geometry:
+                    profile_to_save = replace(
+                        profile_to_save,
+                        location_geometry=current.location_geometry,
+                    )
+            await self.blogger_repo.save(profile_to_save, session=session)
+
+        await with_optional_tx(self.transaction_manager, _save)
+        logger.debug(
+            "Updated Instagram stats",
+            extra={
+                "user_id": str(profile.user_id),
+                "followers": info.followers_count,
+            },
+        )
+        await asyncio.sleep(random_delay_seconds(self._delay_seconds))
+        return True

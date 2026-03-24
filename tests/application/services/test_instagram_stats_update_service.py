@@ -1,19 +1,27 @@
 """Tests for Instagram stats update service."""
 
 from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
 
+from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_stats_update_service import (
     InstagramStatsUpdateService,
 )
-from ugc_bot.domain.entities import BloggerProfile
-from ugc_bot.domain.enums import AudienceGender, WorkFormat
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramGraphApiClient,
+    InMemoryUserRepository,
 )
 
 
@@ -262,4 +270,406 @@ async def test_run_once_handles_api_exception() -> None:
     )
     updated, errors = await service.run_once()
     assert updated == 0
+    assert errors == 1
+
+
+# --- Instagram user not found (9010) tests ---
+
+
+def _make_profile(
+    user_id=None, confirmed=True, instagram_user_id="ig_123"
+) -> BloggerProfile:
+    return BloggerProfile(
+        user_id=user_id or uuid4(),
+        instagram_url="https://instagram.com/test",
+        confirmed=confirmed,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="RU",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id=instagram_user_id,
+    )
+
+
+def _make_user(user_id, telegram_id="12345", language="ru") -> User:
+    return User(
+        user_id=user_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username="testuser",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram_id=telegram_id,
+        language=language,
+    )
+
+
+class _GeometryInjectingRepo(InMemoryBloggerProfileRepository):
+    """Returns profiles without geometry from list, with geometry from get."""
+
+    def __init__(self, geometry: str) -> None:
+        super().__init__()
+        self._geometry = geometry
+
+    async def list_confirmed_with_instagram_id(  # type: ignore[override]
+        self,
+        limit=50,
+        offset=0,
+        stats_older_than=None,
+        session=None,
+    ):
+        profiles = await super().list_confirmed_with_instagram_id(
+            limit=limit,
+            offset=offset,
+            stats_older_than=stats_older_than,
+            session=session,
+        )
+        from dataclasses import replace as _replace
+
+        return [_replace(p, location_geometry=None) for p in profiles]
+
+    async def get_by_user_id(self, user_id, session=None):
+        p = await super().get_by_user_id(user_id, session=session)
+        if p is not None and p.location_geometry is None:
+            from dataclasses import replace as _replace
+
+            return _replace(p, location_geometry=self._geometry)
+        return p
+
+
+class _NotFoundGraphApiClient(InMemoryInstagramGraphApiClient):
+    """Raises InstagramUserNotFoundError for given IDs."""
+
+    def __init__(self, not_found_ids: set[str] | None = None, **kw):
+        super().__init__(**kw)
+        self._not_found_ids = not_found_ids or set()
+
+    async def get_profile_by_id(self, instagram_user_id: str):
+        if instagram_user_id in self._not_found_ids:
+            raise InstagramUserNotFoundError(instagram_user_id)
+        return await super().get_profile_by_id(instagram_user_id)
+
+
+@pytest.mark.asyncio
+async def test_unconfirms_blogger_on_instagram_user_not_found() -> None:
+    """Service sets confirmed=False and notifies on API error 9010."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    user = _make_user(uid, telegram_id="999")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    messenger = MagicMock()
+    messenger.send_text = AsyncMock()
+
+    bot_texts = MagicMock()
+    bot_texts.get = AsyncMock(return_value="Your IG was deleted.")
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        messenger_client=messenger,
+        bot_texts_service=bot_texts,
+    )
+
+    updated, errors = await service.run_once()
+
+    saved = await blogger_repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
+
+    messenger.send_text.assert_called_once()
+    call_kwargs = messenger.send_text.call_args
+    assert call_kwargs.kwargs["chat_id"] == "999"
+
+    assert errors == 1
+    assert updated == 0
+
+
+@pytest.mark.asyncio
+async def test_unconfirms_no_notification_without_user_repo() -> None:
+    """Without user_repo, blogger is unconfirmed but no notification."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+    )
+
+    _, errors = await service.run_once()
+
+    saved = await blogger_repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
+    assert errors == 1
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_preserves_location_geometry() -> None:
+    """Unconfirm preserves location_geometry from stored profile."""
+    uid = uuid4()
+    geometry = "MULTIPOINT((37.6 55.75))"
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    # Store profile with geometry
+    stored = BloggerProfile(
+        user_id=uid,
+        instagram_url=profile.instagram_url,
+        confirmed=True,
+        city=profile.city,
+        topics=profile.topics,
+        audience_gender=profile.audience_gender,
+        audience_age_min=profile.audience_age_min,
+        audience_age_max=profile.audience_age_max,
+        audience_geo=profile.audience_geo,
+        price=profile.price,
+        barter=profile.barter,
+        work_format=profile.work_format,
+        updated_at=profile.updated_at,
+        instagram_user_id="ig_gone",
+        location_geometry=geometry,
+    )
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(stored)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+    )
+
+    await service.run_once()
+
+    saved = await blogger_repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
+    assert saved.location_geometry == geometry
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_restores_geometry_from_db() -> None:
+    """Unconfirm picks up geometry from DB when entity has None."""
+    uid = uuid4()
+    geometry = "MULTIPOINT((37.6 55.75))"
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+
+    repo = _GeometryInjectingRepo(geometry=geometry)
+    await repo.save(
+        BloggerProfile(
+            user_id=uid,
+            instagram_url=profile.instagram_url,
+            confirmed=True,
+            city=profile.city,
+            topics=profile.topics,
+            audience_gender=profile.audience_gender,
+            audience_age_min=profile.audience_age_min,
+            audience_age_max=profile.audience_age_max,
+            audience_geo=profile.audience_geo,
+            price=profile.price,
+            barter=profile.barter,
+            work_format=profile.work_format,
+            updated_at=profile.updated_at,
+            instagram_user_id="ig_gone",
+            location_geometry=geometry,
+        )
+    )
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+    )
+
+    await service.run_once()
+
+    saved = await repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
+    assert saved.location_geometry == geometry
+
+
+@pytest.mark.asyncio
+async def test_stats_update_restores_geometry_from_db() -> None:
+    """Stats update picks up geometry from DB when entity has None."""
+    uid = uuid4()
+    geometry = "MULTIPOINT((37.6 55.75))"
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_123")
+
+    repo = _GeometryInjectingRepo(geometry=geometry)
+    await repo.save(
+        BloggerProfile(
+            user_id=uid,
+            instagram_url=profile.instagram_url,
+            confirmed=True,
+            city=profile.city,
+            topics=profile.topics,
+            audience_gender=profile.audience_gender,
+            audience_age_min=profile.audience_age_min,
+            audience_age_max=profile.audience_age_max,
+            audience_geo=profile.audience_geo,
+            price=profile.price,
+            barter=profile.barter,
+            work_format=profile.work_format,
+            updated_at=profile.updated_at,
+            instagram_user_id="ig_123",
+            location_geometry=geometry,
+        )
+    )
+
+    api_profile = InstagramProfileInfo(
+        username="jane",
+        followers_count=2000,
+        media_count=100,
+        follows_count=300,
+    )
+    ig_client = InMemoryInstagramGraphApiClient(
+        profile_map={"ig_123": api_profile},
+    )
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0.0,
+    )
+
+    updated, errors = await service.run_once()
+    assert updated == 1
+    assert errors == 0
+
+    saved = await repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.location_geometry == geometry
+    assert saved.instagram_followers_count == 2000
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_without_bot_texts_uses_fallback() -> None:
+    """Without bot_texts_service, fallback Russian text is sent."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    user = _make_user(uid, telegram_id="999")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    messenger = MagicMock()
+    messenger.send_text = AsyncMock()
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        messenger_client=messenger,
+        bot_texts_service=None,
+    )
+
+    await service.run_once()
+
+    messenger.send_text.assert_called_once()
+    call_kwargs = messenger.send_text.call_args
+    assert "удалён" in call_kwargs.kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_no_notification_when_user_missing() -> None:
+    """No notification if user not found in user_repo."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    user_repo = InMemoryUserRepository()
+    # user NOT added — should not crash
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    messenger = MagicMock()
+    messenger.send_text = AsyncMock()
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        messenger_client=messenger,
+    )
+
+    _, errors = await service.run_once()
+
+    saved = await blogger_repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
+    messenger.send_text.assert_not_called()
+    assert errors == 1
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_messenger_error_does_not_crash() -> None:
+    """Messenger send failure is logged but doesn't crash."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    user = _make_user(uid, telegram_id="999")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    messenger = MagicMock()
+    messenger.send_text = AsyncMock(side_effect=RuntimeError("send failed"))
+
+    bot_texts = MagicMock()
+    bot_texts.get = AsyncMock(return_value="")
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        messenger_client=messenger,
+        bot_texts_service=bot_texts,
+    )
+
+    _, errors = await service.run_once()
+
+    saved = await blogger_repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
     assert errors == 1

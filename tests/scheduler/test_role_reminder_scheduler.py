@@ -13,6 +13,7 @@ from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
 from ugc_bot.role_reminder_scheduler import (
+    _mark_bot_blocked,
     _reminder_cutoff,
     _seconds_until_next_run,
     run_loop,
@@ -295,3 +296,23 @@ async def test_run_once_sends_reminder_to_max_id_user(fake_tm) -> None:
 
         mock_send.assert_called_once()
         assert mock_send.call_args[1]["chat_id"] == "max-123"
+
+
+@pytest.mark.asyncio
+async def test_mark_bot_blocked_logs_exception_on_failure(fake_tm) -> None:
+    """_mark_bot_blocked swallows and logs errors from update_status."""
+    repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        telegram_id="123",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await repo.save(user)
+
+    service = MagicMock(spec=UserRoleService)
+    service.update_status = AsyncMock(side_effect=RuntimeError("db fail"))
+    await _mark_bot_blocked(user, service)

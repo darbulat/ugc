@@ -7,12 +7,12 @@ from aiogram import Bot
 
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
-from ugc_bot.infrastructure.messenger.telegram.client import (
-    TelegramMessengerClient,
-)
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
