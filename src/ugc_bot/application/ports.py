@@ -353,6 +353,26 @@ class OfferDispatchRepository(ABC):
         """
 
     @abstractmethod
+    async def list_by_order_and_rejection_reason(
+        self,
+        order_id: UUID,
+        rejection_reason: str,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[OfferDispatch]:
+        """List dispatches rejected with a specific reason."""
+
+    @abstractmethod
+    async def count_by_order_and_rejection_reason(
+        self,
+        order_id: UUID,
+        rejection_reason: str,
+        session: object | None = None,
+    ) -> int:
+        """Count dispatches rejected with a specific reason."""
+
+    @abstractmethod
     async def get_by_order_and_blogger(
         self,
         order_id: UUID,

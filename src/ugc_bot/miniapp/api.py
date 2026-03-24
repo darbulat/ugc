@@ -2,7 +2,7 @@
 
 import logging
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -17,6 +17,7 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.geography import get_cities_list_for_miniapp
 from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_complaint,
     notify_admins_about_order_created,
     notify_support_chat_about_new_order,
 )
@@ -257,7 +258,9 @@ class ManagerCreatorsRequest(BaseModel):
     """Manager creators list request."""
 
     init_data: str
-    in_offer: bool
+    in_offer: bool | None = None
+    filter: Literal["in_offer", "reserve", "expensive"] | None = None
+    search: str | None = None
     limit: int = 20
     offset: int = 0
 
@@ -268,6 +271,8 @@ class CreatorItem(BaseModel):
     blogger_id: str
     instagram_url: str | None = None
     telegram: str | None = None
+    name: str | None = None
+    desired_price: float | None = None
 
 
 class ManagerCreatorsResponse(BaseModel):
@@ -298,6 +303,15 @@ class UgcVideoRequest(BaseModel):
 
     init_data: str
     url: AnyHttpUrl
+
+
+class ManagerFeedbackRequest(BaseModel):
+    """Manager records advertiser-side feedback on an interaction."""
+
+    init_data: str
+    status: Literal["ok", "no_deal", "issue"]
+    no_deal_reason: str | None = Field(None, max_length=1000)
+    issue_description: str | None = Field(None, max_length=5000)
 
 
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
@@ -1564,30 +1578,68 @@ async def manager_creators(
             status_code=403, detail="Not a manager for this order"
         )
 
-    dispatches, total = await manager_service.list_creators_for_order(
-        order_id=order_id,
-        manager_id=user_id,
-        in_offer=body.in_offer,
-        limit=body.limit,
-        offset=body.offset,
-    )
+    # Resolve filter: new 'filter' field takes priority, fallback to 'in_offer'
+    effective_filter = body.filter
+    if effective_filter is None:
+        if body.in_offer is not None:
+            effective_filter = "in_offer" if body.in_offer else "reserve"
+        else:
+            effective_filter = "in_offer"
+
+    search_q = body.search.strip().lower() if body.search else ""
+
+    # When searching, fetch all results and filter/paginate in Python
+    fetch_limit = 500 if search_q else body.limit
+    fetch_offset = 0 if search_q else body.offset
+
+    if effective_filter == "expensive":
+        dispatches, total = await manager_service.list_expensive_creators(
+            order_id=order_id,
+            limit=fetch_limit,
+            offset=fetch_offset,
+        )
+    else:
+        dispatches, total = await manager_service.list_creators_for_order(
+            order_id=order_id,
+            manager_id=user_id,
+            in_offer=effective_filter == "in_offer",
+            limit=fetch_limit,
+            offset=fetch_offset,
+        )
 
     user_repo = dispatcher["user_repo"]
     blogger_ids = [d.blogger_id for d in dispatches]
     users_map = await user_repo.get_by_ids(blogger_ids)
     profiles_map = await profile_service.get_blogger_profiles(blogger_ids)
 
-    creators: list[CreatorItem] = []
-    for d in dispatches:
-        user = users_map.get(d.blogger_id)
-        profile = profiles_map.get(d.blogger_id)
-        creators.append(
+    all_creators: list[CreatorItem] = []
+    dispatches_map = {d.blogger_id: d for d in dispatches}
+    for bid in blogger_ids:
+        d = dispatches_map[bid]
+        user = users_map.get(bid)
+        profile = profiles_map.get(bid)
+        name = user.username if user else None
+        tg = user.telegram if user else None
+        if search_q:
+            haystack = " ".join(s for s in [name, tg] if s).lower()
+            if search_q not in haystack:
+                continue
+        price = float(d.desired_price) if d.desired_price is not None else None
+        all_creators.append(
             CreatorItem(
-                blogger_id=str(d.blogger_id),
-                instagram_url=profile.instagram_url if profile else None,
-                telegram=user.telegram if user else None,
+                blogger_id=str(bid),
+                instagram_url=(profile.instagram_url if profile else None),
+                telegram=tg,
+                name=name,
+                desired_price=price,
             )
         )
+
+    if search_q:
+        total = len(all_creators)
+        creators = all_creators[body.offset : body.offset + body.limit]
+    else:
+        creators = all_creators
 
     return ManagerCreatorsResponse(creators=creators, total=total)
 
@@ -1638,7 +1690,7 @@ async def manager_set_ugc_video(
     order_id: UUID,
     blogger_id: UUID,
     body: UgcVideoRequest,
-) -> dict[str, bool]:
+) -> dict[str, Any]:
     """Save UGC video URL; on first save notifies creator and advertiser."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
@@ -1681,7 +1733,15 @@ async def manager_set_ugc_video(
             bot_texts_service=bot_texts_service,
         )
 
-    return {"ok": True}
+    interaction_service = dispatcher["interaction_service"]
+    interaction = await interaction_service.get_or_create(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    return {
+        "ok": True,
+        "interaction_id": str(interaction.interaction_id),
+    }
 
 
 @router.post("/manager/orders/{order_id}/creators/{blogger_id}/remove")
@@ -1690,8 +1750,8 @@ async def manager_remove_creator(
     order_id: UUID,
     blogger_id: UUID,
     body: InitDataBody,
-) -> dict[str, bool]:
-    """Move creator to reserve; set Interaction to DELETED; notify creator."""
+) -> dict[str, Any]:
+    """Move creator to reserve; notify creator. Returns interaction_id."""
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
@@ -1722,8 +1782,13 @@ async def manager_remove_creator(
     await dispatch_repo.set_in_offer(order_id, blogger_id, False)
 
     interaction_service = dispatcher["interaction_service"]
-    await interaction_service.cancel_interaction(
+    interaction = await interaction_service.get_or_create(
         order_id, blogger_id, order.advertiser_id
+    )
+    # Set default NO_DEAL status; frontend may overwrite with
+    # a more specific reason via the /feedback endpoint afterward.
+    await interaction_service.record_advertiser_feedback(
+        interaction.interaction_id, "❌ Не договорились"
     )
 
     user_repo = dispatcher["user_repo"]
@@ -1750,7 +1815,10 @@ async def manager_remove_creator(
             extra={"blogger_id": str(blogger_id)},
         )
 
-    return {"ok": True}
+    return {
+        "ok": True,
+        "interaction_id": str(interaction.interaction_id),
+    }
 
 
 @router.post("/manager/orders/{order_id}/creators/{blogger_id}/add")
@@ -1840,3 +1908,77 @@ async def manager_add_creator(
         )
 
     return {"ok": True}
+
+
+@router.post("/manager/orders/{order_id}/creators/{blogger_id}/feedback")
+async def manager_feedback(
+    request: Request,
+    order_id: UUID,
+    blogger_id: UUID,
+    body: ManagerFeedbackRequest,
+) -> dict[str, Any]:
+    """Record advertiser-side feedback from manager on an interaction."""
+    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    dispatcher = request.app.state.dispatcher
+    manager_service = dispatcher["manager_service"]
+
+    if not await manager_service.is_manager_for_order(user_id, order_id):
+        raise HTTPException(
+            status_code=403, detail="Not a manager for this order"
+        )
+
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    interaction_service = dispatcher["interaction_service"]
+    interaction = await interaction_service.get_or_create(
+        order_id, blogger_id, order.advertiser_id
+    )
+
+    if body.status == "ok":
+        feedback_text = "✅ Всё прошло хорошо"
+    elif body.status == "no_deal":
+        reason = body.no_deal_reason.strip() if body.no_deal_reason else ""
+        feedback_text = (
+            f"❌ Не договорились: {reason}" if reason else "❌ Не договорились"
+        )
+    else:
+        # status == "issue"
+        if not body.issue_description or not body.issue_description.strip():
+            raise HTTPException(
+                status_code=422,
+                detail="issue_description is required for issue status",
+            )
+        feedback_text = "⚠️ Проблема/мошенничество"
+
+        complaint_service = dispatcher["complaint_service"]
+        complaint = await complaint_service.create_complaint(
+            reporter_id=user_id,
+            reported_id=blogger_id,
+            order_id=order_id,
+            reason=body.issue_description.strip(),
+        )
+
+        user_role_service = dispatcher["user_role_service"]
+        messenger_client = dispatcher["messenger_client"]
+        try:
+            await notify_admins_about_complaint(
+                complaint=complaint,
+                messenger_client=messenger_client,
+                user_role_service=user_role_service,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to notify admins about complaint",
+                extra={
+                    "order_id": str(order_id),
+                    "blogger_id": str(blogger_id),
+                },
+            )
+
+    updated = await interaction_service.record_advertiser_feedback(
+        interaction.interaction_id, feedback_text
+    )
+    return {"ok": True, "interaction_id": str(updated.interaction_id)}

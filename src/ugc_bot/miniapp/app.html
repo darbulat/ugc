@@ -65,6 +65,7 @@
     }
     #orders-list li strong, #blogger-orders-list li strong, #manager-orders-list li strong { display: block; margin-bottom: 4px; }
     #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
+    .themed-link { color: var(--tg-theme-link-color, #2481cc); }
     .pagination-btns { display: flex; gap: 8px; margin-top: 12px; }
     .pagination-btns .btn { flex: 1; margin-top: 0; }
     .instagram-input-group {
@@ -390,13 +391,15 @@
 
   <div id="screen-manager-order-detail" class="screen">
     <h1 id="mgr-order-detail-title">Заказ</h1>
-    <button type="button" class="btn" id="btn-mgr-creators-in-offer">Креаторы в заказе</button>
-    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">Креаторы в резерве</button>
+    <button type="button" class="btn" id="btn-mgr-creators-in-offer">В заказе</button>
+    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">В резерве</button>
+    <button type="button" class="btn btn-secondary" id="btn-mgr-creators-expensive">Дороже</button>
     <button type="button" class="btn btn-secondary" id="mgr-order-detail-back">Назад</button>
   </div>
 
   <div id="screen-manager-creators" class="screen">
     <h1>Креаторы</h1>
+    <input type="text" id="mgr-creators-search" placeholder="Поиск по имени или telegram" style="margin-bottom:10px;">
     <ul id="manager-creators-list"></ul>
     <div class="pagination-btns">
       <button type="button" class="btn btn-secondary" id="mgr-creators-prev" style="display:none;">← Назад</button>
@@ -2156,11 +2159,16 @@
         showScreen('screen-manager-order-detail');
       }
 
-      function loadManagerCreators(orderId, inOffer, offset) {
+      function loadManagerCreators(orderId, filterType, offset) {
         var ul = document.getElementById('manager-creators-list');
         clearList(ul);
         showScreen('screen-manager-creators');
-        api('/manager/orders/' + orderId + '/creators', { in_offer: inOffer, limit: MGR_PAGE_LIMIT, offset: offset }).then(function(data) {
+        window._mgrCurrentFilter = filterType;
+        var searchInput = document.getElementById('mgr-creators-search');
+        var searchQ = searchInput ? searchInput.value.trim() : '';
+        var payload = { filter: filterType, limit: MGR_PAGE_LIMIT, offset: offset };
+        if (searchQ) payload.search = searchQ;
+        api('/manager/orders/' + orderId + '/creators', payload).then(function(data) {
           var creators = data.creators || [];
           var total = data.total || 0;
           clearList(ul);
@@ -2171,24 +2179,40 @@
           } else {
             creators.forEach(function(c) {
               var li = document.createElement('li');
-              if (c.instagram_url) {
-                var a = document.createElement('a');
-                a.href = c.instagram_url;
-                a.target = '_blank';
-                a.rel = 'noopener';
-                a.textContent = c.instagram_url;
-                li.appendChild(a);
+              if (c.name) {
+                var nameSpan = document.createElement('span');
+                nameSpan.style.fontWeight = '600';
+                nameSpan.textContent = c.name;
+                li.appendChild(nameSpan);
+                li.appendChild(document.createTextNode(' '));
               }
               if (c.telegram) {
-                if (c.instagram_url) li.appendChild(document.createTextNode(' \u00b7 '));
                 var tgLink = document.createElement('a');
                 tgLink.href = 'https://t.me/' + c.telegram;
                 tgLink.target = '_blank';
                 tgLink.rel = 'noopener';
+                tgLink.className = 'themed-link';
                 tgLink.textContent = '@' + c.telegram;
                 li.appendChild(tgLink);
               }
-              if (!c.instagram_url && !c.telegram) {
+              if (c.instagram_url) {
+                if (c.name || c.telegram) li.appendChild(document.createTextNode(' \u00b7 '));
+                var a = document.createElement('a');
+                a.href = c.instagram_url;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.className = 'themed-link';
+                a.textContent = c.instagram_url;
+                li.appendChild(a);
+              }
+              if (filterType === 'expensive' && c.desired_price != null) {
+                li.appendChild(document.createTextNode(' \u00b7 '));
+                var priceSpan = document.createElement('span');
+                priceSpan.style.cssText = 'color:#e65100;font-weight:600';
+                priceSpan.textContent = c.desired_price + ' \u20bd';
+                li.appendChild(priceSpan);
+              }
+              if (!c.name && !c.instagram_url && !c.telegram) {
                 li.textContent = '\u2014';
               }
               (function(bid) {
@@ -2204,8 +2228,8 @@
           var nextBtn = document.getElementById('mgr-creators-next');
           if (prevBtn) prevBtn.style.display = offset > 0 ? '' : 'none';
           if (nextBtn) nextBtn.style.display = (offset + MGR_PAGE_LIMIT < total) ? '' : 'none';
-          if (prevBtn) prevBtn.onclick = function() { loadManagerCreators(orderId, inOffer, Math.max(0, offset - MGR_PAGE_LIMIT)); };
-          if (nextBtn) nextBtn.onclick = function() { loadManagerCreators(orderId, inOffer, offset + MGR_PAGE_LIMIT); };
+          if (prevBtn) prevBtn.onclick = function() { loadManagerCreators(orderId, filterType, Math.max(0, offset - MGR_PAGE_LIMIT)); };
+          if (nextBtn) nextBtn.onclick = function() { loadManagerCreators(orderId, filterType, offset + MGR_PAGE_LIMIT); };
         }).catch(function() {
           clearList(ul);
           if (ul) {
@@ -2239,6 +2263,7 @@
               a.setAttribute('href', data.instagram_url);
               a.setAttribute('target', '_blank');
               a.setAttribute('rel', 'noopener');
+              a.className = 'themed-link';
               a.textContent = data.instagram_url;
               p.appendChild(icon);
               p.appendChild(a);
@@ -2254,51 +2279,54 @@
               svg.style.verticalAlign = 'middle';
               svg.style.marginRight = '4px';
               var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-              path.setAttribute('fill', '#2481cc');
+              path.style.fill = 'var(--tg-theme-link-color,#2481cc)';
               path.setAttribute('d', 'M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.984l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.958.575z');
               svg.appendChild(path);
               var tgLink = document.createElement('a');
               tgLink.setAttribute('href', 'https://t.me/' + data.telegram);
               tgLink.setAttribute('target', '_blank');
               tgLink.setAttribute('rel', 'noopener');
+              tgLink.className = 'themed-link';
               tgLink.textContent = '@' + data.telegram;
               p2.appendChild(svg);
               p2.appendChild(tgLink);
               body.appendChild(p2);
             }
 
-            var label = document.createElement('p');
-            label.textContent = 'UGC-видео для этого заказа';
-            label.style.cssText = 'font-size:12px;font-weight:600;color:#888;text-transform:uppercase;margin-top:16px';
-            body.appendChild(label);
+            if (data.in_offer) {
+              var label = document.createElement('p');
+              label.textContent = 'UGC-видео для этого заказа';
+              label.style.cssText = 'font-size:12px;font-weight:600;color:var(--tg-theme-hint-color,#888);text-transform:uppercase;margin-top:16px';
+              body.appendChild(label);
 
-            var input = document.createElement('input');
-            input.setAttribute('type', 'url');
-            input.setAttribute('id', 'ugc-video-input');
-            input.setAttribute('placeholder', 'https://...');
-            input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #d0d0d0;border-radius:8px;font-size:14px';
-            if (data.ugc_video_url) input.value = data.ugc_video_url;
-            body.appendChild(input);
+              var input = document.createElement('input');
+              input.setAttribute('type', 'url');
+              input.setAttribute('id', 'ugc-video-input');
+              input.setAttribute('placeholder', 'https://...');
+              input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--tg-theme-hint-color,#d0d0d0);border-radius:8px;font-size:14px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
+              if (data.ugc_video_url) input.value = data.ugc_video_url;
+              body.appendChild(input);
 
-            var hint = document.createElement('p');
-            hint.textContent = 'Ссылка на готовое видео (Google Drive, YouTube, и т.д.)';
-            hint.style.cssText = 'font-size:12px;color:#999;margin-top:4px';
-            body.appendChild(hint);
+              var hint = document.createElement('p');
+              hint.textContent = 'Ссылка на готовое видео (Google Drive, YouTube, и т.д.)';
+              hint.style.cssText = 'font-size:12px;color:var(--tg-theme-hint-color,#999);margin-top:4px';
+              body.appendChild(hint);
 
-            var saveBtn = document.createElement('button');
-            saveBtn.setAttribute('type', 'button');
-            saveBtn.className = 'btn';
-            saveBtn.style.cssText = 'width:100%;margin-top:12px';
-            saveBtn.textContent = 'Сохранить';
-            saveBtn.addEventListener('click', function() {
-              saveCreatorUgcVideo(orderId, bloggerId);
-            });
-            body.appendChild(saveBtn);
+              var saveBtn = document.createElement('button');
+              saveBtn.setAttribute('type', 'button');
+              saveBtn.className = 'btn';
+              saveBtn.style.cssText = 'width:100%;margin-top:12px';
+              saveBtn.textContent = 'Сохранить';
+              saveBtn.addEventListener('click', function() {
+                saveCreatorUgcVideo(orderId, bloggerId);
+              });
+              body.appendChild(saveBtn);
 
-            var status = document.createElement('p');
-            status.setAttribute('id', 'ugc-save-status');
-            status.style.cssText = 'font-size:13px;margin-top:8px';
-            body.appendChild(status);
+              var status = document.createElement('p');
+              status.setAttribute('id', 'ugc-save-status');
+              status.style.cssText = 'font-size:13px;margin-top:8px';
+              body.appendChild(status);
+            }
 
             // Management section: remove or add button based on in_offer
             var mgmtDiv = document.createElement('div');
@@ -2311,40 +2339,7 @@
               removeBtn.textContent = 'Убрать из заказа';
               removeBtn.addEventListener('click', function() {
                 mgmtDiv.removeChild(removeBtn);
-
-                var confirmBlock = document.createElement('div');
-                confirmBlock.style.cssText = 'background:#fff3e0;border:1.5px solid #ffcc80;border-radius:9px;padding:10px 12px';
-
-                var warnText = document.createElement('p');
-                var handle = data.telegram ? '@' + data.telegram : data.blogger_id;
-                warnText.textContent = 'Убрать ' + handle + ' из заказа? Он переместится в резерв.';
-                warnText.style.cssText = 'font-size:13px;color:#5d4037;margin:0 0 10px';
-                confirmBlock.appendChild(warnText);
-
-                var btnRow = document.createElement('div');
-                btnRow.style.cssText = 'display:flex;gap:8px';
-
-                var confirmBtn = document.createElement('button');
-                confirmBtn.setAttribute('type', 'button');
-                confirmBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-                confirmBtn.textContent = 'Убрать';
-                confirmBtn.addEventListener('click', function() {
-                  removeCreatorFromOrder(orderId, bloggerId);
-                });
-
-                var cancelBtn = document.createElement('button');
-                cancelBtn.setAttribute('type', 'button');
-                cancelBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
-                cancelBtn.textContent = 'Отмена';
-                cancelBtn.addEventListener('click', function() {
-                  confirmBlock.parentNode.removeChild(confirmBlock);
-                  mgmtDiv.appendChild(removeBtn);
-                });
-
-                btnRow.appendChild(confirmBtn);
-                btnRow.appendChild(cancelBtn);
-                confirmBlock.appendChild(btnRow);
-                mgmtDiv.appendChild(confirmBlock);
+                showRemoveWithFeedback(orderId, bloggerId, mgmtDiv, removeBtn);
               });
               mgmtDiv.appendChild(removeBtn);
             } else {
@@ -2374,6 +2369,205 @@
           });
       }
 
+      function sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason) {
+        var payload = { status: feedbackStatus };
+        if (issueDescription) payload.issue_description = issueDescription;
+        if (noDealReason) payload.no_deal_reason = noDealReason;
+        return api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/feedback', payload);
+      }
+
+      function setBlockMessage(block, text, color) {
+        while (block.firstChild) block.removeChild(block.firstChild);
+        var p = document.createElement('p');
+        p.style.cssText = 'font-size:13px;margin:0;color:' + color;
+        p.textContent = text;
+        block.appendChild(p);
+      }
+
+      function showRemoveWithFeedback(orderId, bloggerId, mgmtDiv, removeBtn) {
+        var block = document.createElement('div');
+        block.style.cssText = 'background:var(--tg-theme-secondary-bg-color,#fff3e0);border:1.5px solid var(--tg-theme-hint-color,#ffcc80);border-radius:9px;padding:12px';
+
+        var title = document.createElement('p');
+        title.textContent = 'Причина удаления?';
+        title.style.cssText = 'font-size:14px;font-weight:600;color:var(--tg-theme-text-color,#5d4037);margin:0 0 10px';
+        block.appendChild(title);
+
+        var btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+
+        function doRemoveAndFeedback(feedbackStatus, issueDescription, noDealReason) {
+          api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
+            .then(function(data) {
+              if (!data.ok) throw new Error('Ошибка удаления');
+              return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason)
+                .catch(function() {
+                  setBlockMessage(block, '⚠ Убрано, но отзыв не записан', '#e65100');
+                  setTimeout(function() {
+                    loadManagerCreators(orderId, window._mgrCurrentFilter || 'in_offer', 0);
+                    showScreen('screen-manager-creators');
+                  }, 1500);
+                  throw new Error('_handled');
+                });
+            })
+            .then(function() {
+              var msg = feedbackStatus === 'issue' ? '✅ Жалоба отправлена' : '✅ Убрано из заказа';
+              setBlockMessage(block, msg, '#2e7d32');
+              setTimeout(function() {
+                loadManagerCreators(orderId, window._mgrCurrentFilter || 'in_offer', 0);
+                showScreen('screen-manager-creators');
+              }, 1000);
+            })
+            .catch(function(err) {
+              if (err && err.message === '_handled') return;
+              var msg = (err && err.message) ? '❌ ' + err.message : '❌ Ошибка';
+              setBlockMessage(block, msg, '#c62828');
+            });
+        }
+
+        var noDealReasons = [
+          { text: '💰 Не сошлись по условиям', key: 'conditions' },
+          { text: '⏱ Не подошли сроки', key: 'timing' },
+          { text: '📝 Креатор хотел изменить условия', key: 'creator_change' },
+          { text: '🤝 Другое', key: 'other' }
+        ];
+
+        var noDealBtn = document.createElement('button');
+        noDealBtn.setAttribute('type', 'button');
+        noDealBtn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        noDealBtn.textContent = 'Не договорились';
+        noDealBtn.addEventListener('click', function() {
+          btnRow.style.display = 'none';
+          title.textContent = 'Почему не договорились?';
+
+          var reasonsCol = document.createElement('div');
+          reasonsCol.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+
+          noDealReasons.forEach(function(reason) {
+            var btn = document.createElement('button');
+            btn.setAttribute('type', 'button');
+            btn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left';
+            btn.textContent = reason.text;
+            btn.addEventListener('click', function() {
+              if (reason.key === 'other') {
+                reasonsCol.style.display = 'none';
+                title.textContent = 'Укажите причину:';
+                var otherArea = document.createElement('textarea');
+                otherArea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid var(--tg-theme-hint-color,#ffcc80);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
+                otherArea.placeholder = 'Опишите причину';
+                block.appendChild(otherArea);
+                var otherRow = document.createElement('div');
+                otherRow.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+                var otherSend = document.createElement('button');
+                otherSend.setAttribute('type', 'button');
+                otherSend.style.cssText = 'flex:1;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                otherSend.textContent = 'Отправить';
+                otherSend.addEventListener('click', function() {
+                  var txt = otherArea.value.trim();
+                  if (!txt) { otherArea.style.borderColor = '#c62828'; return; }
+                  otherSend.disabled = true;
+                  otherBack.disabled = true;
+                  doRemoveAndFeedback('no_deal', undefined, '🤝 Другое: ' + txt);
+                });
+                var otherBack = document.createElement('button');
+                otherBack.setAttribute('type', 'button');
+                otherBack.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                otherBack.textContent = 'Назад';
+                otherBack.addEventListener('click', function() {
+                  block.removeChild(otherArea);
+                  block.removeChild(otherRow);
+                  reasonsCol.style.display = 'flex';
+                  title.textContent = 'Почему не договорились?';
+                });
+                otherRow.appendChild(otherSend);
+                otherRow.appendChild(otherBack);
+                block.appendChild(otherRow);
+              } else {
+                var allBtns = reasonsCol.querySelectorAll('button');
+                for (var i = 0; i < allBtns.length; i++) allBtns[i].disabled = true;
+                doRemoveAndFeedback('no_deal', undefined, reason.text);
+              }
+            });
+            reasonsCol.appendChild(btn);
+          });
+
+          var reasonBackBtn = document.createElement('button');
+          reasonBackBtn.setAttribute('type', 'button');
+          reasonBackBtn.style.cssText = 'width:100%;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          reasonBackBtn.textContent = 'Назад';
+          reasonBackBtn.addEventListener('click', function() {
+            block.removeChild(reasonsCol);
+            btnRow.style.display = 'flex';
+            title.textContent = 'Причина удаления?';
+          });
+          reasonsCol.appendChild(reasonBackBtn);
+
+          block.appendChild(reasonsCol);
+        });
+
+        var issueBtn = document.createElement('button');
+        issueBtn.setAttribute('type', 'button');
+        issueBtn.style.cssText = 'width:100%;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        issueBtn.textContent = 'Проблема';
+        issueBtn.addEventListener('click', function() {
+          btnRow.style.display = 'none';
+          title.textContent = 'Опишите проблему:';
+
+          var textarea = document.createElement('textarea');
+          textarea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid var(--tg-theme-hint-color,#ffcc80);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
+          textarea.placeholder = 'Что произошло?';
+          block.appendChild(textarea);
+
+          var sendRow = document.createElement('div');
+          sendRow.style.cssText = 'display:flex;gap:8px;margin-top:8px';
+
+          var sendBtn = document.createElement('button');
+          sendBtn.setAttribute('type', 'button');
+          sendBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          sendBtn.textContent = 'Отправить';
+          sendBtn.addEventListener('click', function() {
+            var desc = textarea.value.trim();
+            if (!desc) {
+              textarea.style.borderColor = '#c62828';
+              return;
+            }
+            sendBtn.disabled = true;
+            backBtn.disabled = true;
+            doRemoveAndFeedback('issue', desc);
+          });
+
+          var backBtn = document.createElement('button');
+          backBtn.setAttribute('type', 'button');
+          backBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          backBtn.textContent = 'Назад';
+          backBtn.addEventListener('click', function() {
+            block.removeChild(textarea);
+            block.removeChild(sendRow);
+            btnRow.style.display = 'flex';
+            title.textContent = 'Причина удаления?';
+          });
+
+          sendRow.appendChild(sendBtn);
+          sendRow.appendChild(backBtn);
+          block.appendChild(sendRow);
+        });
+
+        var cancelBtn = document.createElement('button');
+        cancelBtn.setAttribute('type', 'button');
+        cancelBtn.style.cssText = 'width:100%;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        cancelBtn.textContent = 'Отмена';
+        cancelBtn.addEventListener('click', function() {
+          block.parentNode.removeChild(block);
+          mgmtDiv.appendChild(removeBtn);
+        });
+
+        btnRow.appendChild(noDealBtn);
+        btnRow.appendChild(issueBtn);
+        btnRow.appendChild(cancelBtn);
+        block.appendChild(btnRow);
+        mgmtDiv.appendChild(block);
+      }
+
       function saveCreatorUgcVideo(orderId, bloggerId) {
         var input = document.getElementById('ugc-video-input');
         var status = document.getElementById('ugc-save-status');
@@ -2392,6 +2586,12 @@
             if (data.ok && status) {
               status.textContent = '✅ Сохранено';
               status.style.color = '#2e7d32';
+              sendManagerFeedback(orderId, bloggerId, 'ok').catch(function() {
+                if (status) {
+                  status.textContent = '⚠ Видео сохранено, отзыв не записан';
+                  status.style.color = '#e65100';
+                }
+              });
             }
           })
           .catch(function() {
@@ -2402,29 +2602,6 @@
           });
       }
 
-      function removeCreatorFromOrder(orderId, bloggerId) {
-        var status = document.getElementById('mgmt-action-status');
-        api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/remove', {})
-          .then(function(data) {
-            if (data.ok) {
-              if (status) {
-                status.textContent = '✅ Убрано из заказа';
-                status.style.color = '#2e7d32';
-              }
-              setTimeout(function() {
-                loadManagerCreators(orderId, true, 0);
-                showScreen('screen-manager-creators');
-              }, 1000);
-            }
-          })
-          .catch(function(err) {
-            if (status) {
-              var msg = (err && err.detail) ? err.detail : 'Ошибка';
-              status.textContent = '❌ ' + msg;
-              status.style.color = '#c62828';
-            }
-          });
-      }
 
       function addCreatorToOrder(orderId, bloggerId) {
         var status = document.getElementById('mgmt-action-status');
@@ -2436,7 +2613,7 @@
                 status.style.color = '#2e7d32';
               }
               setTimeout(function() {
-                loadManagerCreators(orderId, false, 0);
+                loadManagerCreators(orderId, window._mgrCurrentFilter || 'reserve', 0);
                 showScreen('screen-manager-creators');
               }, 1000);
             }
@@ -2460,21 +2637,44 @@
       document.getElementById('mgr-order-detail-back').addEventListener('click', function() {
         loadManagerOrders(0);
       });
+      function setActiveTab(activeId) {
+        var tabs = ['btn-mgr-creators-in-offer', 'btn-mgr-creators-reserve', 'btn-mgr-creators-expensive'];
+        tabs.forEach(function(id) {
+          var el = document.getElementById(id);
+          if (el) el.className = id === activeId ? 'btn' : 'btn btn-secondary';
+        });
+      }
       document.getElementById('btn-mgr-creators-in-offer').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
-        if (orderId) loadManagerCreators(orderId, true, 0);
+        if (orderId) { setActiveTab('btn-mgr-creators-in-offer'); loadManagerCreators(orderId, 'in_offer', 0); }
       });
       document.getElementById('btn-mgr-creators-reserve').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
-        if (orderId) loadManagerCreators(orderId, false, 0);
+        if (orderId) { setActiveTab('btn-mgr-creators-reserve'); loadManagerCreators(orderId, 'reserve', 0); }
       });
+      document.getElementById('btn-mgr-creators-expensive').addEventListener('click', function() {
+        var orderId = window._mgrCurrentOrderId;
+        if (orderId) { setActiveTab('btn-mgr-creators-expensive'); loadManagerCreators(orderId, 'expensive', 0); }
+      });
+      (function() {
+        var searchTimer = null;
+        document.getElementById('mgr-creators-search').addEventListener('input', function() {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(function() {
+            var orderId = window._mgrCurrentOrderId;
+            var filter = window._mgrCurrentFilter || 'in_offer';
+            if (orderId) loadManagerCreators(orderId, filter, 0);
+          }, 400);
+        });
+      })();
       document.getElementById('mgr-creators-back').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
         if (orderId) openManagerOrder(orderId, '');
       });
       document.getElementById('creator-detail-back').addEventListener('click', function() {
         var orderId = window._mgrCurrentOrderId;
-        if (orderId) loadManagerCreators(orderId, true, 0);
+        var filter = window._mgrCurrentFilter || 'in_offer';
+        if (orderId) loadManagerCreators(orderId, filter, 0);
       });
 
       document.getElementById('btn-close-blogger').addEventListener('click', function() {

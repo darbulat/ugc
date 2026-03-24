@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import pytest
@@ -12,6 +13,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OrderType,
+    RejectionReason,
     UserStatus,
 )
 from ugc_bot.infrastructure.memory_repositories import (
@@ -342,3 +344,70 @@ async def test_list_creators_for_order_not_in_offer_ignores_manager():
     )
     assert total == 2
     assert len(dispatches) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_expensive_creators():
+    """list_expensive_creators returns dispatches rejected with low_price."""
+    dispatch_repo = InMemoryOfferDispatchRepository()
+    svc = ManagerService(
+        manager_order_repo=InMemoryManagerOrderRepository(),
+        user_repo=InMemoryUserRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=dispatch_repo,
+    )
+    order_id = uuid4()
+    now = datetime.now(timezone.utc)
+
+    # Dispatch with low_price rejection
+    d1 = OfferDispatch(
+        order_id=order_id,
+        blogger_id=uuid4(),
+        created_at=now,
+        accepted=False,
+        in_offer=False,
+        rejection_reason=RejectionReason.LOW_PRICE,
+        desired_price=Decimal("500.0"),
+    )
+    dispatch_repo._dispatches[(d1.order_id, d1.blogger_id)] = d1
+
+    # Dispatch with different rejection
+    d2 = OfferDispatch(
+        order_id=order_id,
+        blogger_id=uuid4(),
+        created_at=now,
+        accepted=False,
+        in_offer=False,
+        rejection_reason=RejectionReason.NO_TIME,
+    )
+    dispatch_repo._dispatches[(d2.order_id, d2.blogger_id)] = d2
+
+    # Accepted dispatch (no rejection)
+    d3 = OfferDispatch(
+        order_id=order_id,
+        blogger_id=uuid4(),
+        created_at=now,
+        accepted=True,
+        in_offer=True,
+    )
+    dispatch_repo._dispatches[(d3.order_id, d3.blogger_id)] = d3
+
+    dispatches, total = await svc.list_expensive_creators(order_id)
+    assert total == 1
+    assert len(dispatches) == 1
+    assert dispatches[0].blogger_id == d1.blogger_id
+    assert dispatches[0].rejection_reason == RejectionReason.LOW_PRICE
+
+
+@pytest.mark.asyncio
+async def test_list_expensive_creators_empty_when_no_repo():
+    """Returns empty when offer_dispatch_repo is None."""
+    svc = ManagerService(
+        manager_order_repo=InMemoryManagerOrderRepository(),
+        user_repo=InMemoryUserRepository(),
+        order_repo=InMemoryOrderRepository(),
+        offer_dispatch_repo=None,
+    )
+    dispatches, total = await svc.list_expensive_creators(uuid4())
+    assert total == 0
+    assert dispatches == []
