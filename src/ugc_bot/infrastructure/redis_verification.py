@@ -113,6 +113,22 @@ class RedisInstagramVerificationRepository(InstagramVerificationRepository):
             return None
         return vc
 
+    # Lua script for atomic mark_used: read → set used → write 3 keys.
+    # redis.eval() runs Lua on Redis server (not Python eval).
+    _MARK_USED_LUA = """
+local raw = redis.call('GET', KEYS[1])
+if not raw then return 0 end
+local ttl = redis.call('TTL', KEYS[1])
+if ttl <= 0 then ttl = 60 end
+local data = cjson.decode(raw)
+data['used'] = true
+local payload = cjson.encode(data)
+redis.call('SETEX', KEYS[1], ttl, payload)
+redis.call('SETEX', KEYS[2], ttl, payload)
+redis.call('SETEX', KEYS[3], ttl, payload)
+return 1
+"""
+
     async def mark_used(
         self, code_id: UUID, session: object | None = None
     ) -> None:
@@ -121,20 +137,12 @@ class RedisInstagramVerificationRepository(InstagramVerificationRepository):
         if raw is None:
             return
         vc = _deserialize(raw)
-        used_vc = InstagramVerificationCode(
-            code_id=vc.code_id,
-            user_id=vc.user_id,
-            code=vc.code,
-            expires_at=vc.expires_at,
-            used=True,
-            created_at=vc.created_at,
+        keys = [
+            _code_key(code_id),
+            _code_index_key(vc.code),
+            _user_index_key(vc.user_id, vc.code),
+        ]
+        # redis.eval() executes Lua on Redis server for atomic read-modify-write
+        await redis.eval(  # type: ignore[misc]  # noqa: S307
+            self._MARK_USED_LUA, len(keys), *keys
         )
-        ttl = await redis.ttl(_code_key(code_id))
-        if ttl <= 0:
-            ttl = 60
-        payload = _serialize(used_vc)
-        pipe = redis.pipeline()
-        pipe.setex(_code_key(code_id), ttl, payload)
-        pipe.setex(_code_index_key(vc.code), ttl, payload)
-        pipe.setex(_user_index_key(vc.user_id, vc.code), ttl, payload)
-        await pipe.execute()

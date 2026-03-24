@@ -26,6 +26,38 @@ logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
+async def _create_messenger(config: AppConfig):
+    """Create a TelegramMessengerClient and close its session on exit."""
+    from aiogram import Bot
+
+    from ugc_bot.infrastructure.messenger.telegram.client import (
+        TelegramMessengerClient,
+    )
+
+    bot = Bot(token=config.bot.bot_token)
+    try:
+        yield TelegramMessengerClient(bot)
+    finally:
+        await bot.session.close()
+
+
+def _resolve_locale(user, config: AppConfig) -> str:
+    """Resolve user locale with fallback to config default."""
+    from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+
+    default_locale = config.market.default_locale or "ru"
+    locale = (user.language if user.language else None) or default_locale
+    return locale if locale in DEFAULT_TEXTS else default_locale
+
+
+def _get_locale_texts(locale: str) -> dict:
+    """Get texts dict for locale with ru fallback."""
+    from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+
+    return DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for FastAPI application.
 
@@ -180,12 +212,7 @@ async def _notify_user_verification_success(
 ) -> None:
     """Send Telegram notification to user about successful verification."""
     try:
-        from aiogram import Bot
-
         from ugc_bot.bot.handlers.keyboards import blogger_menu_inline_keyboard
-        from ugc_bot.infrastructure.messenger.telegram.client import (
-            TelegramMessengerClient,
-        )
 
         (
             user,
@@ -206,21 +233,15 @@ async def _notify_user_verification_success(
             return
 
         confirmed = blogger_profile.confirmed if blogger_profile else False
-
-        from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
-
-        default_locale = getattr(config.market, "default_locale", "ru") or "ru"
-        locale = (user.language if user.language else None) or default_locale
-        locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+        locale = _resolve_locale(user, config)
+        locale_texts = _get_locale_texts(locale)
         keys = [
             "btn_confirm_instagram",
             "btn_my_profile",
             "msg_instagram_confirmed",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
-        bot = Bot(token=config.bot.bot_token)
-        messenger_client = TelegramMessengerClient(bot)
-        try:
+        async with _create_messenger(config) as messenger_client:
             msg_confirmed = locale_texts.get(
                 "msg_instagram_confirmed",
                 "Instagram подтверждён ✅. "
@@ -233,8 +254,6 @@ async def _notify_user_verification_success(
                     texts, confirmed=confirmed, verification_started=False
                 ),
             )
-        finally:
-            await bot.session.close()
     except Exception as exc:
         logger.exception(
             "Error sending verification notification to user",
@@ -250,14 +269,8 @@ async def _notify_user_verification_mismatch(
 ) -> None:
     """Notify user that profile Instagram does not match sender account."""
     try:
-        from aiogram import Bot
-
         from ugc_bot.bot.handlers.keyboards import (
             blogger_profile_view_inline_keyboard,
-        )
-        from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
-        from ugc_bot.infrastructure.messenger.telegram.client import (
-            TelegramMessengerClient,
         )
 
         (
@@ -278,9 +291,8 @@ async def _notify_user_verification_mismatch(
             )
             return
 
-        default_locale = getattr(config.market, "default_locale", "ru") or "ru"
-        locale = (user.language if user.language else None) or default_locale
-        locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+        locale = _resolve_locale(user, config)
+        locale_texts = _get_locale_texts(locale)
         keys = [
             "btn_edit_profile",
             "btn_confirm_instagram",
@@ -288,9 +300,7 @@ async def _notify_user_verification_mismatch(
             "msg_instagram_mismatch",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
-        bot = Bot(token=config.bot.bot_token)
-        messenger_client = TelegramMessengerClient(bot)
-        try:
+        async with _create_messenger(config) as messenger_client:
             default_mismatch = (
                 "Указанный в профиле Instagram не совпадает с аккаунтом, "
                 "с которого вы отправили код. Откройте «Мой профиль», "
@@ -306,8 +316,6 @@ async def _notify_user_verification_mismatch(
                     texts, confirmed=False
                 ),
             )
-        finally:
-            await bot.session.close()
     except Exception as exc:
         logger.exception(
             "Error sending verification mismatch notification to user",
@@ -323,13 +331,6 @@ async def _notify_user_verification_api_unavailable(
 ) -> None:
     """Notify user that verification failed due to Instagram API error."""
     try:
-        from aiogram import Bot
-
-        from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
-        from ugc_bot.infrastructure.messenger.telegram.client import (
-            TelegramMessengerClient,
-        )
-
         (
             user,
             _blogger_profile,
@@ -337,24 +338,19 @@ async def _notify_user_verification_api_unavailable(
         if user is None or not user.telegram_id:
             return
 
-        default_locale = getattr(config.market, "default_locale", "ru") or "ru"
-        locale = (user.language if user.language else None) or default_locale
-        locale_texts = DEFAULT_TEXTS.get(locale) or DEFAULT_TEXTS["ru"]
+        locale = _resolve_locale(user, config)
+        locale_texts = _get_locale_texts(locale)
         msg = locale_texts.get(
             "msg_instagram_verification_api_unavailable",
             "Не удалось проверить ваш Instagram-аккаунт. "
             "Попробуйте пройти верификацию позже или напишите "
             "в чат поддержки.",
         )
-        bot = Bot(token=config.bot.bot_token)
-        messenger_client = TelegramMessengerClient(bot)
-        try:
+        async with _create_messenger(config) as messenger_client:
             await messenger_client.send_text(
                 chat_id=user.telegram_id,
                 text=msg,
             )
-        finally:
-            await bot.session.close()
     except Exception as exc:
         logger.exception(
             "Error sending verification API unavailable notification",

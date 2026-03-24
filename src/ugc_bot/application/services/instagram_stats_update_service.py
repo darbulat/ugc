@@ -4,7 +4,7 @@ import asyncio
 import logging
 from dataclasses import replace
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ugc_bot.application.delays import random_delay_seconds
 from ugc_bot.application.errors import InstagramUserNotFoundError
@@ -15,6 +15,11 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+if TYPE_CHECKING:
+    from ugc_bot.application.messenger.ports import MessengerClient
+    from ugc_bot.application.ports import UserRepository
+    from ugc_bot.application.services.bot_texts_service import BotTextsService
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +34,9 @@ class InstagramStatsUpdateService:
         transaction_manager: Optional[TransactionManager] = None,
         batch_size: int = 50,
         delay_seconds: float = 1.0,
-        user_repo=None,
-        messenger_client=None,
-        bot_texts_service=None,
+        user_repo: Optional["UserRepository"] = None,
+        messenger_client: Optional["MessengerClient"] = None,
+        bot_texts_service: Optional["BotTextsService"] = None,
         default_locale: str = "ru",
     ) -> None:
         """Initialize the service.
@@ -63,10 +68,8 @@ class InstagramStatsUpdateService:
         """Unconfirm blogger and notify user when Instagram account is lost."""
         updated_profile = replace(profile, confirmed=False)
 
-        async def _save_unconfirmed(
-            session: object | None,
-            p: BloggerProfile = updated_profile,
-        ) -> None:
+        async def _save_unconfirmed(session: object | None) -> None:
+            p = updated_profile
             if p.location_geometry is None:
                 current = await self.blogger_repo.get_by_user_id(
                     p.user_id, session=session
@@ -89,6 +92,7 @@ class InstagramStatsUpdateService:
             return
 
         async def _get_user(session: object | None):
+            assert self.user_repo is not None  # checked above
             return await self.user_repo.get_by_id(
                 profile.user_id, session=session
             )
@@ -217,10 +221,8 @@ class InstagramStatsUpdateService:
             instagram_stats_fetched_at=now,
         )
 
-        async def _save(
-            session: object | None,
-            profile_to_save: BloggerProfile = updated_profile,
-        ) -> None:
+        async def _save(session: object | None) -> None:
+            profile_to_save = updated_profile
             # Preserve geometry when entity has None (stats-only update).
             if profile_to_save.location_geometry is None:
                 current = await self.blogger_repo.get_by_user_id(

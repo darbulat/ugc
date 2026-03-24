@@ -354,7 +354,55 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
         )
         return username_info
 
-    async def get_profile_by_id(  # noqa: C901
+    async def _handle_profile_http_error(
+        self,
+        exc: httpx.HTTPStatusError,
+        instagram_user_id: str,
+        attempt: int,
+    ) -> tuple[bool, Optional[InstagramProfileInfo]]:
+        """Handle HTTPStatusError in get_profile_by_id.
+
+        Returns (should_retry, result). When should_retry is True,
+        result is ignored.
+        """
+        if _is_no_matching_user_error(exc.response.text):
+            raise InstagramUserNotFoundError(instagram_user_id) from exc
+        if (
+            _is_retriable_status(exc.response.status_code)
+            and attempt < self._retry_attempts
+        ):
+            logger.warning(
+                "Instagram API request failed, retrying",
+                extra={
+                    "instagram_user_id": instagram_user_id,
+                    "status_code": exc.response.status_code,
+                    "attempt": attempt,
+                },
+            )
+            return (True, None)
+        if exc.response.status_code == 400 and _is_ig_business_scoped_id_error(
+            exc.response.text
+        ):
+            result = await self._handle_profile_400_ig_business_scoped(
+                instagram_user_id
+            )
+            return (False, result)
+        log = (
+            logger.error
+            if _is_token_expired_error(exc.response.text)
+            else logger.warning
+        )
+        log(
+            "Instagram API request failed",
+            extra={
+                "instagram_user_id": instagram_user_id,
+                "status_code": exc.response.status_code,
+                "response": exc.response.text[:200],
+            },
+        )
+        return (False, None)
+
+    async def get_profile_by_id(
         self, instagram_user_id: str
     ) -> Optional[InstagramProfileInfo]:
         """Get full profile (username, counts, biography) by user ID.
@@ -408,46 +456,15 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 return info
 
             except httpx.HTTPStatusError as exc:
-                # 9010 = permanent "No matching Instagram user" — don't retry
-                if _is_no_matching_user_error(exc.response.text):
-                    raise InstagramUserNotFoundError(instagram_user_id) from exc
-                if (
-                    _is_retriable_status(exc.response.status_code)
-                    and attempt < self._retry_attempts
-                ):
-                    logger.warning(
-                        "Instagram API request failed, retrying",
-                        extra={
-                            "instagram_user_id": instagram_user_id,
-                            "status_code": exc.response.status_code,
-                            "attempt": attempt,
-                        },
-                    )
+                should_retry, result = await self._handle_profile_http_error(
+                    exc, instagram_user_id, attempt
+                )
+                if should_retry:
                     await asyncio.sleep(
                         random_delay_seconds(self._retry_delay_seconds)
                     )
                     continue
-                if (
-                    exc.response.status_code == 400
-                    and _is_ig_business_scoped_id_error(exc.response.text)
-                ):
-                    return await self._handle_profile_400_ig_business_scoped(
-                        instagram_user_id
-                    )
-                log = (
-                    logger.error
-                    if _is_token_expired_error(exc.response.text)
-                    else logger.warning
-                )
-                log(
-                    "Instagram API request failed",
-                    extra={
-                        "instagram_user_id": instagram_user_id,
-                        "status_code": exc.response.status_code,
-                        "response": exc.response.text[:200],
-                    },
-                )
-                return None
+                return result
             except httpx.RequestError as exc:
                 if attempt < self._retry_attempts:
                     logger.warning(

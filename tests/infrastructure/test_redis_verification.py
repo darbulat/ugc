@@ -1,6 +1,5 @@
 """Tests for Redis Instagram verification repository."""
 
-import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -129,26 +128,23 @@ async def test_get_valid_code_by_code_returns_code() -> None:
 
 
 @pytest.mark.asyncio
-async def test_mark_used_updates_all_keys() -> None:
-    """mark_used sets used=True and updates all three keys."""
+async def test_mark_used_calls_lua_script() -> None:
+    """mark_used calls redis.eval with Lua script and 3 keys."""
     vc = _make_code()
-    mock_pipe = MagicMock()
-    mock_pipe.execute = AsyncMock()
     mock_redis = AsyncMock()
     mock_redis.get = AsyncMock(return_value=_serialize(vc))
-    mock_redis.ttl = AsyncMock(return_value=300)
-    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mock_redis.eval = AsyncMock(return_value=1)
 
     repo = RedisInstagramVerificationRepository(redis_url="redis://test")
     repo._redis = mock_redis
 
     await repo.mark_used(vc.code_id)
 
-    assert mock_pipe.setex.call_count == 3
-    # Verify the stored payload has used=True
-    stored_payload = mock_pipe.setex.call_args_list[0][0][2]
-    stored = json.loads(stored_payload)
-    assert stored["used"] is True
+    mock_redis.eval.assert_awaited_once()
+    call_args = mock_redis.eval.call_args
+    # First arg is Lua script, second is number of keys (3), then 3 key strings
+    assert call_args[0][1] == 3
+    assert len(call_args[0]) == 5  # script, num_keys, key1, key2, key3
 
 
 @pytest.mark.asyncio
@@ -161,28 +157,7 @@ async def test_mark_used_missing_code_is_noop() -> None:
     repo._redis = mock_redis
 
     await repo.mark_used(uuid4())
-    mock_redis.pipeline.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_mark_used_expired_ttl_uses_default() -> None:
-    """mark_used uses default TTL of 60s when key has no TTL."""
-    vc = _make_code()
-    mock_redis = AsyncMock()
-    mock_pipe = MagicMock()
-    mock_pipe.execute = AsyncMock()
-    mock_redis.get = AsyncMock(return_value=_serialize(vc))
-    mock_redis.ttl = AsyncMock(return_value=-1)
-    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
-
-    repo = RedisInstagramVerificationRepository(redis_url="redis://test")
-    repo._redis = mock_redis
-
-    await repo.mark_used(vc.code_id)
-
-    # Check TTL is 60 (default)
-    first_setex = mock_pipe.setex.call_args_list[0][0]
-    assert first_setex[1] == 60
+    mock_redis.eval.assert_not_awaited()
 
 
 @pytest.mark.asyncio
