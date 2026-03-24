@@ -1,5 +1,7 @@
 """Factory for creating repository instances."""
 
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.infrastructure.db.repositories import (
@@ -27,14 +29,40 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlReferralOrderIncomeLoader,
 )
 
+logger = logging.getLogger(__name__)
+
+
+def _build_instagram_verification_repo(
+    session_factory: async_sessionmaker[AsyncSession],
+    redis_url: str | None = None,
+):
+    """Build Instagram verification repository (Redis or SQL)."""
+    if redis_url:
+        try:
+            from ugc_bot.infrastructure.redis_verification import (
+                RedisInstagramVerificationRepository,
+            )
+
+            logger.info("Using Redis for Instagram verification codes")
+            return RedisInstagramVerificationRepository(redis_url=redis_url)
+        except ImportError:
+            logger.debug(
+                "redis package not installed, using SQL for verification codes"
+            )
+    return SqlAlchemyInstagramVerificationRepository(
+        session_factory=session_factory
+    )
+
 
 def build_repos(
     session_factory: async_sessionmaker[AsyncSession],
+    redis_url: str | None = None,
 ) -> dict[str, object]:
-    """Build all SQLAlchemy repositories for the application.
+    """Build all repositories for the application.
 
     Args:
         session_factory: Async session factory from create_session_factory.
+        redis_url: Optional Redis URL for Redis-backed repositories.
 
     Returns:
         Dict of repository name to repository instance.
@@ -47,8 +75,8 @@ def build_repos(
         "advertiser_repo": SqlAlchemyAdvertiserProfileRepository(
             session_factory=session_factory
         ),
-        "instagram_repo": SqlAlchemyInstagramVerificationRepository(
-            session_factory=session_factory
+        "instagram_repo": _build_instagram_verification_repo(
+            session_factory, redis_url
         ),
         "instagram_stats_repo": SqlAlchemyInstagramStatsRepository(
             session_factory=session_factory

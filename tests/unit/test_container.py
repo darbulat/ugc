@@ -453,6 +453,47 @@ def test_build_geocode_public_rate_limiter_without_redis() -> None:
     assert isinstance(limiter, RateLimiter)
 
 
+def test_build_repos_uses_redis_verification_when_configured() -> None:
+    """instagram_repo uses Redis when USE_REDIS_STORAGE is True."""
+    from ugc_bot.infrastructure.redis_verification import (
+        RedisInstagramVerificationRepository,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": True,
+            "REDIS_URL": "redis://localhost:6379/1",
+        }
+    )
+    container = Container(config)
+    repos = container.build_repos()
+    assert isinstance(
+        repos["instagram_repo"], RedisInstagramVerificationRepository
+    )
+
+
+def test_build_repos_uses_sql_verification_without_redis() -> None:
+    """instagram_repo uses SQL when USE_REDIS_STORAGE is False."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyInstagramVerificationRepository,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    container = Container(config)
+    repos = container.build_repos()
+    assert isinstance(
+        repos["instagram_repo"], SqlAlchemyInstagramVerificationRepository
+    )
+
+
 def test_build_exchange_rate_service_without_redis() -> None:
     """build_exchange_rate_service returns None when Redis URL is empty."""
     from ugc_bot.container import service_factory
