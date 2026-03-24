@@ -246,6 +246,16 @@ class OrderRepository(ABC):
         """Count orders by advertiser."""
 
     @abstractmethod
+    async def list_all_paginated(
+        self, limit: int = 20, offset: int = 0, session: object | None = None
+    ) -> List[Order]:
+        """List all orders with pagination."""
+
+    @abstractmethod
+    async def count_all(self, session: object | None = None) -> int:
+        """Count all orders."""
+
+    @abstractmethod
     async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
 
