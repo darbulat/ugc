@@ -61,3 +61,13 @@ class ScrapeCreatorsAPIError(RuntimeError):
         super().__init__(message)
         self.status_code = status_code
         self.response_text = response_text
+
+
+class InstagramUserNotFoundError(RuntimeError):
+    """Instagram API error 9010: account deleted or changed."""
+
+    def __init__(self, instagram_user_id: str) -> None:
+        self.instagram_user_id = instagram_user_id
+        super().__init__(
+            f"No matching Instagram user: {instagram_user_id}"
+        )
