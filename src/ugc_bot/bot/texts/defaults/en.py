@@ -690,6 +690,11 @@ EN: dict[str, str] = {
     "msg_instagram_confirmed": (
         "Instagram verified ✅. Brands can send you offers."
     ),
+    "msg_instagram_account_lost": (
+        "Your Instagram account has been deleted or changed. "
+        "To receive orders, edit your profile "
+        "and complete verification again."
+    ),
     "msg_instagram_mismatch": (
         "The Instagram in your profile doesn't match the account "
         "you sent the code from. Open «My profile», edit the blogger profile "
