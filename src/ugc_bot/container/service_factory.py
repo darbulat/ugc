@@ -244,6 +244,8 @@ def build_instagram_stats_scheduler_deps(
             transaction_manager=transaction_manager,
             batch_size=ig_config.instagram_stats_batch_size,
             delay_seconds=ig_config.instagram_stats_delay_seconds,
+            user_repo=repos["user_repo"],
+            bot_token=config.bot.bot_token,
         ),
         "interval_seconds": ig_config.instagram_stats_update_interval_seconds,
     }

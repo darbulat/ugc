@@ -5,15 +5,22 @@ from uuid import uuid4
 
 import pytest
 
+from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_stats_update_service import (
     InstagramStatsUpdateService,
 )
-from ugc_bot.domain.entities import BloggerProfile
-from ugc_bot.domain.enums import AudienceGender, WorkFormat
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryInstagramGraphApiClient,
+    InMemoryUserRepository,
 )
 
 
@@ -263,3 +270,163 @@ async def test_run_once_handles_api_exception() -> None:
     updated, errors = await service.run_once()
     assert updated == 0
     assert errors == 1
+
+
+@pytest.mark.asyncio
+async def test_run_once_unconfirms_on_9010_error() -> None:
+    """run_once unconfirms profile when InstagramUserNotFoundError raised."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_gone",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    class NotFoundClient(InMemoryInstagramGraphApiClient):
+        async def get_profile_by_id(self, instagram_user_id: str):
+            raise InstagramUserNotFoundError(instagram_user_id)
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=NotFoundClient(),
+        delay_seconds=0.0,
+    )
+    updated, errors = await service.run_once()
+    assert updated == 0
+    assert errors == 1
+
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.confirmed is False
+
+
+@pytest.mark.asyncio
+async def test_run_once_9010_notifies_user() -> None:
+    """run_once sends Telegram notification when 9010 and user_repo present."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_gone",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    user = User(
+        user_id=user_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username="jane",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram_id="12345",
+    )
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    class NotFoundClient(InMemoryInstagramGraphApiClient):
+        async def get_profile_by_id(self, instagram_user_id: str):
+            raise InstagramUserNotFoundError(instagram_user_id)
+
+    from unittest.mock import AsyncMock, patch
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=NotFoundClient(),
+        delay_seconds=0.0,
+        user_repo=user_repo,
+        bot_token="fake:token",
+    )
+
+    with patch.object(
+        service, "_notify_instagram_removed", new_callable=AsyncMock
+    ) as mock_notify:
+        updated, errors = await service.run_once()
+
+    assert errors == 1
+    mock_notify.assert_awaited_once_with("12345")
+
+
+@pytest.mark.asyncio
+async def test_run_once_9010_skips_notify_when_no_telegram_id() -> None:
+    """run_once does not notify when user has no telegram_id."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="Moscow",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=100.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_gone",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    user = User(
+        user_id=user_id,
+        messenger_type=MessengerType.TELEGRAM,
+        username="jane",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        telegram_id=None,
+    )
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    class NotFoundClient(InMemoryInstagramGraphApiClient):
+        async def get_profile_by_id(self, instagram_user_id: str):
+            raise InstagramUserNotFoundError(instagram_user_id)
+
+    from unittest.mock import AsyncMock, patch
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=NotFoundClient(),
+        delay_seconds=0.0,
+        user_repo=user_repo,
+        bot_token="fake:token",
+    )
+
+    with patch.object(
+        service, "_notify_instagram_removed", new_callable=AsyncMock
+    ) as mock_notify:
+        await service.run_once()
+
+    mock_notify.assert_not_awaited()
+
+    saved = await blogger_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.confirmed is False

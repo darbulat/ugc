@@ -6,6 +6,7 @@ from typing import Optional
 
 import httpx
 
+from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import (
     InstagramGraphApiClient,
     InstagramProfileInfo,
@@ -31,6 +32,14 @@ def _is_ig_business_scoped_id_error(response_text: str) -> bool:
     return (
         "IGBusinessScopedID" in response_text
         or "nonexisting field" in response_text.lower()
+    )
+
+
+def _is_instagram_user_not_found(response_text: str) -> bool:
+    """True if response contains error 9010 (user not found)."""
+    return (
+        '"code":9010' in response_text.replace(" ", "")
+        or "No matching Instagram user" in response_text
     )
 
 
@@ -130,6 +139,14 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
             business_access_token or ""
         ).strip() or None
         self._facebook_graph_base_url = facebook_graph_base_url.rstrip("/")
+
+    @staticmethod
+    def _check_user_not_found(
+        exc: httpx.HTTPStatusError, instagram_user_id: str
+    ) -> None:
+        """Raise InstagramUserNotFoundError if 9010 detected."""
+        if _is_instagram_user_not_found(exc.response.text):
+            raise InstagramUserNotFoundError(instagram_user_id) from None
 
     async def _get_profile_username_only(
         self, instagram_user_id: str
@@ -245,6 +262,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 return None
 
             except httpx.HTTPStatusError as exc:
+                self._check_user_not_found(exc, instagram_user_id)
                 if (
                     _is_retriable_status(exc.response.status_code)
                     and attempt < self._retry_attempts
@@ -383,6 +401,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 return info
 
             except httpx.HTTPStatusError as exc:
+                self._check_user_not_found(exc, instagram_user_id)
                 if (
                     _is_retriable_status(exc.response.status_code)
                     and attempt < self._retry_attempts

@@ -49,6 +49,14 @@ class ManagerUserNotFoundError(ValueError):
         super().__init__(f"User with Telegram @{telegram_username} not found")
 
 
+class InstagramUserNotFoundError(Exception):
+    """Raised when Instagram returns error 9010 (No matching Instagram user)."""
+
+    def __init__(self, instagram_user_id: str) -> None:
+        self.instagram_user_id = instagram_user_id
+        super().__init__(f"No matching Instagram user: {instagram_user_id}")
+
+
 class ScrapeCreatorsAPIError(RuntimeError):
     """ScrapeCreators API error (e.g. 402 out of credits)."""
 

@@ -77,6 +77,15 @@ class Container:
         if self._repos is not None:
             return self._repos
         self._repos = repository_factory.build_repos(self._session_factory)
+        redis_url = self._config.redis.redis_url
+        if redis_url:
+            from ugc_bot.infrastructure.redis_verification_repository import (
+                RedisInstagramVerificationRepository,
+            )
+
+            self._repos["instagram_repo"] = (
+                RedisInstagramVerificationRepository(redis_url=redis_url)
+            )
         return self._repos
 
     def build_offer_dispatch_service(self) -> OfferDispatchService:
