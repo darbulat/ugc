@@ -2263,6 +2263,7 @@
               a.setAttribute('href', data.instagram_url);
               a.setAttribute('target', '_blank');
               a.setAttribute('rel', 'noopener');
+              a.className = 'themed-link';
               a.textContent = data.instagram_url;
               p.appendChild(icon);
               p.appendChild(a);
@@ -2278,13 +2279,14 @@
               svg.style.verticalAlign = 'middle';
               svg.style.marginRight = '4px';
               var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-              path.setAttribute('fill', '#2481cc');
+              path.style.fill = 'var(--tg-theme-link-color,#2481cc)';
               path.setAttribute('d', 'M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.19 13.984l-2.96-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.958.575z');
               svg.appendChild(path);
               var tgLink = document.createElement('a');
               tgLink.setAttribute('href', 'https://t.me/' + data.telegram);
               tgLink.setAttribute('target', '_blank');
               tgLink.setAttribute('rel', 'noopener');
+              tgLink.className = 'themed-link';
               tgLink.textContent = '@' + data.telegram;
               p2.appendChild(svg);
               p2.appendChild(tgLink);
@@ -2294,20 +2296,20 @@
             if (data.in_offer) {
               var label = document.createElement('p');
               label.textContent = 'UGC-видео для этого заказа';
-              label.style.cssText = 'font-size:12px;font-weight:600;color:#888;text-transform:uppercase;margin-top:16px';
+              label.style.cssText = 'font-size:12px;font-weight:600;color:var(--tg-theme-hint-color,#888);text-transform:uppercase;margin-top:16px';
               body.appendChild(label);
 
               var input = document.createElement('input');
               input.setAttribute('type', 'url');
               input.setAttribute('id', 'ugc-video-input');
               input.setAttribute('placeholder', 'https://...');
-              input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid #d0d0d0;border-radius:8px;font-size:14px';
+              input.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--tg-theme-hint-color,#d0d0d0);border-radius:8px;font-size:14px;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
               if (data.ugc_video_url) input.value = data.ugc_video_url;
               body.appendChild(input);
 
               var hint = document.createElement('p');
               hint.textContent = 'Ссылка на готовое видео (Google Drive, YouTube, и т.д.)';
-              hint.style.cssText = 'font-size:12px;color:#999;margin-top:4px';
+              hint.style.cssText = 'font-size:12px;color:var(--tg-theme-hint-color,#999);margin-top:4px';
               body.appendChild(hint);
 
               var saveBtn = document.createElement('button');
@@ -2384,11 +2386,11 @@
 
       function showRemoveWithFeedback(orderId, bloggerId, mgmtDiv, removeBtn) {
         var block = document.createElement('div');
-        block.style.cssText = 'background:#fff3e0;border:1.5px solid #ffcc80;border-radius:9px;padding:12px';
+        block.style.cssText = 'background:var(--tg-theme-secondary-bg-color,#fff3e0);border:1.5px solid var(--tg-theme-hint-color,#ffcc80);border-radius:9px;padding:12px';
 
         var title = document.createElement('p');
         title.textContent = 'Причина удаления?';
-        title.style.cssText = 'font-size:14px;font-weight:600;color:#5d4037;margin:0 0 10px';
+        title.style.cssText = 'font-size:14px;font-weight:600;color:var(--tg-theme-text-color,#5d4037);margin:0 0 10px';
         block.appendChild(title);
 
         var btnRow = document.createElement('div');
@@ -2451,7 +2453,7 @@
                 reasonsCol.style.display = 'none';
                 title.textContent = 'Укажите причину:';
                 var otherArea = document.createElement('textarea');
-                otherArea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid #ffcc80;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box';
+                otherArea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid var(--tg-theme-hint-color,#ffcc80);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
                 otherArea.placeholder = 'Опишите причину';
                 block.appendChild(otherArea);
                 var otherRow = document.createElement('div');
@@ -2512,7 +2514,7 @@
           title.textContent = 'Опишите проблему:';
 
           var textarea = document.createElement('textarea');
-          textarea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid #ffcc80;border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box';
+          textarea.style.cssText = 'width:100%;min-height:60px;padding:8px;border:1.5px solid var(--tg-theme-hint-color,#ffcc80);border-radius:8px;font-size:13px;resize:vertical;box-sizing:border-box;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
           textarea.placeholder = 'Что произошло?';
           block.appendChild(textarea);
 
