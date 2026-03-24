@@ -395,6 +395,120 @@ def test_build_aiograpi_fetcher_returns_none_on_import_error(
     assert result is None
 
 
+def test_container_build_user_role_service() -> None:
+    """build_user_role_service creates UserRoleService instance."""
+    from ugc_bot.application.services.user_role_service import UserRoleService
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    service = container.build_user_role_service()
+    assert isinstance(service, UserRoleService)
+
+
+def test_container_build_referral_reconciliation_deps() -> None:
+    """build_referral_reconciliation_deps returns expected deps dict."""
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+        }
+    )
+    container = Container(config)
+    deps = container.build_referral_reconciliation_deps()
+    assert isinstance(deps, dict)
+
+
+def test_build_offer_response_rate_limiter_without_redis() -> None:
+    """Rate limiter falls back to in-memory when Redis is not configured."""
+    from ugc_bot.bot.handlers.utils import RateLimiter
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    limiter = infrastructure_factory.build_offer_response_rate_limiter(config)
+    assert isinstance(limiter, RateLimiter)
+
+
+def test_build_geocode_public_rate_limiter_without_redis() -> None:
+    """Geocode rate limiter falls back to in-memory without Redis."""
+    from ugc_bot.bot.handlers.utils import RateLimiter
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    limiter = infrastructure_factory.build_geocode_public_rate_limiter(config)
+    assert isinstance(limiter, RateLimiter)
+
+
+def test_build_repos_uses_redis_verification_when_configured() -> None:
+    """instagram_repo uses Redis when USE_REDIS_STORAGE is True."""
+    from ugc_bot.infrastructure.redis_verification import (
+        RedisInstagramVerificationRepository,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": True,
+            "REDIS_URL": "redis://localhost:6379/1",
+        }
+    )
+    container = Container(config)
+    repos = container.build_repos()
+    assert isinstance(
+        repos["instagram_repo"], RedisInstagramVerificationRepository
+    )
+
+
+def test_build_repos_uses_sql_verification_without_redis() -> None:
+    """instagram_repo uses SQL when USE_REDIS_STORAGE is False."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyInstagramVerificationRepository,
+    )
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    container = Container(config)
+    repos = container.build_repos()
+    assert isinstance(
+        repos["instagram_repo"], SqlAlchemyInstagramVerificationRepository
+    )
+
+
+def test_build_exchange_rate_service_without_redis() -> None:
+    """build_exchange_rate_service returns None when Redis URL is empty."""
+    from ugc_bot.container import service_factory
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "REDIS_URL": "",
+        }
+    )
+    result = service_factory.build_exchange_rate_service(config)
+    assert result is None
+
+
 @pytest.mark.asyncio
 async def test_container_dispose_calls_engine_dispose() -> None:
     """Container.dispose() disposes the async engine."""

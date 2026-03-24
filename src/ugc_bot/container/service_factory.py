@@ -233,10 +233,18 @@ def build_instagram_verification_service(
 
 
 def build_instagram_stats_scheduler_deps(
-    config: AppConfig, repos, transaction_manager, instagram_api_client
+    config: AppConfig,
+    repos,
+    transaction_manager,
+    instagram_api_client,
+    messenger_client=None,
+    bot_texts_service=None,
 ):
     """Build deps for Instagram stats update scheduler."""
     ig_config = config.instagram
+    default_locale = (
+        getattr(getattr(config, "market", None), "default_locale", "ru") or "ru"
+    )
     return {
         "instagram_stats_update_service": InstagramStatsUpdateService(
             blogger_repo=repos["blogger_repo"],
@@ -244,6 +252,10 @@ def build_instagram_stats_scheduler_deps(
             transaction_manager=transaction_manager,
             batch_size=ig_config.instagram_stats_batch_size,
             delay_seconds=ig_config.instagram_stats_delay_seconds,
+            user_repo=repos["user_repo"],
+            messenger_client=messenger_client,
+            bot_texts_service=bot_texts_service,
+            default_locale=default_locale,
         ),
         "interval_seconds": ig_config.instagram_stats_update_interval_seconds,
     }

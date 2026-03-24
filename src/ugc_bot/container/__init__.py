@@ -76,7 +76,14 @@ class Container:
             raise ValueError("DATABASE_URL is required for repositories.")
         if self._repos is not None:
             return self._repos
-        self._repos = repository_factory.build_repos(self._session_factory)
+        redis_url = (
+            self._config.redis.redis_url
+            if self._config.redis.use_redis_storage
+            else None
+        )
+        self._repos = repository_factory.build_repos(
+            self._session_factory, redis_url=redis_url
+        )
         return self._repos
 
     def build_offer_dispatch_service(self) -> OfferDispatchService:
@@ -135,7 +142,9 @@ class Container:
             self._config, repos, self._transaction_manager
         )
 
-    def build_instagram_stats_scheduler_deps(self) -> dict:
+    def build_instagram_stats_scheduler_deps(
+        self, messenger_client=None, bot_texts_service=None
+    ) -> dict:
         """Deps for Instagram stats update scheduler."""
         repos = self.build_repos()
         instagram_api_client = self.build_instagram_api_client()
@@ -144,6 +153,8 @@ class Container:
             repos,
             self._transaction_manager,
             instagram_api_client,
+            messenger_client=messenger_client,
+            bot_texts_service=bot_texts_service,
         )
 
     def build_instagram_stats_collector_scheduler_deps(self) -> dict:

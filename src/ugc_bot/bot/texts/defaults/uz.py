@@ -747,6 +747,16 @@ UZ: dict[str, str] = {
     "msg_instagram_confirmed": (
         "Instagram tasdiqlandi ✅. Brendlar taklif yuborishi mumkin."
     ),
+    "msg_instagram_account_lost": (
+        "Sizning Instagram-akkauntingiz o'chirildi yoki o'zgartirildi. "
+        "Buyurtmalar olish uchun profilingizni tahrirlang "
+        "va verifikatsiyadan qaytadan o'ting."
+    ),
+    "msg_instagram_verification_api_unavailable": (
+        "Instagram-akkauntingizni tekshirib bo'lmadi. "
+        "Verifikatsiyadan keyinroq qaytadan o'ting yoki "
+        "qo'llab-quvvatlash chatiga yozing."
+    ),
     "msg_instagram_mismatch": (
         "Profilingizdagi Instagram kod yuborgan akkaunt bilan mos kelmadi. "
         "«Mening profilim» ni oching, "

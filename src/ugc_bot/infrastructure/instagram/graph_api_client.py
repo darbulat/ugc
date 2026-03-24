@@ -1,11 +1,13 @@
 """Instagram Graph API client implementation."""
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
 import httpx
 
+from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import (
     InstagramGraphApiClient,
     InstagramProfileInfo,
@@ -32,6 +34,24 @@ def _is_ig_business_scoped_id_error(response_text: str) -> bool:
         "IGBusinessScopedID" in response_text
         or "nonexisting field" in response_text.lower()
     )
+
+
+def _is_no_matching_user_error(response_text: str) -> bool:
+    """True if Instagram API error code 9010 (account deleted/changed)."""
+    try:
+        data = json.loads(response_text)
+        return data.get("error", {}).get("code") == 9010
+    except (ValueError, AttributeError):
+        return False
+
+
+def _is_token_expired_error(response_text: str) -> bool:
+    """True if Instagram/Facebook API reports an expired access token."""
+    try:
+        data = json.loads(response_text)
+        return data.get("error", {}).get("code") == 190
+    except (ValueError, AttributeError):
+        return False
 
 
 def _is_retriable_status(status_code: int) -> bool:
@@ -261,7 +281,12 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                         random_delay_seconds(self._retry_delay_seconds)
                     )
                     continue
-                logger.warning(
+                log = (
+                    logger.error
+                    if _is_token_expired_error(exc.response.text)
+                    else logger.warning
+                )
+                log(
                     "Instagram API request failed",
                     extra={
                         "instagram_user_id": instagram_user_id,
@@ -329,7 +354,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
         )
         return username_info
 
-    async def get_profile_by_id(
+    async def get_profile_by_id(  # noqa: C901
         self, instagram_user_id: str
     ) -> Optional[InstagramProfileInfo]:
         """Get full profile (username, counts, biography) by user ID.
@@ -383,6 +408,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 return info
 
             except httpx.HTTPStatusError as exc:
+                # 9010 = permanent "No matching Instagram user" — don't retry
+                if _is_no_matching_user_error(exc.response.text):
+                    raise InstagramUserNotFoundError(instagram_user_id) from exc
                 if (
                     _is_retriable_status(exc.response.status_code)
                     and attempt < self._retry_attempts
@@ -406,7 +434,12 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                     return await self._handle_profile_400_ig_business_scoped(
                         instagram_user_id
                     )
-                logger.warning(
+                log = (
+                    logger.error
+                    if _is_token_expired_error(exc.response.text)
+                    else logger.warning
+                )
+                log(
                     "Instagram API request failed",
                     extra={
                         "instagram_user_id": instagram_user_id,

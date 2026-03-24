@@ -3,11 +3,16 @@
 import asyncio
 import logging
 
+from aiogram import Bot
+
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
@@ -79,7 +84,14 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
         },
     )
     container = Container(config)
-    deps = container.build_instagram_stats_scheduler_deps()
+    bot_texts_service = container.build_bot_texts_service()
+    bot = Bot(token=config.bot.bot_token)
+    messenger_client = TelegramMessengerClient(bot)
+
+    deps = container.build_instagram_stats_scheduler_deps(
+        messenger_client=messenger_client,
+        bot_texts_service=bot_texts_service,
+    )
     service = deps["instagram_stats_update_service"]
     interval = deps["interval_seconds"]
 
@@ -91,6 +103,9 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
             )
         )
     finally:
+        session = getattr(bot, "session", None)
+        if session is not None:
+            asyncio.run(session.close())
         asyncio.run(container.dispose())
 
 
