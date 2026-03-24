@@ -45,6 +45,15 @@ def _is_no_matching_user_error(response_text: str) -> bool:
         return False
 
 
+def _is_token_expired_error(response_text: str) -> bool:
+    """True if Instagram/Facebook API reports an expired access token."""
+    try:
+        data = json.loads(response_text)
+        return data.get("error", {}).get("code") == 190
+    except (ValueError, AttributeError):
+        return False
+
+
 def _is_retriable_status(status_code: int) -> bool:
     """Return True for 429 or 5xx (transient/rate-limit errors)."""
     return status_code == 429 or 500 <= status_code < 600
@@ -272,7 +281,12 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                         random_delay_seconds(self._retry_delay_seconds)
                     )
                     continue
-                logger.warning(
+                log = (
+                    logger.error
+                    if _is_token_expired_error(exc.response.text)
+                    else logger.warning
+                )
+                log(
                     "Instagram API request failed",
                     extra={
                         "instagram_user_id": instagram_user_id,
@@ -420,7 +434,12 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                     return await self._handle_profile_400_ig_business_scoped(
                         instagram_user_id
                     )
-                logger.warning(
+                log = (
+                    logger.error
+                    if _is_token_expired_error(exc.response.text)
+                    else logger.warning
+                )
+                log(
                     "Instagram API request failed",
                     extra={
                         "instagram_user_id": instagram_user_id,

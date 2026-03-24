@@ -681,3 +681,83 @@ async def test_get_profile_by_id_raises_on_9010_error() -> None:
         assert exc_info.value.instagram_user_id == "123"
         # Should NOT retry — only 1 call
         assert mock_client.get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_username_by_id_logs_error_on_expired_token() -> None:
+    """Expired token (code 190) is logged as ERROR, not WARNING."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=1
+    )
+    error_body = json.dumps(
+        {
+            "error": {
+                "message": "Session has expired",
+                "type": "OAuthException",
+                "code": 190,
+            }
+        }
+    )
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = error_body
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with patch(
+            "ugc_bot.infrastructure.instagram.graph_api_client.logger"
+        ) as mock_logger:
+            result = await client.get_username_by_id("123")
+            assert result is None
+            mock_logger.error.assert_called_once()
+            assert "Instagram API request failed" in str(
+                mock_logger.error.call_args
+            )
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_logs_error_on_expired_token() -> None:
+    """Expired token (code 190) is logged as ERROR for get_profile_by_id."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=1
+    )
+    error_body = json.dumps(
+        {
+            "error": {
+                "message": "Session has expired",
+                "type": "OAuthException",
+                "code": 190,
+            }
+        }
+    )
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = error_body
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with patch(
+            "ugc_bot.infrastructure.instagram.graph_api_client.logger"
+        ) as mock_logger:
+            result = await client.get_profile_by_id("123")
+            assert result is None
+            mock_logger.error.assert_called_once()
+            assert "Instagram API request failed" in str(
+                mock_logger.error.call_args
+            )
