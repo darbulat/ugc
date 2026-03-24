@@ -1,10 +1,12 @@
 """Tests for Instagram Graph API client."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
 
+from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.infrastructure.instagram.graph_api_client import (
     HttpInstagramGraphApiClient,
@@ -642,3 +644,38 @@ async def test_in_memory_client_get_profile_by_id() -> None:
     assert info2.followers_count is None
 
     assert await client.get_profile_by_id("unknown") is None
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_raises_on_9010_error() -> None:
+    """Error 9010 'No matching Instagram user' raises InstagramUserNotFoundError."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=3
+    )
+    error_body = json.dumps({
+        "error": {
+            "message": "No matching Instagram user",
+            "type": "IGApiException",
+            "code": 9010,
+        }
+    })
+
+    mock_response = MagicMock()
+    mock_response.status_code = 500
+    mock_response.text = error_body
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Server Error", request=MagicMock(), response=mock_response
+    )
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with pytest.raises(InstagramUserNotFoundError) as exc_info:
+            await client.get_profile_by_id("123")
+        assert exc_info.value.instagram_user_id == "123"
+        # Should NOT retry — only 1 call
+        assert mock_client.get.call_count == 1

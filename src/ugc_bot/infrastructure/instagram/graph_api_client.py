@@ -1,11 +1,13 @@
 """Instagram Graph API client implementation."""
 
 import asyncio
+import json
 import logging
 from typing import Optional
 
 import httpx
 
+from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import (
     InstagramGraphApiClient,
     InstagramProfileInfo,
@@ -32,6 +34,15 @@ def _is_ig_business_scoped_id_error(response_text: str) -> bool:
         "IGBusinessScopedID" in response_text
         or "nonexisting field" in response_text.lower()
     )
+
+
+def _is_no_matching_user_error(response_text: str) -> bool:
+    """True if Instagram API error code 9010 (account deleted/changed)."""
+    try:
+        data = json.loads(response_text)
+        return data.get("error", {}).get("code") == 9010
+    except (ValueError, AttributeError):
+        return False
 
 
 def _is_retriable_status(status_code: int) -> bool:
@@ -383,6 +394,9 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 return info
 
             except httpx.HTTPStatusError as exc:
+                # 9010 = permanent "No matching Instagram user" — don't retry
+                if _is_no_matching_user_error(exc.response.text):
+                    raise InstagramUserNotFoundError(instagram_user_id) from exc
                 if (
                     _is_retriable_status(exc.response.status_code)
                     and attempt < self._retry_attempts
