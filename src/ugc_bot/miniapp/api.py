@@ -425,6 +425,18 @@ async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
     return user.user_id
 
 
+async def _is_user_admin(dispatcher: Any, user_id: UUID) -> bool:
+    """Check whether the user has the admin flag set."""
+    try:
+        user_repo = dispatcher.get("user_repo")
+        if user_repo is None:
+            return False
+        user = await user_repo.get_by_id(user_id)
+        return user is not None and getattr(user, "admin", False) is True
+    except (TypeError, KeyError):
+        return False
+
+
 async def _notify_ugc_video_saved(
     creator: UserEntity | None,
     advertiser: UserEntity | None,
@@ -547,11 +559,14 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
     user_locale: str = (
         getattr(user, "language", None) or config.market.default_locale
     )
-    # Resolve manager status
+    # Resolve manager status — admins always see the manager view
     is_manager = False
-    manager_service = dispatcher.get("manager_service")
-    if manager_service:
-        is_manager = await manager_service.is_manager(user_id)
+    if getattr(user, "admin", False):
+        is_manager = True
+    else:
+        manager_service = dispatcher.get("manager_service")
+        if manager_service:
+            is_manager = await manager_service.is_manager(user_id)
     return MeResponse(
         user_id=str(user_id),
         external_id=user.telegram_id or user.max_id or "",
@@ -1536,9 +1551,14 @@ async def manager_orders(
     user_id = await _ensure_user_and_get_id(request, body.init_data)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
-    orders, total = await manager_service.list_orders_for_manager(
-        user_id, limit=body.limit, offset=body.offset
-    )
+    if await _is_user_admin(dispatcher, user_id):
+        orders, total = await manager_service.list_all_orders(
+            limit=body.limit, offset=body.offset
+        )
+    else:
+        orders, total = await manager_service.list_orders_for_manager(
+            user_id, limit=body.limit, offset=body.offset
+        )
     cfg = request.app.state.config
     bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
     cur_map = await _currency_symbol_map(request)
@@ -1573,7 +1593,10 @@ async def manager_creators(
     manager_service = dispatcher["manager_service"]
     profile_service = dispatcher["profile_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, order_id):
+    is_admin = await _is_user_admin(dispatcher, user_id)
+    if not is_admin and not await manager_service.is_manager_for_order(
+        user_id, order_id
+    ):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )
@@ -1592,6 +1615,9 @@ async def manager_creators(
     fetch_limit = 500 if search_q else body.limit
     fetch_offset = 0 if search_q else body.offset
 
+    # Admins see all creators regardless of manager assignment
+    effective_manager_id = None if is_admin else user_id
+
     if effective_filter == "expensive":
         dispatches, total = await manager_service.list_expensive_creators(
             order_id=order_id,
@@ -1601,7 +1627,7 @@ async def manager_creators(
     else:
         dispatches, total = await manager_service.list_creators_for_order(
             order_id=order_id,
-            manager_id=user_id,
+            manager_id=effective_manager_id,
             in_offer=effective_filter == "in_offer",
             limit=fetch_limit,
             offset=fetch_offset,
@@ -1656,7 +1682,9 @@ async def manager_creator_detail(
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, order_id):
+    if not await _is_user_admin(
+        dispatcher, user_id
+    ) and not await manager_service.is_manager_for_order(user_id, order_id):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )
@@ -1696,7 +1724,9 @@ async def manager_set_ugc_video(
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, order_id):
+    if not await _is_user_admin(
+        dispatcher, user_id
+    ) and not await manager_service.is_manager_for_order(user_id, order_id):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )
@@ -1756,7 +1786,9 @@ async def manager_remove_creator(
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, order_id):
+    if not await _is_user_admin(
+        dispatcher, user_id
+    ) and not await manager_service.is_manager_for_order(user_id, order_id):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )
@@ -1833,7 +1865,9 @@ async def manager_add_creator(
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, order_id):
+    if not await _is_user_admin(
+        dispatcher, user_id
+    ) and not await manager_service.is_manager_for_order(user_id, order_id):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )
@@ -1922,7 +1956,9 @@ async def manager_feedback(
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
-    if not await manager_service.is_manager_for_order(user_id, order_id):
+    if not await _is_user_admin(
+        dispatcher, user_id
+    ) and not await manager_service.is_manager_for_order(user_id, order_id):
         raise HTTPException(
             status_code=403, detail="Not a manager for this order"
         )

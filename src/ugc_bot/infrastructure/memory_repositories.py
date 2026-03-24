@@ -792,6 +792,24 @@ class InMemoryOrderRepository(OrderRepository):
             ]
         )
 
+    async def list_all_paginated(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[Order]:
+        """List all orders with pagination, newest first."""
+        all_orders = sorted(
+            self.orders.values(),
+            key=lambda o: o.created_at,
+            reverse=True,
+        )
+        return all_orders[offset : offset + limit]
+
+    async def count_all(self, session: object | None = None) -> int:
+        """Count all orders."""
+        return len(self.orders)
+
     async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order in memory."""
 

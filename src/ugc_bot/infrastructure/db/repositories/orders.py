@@ -143,6 +143,34 @@ class SqlAlchemyOrderRepository(OrderRepository):
             result = exec_result.scalar_one()
             return int(result)
 
+    async def list_all_paginated(
+        self,
+        limit: int = 20,
+        offset: int = 0,
+        session: object | None = None,
+    ) -> list[Order]:
+        """List all orders with pagination, newest first."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(OrderModel)
+                .order_by(OrderModel.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            return [_to_order_entity(m) for m in exec_result.scalars()]
+
+    async def count_all(self, session: object | None = None) -> int:
+        """Count all orders."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(func.count()).select_from(OrderModel)
+            )
+            return int(exec_result.scalar_one())
+
     async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
         model = _to_order_model(order)

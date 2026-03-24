@@ -111,6 +111,22 @@ class ManagerService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def list_all_orders(
+        self, limit: int = 20, offset: int = 0
+    ) -> tuple[list[Order], int]:
+        """List all orders with pagination (for admin users)."""
+
+        async def _run(
+            session: object | None,
+        ) -> tuple[list[Order], int]:
+            total = await self.order_repo.count_all(session=session)
+            orders = await self.order_repo.list_all_paginated(
+                limit=limit, offset=offset, session=session
+            )
+            return orders, total
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def is_manager_for_order(self, user_id: UUID, order_id: UUID) -> bool:
         """Check whether user is a manager for a specific order."""
 
@@ -125,14 +141,15 @@ class ManagerService:
     async def list_creators_for_order(
         self,
         order_id: UUID,
-        manager_id: UUID,
+        manager_id: Optional[UUID],
         in_offer: bool,
         limit: int = 20,
         offset: int = 0,
     ) -> tuple[list[OfferDispatch], int]:
         """List creator dispatches for an order visible to a manager.
 
-        For in_offer=True returns only dispatches assigned to *manager_id*.
+        For in_offer=True returns only dispatches assigned to *manager_id*
+        (or all if manager_id is None, e.g. for admin users).
         For in_offer=False (reserve) returns all dispatches for the order.
         """
         if self.offer_dispatch_repo is None:
