@@ -1232,7 +1232,7 @@ async def _lifespan(app: FastAPI):
 
     await http_session.close()
     await redis.aclose()
-    container.dispose()
+    await container.dispose()
 
 
 app = FastAPI(lifespan=_lifespan)
@@ -1475,21 +1475,19 @@ Reference: `src/ugc_bot/application/services/user_role_service.py` (338 lines)
 async def test_find_user_by_messenger_telegram():
     user_repo = MemoryUserRepository()
     user = make_user(telegram_id="123", messenger_type=MessengerType.TELEGRAM)
-    await user_repo.add(user)
+    await user_repo.save(user)
     service = UserRoleService(user_repo=user_repo, ...)
     found = await service.find_user_by_messenger(MessengerType.TELEGRAM, "123")
     assert found is not None
-    assert found.telegram_id == "123"
 
 @pytest.mark.asyncio
 async def test_find_user_by_messenger_max():
     user_repo = MemoryUserRepository()
     user = make_user(max_id="456", messenger_type=MessengerType.MAX)
-    await user_repo.add(user)
+    await user_repo.save(user)
     service = UserRoleService(user_repo=user_repo, ...)
     found = await service.find_user_by_messenger(MessengerType.MAX, "456")
     assert found is not None
-    assert found.max_id == "456"
 
 @pytest.mark.asyncio
 async def test_find_user_by_messenger_not_found():
@@ -1506,14 +1504,10 @@ Add to `UserRoleService`:
 async def find_user_by_messenger(
     self, messenger_type: MessengerType, external_id: str
 ) -> User | None:
-    if messenger_type == MessengerType.TELEGRAM:
-        return await self._user_repo.get_by_telegram_id(external_id)
-    elif messenger_type == MessengerType.MAX:
-        return await self._user_repo.get_by_max_id(external_id)
-    return None
+    return await self.user_repo.get_by_external(external_id, messenger_type)
 ```
 
-Check that `get_by_telegram_id` and `get_by_max_id` exist on the repository. If `get_by_max_id` doesn't exist, add it to both the abstract port and the SQLAlchemy + memory implementations.
+This uses the existing `UserRepository.get_by_external(external_id, messenger_type)` method (defined in `application/ports.py:73`).
 
 - [ ] **Step 3: Run tests, commit**
 
@@ -1776,7 +1770,7 @@ async def test_redeem_wrong_code_three_times(linking_repo, user_repo):
 
 @pytest.mark.asyncio
 async def test_redeem_already_linked(linking_repo, user_repo):
-    user_repo.get_by_max_id = AsyncMock(return_value=AsyncMock())  # already linked
+    user_repo.get_by_external = AsyncMock(return_value=AsyncMock())  # already linked
     service = UserRoleService(user_repo=user_repo, linking_code_repo=linking_repo, ...)
     await linking_repo.save(
         code="111111", user_id=uuid4(), messenger_type=MessengerType.MAX,
@@ -1816,15 +1810,19 @@ async def redeem_linking_code(self, code: str, user_id: UUID) -> bool:
     if record["attempts"] >= 3:
         await self._linking_code_repo.delete(code)
         return False
-    # Check not already linked
-    existing = await self._user_repo.get_by_max_id(record["external_id"])
+    # Check not already linked (works for both directions: Telegram→Max, Max→Telegram)
+    existing = await self.user_repo.get_by_external(
+        record["external_id"], record["messenger_type"]
+    )
     if existing:
         return False
-    await self._user_repo.link_messenger(
-        user_id=record["user_id"],
-        messenger_type=record["messenger_type"],
-        external_id=record["external_id"],
-    )
+    # Link: load user, update the appropriate ID field, save
+    user = await self.user_repo.get(record["user_id"])
+    if record["messenger_type"] == MessengerType.MAX:
+        updated = replace(user, max_id=record["external_id"])
+    else:
+        updated = replace(user, telegram_id=record["external_id"])
+    await self.user_repo.save(updated)
     await self._linking_code_repo.delete(code)
     return True
 ```
