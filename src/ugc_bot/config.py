@@ -114,6 +114,7 @@ _FLAT_KEYS = {
         "ORDER_RADIUS_KM",
     ],
     "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
+    "max_bot": ["MAX_BOT_TOKEN", "MAX_BOT_WEBHOOK_URL"],
     "market": [
         "PAYMENT_CURRENCY",
         "CURRENCY_SYMBOL",
@@ -596,6 +597,15 @@ class ReferralConfig(BaseSettings):
     )
 
 
+class MaxBotConfig(BaseSettings):
+    """Max messenger bot configuration."""
+
+    model_config = _ENV
+
+    token: str = Field(default="", alias="MAX_BOT_TOKEN")
+    webhook_url: str = Field(default="", alias="MAX_BOT_WEBHOOK_URL")
+
+
 # --- Composite ---
 
 
@@ -620,6 +630,7 @@ class AppConfig(BaseModel):
     order: OrderConfig
     market: MarketConfig
     referral: ReferralConfig
+    max_bot: MaxBotConfig | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -646,6 +657,11 @@ class AppConfig(BaseModel):
             "order": OrderConfig.model_validate(nested["order"]),
             "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
+            "max_bot": (
+                MaxBotConfig.model_validate(nested.get("max_bot", {}))
+                if nested.get("max_bot", {}).get("MAX_BOT_TOKEN")
+                else None
+            ),
         }
 
 
