@@ -65,6 +65,7 @@ from ugc_bot.infrastructure.db.models import (
     NpsResponseModel,
     OfferDispatchModel,
     OrderModel,
+    PaymentModel,
     PayoutRequestModel,
     ReferralIncomeEntryModel,
     UserModel,
@@ -2147,6 +2148,54 @@ class ReferralIncomeEntryAdmin(ModelView, model=ReferralIncomeEntryModel):
     }
 
 
+class PaymentAdmin(ModelView, model=PaymentModel):
+    """Admin view for payments."""
+
+    name = "Платёж"
+    name_plural = "Платежи"
+    can_create = True
+    can_edit = True
+    can_delete = False
+    column_list = [
+        PaymentModel.payment_id,
+        PaymentModel.order_id,
+        PaymentModel.provider,
+        PaymentModel.status,
+        PaymentModel.amount,
+        PaymentModel.currency,
+        PaymentModel.external_id,
+        PaymentModel.created_at,
+        PaymentModel.paid_at,
+    ]
+    column_sortable_list = [
+        PaymentModel.status,
+        PaymentModel.amount,
+        PaymentModel.created_at,
+        PaymentModel.paid_at,
+    ]
+    column_default_sort = (PaymentModel.created_at, True)
+    form_columns = [
+        PaymentModel.order_id,
+        PaymentModel.provider,
+        PaymentModel.status,
+        PaymentModel.amount,
+        PaymentModel.currency,
+        PaymentModel.external_id,
+        PaymentModel.paid_at,
+    ]
+    column_labels = {
+        PaymentModel.payment_id: "ID платежа",
+        PaymentModel.order_id: "ID заказа",
+        PaymentModel.provider: "Провайдер",
+        PaymentModel.status: "Статус",
+        PaymentModel.amount: "Сумма",
+        PaymentModel.currency: "Валюта",
+        PaymentModel.external_id: "Внешний ID",
+        PaymentModel.created_at: "Дата создания",
+        PaymentModel.paid_at: "Дата оплаты",
+    }
+
+
 class AuditLogAdmin(ModelView, model=AuditLogModel):
     """Read-only audit log viewer."""
 
@@ -2377,6 +2426,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(LanguageAdmin)
     admin.add_view(BotTextAdmin)
     admin.add_view(NpsResponseAdmin)
+    admin.add_view(PaymentAdmin)
     admin.add_view(PayoutRequestAdmin)
     admin.add_view(ReferralIncomeEntryAdmin)
     admin.add_view(AuditLogAdmin)
