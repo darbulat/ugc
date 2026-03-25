@@ -17,7 +17,6 @@ Add Max messenger as a second parallel messenger alongside Telegram with full ha
 - User account linking between Telegram and Max (bidirectional, one-time code flow)
 - Notifications sent to all linked messengers
 - Refactor existing Telegram handlers to be thin (logic → services)
-- Media abstraction layer for cross-messenger file references
 - Testing: fakes, unit tests, integration tests for all new code
 
 ### Out of scope (deferred)
@@ -204,26 +203,11 @@ class MaxBotConfig(BaseSettings):
 
 Added to `AppConfig` as `max_bot: MaxBotConfig`.
 
-## Media Abstraction
+## Media in Max
 
-### Problem
+Max bot sends text only — no photos. `MaxMessengerClient.send_photo()` falls back to sending the caption as plain text (ignoring the photo). No `MediaStorage`, no new migrations, no cross-messenger media handling needed.
 
-Telegram `file_id` values are Telegram-internal. If a photo is uploaded via Telegram and stored as `file_id`, Max cannot use it. Cross-messenger media sharing requires a neutral format.
-
-### Solution
-
-Introduce a `MediaStorage` service that stores media as URLs (S3/local storage). When a photo is uploaded:
-1. Handler downloads the file from the source messenger (Telegram `getFile` API, Max file download API)
-2. Uploads to shared storage (S3 or local filesystem)
-3. Stores the URL in the database (new `media_url` field alongside existing `file_id`)
-
-When sending a photo:
-- If the recipient is on the same messenger as the uploader → use native `file_id` (fast, no re-upload)
-- If cross-messenger → use `media_url`, let `MessengerClient` download and send
-
-This avoids re-uploading for same-messenger cases while supporting cross-messenger scenarios.
-
-**Migration:** Add `media_url: str | None` column to relevant tables (orders, products). Backfill optional — existing Telegram-only photos continue to work via `file_id`.
+If a service returns `ServiceResponse` with `photo_url`, the Max handler sends only `result.text`. Telegram handler sends the photo as before.
 
 ## User Account Linking
 
