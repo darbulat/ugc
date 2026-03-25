@@ -212,6 +212,18 @@ class InMemoryUserReferralBindingRepository(UserReferralBindingRepository):
             1 for b in self._bindings if b.referrer_user_id == referrer_user_id
         )
 
+    async def save_or_get_existing(
+        self,
+        binding: UserReferralBinding,
+        session: object | None = None,
+    ) -> tuple[UserReferralBinding, bool]:
+        """Save binding or return existing if referred user already bound."""
+        for b in self._bindings:
+            if b.referred_user_id == binding.referred_user_id:
+                return b, False
+        self._bindings.append(binding)
+        return binding, True
+
 
 @dataclass
 class InMemoryUserReferralPendingRepository(UserReferralPendingRepository):

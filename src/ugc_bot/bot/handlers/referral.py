@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+import string
 from datetime import datetime, timezone
 from decimal import Decimal
 from math import ceil
@@ -46,6 +47,22 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 
 router = Router()
 logger = logging.getLogger(__name__)
+
+
+def _safe_format(template: str, **kwargs: str) -> str:
+    """Format string substituting known keys, logging unknown placeholders."""
+    fieldnames = {
+        fname
+        for _, fname, _, _ in string.Formatter().parse(template)
+        if fname is not None
+    }
+    unknown = fieldnames - set(kwargs)
+    if unknown:
+        logger.warning("Unknown placeholders in template: %s", unknown)
+    mapping = {f: "" for f in fieldnames}
+    mapping.update(kwargs)
+    return template.format_map(mapping)
+
 
 REFERRAL_PAYOUT_CALLBACK = "referral:payout"
 PAYOUT_PAID_CALLBACK_PREFIX = "payout_paid:"
@@ -403,7 +420,8 @@ async def payout_button_callback(
         msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),
-        ).format(currency=currency)
+        )
+        msg = _safe_format(msg, currency=currency)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text=msg,
@@ -450,7 +468,8 @@ async def payout_button_callback(
         msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),
-        ).format(currency=currency)
+        )
+        msg = _safe_format(msg, currency=currency)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text=msg,

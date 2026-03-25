@@ -14,7 +14,12 @@ AFTER_FIRST_YEAR_RATE = 0.03
 
 @dataclass(slots=True)
 class UserReferralStats:
-    """Referrer user statistics (referrals, orders, income, payouts)."""
+    """Referrer user statistics (referrals, orders, income, payouts).
+
+    WARNING: ``income_total``, ``income_current_month`` and ``paid_total``
+    sum amounts across all currencies when income entries are used.
+    Use ``MultiCurrencyReferralStats`` for accurate per-currency data.
+    """
 
     creators_count: int
     orders_count: int
@@ -64,15 +69,24 @@ def effective_rate(
     return get_rate(creator_created_at, order_completed_at)
 
 
-def resolve_rate(referred_user: User, order: Order) -> Decimal:
-    """Return commission rate for a referred user on an order.
+def resolve_rate(
+    referred_user: User, order: Order, referrer: User | None = None
+) -> Decimal:
+    """Return commission rate for a referral on an order.
 
-    The 10%/3% threshold is based on the user's registration date.
+    If the referrer has a custom ``referral_payout_rate`` it takes priority
+    (the referrer earns income at their own rate).  Otherwise, the default
+    10%/3% threshold based on the referrer's registration date is used.
+
+    The one-year window is always counted from the **referrer's** creation
+    date, not the referred user's.
     """
-    if referred_user.referral_payout_rate is not None:
-        return referred_user.referral_payout_rate
+    if referrer is not None and referrer.referral_payout_rate is not None:
+        return referrer.referral_payout_rate
     completed = order.completed_at or datetime.now(timezone.utc)
-    yrs = years_since(referred_user.created_at, completed)
+    if referrer is None:
+        raise ValueError("referrer is required to calculate commission rate")
+    yrs = years_since(referrer.created_at, completed)
     return Decimal(str(FIRST_YEAR_RATE if yrs < 1.0 else AFTER_FIRST_YEAR_RATE))
 
 

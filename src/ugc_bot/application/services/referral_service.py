@@ -1,12 +1,11 @@
 """Service for referral link handling and pending bindings."""
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
-
-from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.ports import (
     TransactionManager,
@@ -23,6 +22,7 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 logger = logging.getLogger(__name__)
 
 REFERRAL_PREFIX = "ref_"
+_REFERRAL_CODE_RE = re.compile(r"^[a-z0-9]{4,20}$")
 
 
 @dataclass(slots=True)
@@ -46,8 +46,9 @@ class ReferralService:
             return None
         payload = parts[1].strip()
         if payload.startswith(REFERRAL_PREFIX):
-            code = payload[len(REFERRAL_PREFIX) :].strip()
-            return code if code else None
+            code = payload[len(REFERRAL_PREFIX) :].strip().lower()
+            if code and _REFERRAL_CODE_RE.match(code):
+                return code
         return None
 
     async def save_pending_referral(
@@ -127,30 +128,21 @@ class ReferralService:
                 referred_user_id=creator_user_id,
                 created_at=datetime.now(timezone.utc),
             )
-            try:
-                await self.user_referral_binding_repo.save(
-                    binding, session=sess
-                )
-            except IntegrityError:
+            (
+                result,
+                created,
+            ) = await self.user_referral_binding_repo.save_or_get_existing(
+                binding, session=sess
+            )
+            if not created:
                 logger.warning(
                     "Concurrent referral binding creation for user %s",
                     creator_user_id,
                 )
-                existing = (
-                    await self.user_referral_binding_repo.get_by_referred_user(
-                        creator_user_id, session=sess
-                    )
-                )
-                if existing is None:
-                    raise
-                await self.user_referral_pending_repo.delete_by_user(
-                    creator_user_id, session=sess
-                )
-                return existing
             await self.user_referral_pending_repo.delete_by_user(
                 creator_user_id, session=sess
             )
-            return binding
+            return result
 
         if session is not None:
             return await _run(session)

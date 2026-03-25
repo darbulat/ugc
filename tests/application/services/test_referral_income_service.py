@@ -1280,6 +1280,17 @@ async def test_record_creator_referral_income_creates_entry() -> None:
     user_repo = InMemoryUserRepository()
     await user_repo.save(
         User(
+            user_id=referrer_id,
+            telegram_id="referrer1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer1",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    await user_repo.save(
+        User(
             user_id=creator_id,
             telegram_id="creator1",
             messenger_type=MessengerType.TELEGRAM,
@@ -1437,6 +1448,17 @@ async def test_record_advertiser_referral_income_creates_entry() -> None:
     user_repo = InMemoryUserRepository()
     await user_repo.save(
         User(
+            user_id=referrer_id,
+            telegram_id="referrer2",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer2",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    await user_repo.save(
+        User(
             user_id=advertiser_id,
             telegram_id="adv1",
             messenger_type=MessengerType.TELEGRAM,
@@ -1534,6 +1556,17 @@ async def test_record_creator_referral_income_idempotent() -> None:
     order_id = uuid4()
 
     user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=referrer_id,
+            telegram_id="referrer3",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer3",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
     await user_repo.save(
         User(
             user_id=creator_id,
@@ -2231,6 +2264,19 @@ async def test_record_creator_custom_rate() -> None:
     order_id = uuid4()
 
     user_repo = InMemoryUserRepository()
+    # Referrer has custom rate — commission should use referrer's rate
+    await user_repo.save(
+        User(
+            user_id=referrer_id,
+            telegram_id="referrer_custom",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer_custom",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=60),
+            referral_payout_rate=Decimal("0.15"),
+        )
+    )
     await user_repo.save(
         User(
             user_id=creator_id,
@@ -2240,7 +2286,6 @@ async def test_record_creator_custom_rate() -> None:
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=now - timedelta(days=30),
-            referral_payout_rate=Decimal("0.15"),
         )
     )
     binding_repo = InMemoryUserReferralBindingRepository()
@@ -2326,6 +2371,19 @@ async def test_record_advertiser_custom_rate() -> None:
     order_id = uuid4()
 
     user_repo = InMemoryUserRepository()
+    # Referrer has custom rate — commission should use referrer's rate
+    await user_repo.save(
+        User(
+            user_id=referrer_id,
+            telegram_id="referrer_adv_custom",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer_adv_custom",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=60),
+            referral_payout_rate=Decimal("0.20"),
+        )
+    )
     await user_repo.save(
         User(
             user_id=advertiser_id,
@@ -2335,7 +2393,6 @@ async def test_record_advertiser_custom_rate() -> None:
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=now - timedelta(days=30),
-            referral_payout_rate=Decimal("0.20"),
         )
     )
     binding_repo = InMemoryUserReferralBindingRepository()
@@ -2781,6 +2838,95 @@ async def test_record_creator_no_payment_skips() -> None:
 
 
 @pytest.mark.asyncio
+async def test_record_creator_unpaid_payment_skips() -> None:
+    """Binding, pricing and payment exist but status PENDING — skip."""
+    now = datetime.now(timezone.utc)
+    referrer_id = uuid4()
+    creator_id = uuid4()
+    order_id = uuid4()
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            telegram_id="c_unpaid",
+            messenger_type=MessengerType.TELEGRAM,
+            username="c_unpaid",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    binding_repo = InMemoryUserReferralBindingRepository()
+    await binding_repo.save(
+        UserReferralBinding(
+            referrer_user_id=referrer_id,
+            referred_user_id=creator_id,
+            created_at=now,
+        )
+    )
+    pricing_repo = InMemoryContactPricingRepository()
+    await pricing_repo.save(
+        ContactPricing(
+            country_code="ru",
+            bloggers_count=3,
+            price=Decimal("9000"),
+            currency="RUB",
+            updated_at=now,
+        )
+    )
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order_id,
+            provider="test",
+            status=PaymentStatus.PENDING,
+            amount=9000.0,
+            currency="RUB",
+            external_id="ext_unpaid",
+            created_at=now,
+        )
+    )
+    entry_repo = InMemoryReferralIncomeEntryRepository()
+
+    order = Order(
+        order_id=order_id,
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://x.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=3000.0,
+        bloggers_needed=3,
+        status=OrderStatus.CLOSED,
+        created_at=now,
+        completed_at=now,
+    )
+
+    service = ReferralIncomeService(
+        user_referral_binding_repo=binding_repo,
+        offer_dispatch_repo=InMemoryOfferDispatchRepository(),
+        order_repo=InMemoryOrderRepository(),
+        payment_repo=payment_repo,
+        interaction_repo=InMemoryInteractionRepository(),
+        user_repo=user_repo,
+        payout_request_repo=InMemoryPayoutRequestRepository(),
+        transaction_manager=None,
+        referral_income_entry_repo=entry_repo,
+        contact_pricing_repo=pricing_repo,
+    )
+
+    await service.record_creator_referral_income(
+        order=order,
+        creator_id=creator_id,
+        advertiser_country_code="ru",
+    )
+
+    assert len(entry_repo.entries) == 0
+
+
+@pytest.mark.asyncio
 async def test_record_advertiser_no_payment_skips() -> None:
     """Binding and pricing exist but no payment — entry not created."""
     now = datetime.now(timezone.utc)
@@ -2859,9 +3005,10 @@ async def test_record_advertiser_no_payment_skips() -> None:
 async def test_commission_rate_uses_registration_date_not_binding_date() -> (
     None
 ):
-    """Commission rate uses user registration date, not binding date.
+    """Commission rate uses referrer's registration date, not binding date.
 
-    User registered 2 years ago → gets 3% (based on user.created_at).
+    Referrer registered 2 years ago → gets 3% (based on referrer.created_at).
+    Creator registered 3 months ago → irrelevant when referrer exists.
     Binding created 6 months ago → irrelevant for rate calculation.
     """
     now = datetime.now(timezone.utc)
@@ -2870,17 +3017,29 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
     advertiser_id = uuid4()
     order_id = uuid4()
 
-    # User registered 2 years ago → should get 3%
     user_repo = InMemoryUserRepository()
+    # Referrer registered 2 years ago → should get 3%
     await user_repo.save(
         User(
-            user_id=creator_id,
-            telegram_id="old_creator",
+            user_id=referrer_id,
+            telegram_id="old_referrer",
             messenger_type=MessengerType.TELEGRAM,
-            username="old_creator",
+            username="old_referrer",
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=now - timedelta(days=730),  # 2 years ago
+        )
+    )
+    # Creator registered recently — referrer's date wins
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            telegram_id="new_creator",
+            messenger_type=MessengerType.TELEGRAM,
+            username="new_creator",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=90),  # 3 months ago
         )
     )
 
@@ -2954,7 +3113,7 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
 
     assert len(entry_repo.entries) == 1
     entry = entry_repo.entries[0]
-    # User registered 2 years ago → after-first-year rate (3%)
+    # Referrer registered 2 years ago → after-first-year rate (3%)
     assert entry.commission_rate == Decimal("0.03")
 
 

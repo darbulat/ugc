@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.domain.entities import (
@@ -54,7 +53,11 @@ def test_parse_referral_code_extracts_code() -> None:
         transaction_manager=None,
     )
     assert service.parse_referral_code("/start ref_abc123") == "abc123"
-    assert service.parse_referral_code("/start ref_xyz") == "xyz"
+    assert service.parse_referral_code("/start ref_abcd1234") == "abcd1234"
+    # Short codes (< 4 chars) are rejected
+    assert service.parse_referral_code("/start ref_xyz") is None
+    # Invalid characters are rejected
+    assert service.parse_referral_code("/start ref_ABC123!!") is None
 
 
 def test_parse_referral_code_returns_none_when_payload_not_ref_prefix() -> None:
@@ -356,19 +359,15 @@ async def test_create_binding_integrity_error_returns_existing() -> None:
         created_at=now,
     )
     binding_repo = InMemoryUserReferralBindingRepository()
-    get_calls = []
 
-    async def get_by_referred_user(referred_user_id, session=None):
-        get_calls.append(1)
-        return existing_binding if len(get_calls) > 1 else None
+    async def save_or_get_existing_conflict(
+        binding: UserReferralBinding, session=None
+    ):
+        return existing_binding, False
 
-    async def save_raise_integrity(binding: UserReferralBinding, session=None):
-        raise IntegrityError("", "", "")
-
-    binding_repo.get_by_referred_user = AsyncMock(
-        side_effect=get_by_referred_user
+    binding_repo.save_or_get_existing = AsyncMock(
+        side_effect=save_or_get_existing_conflict
     )
-    binding_repo.save = AsyncMock(side_effect=save_raise_integrity)
 
     service = ReferralService(
         user_repo=InMemoryUserRepository(),

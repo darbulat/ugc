@@ -919,6 +919,18 @@ class UserReferralBindingRepository(ABC):
     ) -> int:
         """Count bindings by referrer user ID."""
 
+    @abstractmethod
+    async def save_or_get_existing(
+        self,
+        binding: UserReferralBinding,
+        session: object | None = None,
+    ) -> tuple[UserReferralBinding, bool]:
+        """Save binding or return existing if referred user already bound.
+
+        Returns (binding, created) where created=True if newly saved,
+        False if an existing binding was found (duplicate).
+        """
+
 
 class UserReferralPendingRepository(ABC):
     """Port for pending referral bindings until creator registration."""

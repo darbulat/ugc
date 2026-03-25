@@ -467,7 +467,14 @@ class ReferralStatsService:
                 session=session,
             )
         )
-        creators_count = len(bindings)
+        if len(bindings) < eff_limit:
+            creators_count = len(bindings)
+        else:
+            creators_count = (
+                await self.user_referral_binding_repo.count_by_referrer(
+                    referrer_user_id, session=session
+                )
+            )
 
         if self.referral_income_entry_repo is not None:
             # Primary path: use income_entries as source of truth
@@ -476,6 +483,14 @@ class ReferralStatsService:
                     referrer_user_id, session=session
                 )
             )
+            # NOTE: sums across currencies — use MultiCurrencyReferralStats
+            # for accurate per-currency breakdowns.
+            if len(income_by_currency) > 1:
+                logger.debug(
+                    "income_total sums %d currencies for user %s",
+                    len(income_by_currency),
+                    referrer_user_id,
+                )
             income_total = round(float(sum(income_by_currency.values())), 2)
             current_month_by_currency = await (
                 self.referral_income_entry_repo
