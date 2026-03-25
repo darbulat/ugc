@@ -87,6 +87,11 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(lifespan=_lifespan)
 
 
+@app.get("/health")
+async def health() -> JSONResponse:
+    return JSONResponse({"status": "ok"})
+
+
 @app.post("/webhook/max")
 async def handle_max_webhook(request: Request) -> JSONResponse:
     data = await request.json()
