@@ -34,7 +34,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
     send_with_retry,

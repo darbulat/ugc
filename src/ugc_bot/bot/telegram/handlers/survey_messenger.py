@@ -14,13 +14,13 @@ from ugc_bot.application.messenger.ports import (
 )
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_SURVEY_MESSENGER_MAX,
     CALLBACK_SURVEY_MESSENGER_OTHER,
     CALLBACK_SURVEY_MESSENGER_OWN_APP,
     CALLBACK_SURVEY_MESSENGER_TG,
 )
-from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType
 

@@ -2,7 +2,7 @@
 
 from datetime import date
 
-from ugc_bot.bot.validators import (
+from ugc_bot.bot.telegram.validators import (
     FORBIDDEN_BOT_COMMANDS,
     normalize_instagram_url,
     normalize_url,

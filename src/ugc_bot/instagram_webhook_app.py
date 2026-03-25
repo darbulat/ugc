@@ -212,7 +212,9 @@ async def _notify_user_verification_success(
 ) -> None:
     """Send Telegram notification to user about successful verification."""
     try:
-        from ugc_bot.bot.handlers.keyboards import blogger_menu_inline_keyboard
+        from ugc_bot.bot.telegram.handlers.keyboards import (
+            blogger_menu_inline_keyboard,
+        )
 
         (
             user,
@@ -269,7 +271,7 @@ async def _notify_user_verification_mismatch(
 ) -> None:
     """Notify user that profile Instagram does not match sender account."""
     try:
-        from ugc_bot.bot.handlers.keyboards import (
+        from ugc_bot.bot.telegram.handlers.keyboards import (
             blogger_profile_view_inline_keyboard,
         )
 

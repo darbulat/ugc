@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from ugc_bot.bot.middleware.locale import LocaleMiddleware
+from ugc_bot.bot.telegram.middleware.locale import LocaleMiddleware
 from ugc_bot.domain.entities import Country, User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 

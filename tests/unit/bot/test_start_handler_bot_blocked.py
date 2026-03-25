@@ -15,7 +15,7 @@ from ugc_bot.application.messenger.dto import (
 from ugc_bot.application.messenger.state import StateStore
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.start import _start_command
+from ugc_bot.bot.telegram.handlers.start import _start_command
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository

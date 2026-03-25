@@ -20,12 +20,12 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.filters import TextEqualsKey
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.filters import TextEqualsKey
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
     blogger_verification_sent_inline_keyboard,
 )
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,

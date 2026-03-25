@@ -13,7 +13,7 @@ from ugc_bot.application.messenger.dto import (
     IncomingMessage,
     IncomingUser,
 )
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.utils import (
     LegacyMessengerClient,
     RateLimiter,
     _answer_callback_or_fallback,
@@ -519,7 +519,7 @@ async def test_resolve_currency_symbol_with_country() -> None:
     """Returns country currency symbol when user has a country code."""
     from datetime import datetime, timezone
 
-    from ugc_bot.bot.handlers.utils import resolve_currency_symbol
+    from ugc_bot.bot.telegram.handlers.utils import resolve_currency_symbol
     from ugc_bot.domain.entities import Country
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryCountryRepository,
@@ -556,7 +556,7 @@ async def test_resolve_currency_symbol_unknown_country_returns_default() -> (
     """Returns default when country code not found in repo."""
     from datetime import datetime, timezone
 
-    from ugc_bot.bot.handlers.utils import resolve_currency_symbol
+    from ugc_bot.bot.telegram.handlers.utils import resolve_currency_symbol
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryCountryRepository,
     )
@@ -581,7 +581,7 @@ async def test_resolve_currency_symbol_no_country_returns_default() -> None:
     """Returns default when user has no country set."""
     from datetime import datetime, timezone
 
-    from ugc_bot.bot.handlers.utils import resolve_currency_symbol
+    from ugc_bot.bot.telegram.handlers.utils import resolve_currency_symbol
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryCountryRepository,
     )

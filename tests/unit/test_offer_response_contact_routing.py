@@ -15,7 +15,9 @@ from tests.helpers.fakes import FakeMessengerClient
 from tests.helpers.services import build_profile_service
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.offer_responses import _send_contact_immediately
+from ugc_bot.bot.telegram.handlers.offer_responses import (
+    _send_contact_immediately,
+)
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (

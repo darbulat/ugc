@@ -21,7 +21,7 @@ from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.advertiser_registration import (
+from ugc_bot.bot.telegram.handlers.advertiser_registration import (
     AdvertiserRegistrationStates,
     _advertiser_start_impl,
     handle_advertiser_agreements_callback,
@@ -35,7 +35,7 @@ from ugc_bot.bot.handlers.advertiser_registration import (
     handle_phone,
     handle_site_link,
 )
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_ADV_AGREE,
     CALLBACK_ADV_START,
 )

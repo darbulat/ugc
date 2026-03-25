@@ -22,8 +22,10 @@ from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_MENU_MY_ORDERS
-from ugc_bot.bot.handlers.my_orders import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
+    CALLBACK_PROFILE_MENU_MY_ORDERS,
+)
+from ugc_bot.bot.telegram.handlers.my_orders import (
     _MY_ORDERS_BLOGGER_CALLBACK_PREFIX,
     _format_date,
     _format_order_type,
@@ -34,7 +36,7 @@ from ugc_bot.bot.handlers.my_orders import (
     show_my_orders,
     show_my_orders_from_profile_callback,
 )
-from ugc_bot.bot.handlers.profile import (
+from ugc_bot.bot.telegram.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
     _BLOGGER_AGREEMENTS_STATE,
 )

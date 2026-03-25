@@ -30,8 +30,10 @@ from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_MENU_CREATE_ORDER
-from ugc_bot.bot.handlers.order_creation import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
+    CALLBACK_PROFILE_MENU_CREATE_ORDER,
+)
+from ugc_bot.bot.telegram.handlers.order_creation import (
     CONTENT_USAGE_BOTH,
     COOP_BARTER,
     COOP_BOTH,
@@ -65,7 +67,7 @@ from ugc_bot.bot.handlers.order_creation import (
     start_order_creation,
     start_order_creation_from_profile_callback,
 )
-from ugc_bot.bot.handlers.order_creation_states import (
+from ugc_bot.bot.telegram.handlers.order_creation_states import (
     CALLBACK_ORDER_BLOGGERS_PREFIX,
     CALLBACK_ORDER_CONTENT_BOTH,
     CALLBACK_ORDER_COOP_BARTER,
@@ -77,7 +79,7 @@ from ugc_bot.bot.handlers.order_creation_states import (
     CALLBACK_ORDER_TYPE_PLACEMENT,
     CALLBACK_ORDER_TYPE_UGC,
 )
-from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
+from ugc_bot.bot.telegram.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import (

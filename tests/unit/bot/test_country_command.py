@@ -9,8 +9,13 @@ from tests.helpers.fakes import (
     FakeUser,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import CALLBACK_CHANGE_COUNTRY_PREFIX
-from ugc_bot.bot.handlers.start import country_change_selected, country_command
+from ugc_bot.bot.telegram.handlers.keyboards import (
+    CALLBACK_CHANGE_COUNTRY_PREFIX,
+)
+from ugc_bot.bot.telegram.handlers.start import (
+    country_change_selected,
+    country_command,
+)
 from ugc_bot.domain.entities import Country
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.memory_repositories import (

@@ -63,7 +63,7 @@ def build_issue_lock_manager(config: AppConfig) -> IssueDescriptionLockManager:
 
 def build_offer_response_rate_limiter(config: AppConfig):
     """Create rate limiter for offer responses (Redis or in-memory)."""
-    from ugc_bot.bot.handlers.utils import RateLimiter
+    from ugc_bot.bot.telegram.handlers.utils import RateLimiter
     from ugc_bot.infrastructure.redis_rate_limiter import RedisRateLimiter
 
     if config.redis.use_redis_storage and config.redis.redis_url:
@@ -80,7 +80,7 @@ def build_geocode_public_rate_limiter(config: AppConfig):
 
     Allows 30 requests per minute per IP to prevent geocoder abuse.
     """
-    from ugc_bot.bot.handlers.utils import RateLimiter
+    from ugc_bot.bot.telegram.handlers.utils import RateLimiter
     from ugc_bot.infrastructure.redis_rate_limiter import RedisRateLimiter
 
     if config.redis.use_redis_storage and config.redis.redis_url:

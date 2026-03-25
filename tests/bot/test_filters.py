@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from tests.helpers.fakes import FakeMessage
-from ugc_bot.bot.filters import TextEqualsKey
+from ugc_bot.bot.telegram.filters import TextEqualsKey
 
 
 @pytest.mark.asyncio

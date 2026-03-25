@@ -12,7 +12,7 @@ from tests.helpers.fakes import (
     make_language_repo,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.start import (
+from ugc_bot.bot.telegram.handlers.start import (
     language_command,
     language_selected,
     start_command,

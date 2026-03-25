@@ -23,7 +23,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.blogger_registration import (
+from ugc_bot.bot.telegram.handlers.blogger_registration import (
     BloggerRegistrationStates,
     _audience_gender_from_callback,
     _blogger_gender_from_callback,
@@ -55,7 +55,7 @@ from ugc_bot.bot.handlers.blogger_registration import (
     start_registration_button,
     start_registration_inline,
 )
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_AGE_18_24,
     CALLBACK_BLOGGER_AGREE,
     CALLBACK_BLOGGER_AUDIENCE_A,
@@ -1288,7 +1288,7 @@ async def test_handle_city_with_location_normalized_empty_sends_error(
     adapter = TelegramEventAdapter()
 
     with patch(
-        "ugc_bot.bot.handlers.blogger_registration.normalize_geo_token",
+        "ugc_bot.bot.telegram.handlers.blogger_registration.normalize_geo_token",
         return_value="",
     ):
         await handle_city(
@@ -2326,7 +2326,7 @@ async def test_work_format_callback_duplicate_instagram_sends_message(
     )
 
     with patch(
-        "ugc_bot.bot.handlers.blogger_registration.BloggerRegistrationService"
+        "ugc_bot.bot.telegram.handlers.blogger_registration.BloggerRegistrationService"
         ".save_blogger_before_agreement",
         new_callable=AsyncMock,
         side_effect=Exception("UniqueViolation instagram_url duplicate"),

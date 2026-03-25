@@ -27,7 +27,7 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.payment_service import InvoiceData
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.payments import (
+from ugc_bot.bot.telegram.handlers.payments import (
     pay_order,
     pay_order_callback,
     pre_checkout_query_handler,

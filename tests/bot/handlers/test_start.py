@@ -11,18 +11,20 @@ from tests.helpers.fakes import (
     FakeUser,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.advertiser_registration import (
+from ugc_bot.bot.telegram.handlers.advertiser_registration import (
     choose_advertiser_role,
 )
-from ugc_bot.bot.handlers.blogger_registration import choose_creator_role
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.blogger_registration import (
+    choose_creator_role,
+)
+from ugc_bot.bot.telegram.handlers.keyboards import (
     advertiser_menu_inline_keyboard,
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
     main_menu_inline_keyboard,
     role_inline_keyboard,
 )
-from ugc_bot.bot.handlers.start import (
+from ugc_bot.bot.telegram.handlers.start import (
     change_role_button,
     change_role_callback,
     country_selected,

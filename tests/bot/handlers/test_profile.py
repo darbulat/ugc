@@ -29,7 +29,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     UpdateBloggerProfileResult,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_PROFILE_AGREE,
     CALLBACK_PROFILE_AUDIENCE_F,
     CALLBACK_PROFILE_EDIT,
@@ -40,7 +40,7 @@ from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_REGION_PREFIX,
     CALLBACK_PROFILE_WORK_ADS,
 )
-from ugc_bot.bot.handlers.profile import (
+from ugc_bot.bot.telegram.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
     _BLOGGER_AGREEMENTS_STATE,
     EditProfileStates,
@@ -1292,7 +1292,7 @@ async def test_edit_profile_enter_value_city_normalized_empty_shows_failed(
     )
     reg_service = FakeBloggerRegistrationService()
     with patch(
-        "ugc_bot.bot.handlers.profile.normalize_geo_token",
+        "ugc_bot.bot.telegram.handlers.profile.normalize_geo_token",
         return_value="",
     ):
         await edit_profile_enter_value(

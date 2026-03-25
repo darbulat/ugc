@@ -7,7 +7,7 @@ import pytest
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.methods import SendMessage
 
-from ugc_bot.bot.handlers.utils import send_with_retry
+from ugc_bot.bot.telegram.handlers.utils import send_with_retry
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,7 @@ from tests.helpers.services import build_order_service
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.feedback import handle_feedback
+from ugc_bot.bot.telegram.handlers.feedback import handle_feedback
 from ugc_bot.domain.enums import AudienceGender, InteractionStatus, UserStatus
 from ugc_bot.infrastructure.memory_repositories import InMemoryNpsRepository
 
@@ -801,7 +801,7 @@ async def test_feedback_handler_nps_saves_score(
 ) -> None:
     """NPS callback to comment step; handle_nps_comment saves score."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_nps,
         handle_nps_comment,
@@ -855,7 +855,7 @@ async def test_handle_nps_shows_branch_prompt_score_5_adv(
 ) -> None:
     """NPS score 5 with adv kind shows advertiser-specific prompt."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     advertiser = await create_test_user(
@@ -906,7 +906,7 @@ async def test_handle_nps_shows_branch_prompt_score_5_blog(
 ) -> None:
     """NPS score 5 with blog kind shows blogger-specific prompt."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     blogger = await create_test_user(
@@ -957,7 +957,7 @@ async def test_handle_nps_shows_branch_prompt_score_1_adv(
 ) -> None:
     """NPS score 1 with adv kind shows advertiser-specific prompt."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     advertiser = await create_test_user(
@@ -995,7 +995,10 @@ async def test_handle_nps_comment_saves_text_comment(
 ) -> None:
     """NPS comment with text saves full comment."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps, handle_nps_comment
+    from ugc_bot.bot.telegram.handlers.feedback import (
+        handle_nps,
+        handle_nps_comment,
+    )
 
     user_service = UserRoleService(user_repo=user_repo)
     blogger = await create_test_user(
@@ -1031,7 +1034,7 @@ async def test_handle_nps_comment_session_expired(
 ) -> None:
     """NPS comment when state has no nps_user_id shows session expired."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps_comment
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps_comment
 
     user_service = UserRoleService(user_repo=user_repo)
     await create_test_user(
@@ -1056,7 +1059,7 @@ async def test_handle_nps_comment_from_user_none(
 ) -> None:
     """NPS comment when message has no from_user returns without error."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps_comment
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps_comment
 
     user_service = UserRoleService(user_repo=user_repo)
     await create_test_user(
@@ -1085,7 +1088,7 @@ async def test_handle_nps_comment_invalid_user_id(
 ) -> None:
     """NPS comment with invalid user_id in state shows error."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps_comment
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps_comment
 
     user_service = UserRoleService(user_repo=user_repo)
     await create_test_user(
@@ -1110,7 +1113,7 @@ async def test_handle_nps_comment_user_id_mismatch(
 ) -> None:
     """NPS comment when user differs from nps_user_id: insufficient rights."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps_comment
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps_comment
 
     user_a = await create_test_user(
         user_repo,
@@ -1144,7 +1147,7 @@ async def test_handle_nps_no_callback_data(
 ) -> None:
     """When callback has no data, return without error."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
@@ -1164,7 +1167,7 @@ async def test_handle_nps_wrong_parts_count(
 ) -> None:
     """Reject nps callback with wrong number of parts."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(data="nps:uuid", user=FakeUser(1))
@@ -1181,7 +1184,7 @@ async def test_handle_nps_score_out_of_range(
 ) -> None:
     """Reject nps score not in 1-5."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     await create_test_user(
@@ -1214,7 +1217,7 @@ async def test_handle_nps_rejects_blocked_user(
 ) -> None:
     """NPS from blocked user is rejected."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     advertiser = await create_test_user(
         user_repo,
@@ -1249,7 +1252,7 @@ async def test_handle_nps_rejects_paused_user(
 ) -> None:
     """NPS from paused user is rejected."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     advertiser = await create_test_user(
         user_repo,
@@ -1284,7 +1287,7 @@ async def test_handle_nps_user_id_mismatch(
 ) -> None:
     """NPS when callback user_id does not match logged-in user returns error."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     await create_test_user(
         user_repo,
@@ -1309,7 +1312,7 @@ async def test_handle_nps_rejects_non_advertiser(
 ) -> None:
     """NPS from non-advertiser is rejected."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     await create_test_user(
         user_repo,
@@ -1357,7 +1360,7 @@ async def test_feedback_reason_records_and_marks_blogger(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.domain.entities import BloggerProfile
     from ugc_bot.domain.enums import WorkFormat
     from ugc_bot.infrastructure.memory_repositories import (
@@ -1511,7 +1514,7 @@ async def test_handle_feedback_reason_no_data(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
         InMemoryInteractionRepository,
@@ -1561,7 +1564,7 @@ async def test_handle_feedback_reason_wrong_parts_count(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
         InMemoryInteractionRepository,
@@ -1609,7 +1612,7 @@ async def test_handle_feedback_reason_rejects_blocked_user(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1670,7 +1673,7 @@ async def test_handle_feedback_reason_rejects_paused_user(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1731,7 +1734,7 @@ async def test_handle_feedback_reason_interaction_not_found(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1786,7 +1789,7 @@ async def test_handle_feedback_reason_adv_wrong_user(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1858,7 +1861,7 @@ async def test_handle_feedback_reason_blog_wrong_user(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1924,7 +1927,7 @@ async def test_handle_feedback_reason_invalid_uuid(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -1972,7 +1975,7 @@ async def test_feedback_reason_other_sets_state(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryBloggerProfileRepository,
     )
@@ -2039,7 +2042,7 @@ async def test_handle_no_deal_other_text_records_feedback(
 ) -> None:
     """User text in waiting_no_deal_other: record feedback, clear state."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2099,7 +2102,7 @@ async def test_handle_no_deal_other_text_no_from_user(
 ) -> None:
     """When message has no from_user, return without reply."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2154,7 +2157,7 @@ async def test_handle_no_deal_other_text_session_expired(
 ) -> None:
     """When state has invalid kind, reply session expired."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2203,7 +2206,7 @@ async def test_handle_no_deal_other_text_adv_wrong_user(
 ) -> None:
     """Reject no_deal_other when advertiser not interaction advertiser."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2269,7 +2272,7 @@ async def test_handle_no_deal_other_text_blog_wrong_user(
 ) -> None:
     """Reject no_deal_other when blogger is not the interaction blogger."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2329,7 +2332,7 @@ async def test_handle_no_deal_other_text_empty_asks_again(
 ) -> None:
     """User sends empty in waiting_no_deal_other: ask again, keep state."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2389,7 +2392,7 @@ async def test_handle_no_deal_other_text_interaction_not_found(
 ) -> None:
     """Interaction not found in waiting_no_deal_other: reply and clear state."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2436,7 +2439,7 @@ async def test_handle_no_deal_other_text_invalid_uuid(
 ) -> None:
     """State has invalid interaction_id UUID: reply error and clear state."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2485,7 +2488,7 @@ async def test_handle_no_deal_other_text_user_not_in_repo_clears_state(
 ) -> None:
     """When user is not in repo, clear state and return without reply."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -2541,7 +2544,7 @@ async def test_handle_issue_description_from_user_none(
     """handle_issue_description with no from_user returns without error."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -2589,7 +2592,7 @@ async def test_handle_issue_send_empty_parts_asks_description(
     """Send button with no description/photos shows add description message."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -2664,7 +2667,7 @@ async def test_handle_issue_description_creates_complaint_and_records(
     """User sends text, clicks Отправить: create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -2759,7 +2762,7 @@ async def test_handle_issue_description_blogger_creates_complaint(
     """Blogger text, clicks Отправить: create complaint and record ISSUE."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -2856,7 +2859,7 @@ async def test_handle_issue_description_expired_state(
     """State data missing (expired): reply session expired and clear state."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -2910,7 +2913,7 @@ async def test_handle_issue_description_interaction_not_found(
     """When interaction is not found (valid UUID), reply and clear state."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -2969,7 +2972,7 @@ async def test_handle_issue_description_user_not_in_repo_clears_state(
     """User not in repo in waiting_issue_description: clear state and return."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -3029,7 +3032,7 @@ async def test_feedback_reason_invalid_code(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -3086,7 +3089,7 @@ async def test_feedback_reason_blogger_conditions(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -3146,7 +3149,7 @@ async def test_handle_issue_description_with_photos(
 
     from tests.helpers.fakes import FakePhotoSize
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -3673,7 +3676,7 @@ async def test_handle_feedback_issue_sets_state(
         event_adapter=event_adapter,
     )
 
-    from ugc_bot.bot.handlers.feedback import FeedbackStates
+    from ugc_bot.bot.telegram.handlers.feedback import FeedbackStates
 
     assert state.state == FeedbackStates.waiting_issue_description
     assert callback.message.answers
@@ -3734,7 +3737,7 @@ async def test_handle_issue_description_complaint_fails(
     """When complaint creation fails on Отправить, user gets error message."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -3801,7 +3804,7 @@ async def test_handle_feedback_reason_invalid_hex(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
 
     user_service = UserRoleService(user_repo=user_repo)
     interaction_service = InteractionService(interaction_repo=interaction_repo)
@@ -3847,7 +3850,7 @@ async def test_handle_issue_description_empty_text_no_photos(
     """When text and photos empty, show prompt to add description."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -3910,7 +3913,7 @@ async def test_handle_issue_description_send_button_invalid_uuid(
     """When Отправить with invalid interaction_id in state, show error."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -3967,7 +3970,7 @@ async def test_handle_issue_description_send_button_blogger(
     """Blogger submits issue: complaint created with blogger as reporter."""
 
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -4031,7 +4034,7 @@ async def test_handle_nps_invalid_kind_defaults_to_blog(
 ) -> None:
     """When kind is invalid, default to blog."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user = await create_test_user(
         user_repo,
@@ -4067,7 +4070,7 @@ async def test_handle_nps_score_zero_rejected(
 ) -> None:
     """Reject score 0."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user = await create_test_user(
         user_repo,
@@ -4092,7 +4095,7 @@ async def test_handle_nps_score_six_rejected(
 ) -> None:
     """Reject score 6."""
 
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user = await create_test_user(
         user_repo,
@@ -4117,7 +4120,7 @@ async def test_handle_nps_comment_invalid_uuid(
 ) -> None:
     """Reject invalid nps_user_id in state."""
 
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_nps_comment,
     )
@@ -4440,7 +4443,7 @@ async def test_handle_no_deal_other_text_advertiser_records(
     bot_texts_service,
 ) -> None:
     """Advertiser no_deal other records via record_advertiser_feedback (600)."""
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_no_deal_other_text,
     )
@@ -4500,7 +4503,7 @@ async def test_handle_issue_description_no_from_user_returns(
 ) -> None:
     """When message has no from_user, return without processing (803)."""
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -4547,7 +4550,7 @@ async def test_handle_nps_user_not_found_returns(
     user_repo, interaction_repo, nps_service, config, bot_texts_service
 ) -> None:
     """When user not in repo on NPS callback, return without error (973-975)."""
-    from ugc_bot.bot.handlers.feedback import handle_nps
+    from ugc_bot.bot.telegram.handlers.feedback import handle_nps
 
     user_service = UserRoleService(user_repo=user_repo)
     callback = FakeCallback(
@@ -4576,7 +4579,7 @@ async def test_handle_issue_append_content_invalid_uuid(
 ) -> None:
     """_handle_issue_append_content shows error on invalid UUID (754-757)."""
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -4629,7 +4632,7 @@ async def test_handle_issue_append_content_interaction_not_found(
 ) -> None:
     """_handle_issue_append_content shows error when interaction missing."""
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -4684,7 +4687,7 @@ async def test_handle_issue_append_content_wrong_user_no_access(
 ) -> None:
     """_handle_issue_append_content rejects wrong user (764-766)."""
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_issue_description,
     )
@@ -4752,7 +4755,7 @@ async def test_handle_feedback_reason_invalid_reason_code(
     from ugc_bot.application.services.blogger_registration_service import (
         BloggerRegistrationService,
     )
-    from ugc_bot.bot.handlers.feedback import handle_feedback_reason
+    from ugc_bot.bot.telegram.handlers.feedback import handle_feedback_reason
 
     user = await create_test_user(
         user_repo,
@@ -4796,7 +4799,7 @@ async def test_handle_nps_comment_session_expired_missing_score(
     user_repo, nps_service, config, bot_texts_service
 ) -> None:
     """NPS comment: nps_user_id set but nps_score missing -> session expired."""
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         FeedbackStates,
         handle_nps_comment,
     )
@@ -4832,7 +4835,7 @@ async def test_handle_issue_description_send_button_user_not_in_repo(
 ) -> None:
     """When Отправить and user not in repo, state is cleared and returns."""
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,
@@ -4894,7 +4897,7 @@ async def test_handle_issue_description_send_button_interaction_not_found(
 ) -> None:
     """Отправить with valid UUID but interaction missing: show not found."""
     from ugc_bot.application.services.complaint_service import ComplaintService
-    from ugc_bot.bot.handlers.feedback import (
+    from ugc_bot.bot.telegram.handlers.feedback import (
         DEFAULT_ISSUE_SEND_BUTTON_TEXT,
         FeedbackStates,
         handle_issue_description,

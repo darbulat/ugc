@@ -47,7 +47,7 @@ from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )

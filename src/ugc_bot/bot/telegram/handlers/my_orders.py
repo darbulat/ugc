@@ -26,18 +26,18 @@ from ugc_bot.application.services.offer_response_service import (
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.filters import TextEqualsKey
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.filters import TextEqualsKey
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_PROFILE_AGREE,
     CALLBACK_PROFILE_MENU_MY_ORDERS,
     PAY_ORDER_CALLBACK_PREFIX,
     confirm_agreement_inline_keyboard,
 )
-from ugc_bot.bot.handlers.profile import (
+from ugc_bot.bot.telegram.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
     _BLOGGER_AGREEMENTS_STATE,
 )
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,

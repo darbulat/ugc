@@ -18,7 +18,7 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import send_with_retry
+from ugc_bot.bot.telegram.handlers.utils import send_with_retry
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.container import Container

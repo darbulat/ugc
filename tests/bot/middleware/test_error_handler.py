@@ -27,7 +27,7 @@ from ugc_bot.application.errors import (
     OrderNotFoundError,
     UserNotFoundError,
 )
-from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.bot.telegram.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
@@ -124,7 +124,7 @@ async def test_middleware_handles_unexpected_error() -> None:
 async def test_middleware_handles_telegram_network_error(caplog) -> None:
     """TelegramNetworkError yields WARNING log and generic user message."""
     caplog.set_level(
-        logging.WARNING, logger="ugc_bot.bot.middleware.error_handler"
+        logging.WARNING, logger="ugc_bot.bot.telegram.middleware.error_handler"
     )
     middleware = ErrorHandlerMiddleware(metrics_collector=MetricsCollector())
     message = FakeMessage(user=FakeUser(123))
