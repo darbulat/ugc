@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 max_router = MaxRouter()
 
 # Import Max handlers here (registers routes on import)
-# from ugc_bot.bot.max.handlers import start as _start  # noqa: F401
+from ugc_bot.bot.max.handlers.start import router as start_router  # noqa: E402
+
+max_router.include(start_router)
 
 
 @asynccontextmanager

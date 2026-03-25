@@ -99,3 +99,8 @@ class MaxRouter:
         logger.debug(
             "No Max callback handler matched for data=%r", incoming.data
         )
+
+    def include(self, router: "MaxRouter") -> None:
+        """Merge all handlers from another router into this one."""
+        self._message_handlers.extend(router._message_handlers)
+        self._callback_handlers.extend(router._callback_handlers)
