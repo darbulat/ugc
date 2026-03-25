@@ -459,11 +459,6 @@ class ReferralStatsService:
         if eff_limit <= 0:
             eff_limit = 10_000_000
 
-        creators_count = (
-            await self.user_referral_binding_repo.count_by_referrer(
-                referrer_user_id, session=session
-            )
-        )
         bindings = list(
             await self.user_referral_binding_repo.list_by_referrer(
                 referrer_user_id,
@@ -472,6 +467,14 @@ class ReferralStatsService:
                 session=session,
             )
         )
+        if len(bindings) < eff_limit:
+            creators_count = len(bindings)
+        else:
+            creators_count = (
+                await self.user_referral_binding_repo.count_by_referrer(
+                    referrer_user_id, session=session
+                )
+            )
 
         if self.referral_income_entry_repo is not None:
             # Primary path: use income_entries as source of truth

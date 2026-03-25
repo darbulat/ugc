@@ -2972,9 +2972,10 @@ async def test_record_advertiser_no_payment_skips() -> None:
 async def test_commission_rate_uses_registration_date_not_binding_date() -> (
     None
 ):
-    """Commission rate uses user registration date, not binding date.
+    """Commission rate uses referrer's registration date, not binding date.
 
-    User registered 2 years ago → gets 3% (based on user.created_at).
+    Referrer registered 2 years ago → gets 3% (based on referrer.created_at).
+    Creator registered 3 months ago → irrelevant when referrer exists.
     Binding created 6 months ago → irrelevant for rate calculation.
     """
     now = datetime.now(timezone.utc)
@@ -2983,17 +2984,29 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
     advertiser_id = uuid4()
     order_id = uuid4()
 
-    # User registered 2 years ago → should get 3%
     user_repo = InMemoryUserRepository()
+    # Referrer registered 2 years ago → should get 3%
     await user_repo.save(
         User(
-            user_id=creator_id,
-            telegram_id="old_creator",
+            user_id=referrer_id,
+            telegram_id="old_referrer",
             messenger_type=MessengerType.TELEGRAM,
-            username="old_creator",
+            username="old_referrer",
             status=UserStatus.ACTIVE,
             issue_count=0,
             created_at=now - timedelta(days=730),  # 2 years ago
+        )
+    )
+    # Creator registered recently — would be 10% if used, but referrer's date wins
+    await user_repo.save(
+        User(
+            user_id=creator_id,
+            telegram_id="new_creator",
+            messenger_type=MessengerType.TELEGRAM,
+            username="new_creator",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=90),  # 3 months ago
         )
     )
 
@@ -3067,7 +3080,7 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
 
     assert len(entry_repo.entries) == 1
     entry = entry_repo.entries[0]
-    # User registered 2 years ago → after-first-year rate (3%)
+    # Referrer registered 2 years ago → after-first-year rate (3%)
     assert entry.commission_rate == Decimal("0.03")
 
 

@@ -76,12 +76,17 @@ def resolve_rate(
 
     If the referrer has a custom ``referral_payout_rate`` it takes priority
     (the referrer earns income at their own rate).  Otherwise, the default
-    10%/3% threshold based on the referred user's registration date is used.
+    10%/3% threshold based on the referrer's registration date is used.
     """
     if referrer is not None and referrer.referral_payout_rate is not None:
         return referrer.referral_payout_rate
     completed = order.completed_at or datetime.now(timezone.utc)
-    yrs = years_since(referred_user.created_at, completed)
+    base_date = (
+        referrer.created_at
+        if referrer is not None
+        else referred_user.created_at
+    )
+    yrs = years_since(base_date, completed)
     return Decimal(str(FIRST_YEAR_RATE if yrs < 1.0 else AFTER_FIRST_YEAR_RATE))
 
 

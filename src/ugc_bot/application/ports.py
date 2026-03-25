@@ -919,6 +919,7 @@ class UserReferralBindingRepository(ABC):
     ) -> int:
         """Count bindings by referrer user ID."""
 
+    @abstractmethod
     async def save_or_get_existing(
         self,
         binding: UserReferralBinding,
@@ -928,11 +929,7 @@ class UserReferralBindingRepository(ABC):
 
         Returns (binding, created) where created=True if newly saved,
         False if an existing binding was found (duplicate).
-        Default implementation calls save() and handles duplicates;
-        infrastructure may override with SAVEPOINT for safety.
         """
-        await self.save(binding, session=session)
-        return binding, True
 
 
 class UserReferralPendingRepository(ABC):

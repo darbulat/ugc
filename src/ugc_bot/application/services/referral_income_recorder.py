@@ -86,6 +86,12 @@ class ReferralIncomeRecorder:
         referrer = await self.user_repo.get_by_id(
             binding.referrer_user_id, session=session
         )
+        if referrer is None:
+            logger.warning(
+                "Referrer user_id=%s not found for order_id=%s",
+                binding.referrer_user_id,
+                order.order_id,
+            )
 
         if order.bloggers_needed <= 0:
             return
@@ -166,6 +172,12 @@ class ReferralIncomeRecorder:
         referrer = await self.user_repo.get_by_id(
             binding.referrer_user_id, session=session
         )
+        if referrer is None:
+            logger.warning(
+                "Referrer user_id=%s not found for order_id=%s",
+                binding.referrer_user_id,
+                order.order_id,
+            )
 
         platform_revenue = Decimal(str(payment.amount))
         rate = resolve_rate(advertiser, order, referrer=referrer)
