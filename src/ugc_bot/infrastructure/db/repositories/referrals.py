@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy import and_, delete, func, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -124,6 +125,36 @@ class SqlAlchemyUserReferralBindingRepository(UserReferralBindingRepository):
                 )
             )
             return int(exec_result.scalar_one() or 0)
+
+    async def save_or_get_existing(  # pragma: no cover – needs real DB
+        self,
+        binding: UserReferralBinding,
+        session: object | None = None,
+    ) -> tuple[UserReferralBinding, bool]:
+        """Save binding using SAVEPOINT; return existing on conflict."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            try:
+                async with db_session.begin_nested():
+                    model = UserReferralBindingModel(
+                        referrer_user_id=binding.referrer_user_id,
+                        referred_user_id=binding.referred_user_id,
+                        created_at=binding.created_at,
+                    )
+                    db_session.add(model)
+                return binding, True
+            except IntegrityError:
+                exec_result = await db_session.execute(
+                    select(UserReferralBindingModel).where(
+                        UserReferralBindingModel.referred_user_id
+                        == binding.referred_user_id
+                    )
+                )
+                result = exec_result.scalar_one_or_none()
+                if result is None:
+                    raise
+                return _to_user_referral_binding_entity(result), False
 
 
 @dataclass(slots=True)

@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal
 from math import ceil
@@ -403,7 +404,7 @@ async def payout_button_callback(
         msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),
-        ).format(currency=currency)
+        ).format_map(defaultdict(str, currency=currency))
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text=msg,
@@ -450,7 +451,7 @@ async def payout_button_callback(
         msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),
-        ).format(currency=currency)
+        ).format_map(defaultdict(str, currency=currency))
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
             text=msg,

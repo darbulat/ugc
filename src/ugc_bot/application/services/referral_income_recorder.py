@@ -15,7 +15,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.application.services.referral_commission import resolve_rate
 from ugc_bot.domain.entities import Order, ReferralIncomeEntry
-from ugc_bot.domain.enums import ReferralIncomeType
+from ugc_bot.domain.enums import PaymentStatus, ReferralIncomeType
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,10 @@ class ReferralIncomeRecorder:
         payment = await self.payment_repo.get_by_order(
             order.order_id, session=session
         )
-        if payment is None:
+        if payment is None or payment.status != PaymentStatus.PAID:
             logger.warning(
-                "No payment for order_id=%s (creator referral income skipped)",
+                "No paid payment for order_id=%s "
+                "(creator referral income skipped)",
                 order.order_id,
             )
             return
@@ -82,10 +83,14 @@ class ReferralIncomeRecorder:
         if creator is None:
             return
 
+        referrer = await self.user_repo.get_by_id(
+            binding.referrer_user_id, session=session
+        )
+
         if order.bloggers_needed <= 0:
             return
         platform_revenue = Decimal(str(payment.amount)) / order.bloggers_needed
-        rate = resolve_rate(creator, order)
+        rate = resolve_rate(creator, order, referrer=referrer)
         commission = (platform_revenue * rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -145,9 +150,9 @@ class ReferralIncomeRecorder:
         payment = await self.payment_repo.get_by_order(
             order.order_id, session=session
         )
-        if payment is None:
+        if payment is None or payment.status != PaymentStatus.PAID:
             logger.warning(
-                "No payment for order_id=%s (advertiser referral skipped)",
+                "No paid payment for order_id=%s (advertiser referral skipped)",
                 order.order_id,
             )
             return
@@ -158,8 +163,12 @@ class ReferralIncomeRecorder:
         if advertiser is None:
             return
 
+        referrer = await self.user_repo.get_by_id(
+            binding.referrer_user_id, session=session
+        )
+
         platform_revenue = Decimal(str(payment.amount))
-        rate = resolve_rate(advertiser, order)
+        rate = resolve_rate(advertiser, order, referrer=referrer)
         commission = (platform_revenue * rate).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
