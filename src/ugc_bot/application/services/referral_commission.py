@@ -77,16 +77,16 @@ def resolve_rate(
     If the referrer has a custom ``referral_payout_rate`` it takes priority
     (the referrer earns income at their own rate).  Otherwise, the default
     10%/3% threshold based on the referrer's registration date is used.
+
+    The one-year window is always counted from the **referrer's** creation
+    date, not the referred user's.
     """
     if referrer is not None and referrer.referral_payout_rate is not None:
         return referrer.referral_payout_rate
     completed = order.completed_at or datetime.now(timezone.utc)
-    base_date = (
-        referrer.created_at
-        if referrer is not None
-        else referred_user.created_at
-    )
-    yrs = years_since(base_date, completed)
+    if referrer is None:
+        raise ValueError("referrer is required to calculate commission rate")
+    yrs = years_since(referrer.created_at, completed)
     return Decimal(str(FIRST_YEAR_RATE if yrs < 1.0 else AFTER_FIRST_YEAR_RATE))
 
 

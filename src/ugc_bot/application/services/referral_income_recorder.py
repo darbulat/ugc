@@ -92,6 +92,7 @@ class ReferralIncomeRecorder:
                 binding.referrer_user_id,
                 order.order_id,
             )
+            return
 
         if order.bloggers_needed <= 0:
             return
@@ -178,6 +179,7 @@ class ReferralIncomeRecorder:
                 binding.referrer_user_id,
                 order.order_id,
             )
+            return
 
         platform_revenue = Decimal(str(payment.amount))
         rate = resolve_rate(advertiser, order, referrer=referrer)

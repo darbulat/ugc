@@ -1280,6 +1280,17 @@ async def test_record_creator_referral_income_creates_entry() -> None:
     user_repo = InMemoryUserRepository()
     await user_repo.save(
         User(
+            user_id=referrer_id,
+            telegram_id="referrer1",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer1",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    await user_repo.save(
+        User(
             user_id=creator_id,
             telegram_id="creator1",
             messenger_type=MessengerType.TELEGRAM,
@@ -1437,6 +1448,17 @@ async def test_record_advertiser_referral_income_creates_entry() -> None:
     user_repo = InMemoryUserRepository()
     await user_repo.save(
         User(
+            user_id=referrer_id,
+            telegram_id="referrer2",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer2",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
+    await user_repo.save(
+        User(
             user_id=advertiser_id,
             telegram_id="adv1",
             messenger_type=MessengerType.TELEGRAM,
@@ -1534,6 +1556,17 @@ async def test_record_creator_referral_income_idempotent() -> None:
     order_id = uuid4()
 
     user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=referrer_id,
+            telegram_id="referrer3",
+            messenger_type=MessengerType.TELEGRAM,
+            username="referrer3",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=now - timedelta(days=30),
+        )
+    )
     await user_repo.save(
         User(
             user_id=creator_id,
@@ -2997,7 +3030,7 @@ async def test_commission_rate_uses_registration_date_not_binding_date() -> (
             created_at=now - timedelta(days=730),  # 2 years ago
         )
     )
-    # Creator registered recently — would be 10% if used, but referrer's date wins
+    # Creator registered recently — referrer's date wins
     await user_repo.save(
         User(
             user_id=creator_id,
