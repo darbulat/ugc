@@ -45,7 +45,7 @@ def _build_instagram_verification_repo(
 
             logger.info("Using Redis for Instagram verification codes")
             return RedisInstagramVerificationRepository(redis_url=redis_url)
-        except ImportError:
+        except ImportError:  # pragma: no cover
             logger.debug(
                 "redis package not installed, using SQL for verification codes"
             )

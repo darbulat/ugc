@@ -83,6 +83,8 @@
     classDef service fill:#CFD8DC,stroke:#455A64,color:#333
     classDef infra fill:#D7CCC8,stroke:#5D4037,color:#333
     classDef country fill:#C8E6C9,stroke:#2E7D32,color:#333
+    classDef notify fill:#BBDEFB,stroke:#1565C0,color:#333
+    classDef adminNotify fill:#F8BBD0,stroke:#AD1457,color:#333
 
     %% ENTRY POINT
     START["/start<br/><i>📩 UMC — сервис для UGC. Бизнесу — подбор креаторов,…</i>"]:::entry
@@ -283,6 +285,52 @@
     VERIFY_IG -.-> IG_STATS
     SCHEDULER -.-> IG_STATS
 
+    %% INSTAGRAM WEBHOOK NOTIFICATIONS
+    IG_WH_VERIFIED["IG Verified<br/><i>📩 Instagram подтверждён ✅. Бренды могут отправлять …</i>"]:::notify
+    IG_WH_MISMATCH["IG Mismatch<br/><i>📩 Указанный в профиле Instagram не совпадает с акка…</i>"]:::notify
+    IG_WH_API_ERR["IG API Error<br/><i>📩 Не удалось проверить ваш Instagram-аккаунт. Попро…</i>"]:::notify
+
+    VERIFY_IG -->|webhook| IG_WH_VERIFIED
+    VERIFY_IG -->|mismatch| IG_WH_MISMATCH
+    VERIFY_IG -->|API error| IG_WH_API_ERR
+    IG_WH_VERIFIED --> CREATOR_MENU
+
+    %% INSTAGRAM STATS NOTIFICATIONS
+    IG_ACCOUNT_LOST["IG Account Lost<br/><i>📩 Ваш Instagram-аккаунт был удалён или изменён. Для…</i>"]:::notify
+
+    IG_STATS -->|account deleted| IG_ACCOUNT_LOST
+
+    %% KAFKA OFFER MESSAGE TO BLOGGER
+    KAFKA_OFFER_MSG["Offer to Blogger<br/><i>📩 Оффер с описанием заказа, фото продукта и кнопкам…</i>"]:::notify
+
+    KAFKA --> KAFKA_OFFER_MSG
+    KAFKA_OFFER_MSG --> OFFER_RESPONSE
+
+    %% SCHEDULER NOTIFICATIONS
+    SCHED_FB_ADV["Feedback → Advertiser<br/><i>📩 Хотим убедиться, что всё прошло корректно 🙌 Удало…</i>"]:::notify
+    SCHED_FB_BLOG["Feedback → Blogger<br/><i>📩 Мы хотим убедиться, что всё прошло корректно 🙌 Уд…</i>"]:::notify
+    SCHED_ROLE_REMIND["Role Reminder"]:::notify
+
+    SCHEDULER -->|feedback| SCHED_FB_ADV
+    SCHEDULER -->|feedback| SCHED_FB_BLOG
+    SCHED_FB_ADV --> FB_REASON
+    SCHED_FB_BLOG --> FB_REASON
+    SCHEDULER -->|role reminder| SCHED_ROLE_REMIND
+    SCHED_ROLE_REMIND --> ROLE_SELECT
+
+    %% ADMIN NOTIFICATIONS
+    ADMIN_NOTIFY_COMPLAINT["Complaint → Admins<br/><i>📩 Новая жалоба: ID, кто подал, на кого, причина</i>"]:::adminNotify
+    ADMIN_NOTIFY_ORDER["New Order → Admins<br/><i>📩 📋 Новый заказ: тип, описание, бюджет, формат</i>"]:::adminNotify
+    ADMIN_NOTIFY_PAID["Order Paid → Admins<br/><i>📩 ✅ Заказ оплачен — на модерацию, кнопка «Активиров…</i>"]:::adminNotify
+    ADMIN_NOTIFY_SUPPORT["Order → Support Chat<br/><i>📩 Уведомление в чат поддержки: заказ + контакты рек…</i>"]:::adminNotify
+
+    COMPLAINT_SAVED -.-> ADMIN_NOTIFY_COMPLAINT
+    ORDER_FINALIZE -.-> ADMIN_NOTIFY_ORDER
+    ORDER_FINALIZE -.-> ADMIN_NOTIFY_SUPPORT
+    PAYMENT_INVOICE -.->|paid| ADMIN_NOTIFY_PAID
+    ADMIN_NOTIFY_COMPLAINT -.-> ADMIN_PANEL
+    ADMIN_NOTIFY_PAID -.-> ADMIN_PANEL
+
     %% CLICK HANDLERS
     click START showNodeInfo
     click LANG_SELECT showNodeInfo
@@ -364,5 +412,17 @@
     click SCHEDULER showNodeInfo
     click REFERRAL showNodeInfo
     click ADMIN_PANEL showNodeInfo
+    click IG_WH_VERIFIED showNodeInfo
+    click IG_WH_MISMATCH showNodeInfo
+    click IG_WH_API_ERR showNodeInfo
+    click IG_ACCOUNT_LOST showNodeInfo
+    click KAFKA_OFFER_MSG showNodeInfo
+    click SCHED_FB_ADV showNodeInfo
+    click SCHED_FB_BLOG showNodeInfo
+    click SCHED_ROLE_REMIND showNodeInfo
+    click ADMIN_NOTIFY_COMPLAINT showNodeInfo
+    click ADMIN_NOTIFY_ORDER showNodeInfo
+    click ADMIN_NOTIFY_PAID showNodeInfo
+    click ADMIN_NOTIFY_SUPPORT showNodeInfo
 
         ```

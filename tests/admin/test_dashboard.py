@@ -352,6 +352,7 @@ def test_admin_dashboard_api(monkeypatch) -> None:
     assert response.json() == payload
 
 
+@pytest.mark.timeout(15)
 def test_admin_orders_api(monkeypatch) -> None:
     """Orders API returns paginated list."""
     orders = [
@@ -1105,6 +1106,7 @@ def test_admin_orders_redirect_when_not_authenticated(monkeypatch) -> None:
     assert "/admin/login" in response.headers.get("location", "")
 
 
+@pytest.mark.timeout(15)
 def test_admin_orders_with_status_filter(monkeypatch) -> None:
     """Orders API passes status filter to list_orders."""
     orders = [

@@ -387,6 +387,24 @@ _NODE_LABELS: dict[str, str] = {
     "SCHEDULER": "Планировщики",
     "REFERRAL": "Реферальная система",
     "ADMIN_PANEL": "Панель администратора",
+    # Instagram webhook notifications (to user)
+    "IG_WH_VERIFIED": "IG верификация успешна",
+    "IG_WH_MISMATCH": "IG аккаунт не совпадает",
+    "IG_WH_API_ERR": "IG API недоступен",
+    # Instagram stats notifications (to user)
+    "IG_ACCOUNT_LOST": "IG аккаунт потерян",
+    # Kafka consumer (to blogger)
+    "KAFKA_OFFER_MSG": "Оффер блогеру",
+    # Feedback scheduler (to user)
+    "SCHED_FB_ADV": "Обратная связь рекламодателю",
+    "SCHED_FB_BLOG": "Обратная связь блогеру",
+    # Role reminder scheduler (to user)
+    "SCHED_ROLE_REMIND": "Напоминание о выборе роли",
+    # Admin notifications
+    "ADMIN_NOTIFY_COMPLAINT": "Жалоба → админам",
+    "ADMIN_NOTIFY_ORDER": "Новый заказ → админам",
+    "ADMIN_NOTIFY_PAID": "Оплата → админам",
+    "ADMIN_NOTIFY_SUPPORT": "Заказ → чат поддержки",
 }
 
 _NODE_MESSAGES: dict[str, tuple[str, str]] = {
@@ -506,6 +524,40 @@ _NODE_MESSAGES: dict[str, tuple[str, str]] = {
         "Реферальная система — начисление и выплата вознаграждений",
     ),
     "ADMIN_PANEL": ("desc", "Панель администратора (SQLAdmin)"),
+    # Instagram webhook → user
+    "IG_WH_VERIFIED": ("key", "msg_instagram_confirmed"),
+    "IG_WH_MISMATCH": ("key", "msg_instagram_mismatch"),
+    "IG_WH_API_ERR": ("key", "msg_instagram_verification_api_unavailable"),
+    # Instagram stats → user
+    "IG_ACCOUNT_LOST": ("key", "msg_instagram_account_lost"),
+    # Kafka consumer → blogger
+    "KAFKA_OFFER_MSG": (
+        "desc",
+        "Оффер с описанием заказа, фото продукта и кнопками"
+        " «Готов снять UGC» / «Пропустить»",
+    ),
+    # Feedback scheduler → user
+    "SCHED_FB_ADV": ("key", "msg_feedback_request_adv"),
+    "SCHED_FB_BLOG": ("key", "msg_feedback_request_blog"),
+    # Role reminder → user
+    "SCHED_ROLE_REMIND": ("key", "msg_start"),
+    # Admin notifications
+    "ADMIN_NOTIFY_COMPLAINT": (
+        "desc",
+        "Новая жалоба: ID, кто подал, на кого, причина",
+    ),
+    "ADMIN_NOTIFY_ORDER": (
+        "desc",
+        "📋 Новый заказ: тип, описание, бюджет, формат",
+    ),
+    "ADMIN_NOTIFY_PAID": (
+        "desc",
+        "✅ Заказ оплачен — на модерацию, кнопка «Активировать»",
+    ),
+    "ADMIN_NOTIFY_SUPPORT": (
+        "desc",
+        "Уведомление в чат поддержки: заказ + контакты рекламодателя",
+    ),
 }
 
 
@@ -539,6 +591,8 @@ def _emit_styles(lines: list[str]) -> None:
         ("service", "#CFD8DC", "#455A64", "#333"),
         ("infra", "#D7CCC8", "#5D4037", "#333"),
         ("country", "#C8E6C9", "#2E7D32", "#333"),
+        ("notify", "#BBDEFB", "#1565C0", "#333"),
+        ("adminNotify", "#F8BBD0", "#AD1457", "#333"),
     ]
     for name, fill, stroke, color in defs:
         s = f"    classDef {name} "
@@ -782,6 +836,111 @@ def _emit_infra(
     lines.append("")
 
 
+def _emit_ig_webhook_notifications(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
+    lines.append("    %% INSTAGRAM WEBHOOK NOTIFICATIONS")
+    _n = _make_node_label
+    lines.append(
+        f'    IG_WH_VERIFIED["{_n("IG Verified", "IG_WH_VERIFIED", ru_texts)}"]:::notify'
+    )
+    lines.append(
+        f'    IG_WH_MISMATCH["{_n("IG Mismatch", "IG_WH_MISMATCH", ru_texts)}"]:::notify'
+    )
+    lines.append(
+        f'    IG_WH_API_ERR["{_n("IG API Error", "IG_WH_API_ERR", ru_texts)}"]:::notify'
+    )
+    lines.append("")
+    lines.append("    VERIFY_IG -->|webhook| IG_WH_VERIFIED")
+    lines.append("    VERIFY_IG -->|mismatch| IG_WH_MISMATCH")
+    lines.append("    VERIFY_IG -->|API error| IG_WH_API_ERR")
+    lines.append("    IG_WH_VERIFIED --> CREATOR_MENU")
+    lines.append("")
+
+
+def _emit_ig_stats_notifications(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
+    lines.append("    %% INSTAGRAM STATS NOTIFICATIONS")
+    _n = _make_node_label
+    lines.append(
+        f'    IG_ACCOUNT_LOST["{_n("IG Account Lost", "IG_ACCOUNT_LOST", ru_texts)}"]:::notify'
+    )
+    lines.append("")
+    lines.append("    IG_STATS -->|account deleted| IG_ACCOUNT_LOST")
+    lines.append("")
+
+
+def _emit_kafka_offer_message(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
+    lines.append("    %% KAFKA OFFER MESSAGE TO BLOGGER")
+    _n = _make_node_label
+    lines.append(
+        f'    KAFKA_OFFER_MSG["{_n("Offer to Blogger", "KAFKA_OFFER_MSG", ru_texts)}"]:::notify'
+    )
+    lines.append("")
+    lines.append("    KAFKA --> KAFKA_OFFER_MSG")
+    lines.append("    KAFKA_OFFER_MSG --> OFFER_RESPONSE")
+    lines.append("")
+
+
+def _emit_scheduler_notifications(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
+    lines.append("    %% SCHEDULER NOTIFICATIONS")
+    _n = _make_node_label
+    lines.append(
+        f'    SCHED_FB_ADV["{_n("Feedback → Advertiser", "SCHED_FB_ADV", ru_texts)}"]:::notify'
+    )
+    lines.append(
+        f'    SCHED_FB_BLOG["{_n("Feedback → Blogger", "SCHED_FB_BLOG", ru_texts)}"]:::notify'
+    )
+    lines.append(
+        f'    SCHED_ROLE_REMIND["{_n("Role Reminder", "SCHED_ROLE_REMIND", ru_texts)}"]:::notify'
+    )
+    lines.append("")
+    lines.append("    SCHEDULER -->|feedback| SCHED_FB_ADV")
+    lines.append("    SCHEDULER -->|feedback| SCHED_FB_BLOG")
+    lines.append("    SCHED_FB_ADV --> FB_REASON")
+    lines.append("    SCHED_FB_BLOG --> FB_REASON")
+    lines.append("    SCHEDULER -->|role reminder| SCHED_ROLE_REMIND")
+    lines.append("    SCHED_ROLE_REMIND --> ROLE_SELECT")
+    lines.append("")
+
+
+def _emit_admin_notifications(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
+    lines.append("    %% ADMIN NOTIFICATIONS")
+    _n = _make_node_label
+    lines.append(
+        f'    ADMIN_NOTIFY_COMPLAINT["{_n("Complaint → Admins", "ADMIN_NOTIFY_COMPLAINT", ru_texts)}"]:::adminNotify'
+    )
+    lines.append(
+        f'    ADMIN_NOTIFY_ORDER["{_n("New Order → Admins", "ADMIN_NOTIFY_ORDER", ru_texts)}"]:::adminNotify'
+    )
+    lines.append(
+        f'    ADMIN_NOTIFY_PAID["{_n("Order Paid → Admins", "ADMIN_NOTIFY_PAID", ru_texts)}"]:::adminNotify'
+    )
+    lines.append(
+        f'    ADMIN_NOTIFY_SUPPORT["{_n("Order → Support Chat", "ADMIN_NOTIFY_SUPPORT", ru_texts)}"]:::adminNotify'
+    )
+    lines.append("")
+    lines.append("    COMPLAINT_SAVED -.-> ADMIN_NOTIFY_COMPLAINT")
+    lines.append("    ORDER_FINALIZE -.-> ADMIN_NOTIFY_ORDER")
+    lines.append("    ORDER_FINALIZE -.-> ADMIN_NOTIFY_SUPPORT")
+    lines.append("    PAYMENT_INVOICE -.->|paid| ADMIN_NOTIFY_PAID")
+    lines.append("    ADMIN_NOTIFY_COMPLAINT -.-> ADMIN_PANEL")
+    lines.append("    ADMIN_NOTIFY_PAID -.-> ADMIN_PANEL")
+    lines.append("")
+
+
 def build_mermaid(
     states: dict[str, list[str]],
     ru_texts: dict[str, str],
@@ -851,6 +1010,11 @@ def build_mermaid(
     _emit_complaints(lines, ru_texts)
     _emit_shared(lines, ru_texts)
     _emit_infra(lines, ru_texts)
+    _emit_ig_webhook_notifications(lines, ru_texts)
+    _emit_ig_stats_notifications(lines, ru_texts)
+    _emit_kafka_offer_message(lines, ru_texts)
+    _emit_scheduler_notifications(lines, ru_texts)
+    _emit_admin_notifications(lines, ru_texts)
 
     lines.append("    %% CLICK HANDLERS")
     for node_id in _NODE_MESSAGES:
@@ -953,6 +1117,10 @@ header h1 { font-size: 1.5rem }
     style="background:#CFD8DC"></span> Service</span>
   <span><span class="dot"
     style="background:#D7CCC8"></span> Infra</span>
+  <span><span class="dot"
+    style="background:#BBDEFB"></span> Notification</span>
+  <span><span class="dot"
+    style="background:#F8BBD0"></span> Admin Notify</span>
 </div>
 <div class="diagram-container">
 <pre class="mermaid">

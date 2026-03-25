@@ -277,7 +277,7 @@ def _build_aiograpi_fetcher(config: AppConfig):
             instagram_password=password,
             session_path=Path(session_path) if session_path else None,
         )
-    except ImportError:
+    except ImportError:  # pragma: no cover
         return None
 
 

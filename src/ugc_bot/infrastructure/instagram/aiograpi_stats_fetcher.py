@@ -24,7 +24,7 @@ def _import_aiograpi():
             from aiograpi.exceptions import (  # type: ignore[import-untyped]
                 FeedbackRequired,
             )
-        except ImportError:
+        except ImportError:  # pragma: no cover
             FeedbackRequired = None  # type: ignore[misc, assignment]
         return Client, UserNotFound, LoginRequired, FeedbackRequired
     except ImportError:

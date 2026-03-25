@@ -817,3 +817,76 @@ async def test_offer_dispatch_set_manager_noop_when_key_not_found() -> None:
     await repo.set_manager(order_id, blogger_id, manager_id)
     result = await repo.get_by_order_and_blogger(order_id, blogger_id)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_order_repo_list_all_paginated() -> None:
+    """list_all_paginated returns orders newest first."""
+    repo = InMemoryOrderRepository()
+    adv = uuid4()
+    o1 = _make_order(uuid4(), adv, OrderStatus.ACTIVE)
+    o2 = _make_order(uuid4(), adv, OrderStatus.ACTIVE)
+    o3 = _make_order(uuid4(), adv, OrderStatus.ACTIVE)
+    # Save with different created_at
+    from datetime import timedelta
+
+    o1 = Order(
+        **{**o1.__dict__, "created_at": o1.created_at - timedelta(hours=2)}
+    )
+    o2 = Order(
+        **{**o2.__dict__, "created_at": o2.created_at - timedelta(hours=1)}
+    )
+    await repo.save(o1)
+    await repo.save(o2)
+    await repo.save(o3)
+
+    # First page
+    page = await repo.list_all_paginated(limit=2, offset=0)
+    assert len(page) == 2
+    assert page[0].order_id == o3.order_id  # newest first
+
+    # Second page
+    page2 = await repo.list_all_paginated(limit=2, offset=2)
+    assert len(page2) == 1
+    assert page2[0].order_id == o1.order_id  # oldest
+
+
+@pytest.mark.asyncio
+async def test_order_repo_count_all() -> None:
+    """count_all returns total number of orders."""
+    repo = InMemoryOrderRepository()
+    assert await repo.count_all() == 0
+    adv = uuid4()
+    await repo.save(_make_order(uuid4(), adv, OrderStatus.ACTIVE))
+    await repo.save(_make_order(uuid4(), adv, OrderStatus.CLOSED))
+    assert await repo.count_all() == 2
+
+
+@pytest.mark.asyncio
+async def test_referral_binding_save_or_get_existing_returns_existing() -> None:
+    """save_or_get_existing returns existing binding."""
+    from ugc_bot.domain.entities import UserReferralBinding
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryUserReferralBindingRepository,
+    )
+
+    repo = InMemoryUserReferralBindingRepository()
+    referrer1 = uuid4()
+    referrer2 = uuid4()
+    referred = uuid4()
+    now = datetime.now(timezone.utc)
+
+    binding1 = UserReferralBinding(
+        referrer_user_id=referrer1, referred_user_id=referred, created_at=now
+    )
+    result1, created1 = await repo.save_or_get_existing(binding1)
+    assert created1 is True
+    assert result1.referrer_user_id == referrer1
+
+    # Try to save another binding for the same referred user
+    binding2 = UserReferralBinding(
+        referrer_user_id=referrer2, referred_user_id=referred, created_at=now
+    )
+    result2, created2 = await repo.save_or_get_existing(binding2)
+    assert created2 is False
+    assert result2.referrer_user_id == referrer1  # original binding returned
