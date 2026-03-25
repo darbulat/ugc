@@ -8,10 +8,10 @@
 
 - **FSM State Groups:** 9
 - **Total FSM States:** 43
-- **Callback Constants:** 55
+- **Callback Constants:** 56
 - **Services:** 22
-- **Domain Enums:** 14
-- **Handler files:** 16 (202 async handlers)
+- **Domain Enums:** 15
+- **Handler files:** 16 (203 async handlers)
 
 ### State Groups
 
@@ -53,7 +53,7 @@
 ### Domain Enums
 
 - **MessengerType**: TELEGRAM, MAX, WHATSAPP
-- **UserStatus**: NEW, ACTIVE, PAUSE, BLOCKED, DELETED
+- **UserStatus**: NEW, ACTIVE, PAUSE, BLOCKED, BOT_BLOCKED, DELETED
 - **AudienceGender**: MALE, FEMALE, ALL
 - **BloggerGender**: MALE, FEMALE
 - **WorkFormat**: ADS_IN_ACCOUNT, UGC_ONLY
@@ -66,6 +66,7 @@
 - **ReferralIncomeType**: CREATOR, ADVERTISER
 - **PayoutRequestStatus**: PENDING, PAID, CANCELLED, DELETED
 - **RejectionReason**: LOW_PRICE, WRONG_FORMAT, UNINTERESTING_PRODUCT, NO_TIME, ALREADY_WORKING_WITH_BRAND
+- **AuditAction**: CREATE, UPDATE, DELETE
 
         ## Flowchart
 
@@ -84,10 +85,10 @@
     classDef country fill:#C8E6C9,stroke:#2E7D32,color:#333
 
     %% ENTRY POINT
-    START["/start"]:::entry
-    LANG_SELECT{"Language<br/>ru|en|be|kk|uz"}:::country
-    COUNTRY_SELECT{"Country<br/>RU|BY|KZ|UZ"}:::country
-    ROLE_SELECT{"Role Selection"}:::role
+    START["/start<br/><i>📩 UMC — сервис для UGC. Бизнесу — подбор креаторов,…</i>"]:::entry
+    LANG_SELECT{"Language<br/>ru|en|be|kk|uz<br/><i>📩 Выберите язык / Choose language:</i>"}:::country
+    COUNTRY_SELECT{"Country<br/>RU|BY|KZ|UZ<br/><i>📩 Выберите вашу страну:</i>"}:::country
+    ROLE_SELECT{"Role Selection<br/><i>📩 Выбор роли: Я креатор / Мне нужны UGC-креаторы</i>"}:::role
 
     START --> LANG_SELECT
     LANG_SELECT --> COUNTRY_SELECT
@@ -97,21 +98,21 @@
     ROLE_SELECT -->|"Advertiser"| ADV_BRANCH
 
     %% CREATOR REGISTRATION
-    CREATOR_BRANCH["Create Profile"]:::role
-    BR_name["Name"]:::regStep
-    BR_phone["Phone"]:::regStep
-    BR_instagram["Instagram URL"]:::regStep
-    BR_city["City + Region"]:::regStep
-    BR_birth_date["Birth Date"]:::regStep
-    BR_blogger_gender["Gender (M/F)"]:::regStep
-    BR_topics["Topics"]:::regStep
-    BR_audience_gender["Audience Gender"]:::regStep
-    BR_audience_age["Audience Age Range"]:::regStep
-    BR_audience_geo["Audience Geography"]:::regStep
-    BR_price["Price per UGC"]:::regStep
-    BR_barter["Barter? (Y/N)"]:::regStep
-    BR_work_format["Work Format (UGC/Ads)"]:::regStep
-    BR_agreements["Agreement Confirmation"]:::regStep
+    CREATOR_BRANCH["Create Profile<br/><i>📩 Ты — UGC‑креатор. Заказчики уже ищут креаторов зд…</i>"]:::role
+    BR_name["Name<br/><i>📩 Как вас зовут?  Шаг 1 из 12</i>"]:::regStep
+    BR_phone["Phone<br/><i>📩 Укажите номер телефона для связи по заказу. Нажми…</i>"]:::regStep
+    BR_instagram["Instagram URL<br/><i>📩 Пришлите ссылку в формате instagram.com/name  Шаг…</i>"]:::regStep
+    BR_city["City + Region<br/><i>📩 Заказчики подбирают креаторов по городу: для дост…</i>"]:::regStep
+    BR_birth_date["Birth Date<br/><i>📩 Укажите дату рождения в формате ДД.ММ.ГГГГ (напри…</i>"]:::regStep
+    BR_blogger_gender["Gender (M/F)<br/><i>📩 Укажите ваш пол:  Шаг 5 из 12</i>"]:::regStep
+    BR_topics["Topics<br/><i>📩 О чём ваш контент? Напишите 1–5 тематики через за…</i>"]:::regStep
+    BR_audience_gender["Audience Gender<br/><i>📩 Кто в основном смотрит ваш контент? По наблюдения…</i>"]:::regStep
+    BR_audience_age["Audience Age Range<br/><i>📩 Основной возраст вашей аудитории?  Шаг 8 из 12</i>"]:::regStep
+    BR_audience_geo["Audience Geography<br/><i>📩 В каких городах в основном аудитория? До 3 городо…</i>"]:::regStep
+    BR_price["Price per UGC<br/><i>📩 Заказчики отбирают креаторов по бюджету — указанн…</i>"]:::regStep
+    BR_barter["Barter? (Y/N)<br/><i>📩 Много заказов с бартером — ответ «Да» увеличит чи…</i>"]:::regStep
+    BR_work_format["Work Format (UGC/Ads)<br/><i>📩 Помимо UGC, как ещё готов работать с брендами? По…</i>"]:::regStep
+    BR_agreements["Agreement Confirmation<br/><i>📩 Почти готово. Пожалуйста, ознакомьтесь с документ…</i>"]:::regStep
 
     CREATOR_BRANCH --> BR_name
     BR_name --> BR_phone
@@ -129,8 +130,8 @@
     BR_work_format --> BR_agreements
     BR_agreements --> CREATOR_MENU
 
-    CREATOR_MENU["Creator Menu"]:::menu
-    VERIFY_IG["Instagram Verify"]:::action
+    CREATOR_MENU["Creator Menu<br/><i>📩 Главное меню креатора: профиль, заказы, верификац…</i>"]:::menu
+    VERIFY_IG["Instagram Verify<br/><i>📩 Подтверждение Instagram: отправьте код в DM аккау…</i>"]:::action
     CREATOR_MENU --> VERIFY_IG
     CREATOR_MENU --> PROFILE_VIEW
     CREATOR_MENU --> MY_ORDERS
@@ -138,14 +139,14 @@
     CREATOR_MENU --> SUPPORT
 
     %% ADVERTISER REGISTRATION
-    ADV_BRANCH["Start Registration"]:::role
-    AR_name["Name"]:::regStep
-    AR_phone["Phone"]:::regStep
-    AR_city["City"]:::regStep
-    AR_brand["Brand Name"]:::regStep
-    AR_company_activity["Company Activity"]:::regStep
-    AR_site_link["Website URL"]:::regStep
-    AR_agreements["Agreement Confirmation"]:::regStep
+    ADV_BRANCH["Start Registration<br/><i>📩 Вы выбрали роль «Мне нужны UGC‑креаторы». Давайте…</i>"]:::role
+    AR_name["Name<br/><i>📩 Как вас зовут?</i>"]:::regStep
+    AR_phone["Phone<br/><i>📩 Укажите номер телефона для связи по заказу. Нажми…</i>"]:::regStep
+    AR_city["City<br/><i>📩 Из какого вы города? Пример: Казань / Москва / Са…</i>"]:::regStep
+    AR_brand["Brand Name<br/><i>📩 Название вашего бренда / компании / бизнеса:</i>"]:::regStep
+    AR_company_activity["Company Activity<br/><i>📩 Чем занимается ваша компания?</i>"]:::regStep
+    AR_site_link["Website URL<br/><i>📩 Ссылка на сайт, продукт или соцсети бренда:</i>"]:::regStep
+    AR_agreements["Agreement Confirmation<br/><i>📩 Пожалуйста, подтвердите согласие с документами пл…</i>"]:::regStep
 
     ADV_BRANCH --> AR_name
     AR_name --> AR_phone
@@ -156,7 +157,7 @@
     AR_site_link --> AR_agreements
     AR_agreements --> ADV_MENU
 
-    ADV_MENU["Advertiser Menu"]:::menu
+    ADV_MENU["Advertiser Menu<br/><i>📩 Главное меню рекламодателя: создание заказа, проф…</i>"]:::menu
     ADV_MENU --> ORDER_CREATE_START
     ADV_MENU --> PROFILE_VIEW
     ADV_MENU --> MY_ORDERS
@@ -164,18 +165,18 @@
     ADV_MENU --> SUPPORT
 
     %% ORDER CREATION
-    ORDER_CREATE_START["Create Order"]:::action
-    OC_order_type["Order Type"]:::orderStep
-    OC_offer_text["Order Description"]:::orderStep
-    OC_cooperation_format["Cooperation Format"]:::orderStep
-    OC_price["Price"]:::orderStep
-    OC_barter_description["Barter Description"]:::orderStep
-    OC_bloggers_needed["Bloggers Needed"]:::orderStep
-    OC_product_link["Product Link"]:::orderStep
-    OC_order_photo["Order Photo"]:::orderStep
-    OC_content_usage["Content Usage"]:::orderStep
-    OC_deadlines["Deadlines"]:::orderStep
-    OC_geography["Creator Geography"]:::orderStep
+    ORDER_CREATE_START["Create Order<br/><i>📩 Начало создания нового заказа</i>"]:::action
+    OC_order_type["Order Type<br/><i>📩 Что вам нужно?</i>"]:::orderStep
+    OC_offer_text["Order Description<br/><i>📩 Кратко опишите задачу для креаторов. Что снять и …</i>"]:::orderStep
+    OC_cooperation_format["Cooperation Format<br/><i>📩 Какой формат сотрудничества вам подходит?</i>"]:::orderStep
+    OC_price["Price<br/><i>📩 Бюджет за 1 UGC-видео? Укажите цену ({currency}):…</i>"]:::orderStep
+    OC_barter_description["Barter Description<br/><i>📩 Что вы предлагаете по бартеру? Продукт бренда (оп…</i>"]:::orderStep
+    OC_bloggers_needed["Bloggers Needed<br/><i>📩 Сколько креаторов вам нужно?</i>"]:::orderStep
+    OC_product_link["Product Link<br/><i>📩 Введите ссылку на продукт (для откликнувшихся кре…</i>"]:::orderStep
+    OC_order_photo["Order Photo<br/><i>📩 Прикрепите фото (по желанию). Фотография поможет …</i>"]:::orderStep
+    OC_content_usage["Content Usage<br/><i>📩 Где вы планируете использовать UGC-видео?</i>"]:::orderStep
+    OC_deadlines["Deadlines<br/><i>📩 В какие сроки вам нужен контент? Укажите, через с…</i>"]:::orderStep
+    OC_geography["Creator Geography<br/><i>📩 В каком городе, регионе или стране может находить…</i>"]:::orderStep
 
     ORDER_CREATE_START --> OC_order_type
     OC_order_type --> OC_offer_text
@@ -192,11 +193,11 @@
     OC_geography --> ORDER_FINALIZE
 
     %% ORDER LIFECYCLE
-    ORDER_FINALIZE["Order Saved"]:::action
-    PAYMENT_INVOICE["Telegram Invoice"]:::action
-    MODERATION["Pending Moderation"]:::service
-    ORDER_ACTIVE["Order ACTIVE"]:::service
-    PAYMENT{"Payment Required?"}:::action
+    ORDER_FINALIZE["Order Saved<br/><i>📩 Заказ создан ✅  Мы отправим предложение подходящи…</i>"]:::action
+    PAYMENT_INVOICE["Telegram Invoice<br/><i>📩 Оплата заказа</i>"]:::action
+    MODERATION["Pending Moderation<br/><i>📩 На модерации</i>"]:::service
+    ORDER_ACTIVE["Order ACTIVE<br/><i>📩 Активен</i>"]:::service
+    PAYMENT{"Payment Required?<br/><i>📩 Система проверяет необходимость оплаты за заказ</i>"}:::action
 
     ORDER_FINALIZE --> PAYMENT
     PAYMENT -->|"Yes"| PAYMENT_INVOICE
@@ -205,12 +206,12 @@
     MODERATION --> ORDER_ACTIVE
 
     %% OFFER DISPATCH & RESPONSES
-    OFFER_SENT["Offers Sent"]:::service
-    OFFER_RESPONSE{"Blogger Response"}:::role
-    OFFER_ACCEPT["Accept"]:::action
-    OFFER_SKIP["Skip"]:::action
-    SKIP_REASON{"Rejection Reason"}:::action
-    DESIRED_PRICE["Desired Price"]:::regStep
+    OFFER_SENT["Offers Sent<br/><i>📩 Оффер отправлен подходящим креаторам через Kafka</i>"]:::service
+    OFFER_RESPONSE{"Blogger Response<br/><i>📩 Ожидание ответа блогера на оффер</i>"}:::role
+    OFFER_ACCEPT["Accept<br/><i>📩 Отклик принят! Ожидайте связи от рекламодателя.</i>"]:::action
+    OFFER_SKIP["Skip<br/><i>📩 Ок, пропущено.</i>"]:::action
+    SKIP_REASON{"Rejection Reason<br/><i>📩 Укажите причину отказа:</i>"}:::action
+    DESIRED_PRICE["Desired Price<br/><i>📩 Укажите, за какую стоимость вы готовы разместить …</i>"]:::regStep
 
     ORDER_ACTIVE --> OFFER_SENT
     OFFER_SENT --> OFFER_RESPONSE
@@ -220,13 +221,13 @@
     SKIP_REASON -->|"Low Price"| DESIRED_PRICE
 
     %% INTERACTION & FEEDBACK
-    INTERACTION["Interaction"]:::service
-    FEEDBACK_START["Feedback Request"]:::action
-    FB_REASON{"Feedback Reason"}:::action
-    FB_ISSUE["Describe Issue"]:::regStep
-    FB_NPS["NPS Score 1-5"]:::regStep
-    FB_NPS_COMMENT["NPS Comment"]:::regStep
-    FB_COMPLETE["Feedback Saved"]:::service
+    INTERACTION["Interaction<br/><i>📩 Период взаимодействия креатора и рекламодателя</i>"]:::service
+    FEEDBACK_START["Feedback Request<br/><i>📩 Запрос обратной связи: удалось ли связаться с кон…</i>"]:::action
+    FB_REASON{"Feedback Reason<br/><i>📩 Выбор типа обратной связи</i>"}:::action
+    FB_ISSUE["Describe Issue<br/><i>📩 Опишите проблему и приложите скриншоты переписки …</i>"]:::regStep
+    FB_NPS["NPS Score 1-5<br/><i>📩 NPS-оценка по шкале от 1 до 5 ⭐</i>"]:::regStep
+    FB_NPS_COMMENT["NPS Comment<br/><i>📩 Комментарий к NPS-оценке: развёрнутый отзыв об оп…</i>"]:::regStep
+    FB_COMPLETE["Feedback Saved<br/><i>📩 Спасибо, ответ сохранен.</i>"]:::service
 
     OFFER_ACCEPT --> INTERACTION
     INTERACTION --> FEEDBACK_START
@@ -239,10 +240,10 @@
     FB_NPS -->|"Score 7-10"| FB_COMPLETE
 
     %% COMPLAINTS
-    COMPLAINT_START["Complaint"]:::action
-    COMPLAINT_TARGET["Select Target"]:::action
-    COMPLAINT_REASON{"Reason"}:::action
-    COMPLAINT_SAVED["Saved"]:::service
+    COMPLAINT_START["Complaint<br/><i>📩 Начало процесса подачи жалобы</i>"]:::action
+    COMPLAINT_TARGET["Select Target<br/><i>📩 Выберите блогера, на которого хотите пожаловаться:</i>"]:::action
+    COMPLAINT_REASON{"Reason<br/><i>📩 Выберите причину жалобы:</i>"}:::action
+    COMPLAINT_SAVED["Saved<br/><i>📩 Мы приняли вашу заявку. Поддержка разберётся в си…</i>"]:::service
 
     INTERACTION --> COMPLAINT_START
     COMPLAINT_START --> COMPLAINT_TARGET
@@ -250,13 +251,13 @@
     COMPLAINT_REASON --> COMPLAINT_SAVED
 
     %% SHARED FLOWS
-    PROFILE_VIEW["View Profile"]:::menu
-    MY_ORDERS["My Orders"]:::menu
-    EDIT_PROFILE["Edit Profile"]:::action
-    EDIT_TYPE{"Profile Type"}:::action
-    EDIT_FIELD["Select Field"]:::regStep
-    EDIT_VALUE["Enter Value"]:::regStep
-    SUPPORT["Support"]:::menu
+    PROFILE_VIEW["View Profile<br/><i>📩 👤 Ваш профиль</i>"]:::menu
+    MY_ORDERS["My Orders<br/><i>📩 Ваши заказы (страница {page}/{total_pages}):</i>"]:::menu
+    EDIT_PROFILE["Edit Profile<br/><i>📩 Выберите раздел для редактирования:</i>"]:::action
+    EDIT_TYPE{"Profile Type<br/><i>📩 Выберите профиль для редактирования:</i>"}:::action
+    EDIT_FIELD["Select Field<br/><i>📩 Выбор конкретного поля для редактирования внутри …</i>"]:::regStep
+    EDIT_VALUE["Enter Value<br/><i>📩 Введите новое значение:</i>"]:::regStep
+    SUPPORT["Support<br/><i>📩 Служба поддержки: @usemycontent Обращайтесь по лю…</i>"]:::menu
 
     EDIT_PROFILE --> EDIT_TYPE
     EDIT_TYPE --> EDIT_FIELD
@@ -264,15 +265,15 @@
     EDIT_VALUE --> PROFILE_VIEW
 
     %% INFRASTRUCTURE
-    MINIAPP["Mini App Web UI"]:::infra
-    MINIAPP_AUTH["Auth"]:::infra
-    MINIAPP_REG["Web Registration"]:::infra
-    MINIAPP_ORDERS["Web Orders"]:::infra
-    KAFKA["Kafka Outbox"]:::infra
-    IG_STATS["IG Stats"]:::infra
-    SCHEDULER["Schedulers"]:::infra
-    REFERRAL["Referral System"]:::infra
-    ADMIN_PANEL["Admin Panel"]:::infra
+    MINIAPP["Mini App Web UI<br/><i>📩 Mini App — веб-интерфейс бота в Telegram</i>"]:::infra
+    MINIAPP_AUTH["Auth<br/><i>📩 Авторизация через Telegram initData</i>"]:::infra
+    MINIAPP_REG["Web Registration<br/><i>📩 Веб-регистрация профиля</i>"]:::infra
+    MINIAPP_ORDERS["Web Orders<br/><i>📩 Просмотр и управление заказами в вебе</i>"]:::infra
+    KAFKA["Kafka Outbox<br/><i>📩 Kafka Outbox — событийная доставка офферов блогер…</i>"]:::infra
+    IG_STATS["IG Stats<br/><i>📩 Сбор статистики Instagram через Graph API</i>"]:::infra
+    SCHEDULER["Schedulers<br/><i>📩 Планировщики: опросы обратной связи, напоминания</i>"]:::infra
+    REFERRAL["Referral System<br/><i>📩 Реферальная система — начисление и выплата вознаг…</i>"]:::infra
+    ADMIN_PANEL["Admin Panel<br/><i>📩 Панель администратора (SQLAdmin)</i>"]:::infra
 
     MINIAPP --> MINIAPP_AUTH
     MINIAPP_AUTH --> MINIAPP_REG

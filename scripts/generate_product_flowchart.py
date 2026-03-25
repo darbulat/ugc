@@ -258,6 +258,41 @@ def _state_label(context: str, state: str) -> str:
     return _ALL_LABELS.get(context, {}).get(state, state)
 
 
+def _resolve_message(node_id: str, ru_texts: dict[str, str]) -> str | None:
+    """Resolve the bot message text for a given node."""
+    entry = _NODE_MESSAGES.get(node_id)
+    if entry is None:
+        return None
+    kind, value = entry
+    if kind == "key":
+        return ru_texts.get(value)
+    return value
+
+
+def _truncate(text: str, max_len: int = 50) -> str:
+    """Truncate text for display in flowchart nodes."""
+    # Remove newlines
+    text = text.replace("\n", " ").strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def _make_node_label(
+    base_label: str,
+    node_id: str,
+    ru_texts: dict[str, str],
+) -> str:
+    """Build a node label with bot message text included."""
+    msg = _resolve_message(node_id, ru_texts)
+    if not msg:
+        return base_label
+    short = _truncate(msg)
+    # Escape quotes for Mermaid
+    short = short.replace('"', "&quot;")
+    return f"{base_label}<br/><i>📩 {short}</i>"
+
+
 # -- Node → ru.py message mapping --
 
 _NODE_LABELS: dict[str, str] = {
@@ -514,12 +549,16 @@ def _emit_styles(lines: list[str]) -> None:
     lines.append("")
 
 
-def _emit_entry(lines: list[str]) -> None:
+def _emit_entry(lines: list[str], ru_texts: dict[str, str]) -> None:
     lines.append("    %% ENTRY POINT")
-    lines.append('    START["/start"]:::entry')
-    lines.append('    LANG_SELECT{"Language<br/>ru|en|be|kk|uz"}:::country')
-    lines.append('    COUNTRY_SELECT{"Country<br/>RU|BY|KZ|UZ"}:::country')
-    lines.append('    ROLE_SELECT{"Role Selection"}:::role')
+    _lbl = _make_node_label("/start", "START", ru_texts)
+    lines.append(f'    START["{_lbl}"]:::entry')
+    _lbl = _make_node_label("Language<br/>ru|en|be|kk|uz", "LANG_SELECT", ru_texts)
+    lines.append(f'    LANG_SELECT{{"{_lbl}"}}:::country')
+    _lbl = _make_node_label("Country<br/>RU|BY|KZ|UZ", "COUNTRY_SELECT", ru_texts)
+    lines.append(f'    COUNTRY_SELECT{{"{_lbl}"}}:::country')
+    _lbl = _make_node_label("Role Selection", "ROLE_SELECT", ru_texts)
+    lines.append(f'    ROLE_SELECT{{"{_lbl}"}}:::role')
     lines.append("")
     lines.append("    START --> LANG_SELECT")
     lines.append("    LANG_SELECT --> COUNTRY_SELECT")
@@ -538,6 +577,7 @@ def _emit_registration(
     context: str,
     start_node: str,
     end_node: str,
+    ru_texts: dict[str, str],
 ) -> None:
     raw = states.get(group_name, [])
     ids = []
@@ -545,7 +585,8 @@ def _emit_registration(
         nid = f"{prefix}_{st}"
         ids.append(nid)
         label = _state_label(context, st)
-        lines.append(f'    {nid}["{label}"]:::regStep')
+        full_label = _make_node_label(label, nid, ru_texts)
+        lines.append(f'    {nid}["{full_label}"]:::regStep')
     lines.append("")
     _emit_chain(lines, ids, start_node, end_node)
     lines.append("")
@@ -554,16 +595,19 @@ def _emit_registration(
 def _emit_order_flow(
     lines: list[str],
     states: dict[str, list[str]],
+    ru_texts: dict[str, str],
 ) -> None:
     lines.append("    %% ORDER CREATION")
-    lines.append('    ORDER_CREATE_START["Create Order"]:::action')
+    _lbl = _make_node_label("Create Order", "ORDER_CREATE_START", ru_texts)
+    lines.append(f'    ORDER_CREATE_START["{_lbl}"]:::action')
     raw = states.get("OrderCreationStates", [])
     ids = []
     for st in raw:
         nid = f"OC_{st}"
         ids.append(nid)
         label = _state_label("order", st)
-        lines.append(f'    {nid}["{label}"]:::orderStep')
+        full_label = _make_node_label(label, nid, ru_texts)
+        lines.append(f'    {nid}["{full_label}"]:::orderStep')
     lines.append("")
     if not ids:
         return
@@ -582,7 +626,10 @@ def _emit_order_flow(
     lines.append("")
 
 
-def _emit_order_lifecycle(lines: list[str]) -> None:
+def _emit_order_lifecycle(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
     lines.append("    %% ORDER LIFECYCLE")
     nodes = [
         (
@@ -609,8 +656,10 @@ def _emit_order_lifecycle(lines: list[str]) -> None:
     ]
     for nid, label, cls in nodes:
         if label and cls:
-            lines.append(f'    {nid}["{label}"]:::{cls}')
-    lines.append('    PAYMENT{"Payment Required?"}:::action')
+            full_label = _make_node_label(label, nid, ru_texts)
+            lines.append(f'    {nid}["{full_label}"]:::{cls}')
+    _lbl = _make_node_label("Payment Required?", "PAYMENT", ru_texts)
+    lines.append(f'    PAYMENT{{"{_lbl}"}}:::action')
     lines.append("")
     lines.append("    ORDER_FINALIZE --> PAYMENT")
     lines.append('    PAYMENT -->|"Yes"| PAYMENT_INVOICE')
@@ -620,14 +669,18 @@ def _emit_order_lifecycle(lines: list[str]) -> None:
     lines.append("")
 
 
-def _emit_offer_responses(lines: list[str]) -> None:
+def _emit_offer_responses(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
     lines.append("    %% OFFER DISPATCH & RESPONSES")
-    lines.append('    OFFER_SENT["Offers Sent"]:::service')
-    lines.append('    OFFER_RESPONSE{"Blogger Response"}:::role')
-    lines.append('    OFFER_ACCEPT["Accept"]:::action')
-    lines.append('    OFFER_SKIP["Skip"]:::action')
-    lines.append('    SKIP_REASON{"Rejection Reason"}:::action')
-    lines.append('    DESIRED_PRICE["Desired Price"]:::regStep')
+    _n = _make_node_label
+    lines.append(f'    OFFER_SENT["{_n("Offers Sent", "OFFER_SENT", ru_texts)}"]:::service')
+    lines.append(f'    OFFER_RESPONSE{{"{_n("Blogger Response", "OFFER_RESPONSE", ru_texts)}"}}:::role')
+    lines.append(f'    OFFER_ACCEPT["{_n("Accept", "OFFER_ACCEPT", ru_texts)}"]:::action')
+    lines.append(f'    OFFER_SKIP["{_n("Skip", "OFFER_SKIP", ru_texts)}"]:::action')
+    lines.append(f'    SKIP_REASON{{"{_n("Rejection Reason", "SKIP_REASON", ru_texts)}"}}:::action')
+    lines.append(f'    DESIRED_PRICE["{_n("Desired Price", "DESIRED_PRICE", ru_texts)}"]:::regStep')
     lines.append("")
     lines.append("    ORDER_ACTIVE --> OFFER_SENT")
     lines.append("    OFFER_SENT --> OFFER_RESPONSE")
@@ -638,15 +691,19 @@ def _emit_offer_responses(lines: list[str]) -> None:
     lines.append("")
 
 
-def _emit_feedback(lines: list[str]) -> None:
+def _emit_feedback(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
     lines.append("    %% INTERACTION & FEEDBACK")
-    lines.append('    INTERACTION["Interaction"]:::service')
-    lines.append('    FEEDBACK_START["Feedback Request"]:::action')
-    lines.append('    FB_REASON{"Feedback Reason"}:::action')
-    lines.append('    FB_ISSUE["Describe Issue"]:::regStep')
-    lines.append('    FB_NPS["NPS Score 1-5"]:::regStep')
-    lines.append('    FB_NPS_COMMENT["NPS Comment"]:::regStep')
-    lines.append('    FB_COMPLETE["Feedback Saved"]:::service')
+    _n = _make_node_label
+    lines.append(f'    INTERACTION["{_n("Interaction", "INTERACTION", ru_texts)}"]:::service')
+    lines.append(f'    FEEDBACK_START["{_n("Feedback Request", "FEEDBACK_START", ru_texts)}"]:::action')
+    lines.append(f'    FB_REASON{{"{_n("Feedback Reason", "FB_REASON", ru_texts)}"}}:::action')
+    lines.append(f'    FB_ISSUE["{_n("Describe Issue", "FB_ISSUE", ru_texts)}"]:::regStep')
+    lines.append(f'    FB_NPS["{_n("NPS Score 1-5", "FB_NPS", ru_texts)}"]:::regStep')
+    lines.append(f'    FB_NPS_COMMENT["{_n("NPS Comment", "FB_NPS_COMMENT", ru_texts)}"]:::regStep')
+    lines.append(f'    FB_COMPLETE["{_n("Feedback Saved", "FB_COMPLETE", ru_texts)}"]:::service')
     lines.append("")
     lines.append("    OFFER_ACCEPT --> INTERACTION")
     lines.append("    INTERACTION --> FEEDBACK_START")
@@ -660,12 +717,16 @@ def _emit_feedback(lines: list[str]) -> None:
     lines.append("")
 
 
-def _emit_complaints(lines: list[str]) -> None:
+def _emit_complaints(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
     lines.append("    %% COMPLAINTS")
-    lines.append('    COMPLAINT_START["Complaint"]:::action')
-    lines.append('    COMPLAINT_TARGET["Select Target"]:::action')
-    lines.append('    COMPLAINT_REASON{"Reason"}:::action')
-    lines.append('    COMPLAINT_SAVED["Saved"]:::service')
+    _n = _make_node_label
+    lines.append(f'    COMPLAINT_START["{_n("Complaint", "COMPLAINT_START", ru_texts)}"]:::action')
+    lines.append(f'    COMPLAINT_TARGET["{_n("Select Target", "COMPLAINT_TARGET", ru_texts)}"]:::action')
+    lines.append(f'    COMPLAINT_REASON{{"{_n("Reason", "COMPLAINT_REASON", ru_texts)}"}}:::action')
+    lines.append(f'    COMPLAINT_SAVED["{_n("Saved", "COMPLAINT_SAVED", ru_texts)}"]:::service')
     lines.append("")
     lines.append("    INTERACTION --> COMPLAINT_START")
     lines.append("    COMPLAINT_START --> COMPLAINT_TARGET")
@@ -674,15 +735,19 @@ def _emit_complaints(lines: list[str]) -> None:
     lines.append("")
 
 
-def _emit_shared(lines: list[str]) -> None:
+def _emit_shared(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
     lines.append("    %% SHARED FLOWS")
-    lines.append('    PROFILE_VIEW["View Profile"]:::menu')
-    lines.append('    MY_ORDERS["My Orders"]:::menu')
-    lines.append('    EDIT_PROFILE["Edit Profile"]:::action')
-    lines.append('    EDIT_TYPE{"Profile Type"}:::action')
-    lines.append('    EDIT_FIELD["Select Field"]:::regStep')
-    lines.append('    EDIT_VALUE["Enter Value"]:::regStep')
-    lines.append('    SUPPORT["Support"]:::menu')
+    _n = _make_node_label
+    lines.append(f'    PROFILE_VIEW["{_n("View Profile", "PROFILE_VIEW", ru_texts)}"]:::menu')
+    lines.append(f'    MY_ORDERS["{_n("My Orders", "MY_ORDERS", ru_texts)}"]:::menu')
+    lines.append(f'    EDIT_PROFILE["{_n("Edit Profile", "EDIT_PROFILE", ru_texts)}"]:::action')
+    lines.append(f'    EDIT_TYPE{{"{_n("Profile Type", "EDIT_TYPE", ru_texts)}"}}:::action')
+    lines.append(f'    EDIT_FIELD["{_n("Select Field", "EDIT_FIELD", ru_texts)}"]:::regStep')
+    lines.append(f'    EDIT_VALUE["{_n("Enter Value", "EDIT_VALUE", ru_texts)}"]:::regStep')
+    lines.append(f'    SUPPORT["{_n("Support", "SUPPORT", ru_texts)}"]:::menu')
     lines.append("")
     lines.append("    EDIT_PROFILE --> EDIT_TYPE")
     lines.append("    EDIT_TYPE --> EDIT_FIELD")
@@ -691,17 +756,21 @@ def _emit_shared(lines: list[str]) -> None:
     lines.append("")
 
 
-def _emit_infra(lines: list[str]) -> None:
+def _emit_infra(
+    lines: list[str],
+    ru_texts: dict[str, str],
+) -> None:
     lines.append("    %% INFRASTRUCTURE")
-    lines.append('    MINIAPP["Mini App Web UI"]:::infra')
-    lines.append('    MINIAPP_AUTH["Auth"]:::infra')
-    lines.append('    MINIAPP_REG["Web Registration"]:::infra')
-    lines.append('    MINIAPP_ORDERS["Web Orders"]:::infra')
-    lines.append('    KAFKA["Kafka Outbox"]:::infra')
-    lines.append('    IG_STATS["IG Stats"]:::infra')
-    lines.append('    SCHEDULER["Schedulers"]:::infra')
-    lines.append('    REFERRAL["Referral System"]:::infra')
-    lines.append('    ADMIN_PANEL["Admin Panel"]:::infra')
+    _n = _make_node_label
+    lines.append(f'    MINIAPP["{_n("Mini App Web UI", "MINIAPP", ru_texts)}"]:::infra')
+    lines.append(f'    MINIAPP_AUTH["{_n("Auth", "MINIAPP_AUTH", ru_texts)}"]:::infra')
+    lines.append(f'    MINIAPP_REG["{_n("Web Registration", "MINIAPP_REG", ru_texts)}"]:::infra')
+    lines.append(f'    MINIAPP_ORDERS["{_n("Web Orders", "MINIAPP_ORDERS", ru_texts)}"]:::infra')
+    lines.append(f'    KAFKA["{_n("Kafka Outbox", "KAFKA", ru_texts)}"]:::infra')
+    lines.append(f'    IG_STATS["{_n("IG Stats", "IG_STATS", ru_texts)}"]:::infra')
+    lines.append(f'    SCHEDULER["{_n("Schedulers", "SCHEDULER", ru_texts)}"]:::infra')
+    lines.append(f'    REFERRAL["{_n("Referral System", "REFERRAL", ru_texts)}"]:::infra')
+    lines.append(f'    ADMIN_PANEL["{_n("Admin Panel", "ADMIN_PANEL", ru_texts)}"]:::infra')
     lines.append("")
     lines.append("    MINIAPP --> MINIAPP_AUTH")
     lines.append("    MINIAPP_AUTH --> MINIAPP_REG")
@@ -715,16 +784,18 @@ def _emit_infra(lines: list[str]) -> None:
 
 def build_mermaid(
     states: dict[str, list[str]],
+    ru_texts: dict[str, str],
 ) -> str:
     """Build the full Mermaid flowchart."""
     lines: list[str] = ["flowchart TB", ""]
 
     _emit_styles(lines)
-    _emit_entry(lines)
+    _emit_entry(lines, ru_texts)
 
     # Creator registration
     lines.append("    %% CREATOR REGISTRATION")
-    lines.append('    CREATOR_BRANCH["Create Profile"]:::role')
+    _lbl = _make_node_label("Create Profile", "CREATOR_BRANCH", ru_texts)
+    lines.append(f'    CREATOR_BRANCH["{_lbl}"]:::role')
     _emit_registration(
         lines,
         states,
@@ -733,11 +804,14 @@ def build_mermaid(
         "blogger",
         "CREATOR_BRANCH",
         "CREATOR_MENU",
+        ru_texts,
     )
 
     # Creator menu
-    lines.append('    CREATOR_MENU["Creator Menu"]:::menu')
-    lines.append('    VERIFY_IG["Instagram Verify"]:::action')
+    _lbl = _make_node_label("Creator Menu", "CREATOR_MENU", ru_texts)
+    lines.append(f'    CREATOR_MENU["{_lbl}"]:::menu')
+    _lbl = _make_node_label("Instagram Verify", "VERIFY_IG", ru_texts)
+    lines.append(f'    VERIFY_IG["{_lbl}"]:::action')
     lines.append("    CREATOR_MENU --> VERIFY_IG")
     lines.append("    CREATOR_MENU --> PROFILE_VIEW")
     lines.append("    CREATOR_MENU --> MY_ORDERS")
@@ -747,7 +821,8 @@ def build_mermaid(
 
     # Advertiser registration
     lines.append("    %% ADVERTISER REGISTRATION")
-    lines.append('    ADV_BRANCH["Start Registration"]:::role')
+    _lbl = _make_node_label("Start Registration", "ADV_BRANCH", ru_texts)
+    lines.append(f'    ADV_BRANCH["{_lbl}"]:::role')
     _emit_registration(
         lines,
         states,
@@ -756,10 +831,12 @@ def build_mermaid(
         "advertiser",
         "ADV_BRANCH",
         "ADV_MENU",
+        ru_texts,
     )
 
     # Advertiser menu
-    lines.append('    ADV_MENU["Advertiser Menu"]:::menu')
+    _lbl = _make_node_label("Advertiser Menu", "ADV_MENU", ru_texts)
+    lines.append(f'    ADV_MENU["{_lbl}"]:::menu')
     lines.append("    ADV_MENU --> ORDER_CREATE_START")
     lines.append("    ADV_MENU --> PROFILE_VIEW")
     lines.append("    ADV_MENU --> MY_ORDERS")
@@ -767,13 +844,13 @@ def build_mermaid(
     lines.append("    ADV_MENU --> SUPPORT")
     lines.append("")
 
-    _emit_order_flow(lines, states)
-    _emit_order_lifecycle(lines)
-    _emit_offer_responses(lines)
-    _emit_feedback(lines)
-    _emit_complaints(lines)
-    _emit_shared(lines)
-    _emit_infra(lines)
+    _emit_order_flow(lines, states, ru_texts)
+    _emit_order_lifecycle(lines, ru_texts)
+    _emit_offer_responses(lines, ru_texts)
+    _emit_feedback(lines, ru_texts)
+    _emit_complaints(lines, ru_texts)
+    _emit_shared(lines, ru_texts)
+    _emit_infra(lines, ru_texts)
 
     lines.append("    %% CLICK HANDLERS")
     for node_id in _NODE_MESSAGES:
@@ -993,7 +1070,7 @@ def main() -> None:
     ru_texts = extract_ru_texts(ru_path)
     node_data = build_node_data(ru_texts)
 
-    mermaid = build_mermaid(states)
+    mermaid = build_mermaid(states, ru_texts)
     stats = build_stats_md(
         states,
         callbacks,
