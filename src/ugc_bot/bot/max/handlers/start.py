@@ -1,4 +1,8 @@
-"""Start and role selection handlers for Max messenger."""
+"""Start and role selection handlers for Max messenger.
+
+Max messenger is Russia-only: country is always "RU", language "ru".
+Country/language selection screens are skipped.
+"""
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
@@ -27,18 +31,15 @@ router = MaxRouter()
 
 @router.message(lambda m: bool(m.text and m.text.startswith("/start")))
 async def start_handler(incoming: IncomingMessage, deps: dict) -> None:
-    """Handle /start — clear state, register user, show country or role."""
+    """Handle /start — auto-set RU/ru, show role selection."""
     user_role_service = deps["user_role_service"]
     referral_service = deps["referral_service"]
     messenger_client = deps["messenger_client"]
     bot_texts_service = deps["bot_texts_service"]
-    country_repo = deps.get("country_repo")
     config = deps["config"]
     state_store = deps["state_store"]
 
-    locale = await resolve_locale(
-        incoming, user_role_service, config.market.default_locale
-    )
+    locale = "ru"
 
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
@@ -53,11 +54,8 @@ async def start_handler(incoming: IncomingMessage, deps: dict) -> None:
     texts = await bot_texts_service.get_many(
         ["btn_creator", "btn_advertiser", "btn_support"], locale
     )
-    country_prompt = (
-        await bot_texts_service.get("country_prompt", locale)
-    ).strip() or "Выберите вашу страну:"
-    countries = await country_repo.list_enabled() if country_repo else []
 
+    # Max is Russia-only: skip country/language selection
     await _start_command(
         incoming=incoming,
         state_store=state_store,
@@ -66,9 +64,14 @@ async def start_handler(incoming: IncomingMessage, deps: dict) -> None:
         referral_service=referral_service,
         start_text=start_text,
         role_kb=role_inline_keyboard(texts),
-        country_prompt=country_prompt,
-        country_kb=country_inline_keyboard(countries),
-        tg_language_code=None,
+        country_kb=None,
+        tg_language_code="ru",
+    )
+    # Auto-set country for new Max users
+    await user_role_service.set_country(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+        country_code="RU",
     )
 
 
