@@ -68,6 +68,53 @@ async def test_max_webhook_routes_callback():
     assert called == ["order:123"]
 
 
+@pytest.mark.asyncio
+async def test_route_callback_removes_keyboard():
+    """route_callback should remove inline keyboard before handler."""
+    router = MaxRouter()
+
+    @router.callback(lambda c: True)
+    async def handler(cb, deps):
+        pass
+
+    incoming = MagicMock()
+    incoming.data = "test:action"
+    incoming.message_id = "mid_123"
+    incoming.chat_id = "chat_1"
+    incoming.callback_id = "cb_1"
+
+    mock_client = AsyncMock()
+    deps = {"messenger_client": mock_client}
+
+    await router.route_callback(incoming, deps)
+    mock_client.edit_reply_markup.assert_called_once_with(
+        chat_id="chat_1",
+        message_id="mid_123",
+        keyboard=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_route_callback_no_message_id_skips_removal():
+    """route_callback should skip keyboard removal if no message_id."""
+    router = MaxRouter()
+
+    @router.callback(lambda c: True)
+    async def handler(cb, deps):
+        pass
+
+    incoming = MagicMock()
+    incoming.data = "test:action"
+    incoming.message_id = None
+    incoming.chat_id = "chat_1"
+
+    mock_client = AsyncMock()
+    deps = {"messenger_client": mock_client}
+
+    await router.route_callback(incoming, deps)
+    mock_client.edit_reply_markup.assert_not_called()
+
+
 def test_adapter_from_message_fields():
     adapter = MaxEventAdapter()
     event = {

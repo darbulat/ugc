@@ -155,6 +155,25 @@ class MaxRouter:
             "No Max message handler matched for text=%r", incoming.text
         )
 
+    async def _remove_callback_keyboard(
+        self, incoming: IncomingCallback, deps: dict[str, Any]
+    ) -> None:
+        """Remove inline keyboard from the callback message."""
+        messenger_client = deps.get("messenger_client")
+        if messenger_client is None or not incoming.message_id:
+            return
+        try:
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+        except Exception:
+            logger.debug(
+                "Could not remove callback keyboard for mid=%s",
+                incoming.message_id,
+            )
+
     async def route_callback(
         self, incoming: IncomingCallback, deps: dict[str, Any]
     ) -> None:
@@ -163,6 +182,8 @@ class MaxRouter:
         State-based handlers are checked first (if a state_store is present in
         deps), then regular predicate-based handlers.
         """
+        await self._remove_callback_keyboard(incoming, deps)
+
         state_store = deps.get("state_store")
         if state_store is not None and self._state_callback_handlers:
             current_state = await state_store.get_state()
