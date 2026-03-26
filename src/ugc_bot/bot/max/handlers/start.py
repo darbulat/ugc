@@ -17,6 +17,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     country_change_inline_keyboard,
     country_inline_keyboard,
     language_inline_keyboard,
+    miniapp_open_inline_keyboard,
     role_inline_keyboard,
 )
 from ugc_bot.bot.telegram.handlers.start import (
@@ -354,6 +355,28 @@ async def change_role_command(incoming: IncomingMessage, deps: dict) -> None:
         messenger_client=messenger_client,
         start_text=start_text,
         role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.message(lambda m: bool(m.text and m.text.startswith("/app")))
+async def app_miniapp_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /app — send button to open Mini App."""
+    messenger_client = deps["messenger_client"]
+    config = deps["config"]
+
+    base_url = config.max_bot.webhook_url if config.max_bot else ""
+    if not base_url:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Mini App временно недоступен.",
+        )
+        return
+
+    keyboard = miniapp_open_inline_keyboard(base_url, platform="max")
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Откройте приложение для регистрации и работы с заказами:",
+        keyboard=keyboard,
     )
 
 
