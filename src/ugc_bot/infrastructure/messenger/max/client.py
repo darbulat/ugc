@@ -173,6 +173,9 @@ class MaxMessengerClient(MessengerClient):
         body: dict[str, Any] = {"text": clean_text}
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
+        logger.debug(
+            "Max send_text chat_id=%r body=%r", chat_id, body
+        )
         await self._post("/messages", body, params={"chat_id": chat_id})
 
     async def send_photo(
