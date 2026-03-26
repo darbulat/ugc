@@ -32,6 +32,14 @@ class MaxRouter:
         @router.callback(lambda c: c.data.startswith("order:"))
         async def order(cb, deps):
             ...
+
+        @router.message_in_state("registration:name")
+        async def handle_name(msg, deps):
+            ...
+
+        @router.callback_in_state("order:confirm", lambda c: c.data == "yes")
+        async def confirm_order(cb, deps):
+            ...
     """
 
     def __init__(self) -> None:
@@ -40,6 +48,12 @@ class MaxRouter:
         ] = []
         self._callback_handlers: list[
             tuple[_CallbackPredicate, _CallbackHandler]
+        ] = []
+        self._state_message_handlers: list[
+            tuple[str, _MessagePredicate | None, _MessageHandler]
+        ] = []
+        self._state_callback_handlers: list[
+            tuple[str, _CallbackPredicate | None, _CallbackHandler]
         ] = []
 
     def message(
@@ -64,10 +78,69 @@ class MaxRouter:
 
         return decorator
 
+    def message_in_state(
+        self,
+        state_name: str,
+        predicate: _MessagePredicate | None = None,
+    ) -> Callable[[_MessageHandler], _MessageHandler]:
+        """Register a message handler that fires only when FSM state matches.
+
+        Args:
+            state_name: Exact FSM state name to match against.
+            predicate: Optional additional predicate; both state and predicate
+                must match for the handler to fire.
+        """
+
+        def decorator(func: _MessageHandler) -> _MessageHandler:
+            self._state_message_handlers.append((state_name, predicate, func))
+            return func
+
+        return decorator
+
+    def callback_in_state(
+        self,
+        state_name: str,
+        predicate: _CallbackPredicate | None = None,
+    ) -> Callable[[_CallbackHandler], _CallbackHandler]:
+        """Register a callback handler that fires only when FSM state matches.
+
+        Args:
+            state_name: Exact FSM state name to match against.
+            predicate: Optional additional predicate; both state and predicate
+                must match for the handler to fire.
+        """
+
+        def decorator(func: _CallbackHandler) -> _CallbackHandler:
+            self._state_callback_handlers.append((state_name, predicate, func))
+            return func
+
+        return decorator
+
     async def route_message(
         self, incoming: IncomingMessage, deps: dict[str, Any]
     ) -> None:
-        """Route an incoming message to the first matching handler."""
+        """Route an incoming message to the first matching handler.
+
+        State-based handlers are checked first (if a state_store is present in
+        deps), then regular predicate-based handlers.
+        """
+        state_store = deps.get("state_store")
+        if state_store is not None and self._state_message_handlers:
+            current_state = await state_store.get_state()
+            for state_name, predicate, handler in self._state_message_handlers:
+                if current_state != state_name:
+                    continue
+                if predicate is not None and not predicate(incoming):
+                    continue
+                try:
+                    await handler(incoming, deps)
+                except Exception:
+                    logger.exception(
+                        "Error in Max state message handler %s",
+                        handler.__name__,
+                    )
+                return
+
         for predicate, handler in self._message_handlers:
             try:
                 if predicate(incoming):
@@ -85,7 +158,28 @@ class MaxRouter:
     async def route_callback(
         self, incoming: IncomingCallback, deps: dict[str, Any]
     ) -> None:
-        """Route an incoming callback to the first matching handler."""
+        """Route an incoming callback to the first matching handler.
+
+        State-based handlers are checked first (if a state_store is present in
+        deps), then regular predicate-based handlers.
+        """
+        state_store = deps.get("state_store")
+        if state_store is not None and self._state_callback_handlers:
+            current_state = await state_store.get_state()
+            for state_name, predicate, handler in self._state_callback_handlers:
+                if current_state != state_name:
+                    continue
+                if predicate is not None and not predicate(incoming):
+                    continue
+                try:
+                    await handler(incoming, deps)
+                except Exception:
+                    logger.exception(
+                        "Error in Max state callback handler %s",
+                        handler.__name__,
+                    )
+                return
+
         for predicate, handler in self._callback_handlers:
             try:
                 if predicate(incoming):
@@ -104,3 +198,5 @@ class MaxRouter:
         """Merge all handlers from another router into this one."""
         self._message_handlers.extend(router._message_handlers)
         self._callback_handlers.extend(router._callback_handlers)
+        self._state_message_handlers.extend(router._state_message_handlers)
+        self._state_callback_handlers.extend(router._state_callback_handlers)

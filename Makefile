@@ -51,7 +51,7 @@ test:
 	uv run pytest -m "not e2e"
 
 coverage:
-	uv run pytest -m "not e2e" --cov=ugc_bot --cov-fail-under=$(COV_FAIL) --cov-report=term-missing --cov-report=xml
+	uv run pytest -m "not e2e" --cov=ugc_bot --cov-config=pyproject.toml --cov-fail-under=$(COV_FAIL) --cov-report=term-missing --cov-report=xml
 
 e2e:
 	uv run python -m playwright install chromium

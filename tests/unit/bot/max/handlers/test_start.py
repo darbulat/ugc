@@ -21,12 +21,18 @@ def incoming_start():
 
 @pytest.fixture
 def deps():
+    mock_config = AsyncMock()
+    mock_config.market.default_locale = "ru"
+    mock_config.market.start_text = ""
     return {
         "messenger_client": AsyncMock(),
         "user_role_service": AsyncMock(),
+        "referral_service": AsyncMock(),
         "bot_texts_service": AsyncMock(),
         "state_store": AsyncMock(),
-        "config": AsyncMock(),
+        "config": mock_config,
+        "country_repo": AsyncMock(),
+        "profile_service": AsyncMock(),
     }
 
 

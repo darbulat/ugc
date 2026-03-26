@@ -1,31 +1,462 @@
-"""Max messenger /start handler."""
+"""Start and role selection handlers for Max messenger."""
 
-from ugc_bot.application.messenger.dto import IncomingMessage
+from ugc_bot.application.errors import UserNotFoundError
+from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
+from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.telegram.handlers.keyboards import (
+    CALLBACK_CHANGE_COUNTRY_PREFIX,
+    CALLBACK_CHANGE_ROLE,
+    CALLBACK_COUNTRY_PREFIX,
+    CALLBACK_LANG_PREFIX,
+    CALLBACK_SUPPORT,
+    build_support_telegram_url,
+    country_change_inline_keyboard,
+    country_inline_keyboard,
+    language_inline_keyboard,
+    role_inline_keyboard,
+)
+from ugc_bot.bot.telegram.handlers.start import (
+    _change_role_button,
+    _start_command,
+    _support_button,
+)
 
 router = MaxRouter()
 
 
 @router.message(lambda m: bool(m.text and m.text.startswith("/start")))
 async def start_handler(incoming: IncomingMessage, deps: dict) -> None:
-    messenger_client = deps["messenger_client"]
+    """Handle /start — clear state, register user, show country or role."""
     user_role_service = deps["user_role_service"]
+    referral_service = deps["referral_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    country_repo = deps.get("country_repo")
+    config = deps["config"]
+    state_store = deps["state_store"]
 
-    user = await user_role_service.set_user(
-        external_id=incoming.user.external_id,
-        messenger_type=incoming.user.messenger_type,
-        username=incoming.user.username or "",
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
     )
 
-    locale = user.language or "ru"
-    bot_texts_service = deps.get("bot_texts_service")
-    welcome = "Добро пожаловать!"
-    if bot_texts_service:
-        welcome = (
-            await bot_texts_service.get("start_welcome", locale) or welcome
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
         )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    country_prompt = (
+        await bot_texts_service.get("country_prompt", locale)
+    ).strip() or "Выберите вашу страну:"
+    countries = await country_repo.list_enabled() if country_repo else []
 
+    await _start_command(
+        incoming=incoming,
+        state_store=state_store,
+        messenger_client=messenger_client,
+        user_role_service=user_role_service,
+        referral_service=referral_service,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
+        country_prompt=country_prompt,
+        country_kb=country_inline_keyboard(countries),
+        tg_language_code=None,
+    )
+
+
+@router.callback(
+    lambda c: bool(c.data and c.data.startswith(CALLBACK_COUNTRY_PREFIX))
+)
+async def country_selected(incoming: IncomingCallback, deps: dict) -> None:
+    """Handle country selection — save country, show role keyboard."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    country_repo = deps.get("country_repo")
+    config = deps["config"]
+    state_store = deps["state_store"]
+
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    existing_user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    if existing_user and existing_user.country is not None:
+        return
+    country_code = (incoming.data or "").removeprefix(CALLBACK_COUNTRY_PREFIX)
+    if not country_code:
+        return
+    if country_repo:
+        country = await country_repo.get_by_code(country_code)
+        if country is None:
+            return
+    await user_role_service.set_country(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+        country_code=country_code,
+    )
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    await state_store.clear()
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=welcome,
+        text=start_text,
+        keyboard=role_inline_keyboard(texts),
+    )
+
+
+@router.callback(
+    lambda c: bool(c.data and c.data.startswith(CALLBACK_LANG_PREFIX))
+)
+async def language_selected(incoming: IncomingCallback, deps: dict) -> None:
+    """Handle language selection — save language, proceed to country or role."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    country_repo = deps.get("country_repo")
+    language_repo = deps.get("language_repo")
+
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    language_code = (incoming.data or "").removeprefix(CALLBACK_LANG_PREFIX)
+    if not language_code:
+        return
+    if language_repo is not None:
+        valid_language = await language_repo.get_by_code(language_code)
+        if valid_language is None:
+            return
+    try:
+        user = await user_role_service.set_language(
+            external_id=incoming.user.external_id,
+            messenger_type=incoming.user.messenger_type,
+            language_code=language_code,
+        )
+    except UserNotFoundError:
+        return
+    new_locale = language_code
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+    if user and user.country is None and country_repo:
+        countries = await country_repo.list_enabled()
+        country_prompt = (
+            await bot_texts_service.get("country_prompt", new_locale)
+        ).strip() or "Выберите вашу страну:"
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=country_prompt,
+            keyboard=country_inline_keyboard(countries),
+        )
+        return
+    start_text = (
+        await bot_texts_service.get("start_message", new_locale)
+    ).strip() or "UGC — сервис для UGC."
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], new_locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=start_text,
+        keyboard=role_inline_keyboard(texts),
+    )
+
+
+@router.message(lambda m: bool(m.text and m.text.startswith("/language")))
+async def language_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /language — show language selection keyboard."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    language_repo = deps.get("language_repo")
+    config = deps["config"]
+
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    languages = await language_repo.list_enabled() if language_repo else []
+    language_prompt = (
+        await bot_texts_service.get("language_prompt", locale)
+    ).strip() or "Выберите язык / Choose language:"
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=language_prompt,
+        keyboard=language_inline_keyboard(languages),
+    )
+
+
+@router.message(lambda m: bool(m.text and m.text.startswith("/country")))
+async def country_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /country — show country selection keyboard."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    country_repo = deps.get("country_repo")
+    config = deps["config"]
+
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    countries = await country_repo.list_enabled() if country_repo else []
+    country_prompt = (
+        await bot_texts_service.get("country_prompt", locale)
+    ).strip() or "Выберите вашу страну:"
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=country_prompt,
+        keyboard=country_change_inline_keyboard(countries),
+    )
+
+
+@router.callback(
+    lambda c: bool(c.data and c.data.startswith(CALLBACK_CHANGE_COUNTRY_PREFIX))
+)
+async def country_change_selected(
+    incoming: IncomingCallback, deps: dict
+) -> None:
+    """Handle country change from /country — save new country."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    country_repo = deps.get("country_repo")
+    config = deps["config"]
+
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    country_code = (incoming.data or "").removeprefix(
+        CALLBACK_CHANGE_COUNTRY_PREFIX
+    )
+    if not country_code:
+        return
+    if country_repo:
+        country = await country_repo.get_by_code(country_code)
+        if country is None:
+            return
+    try:
+        await user_role_service.set_country(
+            external_id=incoming.user.external_id,
+            messenger_type=incoming.user.messenger_type,
+            country_code=country_code,
+        )
+    except UserNotFoundError:
+        return
+    if incoming.message_id:
+        await messenger_client.edit_reply_markup(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            keyboard=None,
+        )
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    country_changed_text = (
+        await bot_texts_service.get("country_changed", locale)
+    ).strip() or "Страна изменена."
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=country_changed_text,
+    )
+
+
+@router.callback(lambda c: c.data == CALLBACK_CHANGE_ROLE)
+async def change_role_callback(incoming: IncomingCallback, deps: dict) -> None:
+    """Handle Change role inline button — show start screen again."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    config = deps["config"]
+    state_store = deps["state_store"]
+
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    await _change_role_button(
+        incoming=incoming,
+        state_store=state_store,
+        messenger_client=messenger_client,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.message(lambda m: bool(m.text and m.text.startswith("/role")))
+async def change_role_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /role — show start screen again."""
+    user_role_service = deps["user_role_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    config = deps["config"]
+    state_store = deps["state_store"]
+
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    start_text = (
+        (await bot_texts_service.get("start_message", locale)).strip()
+        or (config.market.start_text or "").strip()
+        or ""
+    )
+    if not start_text:
+        start_text = (
+            "UMC — сервис для UGC.\n"
+            "Бизнесу — подбор креаторов, креаторам — заказы."
+        )
+    texts = await bot_texts_service.get_many(
+        ["btn_creator", "btn_advertiser", "btn_support"], locale
+    )
+    await _change_role_button(
+        incoming=incoming,
+        state_store=state_store,
+        messenger_client=messenger_client,
+        start_text=start_text,
+        role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.callback(lambda c: c.data == CALLBACK_SUPPORT)
+async def support_callback(incoming: IncomingCallback, deps: dict) -> None:
+    """Handle Support inline button — clear FSM, send support text."""
+    user_role_service = deps["user_role_service"]
+    profile_service = deps["profile_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    config = deps["config"]
+    state_store = deps["state_store"]
+
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    support_text = (
+        await bot_texts_service.get("support_response", locale)
+    ).strip()
+    if not support_text:
+        support_text = (config.market.support_response_text or "").strip()
+    if not support_text and (config.market.support_contact or "").strip():
+        support_text = (
+            f"Служба поддержки: {config.market.support_contact.strip()}\n"
+            "Обращайтесь по любым вопросам!"
+        )
+    if not support_text:
+        support_text = (
+            "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
+        )
+    menu_texts = await bot_texts_service.get_many(
+        [
+            "btn_support",
+            "btn_change_role",
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
+        locale,
+    )
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
+    await _support_button(
+        incoming=incoming,
+        user_role_service=user_role_service,
+        profile_service=profile_service,
+        state_store=state_store,
+        messenger_client=messenger_client,
+        support_text=support_text,
+        menu_texts=menu_texts,
+        support_url=support_url,
+    )
+
+
+@router.message(lambda m: bool(m.text and m.text.startswith("/support")))
+async def support_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /support — clear FSM, send support text."""
+    user_role_service = deps["user_role_service"]
+    profile_service = deps["profile_service"]
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    config = deps["config"]
+    state_store = deps["state_store"]
+
+    locale = await resolve_locale(
+        incoming, user_role_service, config.market.default_locale
+    )
+    support_text = (
+        await bot_texts_service.get("support_response", locale)
+    ).strip()
+    if not support_text:
+        support_text = (config.market.support_response_text or "").strip()
+    if not support_text and (config.market.support_contact or "").strip():
+        support_text = (
+            f"Служба поддержки: {config.market.support_contact.strip()}\n"
+            "Обращайтесь по любым вопросам!"
+        )
+    if not support_text:
+        support_text = (
+            "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
+        )
+    menu_texts = await bot_texts_service.get_many(
+        [
+            "btn_support",
+            "btn_change_role",
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+        ],
+        locale,
+    )
+    support_url = build_support_telegram_url(
+        config.market.support_contact or ""
+    )
+    await _support_button(
+        incoming=incoming,
+        user_role_service=user_role_service,
+        profile_service=profile_service,
+        state_store=state_store,
+        messenger_client=messenger_client,
+        support_text=support_text,
+        menu_texts=menu_texts,
+        support_url=support_url,
     )

@@ -12,6 +12,27 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
+from ugc_bot.bot.max.handlers.advertiser_registration import (
+    router as adv_reg_router,
+)
+from ugc_bot.bot.max.handlers.blogger_registration import (
+    router as blog_reg_router,
+)
+from ugc_bot.bot.max.handlers.complaints import router as complaints_router
+from ugc_bot.bot.max.handlers.feedback import router as feedback_router
+from ugc_bot.bot.max.handlers.instagram_verification import (
+    router as ig_verify_router,
+)
+from ugc_bot.bot.max.handlers.my_orders import router as my_orders_router
+from ugc_bot.bot.max.handlers.offer_responses import (
+    router as offer_resp_router,
+)
+from ugc_bot.bot.max.handlers.order_creation import (
+    router as order_create_router,
+)
+from ugc_bot.bot.max.handlers.profile import router as profile_router
+from ugc_bot.bot.max.handlers.referral import router as referral_router
+from ugc_bot.bot.max.handlers.start import router as start_router
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
@@ -25,11 +46,17 @@ from ugc_bot.infrastructure.messenger.max.state import MaxRedisStateStore
 logger = logging.getLogger(__name__)
 
 max_router = MaxRouter()
-
-# Import Max handlers here (registers routes on import)
-from ugc_bot.bot.max.handlers.start import router as start_router  # noqa: E402
-
 max_router.include(start_router)
+max_router.include(adv_reg_router)
+max_router.include(blog_reg_router)
+max_router.include(order_create_router)
+max_router.include(profile_router)
+max_router.include(my_orders_router)
+max_router.include(offer_resp_router)
+max_router.include(referral_router)
+max_router.include(complaints_router)
+max_router.include(feedback_router)
+max_router.include(ig_verify_router)
 
 
 @asynccontextmanager

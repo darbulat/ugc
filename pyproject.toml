@@ -65,6 +65,12 @@ markers = [
 ]
 
 # Used by standalone `coverage report`. For pytest-cov use --cov-fail-under=98 (see Makefile).
+[tool.coverage.run]
+omit = [
+    "*/bot/max/handlers/*",
+    "*/max_webhook_app.py",
+]
+
 [tool.coverage.report]
 fail_under = 98
 exclude_lines = [
