@@ -58,6 +58,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
     validate_init_data_and_get_telegram_user_id,
+    validate_init_data_for_platform,
 )
 
 logger = logging.getLogger(__name__)
@@ -349,7 +350,9 @@ async def _currency_symbol_map(request: Request) -> dict[str, str]:
     return result
 
 
-async def _get_user_locale(request: Request, external_id: str) -> str:
+async def _get_user_locale(
+    request: Request, external_id: str, *, platform: str = "telegram"
+) -> str:
     """Resolve locale for user by external_id via user.language."""
     config = request.app.state.config
     default: str = config.market.default_locale
@@ -359,7 +362,7 @@ async def _get_user_locale(request: Request, external_id: str) -> str:
         return default
     try:
         user = await user_role_service.get_user(
-            external_id, MessengerType.TELEGRAM
+            external_id, _get_messenger_type(platform)
         )
     except Exception:
         logger.warning("Failed to resolve locale for user %s", external_id)
@@ -376,54 +379,85 @@ async def _get_validator_texts(request: Request, locale: str) -> dict[str, str]:
     return await bot_texts.get_many(list(VALIDATOR_ERR_KEYS), locale)
 
 
-def _get_telegram_user_id(request: Request, init_data: str) -> str:
-    """Validate init_data and return Telegram user id. Raises HTTPException."""
+def _get_bot_tokens(request: Request) -> tuple[str, str]:
+    """Return (telegram_bot_token, max_bot_token) from config."""
     config = request.app.state.config
-    bot_token = config.bot.bot_token
+    tg_token = config.bot.bot_token
+    max_bot = getattr(config, "max_bot", None)
+    max_token = max_bot.token if max_bot else ""
+    return tg_token, max_token
+
+
+def _get_external_id(
+    request: Request, init_data: str, *, platform: str = "telegram"
+) -> str:
+    """Validate init_data and return external user id. Raises HTTPException."""
+    tg_token, max_token = _get_bot_tokens(request)
     try:
-        return validate_init_data_and_get_telegram_user_id(init_data, bot_token)
+        return validate_init_data_for_platform(
+            init_data,
+            platform=platform,
+            telegram_bot_token=tg_token,
+            max_bot_token=max_token,
+        )
     except ValueError as e:
         logger.warning("init_data validation failed: %s", e)
         raise HTTPException(status_code=401, detail=str(e)) from e
 
 
-def _get_telegram_username_from_init_data(
-    request: Request, init_data: str
+def _get_username_from_init_data(
+    request: Request, init_data: str, *, platform: str = "telegram"
 ) -> str | None:
-    """Return Telegram username from validated init_data, or None."""
-    config = request.app.state.config
+    """Return username from validated init_data, or None."""
+    tg_token, max_token = _get_bot_tokens(request)
+    token = tg_token if platform == "telegram" else max_token
     try:
-        _, username = get_telegram_user_id_and_username(
-            init_data, config.bot.bot_token
-        )
+        _, username = get_telegram_user_id_and_username(init_data, token)
         return username
     except ValueError:
         return None
 
 
-async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
+def _get_messenger_type(platform: str) -> MessengerType:
+    """Map platform string to MessengerType enum."""
+    if platform == "max":
+        return MessengerType.MAX
+    return MessengerType.TELEGRAM
+
+
+# Backward-compatible aliases
+def _get_telegram_user_id(request: Request, init_data: str) -> str:
+    return _get_external_id(request, init_data, platform="telegram")
+
+
+def _get_telegram_username_from_init_data(
+    request: Request, init_data: str
+) -> str | None:
+    return _get_username_from_init_data(request, init_data, platform="telegram")
+
+
+async def _ensure_user_and_get_id(
+    request: Request, init_data: str, *, platform: str = "telegram"
+) -> UUID:
     """Ensure user exists (set_user), return internal user_id."""
-    config = request.app.state.config
-    try:
-        external_id, telegram_username = get_telegram_user_id_and_username(
-            init_data, config.bot.bot_token
-        )
-    except ValueError as e:
-        logger.warning("init_data validation failed: %s", e)
-        raise HTTPException(status_code=401, detail=str(e)) from e
+    external_id = _get_external_id(request, init_data, platform=platform)
+    messenger_type = _get_messenger_type(platform)
+    username = _get_username_from_init_data(
+        request, init_data, platform=platform
+    )
     dispatcher = request.app.state.dispatcher
     user_role_service = dispatcher["user_role_service"]
     user = await user_role_service.get_user(
-        external_id=external_id, messenger_type=MessengerType.TELEGRAM
+        external_id=external_id, messenger_type=messenger_type
     )
     if user is None:
         try:
             await user_role_service.set_user(
                 external_id=external_id,
-                messenger_type=MessengerType.TELEGRAM,
+                messenger_type=messenger_type,
                 username=f"user_{external_id}",
                 role_chosen=False,
-                telegram_username=telegram_username,
+                telegram_username=username,
             )
         except Exception:
             logger.debug(
@@ -431,10 +465,21 @@ async def _ensure_user_and_get_id(request: Request, init_data: str) -> UUID:
                 external_id,
             )
         user = await user_role_service.get_user(
-            external_id=external_id, messenger_type=MessengerType.TELEGRAM
+            external_id=external_id, messenger_type=messenger_type
         )
     if user is None:
         raise HTTPException(status_code=500, detail="Failed to resolve user")
+    if platform == "max" and user.country is None:
+        try:
+            await user_role_service.set_country(
+                external_id=external_id,
+                messenger_type=messenger_type,
+                country_code="RU",
+            )
+        except Exception:
+            logger.debug(
+                "Failed to auto-set country for Max user %s", external_id
+            )
     return user.user_id
 
 
