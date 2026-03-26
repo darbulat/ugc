@@ -253,6 +253,52 @@ class TestValidateInitDataUserNotDict:
             validate_init_data_and_get_telegram_user_id(init_data, bot_token)
 
 
+class TestValidateInitDataForPlatform:
+    def test_telegram_platform_uses_telegram_token(self) -> None:
+        from ugc_bot.miniapp.auth import validate_init_data_for_platform
+
+        tg_token = "tg_token_123"
+        max_token = "max_token_456"
+        init_data = _make_valid_init_data(tg_token, 111)
+        result = validate_init_data_for_platform(
+            init_data, platform="telegram",
+            telegram_bot_token=tg_token, max_bot_token=max_token,
+        )
+        assert result == "111"
+
+    def test_max_platform_uses_max_token(self) -> None:
+        from ugc_bot.miniapp.auth import validate_init_data_for_platform
+
+        tg_token = "tg_token_123"
+        max_token = "max_token_456"
+        init_data = _make_valid_init_data(max_token, 222)
+        result = validate_init_data_for_platform(
+            init_data, platform="max",
+            telegram_bot_token=tg_token, max_bot_token=max_token,
+        )
+        assert result == "222"
+
+    def test_unknown_platform_raises(self) -> None:
+        from ugc_bot.miniapp.auth import validate_init_data_for_platform
+
+        with pytest.raises(ValueError, match="Unknown platform"):
+            validate_init_data_for_platform(
+                "any", platform="vk",
+                telegram_bot_token="t", max_bot_token="m",
+            )
+
+    def test_max_with_telegram_token_fails(self) -> None:
+        from ugc_bot.miniapp.auth import validate_init_data_for_platform
+
+        max_token = "max_token_789"
+        init_data = _make_valid_init_data(max_token, 333)
+        with pytest.raises(ValueError, match="Invalid init_data signature"):
+            validate_init_data_for_platform(
+                init_data, platform="telegram",
+                telegram_bot_token="wrong_token", max_bot_token=max_token,
+            )
+
+
 class TestGetTelegramUserIdAndUsernameGuardBranches:
     """Tests for defensive branches in get_telegram_user_id_and_username."""
 

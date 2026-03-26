@@ -82,6 +82,30 @@ def validate_init_data_and_get_telegram_user_id(
     return str(telegram_id)
 
 
+def validate_init_data_for_platform(
+    init_data: str,
+    *,
+    platform: str,
+    telegram_bot_token: str,
+    max_bot_token: str,
+) -> str:
+    """Validate initData using the correct bot token for the given platform.
+
+    Returns:
+        User id as string (external_id).
+
+    Raises:
+        ValueError: If platform is unknown or validation fails.
+    """
+    if platform == "telegram":
+        bot_token = telegram_bot_token
+    elif platform == "max":
+        bot_token = max_bot_token
+    else:
+        raise ValueError(f"Unknown platform: {platform!r}")
+    return validate_init_data_and_get_telegram_user_id(init_data, bot_token)
+
+
 def get_telegram_user_id_and_username(
     init_data: str, bot_token: str
 ) -> tuple[str, str | None]:
