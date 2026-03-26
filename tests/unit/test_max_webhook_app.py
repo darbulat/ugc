@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
@@ -746,3 +747,67 @@ async def test_lifespan_webhook_registration_failure_raises():
     ):
         async with _lifespan(fake_app):
             pass
+
+
+# ---------------------------------------------------------------------------
+# Miniapp routes tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def max_app_client() -> TestClient:
+    """Create test client with mocked lifespan dependencies for Max webhook app."""
+    from ugc_bot.max_webhook_app import app
+
+    mock_config = MagicMock()
+    mock_config.max_bot.token = "tok"
+    mock_config.max_bot.webhook_url = "https://example.com/webhook/max"
+    mock_config.max_bot.webhook_secret = None
+    mock_config.redis.redis_url = "redis://localhost:6379/0"
+    mock_config.market.default_locale = "ru"
+
+    mock_redis = AsyncMock()
+    mock_http_session = AsyncMock()
+    mock_http_session.close = AsyncMock()
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_http_session.post = MagicMock(
+        return_value=AsyncMock(
+            __aenter__=AsyncMock(return_value=mock_resp),
+            __aexit__=AsyncMock(return_value=False),
+        )
+    )
+
+    mock_bot_texts = MagicMock()
+    mock_bot_texts.load_from_db = AsyncMock(return_value=None)
+    mock_bot_texts.get_many = AsyncMock(return_value={})
+    mock_geocode_limiter = MagicMock()
+    mock_geocode_limiter.allow_async = AsyncMock(return_value=True)
+
+    mock_container = MagicMock()
+    mock_container.build_bot_services = MagicMock(
+        return_value={
+            "bot_texts_service": mock_bot_texts,
+            "geocode_public_rate_limiter": mock_geocode_limiter,
+        }
+    )
+    mock_container.dispose = AsyncMock()
+
+    with (
+        patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
+        patch("ugc_bot.max_webhook_app.Redis.from_url", return_value=mock_redis),
+        patch(
+            "ugc_bot.max_webhook_app.aiohttp.ClientSession",
+            return_value=mock_http_session,
+        ),
+        patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+    ):
+        with TestClient(app) as c:
+            yield c
+
+
+def test_miniapp_api_routes_mounted(max_app_client: TestClient) -> None:
+    """Miniapp API routes are accessible under /miniapp/api prefix."""
+    response = max_app_client.post("/miniapp/api/config", json={})
+    # 422 = validation error (missing init_data), not 404 = route exists
+    assert response.status_code == 422
