@@ -114,7 +114,11 @@ _FLAT_KEYS = {
         "ORDER_RADIUS_KM",
     ],
     "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
-    "max_bot": ["MAX_BOT_TOKEN", "MAX_BOT_WEBHOOK_URL"],
+    "max_bot": [
+        "MAX_BOT_TOKEN",
+        "MAX_BOT_WEBHOOK_URL",
+        "MAX_BOT_WEBHOOK_SECRET",
+    ],
     "market": [
         "PAYMENT_CURRENCY",
         "CURRENCY_SYMBOL",
@@ -604,6 +608,7 @@ class MaxBotConfig(BaseSettings):
 
     token: str = Field(default="", alias="MAX_BOT_TOKEN")
     webhook_url: str = Field(default="", alias="MAX_BOT_WEBHOOK_URL")
+    webhook_secret: str = Field(default="", alias="MAX_BOT_WEBHOOK_SECRET")
 
 
 # --- Composite ---

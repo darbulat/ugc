@@ -493,6 +493,13 @@ def test_is_user_blocked_bot_other_exception() -> None:
     assert is_user_blocked_bot(RuntimeError("fail")) is False
 
 
+def test_is_user_blocked_bot_max_user_blocked_error() -> None:
+    """is_user_blocked_bot returns True for MaxUserBlockedError."""
+    from ugc_bot.infrastructure.messenger.max.client import MaxUserBlockedError
+
+    assert is_user_blocked_bot(MaxUserBlockedError("blocked")) is True
+
+
 @pytest.mark.asyncio
 async def test_edit_reply_markup_raises_non_modified_error(
     fake_bot: MagicMock,

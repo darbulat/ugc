@@ -36,7 +36,9 @@ T = TypeVar("T")
 
 def is_user_blocked_bot(exc: BaseException) -> bool:
     """True if user blocked the bot (no point retrying)."""
-    if isinstance(exc, TelegramForbiddenError):
+    from ugc_bot.infrastructure.messenger.max.client import MaxUserBlockedError
+
+    if isinstance(exc, (TelegramForbiddenError, MaxUserBlockedError)):
         return True
     if isinstance(exc, TelegramBadRequest):
         msg = (getattr(exc, "message", None) or str(exc)).lower()

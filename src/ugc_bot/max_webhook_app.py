@@ -37,9 +37,10 @@ async def _lifespan(app: FastAPI):
     config = load_config()
 
     if not config.max_bot:
-        logger.error("MAX_BOT_TOKEN not configured, exiting")
-        yield
-        return
+        raise ValueError(
+            "MAX_BOT_TOKEN is required for Max webhook app. "
+            "Set MAX_BOT_TOKEN environment variable."
+        )
 
     redis = Redis.from_url(config.redis.redis_url, decode_responses=True)
     http_session = aiohttp.ClientSession()
@@ -59,13 +60,17 @@ async def _lifespan(app: FastAPI):
     app.state.event_adapter = event_adapter
     app.state.container = container
     app.state.max_router = max_router
+    app.state.webhook_secret = config.max_bot.webhook_secret or None
 
     # Register webhook with Max API
     webhook_url = config.max_bot.webhook_url
+    subscription_body: dict = {"url": webhook_url}
+    if config.max_bot.webhook_secret:
+        subscription_body["secret"] = config.max_bot.webhook_secret
     try:
         async with http_session.post(
             f"{MAX_API_BASE_URL}/subscriptions",
-            json={"url": webhook_url},
+            json=subscription_body,
             headers={"Authorization": config.max_bot.token},
         ) as resp:
             if resp.status < 300:
@@ -96,9 +101,18 @@ async def health() -> JSONResponse:
 
 @app.post("/webhook/max")
 async def handle_max_webhook(request: Request) -> JSONResponse:
+    state = request.app.state
+
+    # Verify webhook secret if configured
+    webhook_secret = getattr(state, "webhook_secret", None)
+    if webhook_secret:
+        header_secret = request.headers.get("X-Max-Bot-Api-Secret", "")
+        if header_secret != webhook_secret:
+            logger.warning("Max webhook rejected: invalid secret")
+            return JSONResponse({"ok": False}, status_code=403)
+
     data = await request.json()
     update_type = data.get("update_type")
-    state = request.app.state
     event_adapter: MaxEventAdapter = state.event_adapter
 
     deps = {

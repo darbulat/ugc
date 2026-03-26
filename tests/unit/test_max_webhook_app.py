@@ -291,6 +291,7 @@ def _make_app_state(router=None):
     state.messenger_client = MagicMock()
     state.config = MagicMock()
     state.redis = MagicMock()
+    state.webhook_secret = None
     return state
 
 
@@ -376,6 +377,32 @@ async def test_handle_max_webhook_exception_returns_ok():
             "message": {},
         }
     )
+    resp = await handle_max_webhook(request)
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_handle_max_webhook_rejects_invalid_secret():
+    """Webhook rejects requests with invalid secret."""
+    state = _make_app_state()
+    state.webhook_secret = "my-secret"
+    request = MagicMock()
+    request.app.state = state
+    request.headers = {"X-Max-Bot-Api-Secret": "wrong-secret"}
+    request.json = AsyncMock(return_value={"update_type": "message_created"})
+    resp = await handle_max_webhook(request)
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_handle_max_webhook_accepts_valid_secret():
+    """Webhook accepts requests with valid secret."""
+    state = _make_app_state()
+    state.webhook_secret = "my-secret"
+    request = MagicMock()
+    request.app.state = state
+    request.headers = {"X-Max-Bot-Api-Secret": "my-secret"}
+    request.json = AsyncMock(return_value={"update_type": "bot_started"})
     resp = await handle_max_webhook(request)
     assert resp.status_code == 200
 
@@ -502,17 +529,20 @@ async def test_state_store_clear():
 
 
 @pytest.mark.asyncio
-async def test_lifespan_no_max_bot_yields_immediately():
-    """When max_bot is None, lifespan yields without setup."""
+async def test_lifespan_no_max_bot_raises_value_error():
+    """When max_bot is None, lifespan raises ValueError."""
     from ugc_bot.max_webhook_app import _lifespan
 
     mock_config = MagicMock()
     mock_config.max_bot = None
     fake_app = MagicMock()
 
-    with patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config):
+    with (
+        patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
+        pytest.raises(ValueError, match="MAX_BOT_TOKEN is required"),
+    ):
         async with _lifespan(fake_app):
-            pass  # should yield without error
+            pass
 
 
 @pytest.mark.asyncio

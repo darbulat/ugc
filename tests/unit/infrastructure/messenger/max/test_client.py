@@ -40,7 +40,7 @@ async def test_send_text_plain(client, mock_session):
     mock_session.request.assert_called_once()
     args, kwargs = mock_session.request.call_args
     assert args[0] == "POST"
-    assert "chat_id=123" in args[1]
+    assert kwargs["params"] == {"chat_id": "123"}
     assert kwargs["json"]["text"] == "Hello"
 
 
@@ -77,7 +77,7 @@ async def test_edit_text(client, mock_session):
     await client.edit_text(chat_id="123", message_id="msg_1", text="Updated")
     args, kwargs = mock_session.request.call_args
     assert args[0] == "PUT"
-    assert "message_id=msg_1" in args[1]
+    assert kwargs["params"] == {"message_id": "msg_1"}
 
 
 @pytest.mark.asyncio
@@ -85,7 +85,7 @@ async def test_answer_callback(client, mock_session):
     await client.answer_callback(callback_id="cb_1", text="Done")
     args, kwargs = mock_session.request.call_args
     assert args[0] == "POST"
-    assert "callback_id=cb_1" in args[1]
+    assert kwargs["params"] == {"callback_id": "cb_1"}
 
 
 @pytest.mark.asyncio
@@ -182,13 +182,15 @@ def make_response():
 
 
 @pytest.mark.asyncio
-async def test_request_403_returns_empty(make_response):
+async def test_request_403_raises_max_user_blocked_error(make_response):
+    from ugc_bot.infrastructure.messenger.max.client import MaxUserBlockedError
+
     response = make_response(403)
     session = AsyncMock()
     session.request = AsyncMock(return_value=response)
     client = MaxMessengerClient(token="tok", session=session)
-    result = await client._request("GET", "/test")
-    assert result == {}
+    with pytest.raises(MaxUserBlockedError):
+        await client._request("GET", "/test")
 
 
 @pytest.mark.asyncio

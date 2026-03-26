@@ -12,10 +12,17 @@ from ugc_bot.application.messenger.dto import (
     Keyboard,
     KeyboardKind,
 )
+from ugc_bot.application.messenger.ports import MessengerClient
 
 logger = logging.getLogger(__name__)
 
 MAX_API_BASE_URL = "https://platform-api.max.ru"
+
+
+class MaxUserBlockedError(Exception):
+    """Raised when Max API returns 403 (user blocked the bot)."""
+
+
 MAX_RETRY_ATTEMPTS = 3
 MAX_RETRY_BASE_DELAY = 0.5
 
@@ -45,14 +52,18 @@ def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
     return {"type": "inline_keyboard", "payload": {"buttons": buttons}}
 
 
-class MaxMessengerClient:
+class MaxMessengerClient(MessengerClient):
     def __init__(self, token: str, session: aiohttp.ClientSession) -> None:
         self._token = token
         self._session = session
         self._base_url = MAX_API_BASE_URL
 
     async def _request(
-        self, method: str, path: str, json_body: dict | None = None
+        self,
+        method: str,
+        path: str,
+        json_body: dict | None = None,
+        params: dict[str, str] | None = None,
     ) -> dict:
         url = f"{self._base_url}{path}"
         headers = {"Authorization": self._token}
@@ -61,7 +72,7 @@ class MaxMessengerClient:
         for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
                 resp = await self._session.request(
-                    method, url, json=json_body, headers=headers
+                    method, url, json=json_body, headers=headers, params=params
                 )
                 async with resp:
                     if resp.status == 429:
@@ -75,11 +86,11 @@ class MaxMessengerClient:
                         await asyncio.sleep(retry_after)
                         continue
                     if resp.status == 403:
+                        text = await resp.text()
                         logger.warning(
-                            "Max API 403 (user blocked bot?): %s",
-                            await resp.text(),
+                            "Max API 403 (user blocked bot?): %s", text
                         )
-                        return {}
+                        raise MaxUserBlockedError(text)
                     if resp.status >= 500:
                         text = await resp.text()
                         logger.error(
@@ -105,11 +116,21 @@ class MaxMessengerClient:
             raise last_exc
         return {}
 
-    async def _post(self, path: str, json_body: dict | None = None) -> dict:
-        return await self._request("POST", path, json_body)
+    async def _post(
+        self,
+        path: str,
+        json_body: dict | None = None,
+        params: dict[str, str] | None = None,
+    ) -> dict:
+        return await self._request("POST", path, json_body, params=params)
 
-    async def _put(self, path: str, json_body: dict | None = None) -> dict:
-        return await self._request("PUT", path, json_body)
+    async def _put(
+        self,
+        path: str,
+        json_body: dict | None = None,
+        params: dict[str, str] | None = None,
+    ) -> dict:
+        return await self._request("PUT", path, json_body, params=params)
 
     async def send_text(
         self,
@@ -128,7 +149,7 @@ class MaxMessengerClient:
         body: dict[str, Any] = {"text": clean_text}
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
-        await self._post(f"/messages?chat_id={chat_id}", body)
+        await self._post("/messages", body, params={"chat_id": chat_id})
 
     async def send_photo(
         self,
@@ -151,10 +172,15 @@ class MaxMessengerClient:
         keyboard: Keyboard | None = None,
         parse_mode: str | None = None,
     ) -> None:
-        body: dict[str, Any] = {"text": text}
+        clean_text = (
+            _strip_html(text)
+            if parse_mode and "html" in parse_mode.lower()
+            else text
+        )
+        body: dict[str, Any] = {"text": clean_text}
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
-        await self._put(f"/messages?message_id={message_id}", body)
+        await self._put("/messages", body, params={"message_id": message_id})
 
     async def edit_reply_markup(
         self,
@@ -166,7 +192,7 @@ class MaxMessengerClient:
         body: dict[str, Any] = {}
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
-        await self._put(f"/messages?message_id={message_id}", body)
+        await self._put("/messages", body, params={"message_id": message_id})
 
     async def answer_callback(
         self,
@@ -178,7 +204,9 @@ class MaxMessengerClient:
         body: dict[str, Any] = {}
         if text:
             body["message"] = {"text": text}
-        await self._post(f"/answers/callback?callback_id={callback_id}", body)
+        await self._post(
+            "/answers/callback", body, params={"callback_id": callback_id}
+        )
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         raise NotImplementedError(

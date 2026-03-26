@@ -5,8 +5,10 @@ from typing import Any
 
 from redis.asyncio import Redis
 
+from ugc_bot.application.messenger.state import StateStore
 
-class MaxRedisStateStore:
+
+class MaxRedisStateStore(StateStore):
     """Redis-backed state store for Max messenger conversational flows."""
 
     _STATE_KEY_PREFIX = "max:state:"

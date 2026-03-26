@@ -3,20 +3,23 @@
 from ugc_bot.application.messenger.dto import (
     IncomingCallback,
     IncomingMessage,
+    IncomingPreCheckout,
     IncomingUser,
 )
+from ugc_bot.application.messenger.ports import MessengerEventAdapter
 from ugc_bot.domain.enums import MessengerType
 
 
-class MaxEventAdapter:
+class MaxEventAdapter(MessengerEventAdapter):
     """Converts raw Max webhook event dicts to messenger-neutral DTOs."""
 
-    def from_message(self, event: dict) -> IncomingMessage:
+    def from_message(self, message: object) -> IncomingMessage:
         """Convert a message_created event to IncomingMessage."""
-        message = event["message"]
-        sender = message["sender"]
-        recipient = message["recipient"]
-        body = message.get("body", {})
+        event: dict = message  # type: ignore[assignment]
+        msg = event["message"]
+        sender = msg["sender"]
+        recipient = msg["recipient"]
+        body = msg.get("body", {})
 
         user = IncomingUser(
             external_id=str(sender["user_id"]),
@@ -32,11 +35,12 @@ class MaxEventAdapter:
             raw=event,
         )
 
-    def from_callback(self, event: dict) -> IncomingCallback:
+    def from_callback(self, callback: object) -> IncomingCallback:
         """Convert a message_callback event to IncomingCallback."""
-        callback = event["callback"]
-        cb_user = callback["user"]
-        message = callback.get("message", {})
+        event: dict = callback  # type: ignore[assignment]
+        cb = event["callback"]
+        cb_user = cb["user"]
+        message = cb.get("message", {})
         recipient = message.get("recipient", {})
         body = message.get("body", {})
 
@@ -47,11 +51,18 @@ class MaxEventAdapter:
         )
 
         return IncomingCallback(
-            callback_id=str(callback["callback_id"]),
+            callback_id=str(cb["callback_id"]),
             chat_id=str(recipient.get("chat_id", "")),
             user=user,
-            data=callback.get("payload"),
+            data=cb.get("payload"),
             message_id=body.get("mid"),
             message_text=body.get("text"),
             raw=event,
+        )
+
+    def from_pre_checkout(self, query: object) -> IncomingPreCheckout:
+        """Max does not support payments."""
+        raise NotImplementedError(
+            "Max messenger does not support payments. "
+            "Check messenger_type before calling from_pre_checkout."
         )
