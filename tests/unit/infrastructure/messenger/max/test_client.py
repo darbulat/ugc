@@ -156,6 +156,18 @@ async def test_send_text_strips_html(client, mock_session):
     assert body["text"] == "Bold and italic"
 
 
+def test_build_inline_keyboard_open_app_button():
+    kb = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[[Button(text="Open App", web_app_url="https://mini.app/start")]],
+    )
+    result = _build_inline_keyboard(kb)
+    btn = result["payload"]["buttons"][0][0]
+    assert btn["type"] == "open_app"
+    assert btn["url"] == "https://mini.app/start"
+    assert "payload" not in btn
+
+
 def test_build_inline_keyboard_url_button():
     kb = Keyboard(
         kind=KeyboardKind.INLINE,
