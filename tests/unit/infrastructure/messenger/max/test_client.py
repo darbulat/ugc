@@ -116,6 +116,27 @@ async def test_edit_reply_markup(client, mock_session):
 
 
 @pytest.mark.asyncio
+async def test_edit_reply_markup_remove_keyboard(client, mock_session):
+    await client.edit_reply_markup(
+        chat_id="123", message_id="msg_1", keyboard=None
+    )
+    _args, kwargs = mock_session.request.call_args
+    body = kwargs.get("json", {})
+    assert body["attachments"] == []
+
+
+@pytest.mark.asyncio
+async def test_edit_text_without_keyboard_sends_empty_attachments(
+    client, mock_session
+):
+    await client.edit_text(chat_id="123", message_id="msg_1", text="Updated")
+    _args, kwargs = mock_session.request.call_args
+    body = kwargs.get("json", {})
+    assert body["text"] == "Updated"
+    assert body["attachments"] == []
+
+
+@pytest.mark.asyncio
 async def test_reply_keyboard_ignored(client, mock_session):
     kb = Keyboard(
         kind=KeyboardKind.REPLY,

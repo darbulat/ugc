@@ -204,6 +204,9 @@ class MaxMessengerClient(MessengerClient):
         body: dict[str, Any] = {"text": clean_text}
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
+        else:
+            # Explicitly send empty attachments to remove inline keyboard
+            body["attachments"] = []
         await self._put("/messages", body, params={"message_id": message_id})
 
     async def edit_reply_markup(
@@ -216,6 +219,9 @@ class MaxMessengerClient(MessengerClient):
         body: dict[str, Any] = {}
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
+        else:
+            # Explicitly send empty attachments to remove inline keyboard
+            body["attachments"] = []
         await self._put("/messages", body, params={"message_id": message_id})
 
     async def answer_callback(
