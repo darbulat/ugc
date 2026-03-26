@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
 from ugc_bot.application.messenger.dto import (
@@ -450,3 +452,82 @@ async def test_state_callback_handler_exception_is_caught(
         raise RuntimeError("boom")
 
     await router.route_callback(incoming_callback, {"state_store": store})
+
+
+# ---------------------------------------------------------------------------
+# Predicate errors skip to next handler instead of stopping routing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_predicate_error_skips_to_next_handler(router, incoming_message):
+    called = []
+
+    @router.message(lambda m: m.nonexistent_attr)  # type: ignore[attr-defined]
+    async def bad_pred(msg, deps):
+        called.append("bad")
+
+    @router.message(lambda m: True)
+    async def good(msg, deps):
+        called.append("good")
+
+    await router.route_message(incoming_message, {})
+    assert called == ["good"]
+
+
+@pytest.mark.asyncio
+async def test_callback_predicate_error_skips_to_next(
+    router, incoming_callback
+):
+    called = []
+
+    @router.callback(lambda c: c.nonexistent)  # type: ignore[attr-defined]
+    async def bad_pred(cb, deps):
+        called.append("bad")
+
+    @router.callback(lambda c: True)
+    async def good(cb, deps):
+        called.append("good")
+
+    await router.route_callback(incoming_callback, {})
+    assert called == ["good"]
+
+
+# ---------------------------------------------------------------------------
+# Handler errors send error message to user
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_handler_error_sends_error_message(router, incoming_message):
+    mock_client = AsyncMock()
+
+    @router.message(lambda m: True)
+    async def bad(msg, deps):
+        raise RuntimeError("boom")
+
+    await router.route_message(
+        incoming_message, {"messenger_client": mock_client}
+    )
+    mock_client.send_text.assert_called_once()
+    call_kwargs = mock_client.send_text.call_args[1]
+    assert call_kwargs["chat_id"] == "1"
+    assert "ошибка" in call_kwargs["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_callback_handler_error_sends_error_message(
+    router, incoming_callback
+):
+    mock_client = AsyncMock()
+
+    @router.callback(lambda c: True)
+    async def bad(cb, deps):
+        raise RuntimeError("boom")
+
+    await router.route_callback(
+        incoming_callback, {"messenger_client": mock_client}
+    )
+    assert mock_client.send_text.call_count >= 1
+    last_send = mock_client.send_text.call_args_list[-1]
+    assert "ошибка" in last_send[1]["text"].lower()

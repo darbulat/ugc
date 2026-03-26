@@ -55,11 +55,11 @@ async def test_max_webhook_routes_callback():
         "callback": {
             "callback_id": "cb_1",
             "user": {"user_id": 1, "username": "test"},
-            "message": {
-                "recipient": {"chat_id": 2},
-                "body": {"mid": "m1", "text": "old"},
-            },
             "payload": "order:123",
+        },
+        "message": {
+            "recipient": {"chat_id": 2},
+            "body": {"mid": "m1", "text": "old"},
         },
     }
 
@@ -158,6 +158,30 @@ def test_adapter_from_callback_fields():
     assert cb.user.messenger_type == MessengerType.MAX
 
 
+def test_adapter_from_bot_started_fields():
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "bot_started",
+        "chat_id": 252972060,
+        "user": {"user_id": 23759393, "username": "alice"},
+    }
+    msg = adapter.from_bot_started(event)
+    assert msg.chat_id == "252972060"
+    assert msg.user.external_id == "252972060"
+    assert msg.text == "/start"
+    assert msg.message_id is None
+    assert msg.user.messenger_type == MessengerType.MAX
+    assert msg.user.username == "alice"
+
+
+def test_adapter_from_pre_checkout_raises():
+    adapter = MaxEventAdapter()
+    import pytest as _pt
+
+    with _pt.raises(NotImplementedError):
+        adapter.from_pre_checkout({})
+
+
 # ---------------------------------------------------------------------------
 # MaxRouter tests
 # ---------------------------------------------------------------------------
@@ -190,9 +214,9 @@ async def test_router_no_handler_matched_callback():
         "callback": {
             "callback_id": "c1",
             "user": {"user_id": 1, "username": "u"},
-            "message": {"recipient": {"chat_id": 1}, "body": {"mid": "m1"}},
             "payload": "other:1",
         },
+        "message": {"recipient": {"chat_id": 1}, "body": {"mid": "m1"}},
     }
     incoming = adapter.from_callback(event)
     await router.route_callback(incoming, {})  # no error
@@ -235,9 +259,9 @@ async def test_router_callback_handler_exception_is_swallowed():
         "callback": {
             "callback_id": "c1",
             "user": {"user_id": 1, "username": "u"},
-            "message": {"recipient": {"chat_id": 1}, "body": {}},
             "payload": "x",
         },
+        "message": {"recipient": {"chat_id": 1}, "body": {}},
     }
     incoming = adapter.from_callback(event)
     await router.route_callback(incoming, {})  # should not raise
@@ -413,9 +437,9 @@ async def test_handle_max_webhook_message_callback():
             "callback": {
                 "callback_id": "cb1",
                 "user": {"user_id": 2, "username": "u"},
-                "message": {"recipient": {"chat_id": 3}, "body": {}},
                 "payload": "act:1",
             },
+            "message": {"recipient": {"chat_id": 3}, "body": {}},
         }
     )
     resp = await handle_max_webhook(request)

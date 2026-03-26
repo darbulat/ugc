@@ -43,10 +43,10 @@ class MaxEventAdapter(MessengerEventAdapter):
         cb = event["callback"]
         cb_user = cb["user"]
         # "message" is a top-level field in the event, not nested in "callback"
-        message = event.get("message", {})
-        recipient = message.get("recipient", {})
+        message = event["message"]
+        recipient = message["recipient"]
         body = message.get("body", {})
-        chat_id = str(recipient.get("chat_id", ""))
+        chat_id = str(recipient["chat_id"])
 
         user = IncomingUser(
             # Use chat_id as external_id (needed for sending messages back)

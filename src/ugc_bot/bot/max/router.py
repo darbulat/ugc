@@ -17,6 +17,8 @@ _CallbackHandler = Callable[
 _MessagePredicate = Callable[[IncomingMessage], bool]
 _CallbackPredicate = Callable[[IncomingCallback], bool]
 
+_ERROR_TEXT = "Произошла ошибка. Попробуйте позже."
+
 
 class MaxRouter:
     """Routes incoming Max messages and callbacks to registered handlers.
@@ -116,6 +118,15 @@ class MaxRouter:
 
         return decorator
 
+    async def _send_error(self, chat_id: str, deps: dict[str, Any]) -> None:
+        """Try to send an error message to the user."""
+        try:
+            mc = deps.get("messenger_client")
+            if mc:
+                await mc.send_text(chat_id=chat_id, text=_ERROR_TEXT)
+        except Exception:
+            logger.debug("Failed to send error message to chat %s", chat_id)
+
     async def route_message(
         self, incoming: IncomingMessage, deps: dict[str, Any]
     ) -> None:
@@ -139,17 +150,24 @@ class MaxRouter:
                         "Error in Max state message handler %s",
                         handler.__name__,
                     )
+                    await self._send_error(incoming.chat_id, deps)
                 return
 
         for predicate, handler in self._message_handlers:
             try:
-                if predicate(incoming):
-                    await handler(incoming, deps)
-                    return
+                matched = predicate(incoming)
             except Exception:
-                logger.exception(
-                    "Error in Max message handler %s", handler.__name__
-                )
+                logger.debug("Predicate error for handler %s", handler.__name__)
+                continue
+            if matched:
+                try:
+                    await handler(incoming, deps)
+                except Exception:
+                    logger.exception(
+                        "Error in Max message handler %s",
+                        handler.__name__,
+                    )
+                    await self._send_error(incoming.chat_id, deps)
                 return
         logger.debug(
             "No Max message handler matched for text=%r", incoming.text
@@ -169,9 +187,10 @@ class MaxRouter:
                 keyboard=None,
             )
         except Exception:
-            logger.debug(
+            logger.warning(
                 "Could not remove callback keyboard for mid=%s",
                 incoming.message_id,
+                exc_info=True,
             )
 
     async def route_callback(
@@ -199,17 +218,24 @@ class MaxRouter:
                         "Error in Max state callback handler %s",
                         handler.__name__,
                     )
+                    await self._send_error(incoming.chat_id, deps)
                 return
 
         for predicate, handler in self._callback_handlers:
             try:
-                if predicate(incoming):
-                    await handler(incoming, deps)
-                    return
+                matched = predicate(incoming)
             except Exception:
-                logger.exception(
-                    "Error in Max callback handler %s", handler.__name__
-                )
+                logger.debug("Predicate error for handler %s", handler.__name__)
+                continue
+            if matched:
+                try:
+                    await handler(incoming, deps)
+                except Exception:
+                    logger.exception(
+                        "Error in Max callback handler %s",
+                        handler.__name__,
+                    )
+                    await self._send_error(incoming.chat_id, deps)
                 return
         logger.debug(
             "No Max callback handler matched for data=%r", incoming.data

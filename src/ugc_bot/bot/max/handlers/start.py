@@ -14,7 +14,6 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_COUNTRY_PREFIX,
     CALLBACK_LANG_PREFIX,
     CALLBACK_SUPPORT,
-    build_support_telegram_url,
     country_change_inline_keyboard,
     country_inline_keyboard,
     language_inline_keyboard,
@@ -397,9 +396,8 @@ async def support_callback(incoming: IncomingCallback, deps: dict) -> None:
         ],
         locale,
     )
-    support_url = build_support_telegram_url(
-        config.market.support_contact or ""
-    )
+    # Max users can't open t.me links; omit Telegram-specific URL
+    support_url = None
     await _support_button(
         incoming=incoming,
         user_role_service=user_role_service,
@@ -450,9 +448,8 @@ async def support_command(incoming: IncomingMessage, deps: dict) -> None:
         ],
         locale,
     )
-    support_url = build_support_telegram_url(
-        config.market.support_contact or ""
-    )
+    # Max users can't open t.me links; omit Telegram-specific URL
+    support_url = None
     await _support_button(
         incoming=incoming,
         user_role_service=user_role_service,
