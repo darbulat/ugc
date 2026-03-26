@@ -663,8 +663,12 @@ class AppConfig(BaseModel):
             "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
             "max_bot": (
-                MaxBotConfig.model_validate(nested.get("max_bot", {}))
-                if nested.get("max_bot", {}).get("MAX_BOT_TOKEN")
+                max_cfg
+                if (
+                    max_cfg := MaxBotConfig.model_validate(
+                        nested.get("max_bot", {})
+                    )
+                ).token
                 else None
             ),
         }
