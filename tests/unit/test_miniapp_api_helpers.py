@@ -214,7 +214,7 @@ class TestSetCountryEndpoint:
                 new=AsyncMock(return_value=uuid4()),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):
@@ -262,7 +262,7 @@ class TestSetCountryEndpoint:
                 new=AsyncMock(return_value=uuid4()),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):
@@ -297,7 +297,7 @@ class TestSetCountryEndpoint:
                 new=AsyncMock(return_value=uuid4()),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
             pytest.raises(HTTPException) as exc_info,
@@ -360,7 +360,7 @@ class TestMeEndpointCountryResolution:
                 new=AsyncMock(return_value=uid),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):

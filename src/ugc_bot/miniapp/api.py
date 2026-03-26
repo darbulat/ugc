@@ -57,7 +57,6 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
-    validate_init_data_and_get_telegram_user_id,
     validate_init_data_for_platform,
 )
 
@@ -577,13 +576,14 @@ def _blogger_profile_to_dict(blogger, user) -> dict | None:
 @router.post("/me", response_model=MeResponse)
 async def me(request: Request, body: InitDataBody) -> MeResponse:
     """Return current user, profile flags and profile data for pre-fill."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     profile_service = dispatcher["profile_service"]
     advertiser = await profile_service.get_advertiser_profile(user_id)
     blogger = await profile_service.get_blogger_profile(user_id)
     user = await profile_service.get_user_by_external(
-        _get_telegram_user_id(request, body.init_data), MessengerType.TELEGRAM
+        _get_external_id(request, body.init_data, platform=body.platform),
+        _get_messenger_type(body.platform),
     )
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
@@ -644,7 +644,7 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
 @router.post("/config", response_model=ConfigResponse)
 async def config(request: Request, body: InitDataBody) -> ConfigResponse:
     """Return miniapp config: counts, content usage, bot username, doc URLs."""
-    _ = await _ensure_user_and_get_id(request, body.init_data)
+    _ = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     cfg = request.app.state.config
     counts = sorted(cfg.order.get_allowed_blogger_counts_set())
     options = [
@@ -738,12 +738,12 @@ async def register_advertiser(
     request: Request, body: RegisterAdvertiserRequest
 ) -> dict:
     """Save advertiser profile; return needs_agreement (confirm docs in UI)."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
-    telegram_username = _get_telegram_username_from_init_data(
-        request, body.init_data
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
+    telegram_username = _get_username_from_init_data(
+        request, body.init_data, platform=body.platform
     )
-    external_id = _get_telegram_user_id(request, body.init_data)
-    locale = await _get_user_locale(request, external_id)
+    external_id = _get_external_id(request, body.init_data, platform=body.platform)
+    locale = await _get_user_locale(request, external_id, platform=body.platform)
     texts = await _get_validator_texts(request, locale)
     err = _validate_advertiser_body(body, texts)
     if err:
@@ -777,7 +777,7 @@ async def confirm_advertiser_agreement_endpoint(
     request: Request, body: InitDataBody
 ) -> dict:
     """Confirm advertiser agreement with platform documents."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["advertiser_registration_service"]
     try:
@@ -933,14 +933,14 @@ async def register_blogger(
     request: Request, body: RegisterBloggerRequest
 ) -> dict:
     """Register current user as blogger (same validation as bot)."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     if body.audience_age_max < body.audience_age_min:
         raise HTTPException(
             status_code=400,
             detail="audience_age_max must be >= audience_age_min",
         )
-    external_id = _get_telegram_user_id(request, body.init_data)
-    locale = await _get_user_locale(request, external_id)
+    external_id = _get_external_id(request, body.init_data, platform=body.platform)
+    locale = await _get_user_locale(request, external_id, platform=body.platform)
     texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_blogger_body(
@@ -975,7 +975,7 @@ async def register_blogger(
     location_geometry = _location_geometry_from_blogger_request(body)
     telegram_username = (
         body.telegram_username
-        or _get_telegram_username_from_init_data(request, body.init_data)
+        or _get_username_from_init_data(request, body.init_data, platform=body.platform)
     )
     if existing is not None and existing.user_id == user_id:
         try:
@@ -1020,7 +1020,7 @@ async def confirm_blogger_agreement_endpoint(
     request: Request, body: InitDataBody
 ) -> dict:
     """Confirm blogger agreement with platform documents."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["blogger_registration_service"]
     try:
@@ -1045,7 +1045,7 @@ async def start_instagram_verification(
     request: Request, body: InitDataBody
 ) -> dict:
     """Start Instagram verification: return code and instruction (like bot)."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     profile_service = dispatcher["profile_service"]
     blogger = await profile_service.get_blogger_profile(user_id)
@@ -1059,8 +1059,8 @@ async def start_instagram_verification(
     bot_texts = dispatcher["bot_texts_service"]
     config = request.app.state.config
     verification = await verification_service.generate_code(user_id)
-    external_id = _get_telegram_user_id(request, body.init_data)
-    locale = await _get_user_locale(request, external_id)
+    external_id = _get_external_id(request, body.init_data, platform=body.platform)
+    locale = await _get_user_locale(request, external_id, platform=body.platform)
     instruction_tpl = await bot_texts.get(
         "msg_instagram_verify_instruction", locale
     )
@@ -1140,7 +1140,7 @@ def _validate_order_body(
 @router.post("/orders")
 async def create_order(request: Request, body: CreateOrderRequest) -> dict:
     """Create an order (advertiser only, same validation as bot)."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     profile_service = dispatcher["profile_service"]
     advertiser = await profile_service.get_advertiser_profile(user_id)
@@ -1149,8 +1149,8 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             status_code=403,
             detail="Advertiser profile required. Register as advertiser first.",
         )
-    external_id = _get_telegram_user_id(request, body.init_data)
-    locale = await _get_user_locale(request, external_id)
+    external_id = _get_external_id(request, body.init_data, platform=body.platform)
+    locale = await _get_user_locale(request, external_id, platform=body.platform)
     texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_order_body(
@@ -1302,7 +1302,7 @@ async def reverse_geocode(
     GEOCODER_CACHE_ENABLED is true (default); repeated requests for the same
     coordinates use the cache.
     """
-    await _ensure_user_and_get_id(request, body.init_data)
+    await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     svc = dispatcher["blogger_registration_service"]
     result = await svc.resolve_city_from_location(body.lat, body.lon)
@@ -1324,7 +1324,7 @@ async def forward_geocode(
     GEOCODER_CACHE_ENABLED is true (default); repeated requests for the same
     city/region/country use the cache.
     """
-    await _ensure_user_and_get_id(request, body.init_data)
+    await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     if not (body.city or "").strip():
         raise HTTPException(status_code=400, detail="city is required")
     dispatcher = request.app.state.dispatcher
@@ -1393,7 +1393,7 @@ async def list_orders(
     request: Request, body: OrdersListRequest
 ) -> OrdersListResponse:
     """List orders for the current advertiser."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     order_service = dispatcher["order_service"]
     orders = await order_service.list_by_advertiser(user_id)
@@ -1423,7 +1423,7 @@ async def list_creator_orders(
     request: Request, body: OrdersListRequest
 ) -> OrdersListResponse:
     """List orders the current user (creator/blogger) has responded to."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     order_service = dispatcher["order_service"]
     offer_response_service = dispatcher["offer_response_service"]
@@ -1464,7 +1464,7 @@ async def get_order(
     request: Request, body: GetOrderRequest
 ) -> OrderDetailResponse:
     """Get one order by id (advertiser must own it)."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     try:
         order_id = UUID(body.order_id)
     except ValueError:
@@ -1504,7 +1504,7 @@ async def get_order(
 @router.post("/orders/update")
 async def update_order(request: Request, body: UpdateOrderRequest) -> dict:
     """Update order (advertiser only, same validation as create)."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     profile_service = request.app.state.dispatcher["profile_service"]
     advertiser = await profile_service.get_advertiser_profile(user_id)
     if advertiser is None:
@@ -1518,8 +1518,8 @@ async def update_order(request: Request, body: UpdateOrderRequest) -> dict:
         raise HTTPException(
             status_code=400, detail="Invalid order_id"
         ) from None
-    external_id = _get_telegram_user_id(request, body.init_data)
-    locale = await _get_user_locale(request, external_id)
+    external_id = _get_external_id(request, body.init_data, platform=body.platform)
+    locale = await _get_user_locale(request, external_id, platform=body.platform)
     texts = await _get_validator_texts(request, locale)
     config = request.app.state.config
     err = _validate_order_body(
@@ -1578,7 +1578,7 @@ class SetCountryRequest(BaseModel):
 @router.post("/set-country")
 async def set_country(request: Request, body: SetCountryRequest) -> dict:
     """Save user's country; return ok with currency info."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     country_repo = dispatcher.get("country_repo")
     if country_repo:
@@ -1590,11 +1590,11 @@ async def set_country(request: Request, body: SetCountryRequest) -> dict:
     else:
         currency_code = "RUB"
         currency_symbol = "₽"
-    external_id = _get_telegram_user_id(request, body.init_data)
+    external_id = _get_external_id(request, body.init_data, platform=body.platform)
     user_role_service = dispatcher["user_role_service"]
     await user_role_service.set_country(
         external_id=external_id,
-        messenger_type=MessengerType.TELEGRAM,
+        messenger_type=_get_messenger_type(body.platform),
         country_code=body.country_code,
     )
     _ = user_id  # already used to ensure user exists
@@ -1610,7 +1610,7 @@ async def manager_orders(
     request: Request, body: ManagerOrdersRequest
 ) -> ManagerOrdersResponse:
     """List orders assigned to the current manager."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
     if await _is_user_admin(dispatcher, user_id):
@@ -1650,7 +1650,7 @@ async def manager_creators(
     request: Request, order_id: UUID, body: ManagerCreatorsRequest
 ) -> ManagerCreatorsResponse:
     """List creators for an order assigned to the current manager."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
     profile_service = dispatcher["profile_service"]
@@ -1740,7 +1740,7 @@ async def manager_creator_detail(
     body: CreatorDetailRequest,
 ) -> CreatorDetailResponse:
     """Return creator profile and current ugc_video_url for manager."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
@@ -1782,7 +1782,7 @@ async def manager_set_ugc_video(
     body: UgcVideoRequest,
 ) -> dict[str, Any]:
     """Save UGC video URL; on first save notifies creator and advertiser."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
@@ -1844,7 +1844,7 @@ async def manager_remove_creator(
     body: InitDataBody,
 ) -> dict[str, Any]:
     """Move creator to reserve; notify creator. Returns interaction_id."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
@@ -1923,7 +1923,7 @@ async def manager_add_creator(
     body: InitDataBody,
 ) -> dict[str, bool]:
     """Add reserve creator to active order; create Interaction; notify."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 
@@ -2014,7 +2014,7 @@ async def manager_feedback(
     body: ManagerFeedbackRequest,
 ) -> dict[str, Any]:
     """Record advertiser-side feedback from manager on an interaction."""
-    user_id = await _ensure_user_and_get_id(request, body.init_data)
+    user_id = await _ensure_user_and_get_id(request, body.init_data, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     manager_service = dispatcher["manager_service"]
 

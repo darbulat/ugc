@@ -332,7 +332,7 @@ class TestMeEndpointIsManager:
                 new=AsyncMock(return_value=uid),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):
