@@ -10,8 +10,8 @@ from aiogram import Bot
 
 from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.keyboards import role_inline_keyboard
-from ugc_bot.bot.handlers.utils import send_with_retry
+from ugc_bot.bot.telegram.handlers.keyboards import role_inline_keyboard
+from ugc_bot.bot.telegram.handlers.utils import send_with_retry
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import load_config
 from ugc_bot.domain.entities import User

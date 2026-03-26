@@ -2,6 +2,7 @@
 .idea
 .cursor
 .coverage
+.claude/worktrees/
 src/ugc_bot.egg-info
 
 # Python

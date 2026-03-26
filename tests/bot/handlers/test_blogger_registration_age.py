@@ -2,7 +2,7 @@
 
 import pytest
 
-from ugc_bot.bot.handlers.blogger_registration import _parse_age_range
+from ugc_bot.bot.telegram.handlers.blogger_registration import _parse_age_range
 
 
 def test_parse_age_range_success() -> None:

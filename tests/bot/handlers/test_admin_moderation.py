@@ -11,7 +11,9 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.admin_moderation import handle_moderate_activate
+from ugc_bot.bot.telegram.handlers.admin_moderation import (
+    handle_moderate_activate,
+)
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
     MessengerType,
@@ -609,7 +611,7 @@ async def test_remove_moderation_keyboard_no_message(
     fake_tm: object,
 ) -> None:
     """Removing keyboard when message has no edit_reply_markup doesn't fail."""
-    from ugc_bot.bot.handlers.admin_moderation import (
+    from ugc_bot.bot.telegram.handlers.admin_moderation import (
         _remove_moderation_keyboard,
     )
 
@@ -665,7 +667,7 @@ async def test_remove_moderation_keyboard_no_message_object(
     fake_tm: object,
 ) -> None:
     """Removing keyboard when callback has no message doesn't fail."""
-    from ugc_bot.bot.handlers.admin_moderation import (
+    from ugc_bot.bot.telegram.handlers.admin_moderation import (
         _remove_moderation_keyboard,
     )
 
@@ -690,7 +692,7 @@ async def test_remove_moderation_keyboard_returns_early_when_no_message_id(
     """_remove_moderation_keyboard returns early when message_id is falsy."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
-    from ugc_bot.bot.handlers.admin_moderation import (
+    from ugc_bot.bot.telegram.handlers.admin_moderation import (
         _remove_moderation_keyboard,
     )
     from ugc_bot.domain.enums import MessengerType

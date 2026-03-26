@@ -1,95 +1,188 @@
-"""Handlers for complaints."""
+"""Max handlers for complaints."""
 
+import logging
+from typing import Any
 from uuid import UUID
 
-from aiogram import Router
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import CallbackQuery, Message
-
-from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
-from ugc_bot.application.messenger.ports import (
-    MessengerClient,
-    MessengerEventAdapter,
+from ugc_bot.application.messenger.dto import (
+    Button,
+    IncomingCallback,
+    IncomingMessage,
+    Keyboard,
+    KeyboardKind,
 )
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
 )
-from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
 from ugc_bot.application.services.order_service import OrderService
-from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import (
-    get_user_and_ensure_allowed_callback,
-    resolve_messenger_dependencies,
+from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.telegram.handlers.complaints import (
+    _COMPLAINT_OTHER_INDEX,
+    _COMPLAINT_REASONS,
 )
-from ugc_bot.config import AppConfig
-from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
+from ugc_bot.domain.enums import MessengerType, UserStatus
 
-router = Router()
+logger = logging.getLogger(__name__)
 
+router = MaxRouter()
 
-class ComplaintStates(StatesGroup):
-    """FSM states for complaint creation."""
-
-    waiting_for_reason = State()
+STATE_COMPLAINT_REASON_TEXT = "complaint_reason_text"
 
 
-_COMPLAINT_REASONS = [
-    "Мошенничество",
-    "Некачественное выполнение работы",
-    "Нарушение сроков",
-    "Некорректное поведение",
-    "Другое",
-]
-_COMPLAINT_OTHER_INDEX = len(_COMPLAINT_REASONS) - 1
+async def _handle_advertiser_complaint_target(
+    incoming: IncomingCallback,
+    order_id: UUID,
+    user_id: Any,
+    messenger_client: Any,
+    offer_response_service: OfferResponseService,
+    user_role_service: UserRoleService,
+    bot_texts_service: Any,
+    state_store: Any,
+    locale: str,
+) -> None:
+    """Show blogger selection keyboard when advertiser initiates a complaint."""
+    responses = await offer_response_service.list_by_order(order_id)
+    if not responses:
+        msg_no_bloggers = await bot_texts_service.get(
+            "msg_complaint_no_bloggers", locale
+        )
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=msg_no_bloggers,
+        )
+        return
 
-
-@router.callback_query(
-    lambda callback: (
-        callback.data and callback.data.startswith("complaint_select:")
+    await state_store.update_data(
+        order_id=str(order_id),
+        blogger_ids=[str(r.blogger_id) for r in responses],
+        reporter_id=str(user_id),
     )
+    btn_complaint_tpl = (
+        await bot_texts_service.get("btn_complaint", locale)
+    ).strip() or "Пожаловаться на {name}"
+    buttons: list[list[Button]] = []
+    for i, response in enumerate(responses):
+        blogger = await user_role_service.get_user_by_id(response.blogger_id)
+        blogger_name = (
+            blogger.username
+            if blogger
+            else f"Блогер {str(response.blogger_id)[:8]}"
+        )
+        buttons.append(
+            [
+                Button(
+                    text=btn_complaint_tpl.format(name=blogger_name),
+                    callback_data=f"complaint:{i}",
+                )
+            ]
+        )
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
+    msg_choose = await bot_texts_service.get(
+        "msg_choose_blogger_complain", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=msg_choose,
+        keyboard=keyboard,
+    )
+
+
+async def _handle_blogger_complaint_target(
+    incoming: IncomingCallback,
+    order_id: UUID,
+    advertiser_id: Any,
+    user_id: Any,
+    messenger_client: Any,
+    offer_response_service: OfferResponseService,
+    bot_texts_service: Any,
+    state_store: Any,
+    locale: str,
+) -> None:
+    """Show complaint reason keyboard when a blogger initiates a complaint."""
+    responses = await offer_response_service.list_by_order(order_id)
+    if not any(response.blogger_id == user_id for response in responses):
+        msg_no_access = await bot_texts_service.get(
+            "msg_no_access_order", locale
+        )
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=msg_no_access,
+        )
+        return
+
+    await state_store.update_data(
+        order_id=str(order_id),
+        reported_id=str(advertiser_id),
+        reporter_id=str(user_id),
+    )
+
+    buttons = [
+        [Button(text=reason, callback_data=f"complaint_reason:{i}")]
+        for i, reason in enumerate(_COMPLAINT_REASONS)
+    ]
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
+
+    msg_reason = await bot_texts_service.get(
+        "msg_choose_complaint_reason", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=msg_reason,
+        keyboard=keyboard,
+    )
+    await state_store.set_state(STATE_COMPLAINT_REASON_TEXT)
+
+
+@router.callback(
+    lambda cb: bool(cb.data and cb.data.startswith("complaint_select:"))
 )
 async def select_complaint_target(
-    callback: CallbackQuery,
-    state: FSMContext,
-    user_role_service: UserRoleService,
-    order_service: OrderService,
-    offer_response_service: OfferResponseService,
-    profile_service: ProfileService,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    user_locale: str = "ru",
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    incoming: IncomingCallback, deps: dict[str, Any]
 ) -> None:
     """Show list of users to complain about for an order."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        callback, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_callback(callback)
-    state_store = AiogramStateStore(state)
-    locale = user_locale
+    messenger_client = deps["messenger_client"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+    order_service: OrderService = deps["order_service"]
+    offer_response_service: OfferResponseService = deps[
+        "offer_response_service"
+    ]
+    bot_texts_service = deps["bot_texts_service"]
+    state_store = deps["state_store"]
+    locale: str = deps.get("locale", "ru")
+
     if not incoming.data:
         return
 
+    user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=MessengerType.MAX,
+    )
     allow_msgs = await bot_texts_service.get_many(
         ["msg_user_not_found", "msg_complaint_blocked", "msg_complaint_pause"],
         locale,
     )
-    user = await get_user_and_ensure_allowed_callback(
-        incoming,
-        messenger_client,
-        user_role_service,
-        user_not_found_msg=allow_msgs.get("msg_user_not_found", ""),
-        blocked_msg=allow_msgs.get("msg_complaint_blocked", ""),
-        pause_msg=allow_msgs.get("msg_complaint_pause", ""),
-    )
     if user is None:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=allow_msgs.get("msg_user_not_found", ""),
+        )
+        return
+    if user.status == UserStatus.BLOCKED:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=allow_msgs.get("msg_complaint_blocked", ""),
+        )
+        return
+    if user.status == UserStatus.PAUSE:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=allow_msgs.get("msg_complaint_pause", ""),
+        )
         return
 
     parts = incoming.data.split(":")
@@ -103,7 +196,6 @@ async def select_complaint_target(
         return
 
     _, order_id_raw = parts
-
     try:
         order_id = UUID(order_id_raw)
     except ValueError:
@@ -124,139 +216,63 @@ async def select_complaint_target(
         )
         return
 
-    # Verify user has access to this order
     if order.advertiser_id == user.user_id:
-        # Advertiser: show list of bloggers who responded
-        responses = await offer_response_service.list_by_order(order_id)
-        if not responses:
-            msg_no_bloggers = await bot_texts_service.get(
-                "msg_complaint_no_bloggers", locale
-            )
-            await messenger_client.answer_callback(
-                callback_id=incoming.callback_id,
-                text=msg_no_bloggers,
-            )
-            return
-
-        # Store order_id + blogger_ids; complaint:{i} callbacks use index only
-        await state_store.update_data(
-            order_id=str(order_id),
-            blogger_ids=[str(r.blogger_id) for r in responses],
-            reporter_id=str(user.user_id),
-        )
-        btn_complaint_tpl = (
-            await bot_texts_service.get("btn_complaint", locale)
-        ).strip() or "Пожаловаться на {name}"
-        buttons: list[list[Button]] = []
-        for i, response in enumerate(responses):
-            blogger = await user_role_service.get_user_by_id(
-                response.blogger_id
-            )
-            blogger_name = (
-                blogger.username
-                if blogger
-                else f"Блогер {str(response.blogger_id)[:8]}"
-            )
-            buttons.append(
-                [
-                    Button(
-                        text=btn_complaint_tpl.format(name=blogger_name),
-                        callback_data=f"complaint:{i}",
-                    )
-                ]
-            )
-        keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
-        msg_choose = await bot_texts_service.get(
-            "msg_choose_blogger_complain", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_choose,
-            keyboard=keyboard,
+        await _handle_advertiser_complaint_target(
+            incoming,
+            order_id,
+            user.user_id,
+            messenger_client,
+            offer_response_service,
+            user_role_service,
+            bot_texts_service,
+            state_store,
+            locale,
         )
     else:
-        # Blogger: complain about advertiser
-        responses = await offer_response_service.list_by_order(order_id)
-        if not any(
-            response.blogger_id == user.user_id for response in responses
-        ):
-            msg_no_access = await bot_texts_service.get(
-                "msg_no_access_order", locale
-            )
-            await messenger_client.answer_callback(
-                callback_id=incoming.callback_id,
-                text=msg_no_access,
-            )
-            return
-
-        # Store complaint data in state
-        await state_store.update_data(
-            order_id=str(order_id),
-            reported_id=str(order.advertiser_id),
-            reporter_id=str(user.user_id),
+        await _handle_blogger_complaint_target(
+            incoming,
+            order_id,
+            order.advertiser_id,
+            user.user_id,
+            messenger_client,
+            offer_response_service,
+            bot_texts_service,
+            state_store,
+            locale,
         )
-
-        # Show reason selection keyboard
-        buttons = [
-            [Button(text=reason, callback_data=f"complaint_reason:{i}")]
-            for i, reason in enumerate(_COMPLAINT_REASONS)
-        ]
-        keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
-
-        msg_reason = await bot_texts_service.get(
-            "msg_choose_complaint_reason", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_reason,
-            keyboard=keyboard,
-        )
-        await state_store.set_state(ComplaintStates.waiting_for_reason.state)
 
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
 
-@router.callback_query(
-    lambda callback: callback.data and callback.data.startswith("complaint:")
-)
+@router.callback(lambda cb: bool(cb.data and cb.data.startswith("complaint:")))
 async def start_complaint(
-    callback: CallbackQuery,
-    state: FSMContext,
-    user_role_service: UserRoleService,
-    order_service: OrderService,
-    offer_response_service: OfferResponseService,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    user_locale: str = "ru",
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    incoming: IncomingCallback, deps: dict[str, Any]
 ) -> None:
-    """Start complaint creation process."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        callback, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_callback(callback)
-    state_store = AiogramStateStore(state)
-    locale = user_locale
+    """Start complaint creation process — show reason selection for blogger."""
+    messenger_client = deps["messenger_client"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+    bot_texts_service = deps["bot_texts_service"]
+    state_store = deps["state_store"]
+    locale: str = deps.get("locale", "ru")
+
     if not incoming.data:
         return
 
+    user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=MessengerType.MAX,
+    )
     allow_msgs = await bot_texts_service.get_many(
         ["msg_user_not_found", "msg_complaint_blocked", "msg_complaint_pause"],
         locale,
     )
-    user = await get_user_and_ensure_allowed_callback(
-        incoming,
-        messenger_client,
-        user_role_service,
-        user_not_found_msg=allow_msgs.get("msg_user_not_found", ""),
-        blocked_msg=allow_msgs.get("msg_complaint_blocked", ""),
-        pause_msg=allow_msgs.get("msg_complaint_pause", ""),
-    )
     if user is None:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=allow_msgs.get("msg_user_not_found", ""),
+        )
         return
 
-    # Parse blogger index from "complaint:{i}"
     parts = incoming.data.split(":", 1)
     if len(parts) != 2:
         return
@@ -265,7 +281,6 @@ async def start_complaint(
     except ValueError:
         return
 
-    # Read order_id and blogger list stored by select_complaint_target
     data = await state_store.get_data()
     blogger_ids: list[str] = data.get("blogger_ids", [])
     order_id_raw = data.get("order_id")
@@ -288,14 +303,12 @@ async def start_complaint(
     except ValueError:
         return
 
-    # Store selected reported_id so handle_complaint_reason can use it
     await state_store.update_data(
         order_id=str(order_id),
         reported_id=str(reported_id),
         reporter_id=reporter_id_raw,
     )
 
-    # Show reason selection keyboard
     buttons = [
         [Button(text=reason, callback_data=f"complaint_reason:{i}")]
         for i, reason in enumerate(_COMPLAINT_REASONS)
@@ -311,33 +324,23 @@ async def start_complaint(
         keyboard=keyboard,
     )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await state_store.set_state(ComplaintStates.waiting_for_reason.state)
+    await state_store.set_state(STATE_COMPLAINT_REASON_TEXT)
 
 
-@router.callback_query(
-    lambda callback: (
-        callback.data and callback.data.startswith("complaint_reason:")
-    )
+@router.callback(
+    lambda cb: bool(cb.data and cb.data.startswith("complaint_reason:"))
 )
 async def handle_complaint_reason(
-    callback: CallbackQuery,
-    state: FSMContext,
-    complaint_service: ComplaintService,
-    order_service: OrderService,
-    user_role_service: UserRoleService,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    user_locale: str = "ru",
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    incoming: IncomingCallback, deps: dict[str, Any]
 ) -> None:
     """Handle complaint reason selection."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        callback, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_callback(callback)
-    state_store = AiogramStateStore(state)
-    locale = user_locale
+    messenger_client = deps["messenger_client"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+    complaint_service: ComplaintService = deps["complaint_service"]
+    bot_texts_service = deps["bot_texts_service"]
+    state_store = deps["state_store"]
+    locale: str = deps.get("locale", "ru")
+
     if not incoming.data:
         return
 
@@ -375,7 +378,6 @@ async def handle_complaint_reason(
         )
         return
 
-    # If "Другое" is selected, ask for text input
     if reason_idx == _COMPLAINT_OTHER_INDEX:
         msg_describe = await bot_texts_service.get(
             "msg_describe_complaint", locale
@@ -385,10 +387,10 @@ async def handle_complaint_reason(
             text=msg_describe,
         )
         await state_store.update_data(reason=reason)
+        await state_store.set_state(STATE_COMPLAINT_REASON_TEXT)
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
         return
 
-    # Create complaint with selected reason
     try:
         complaint = await complaint_service.create_complaint(
             reporter_id=reporter_id,
@@ -412,6 +414,7 @@ async def handle_complaint_reason(
             callback_id=incoming.callback_id, text=str(exc)
         )
     except Exception:
+        logger.exception("Error creating complaint via callback")
         msg_error = await bot_texts_service.get("msg_error_later", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
@@ -421,25 +424,18 @@ async def handle_complaint_reason(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
 
-@router.message(ComplaintStates.waiting_for_reason)
+@router.message_in_state(STATE_COMPLAINT_REASON_TEXT)
 async def handle_complaint_reason_text(
-    message: Message,
-    state: FSMContext,
-    complaint_service: ComplaintService,
-    user_role_service: UserRoleService,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    user_locale: str = "ru",
-    messenger_client: MessengerClient | None = None,
-    event_adapter: MessengerEventAdapter | None = None,
+    incoming: IncomingMessage, deps: dict[str, Any]
 ) -> None:
-    """Handle text input for complaint reason."""
-    messenger_client, event_adapter = resolve_messenger_dependencies(
-        message, messenger_client, event_adapter
-    )
-    incoming = event_adapter.from_message(message)
-    state_store = AiogramStateStore(state)
-    locale = user_locale
+    """Handle text input for complaint reason (when 'Other' was selected)."""
+    messenger_client = deps["messenger_client"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+    complaint_service: ComplaintService = deps["complaint_service"]
+    bot_texts_service = deps["bot_texts_service"]
+    state_store = deps["state_store"]
+    locale: str = deps.get("locale", "ru")
+
     if not incoming.text:
         return
 
@@ -476,7 +472,6 @@ async def handle_complaint_reason_text(
         await state_store.clear()
         return
 
-    # Use "Другое: " prefix if "Другое" was selected
     base_reason = data.get("reason", "Другое")
     full_reason = (
         f"Другое: {reason_text}" if base_reason == "Другое" else reason_text
@@ -507,6 +502,7 @@ async def handle_complaint_reason_text(
         )
         await state_store.clear()
     except Exception:
+        logger.exception("Error creating complaint via text reason")
         msg_error = await bot_texts_service.get("msg_error_later", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,

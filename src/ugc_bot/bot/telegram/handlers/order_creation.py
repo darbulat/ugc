@@ -31,15 +31,15 @@ from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.filters import TextEqualsKey
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.filters import TextEqualsKey
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_ORDER_AGREE,
     CALLBACK_PROFILE_MENU_CREATE_ORDER,
     confirm_agreement_inline_keyboard,
     flow_inline_keyboard,
     flow_keyboard_remove,
 )
-from ugc_bot.bot.handlers.order_creation_states import (
+from ugc_bot.bot.telegram.handlers.order_creation_states import (
     CALLBACK_ORDER_BLOGGERS_PREFIX,
     CALLBACK_ORDER_CONTENT_ADS,
     CALLBACK_ORDER_CONTENT_BOTH,
@@ -75,10 +75,12 @@ from ugc_bot.bot.handlers.order_creation_states import (
     order_photo_keyboard,
     order_type_keyboard,
 )
-from ugc_bot.bot.handlers.payments import send_order_invoice
-from ugc_bot.bot.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
-from ugc_bot.bot.handlers.security_warnings import ORDER_CREATED_MESSAGE
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.payments import send_order_invoice
+from ugc_bot.bot.telegram.handlers.profile import _ADVERTISER_AGREEMENTS_STATE
+from ugc_bot.bot.telegram.handlers.security_warnings import (
+    ORDER_CREATED_MESSAGE,
+)
+from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
@@ -86,7 +88,7 @@ from ugc_bot.bot.handlers.utils import (
     resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
-from ugc_bot.bot.validators import (
+from ugc_bot.bot.telegram.validators import (
     VALIDATOR_ERR_KEYS,
     normalize_url,
     validate_barter_description,

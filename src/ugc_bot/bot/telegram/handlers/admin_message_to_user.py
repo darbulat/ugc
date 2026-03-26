@@ -14,7 +14,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerEventAdapter,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 
 logger = logging.getLogger(__name__)
 

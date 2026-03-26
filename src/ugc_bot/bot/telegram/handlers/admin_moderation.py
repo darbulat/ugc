@@ -21,7 +21,7 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.session import TransactionManagerProtocol

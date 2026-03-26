@@ -13,7 +13,7 @@ from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.referral import (
+from ugc_bot.bot.telegram.handlers.referral import (
     PAYOUT_PAID_CALLBACK_PREFIX,
     REFERRAL_LIST_CALLBACK_PREFIX,
     REFERRAL_PAYOUT_CALLBACK,
@@ -2119,7 +2119,7 @@ def __user(
 
 def test_build_mc_stats_text_two_currencies_paid_and_pending() -> None:
     """_build_mc_stats_text formats income lines, paid, and pending."""
-    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+    from ugc_bot.bot.telegram.handlers.referral import _build_mc_stats_text
 
     mc = _mc_stats(
         creators_count=3,
@@ -2152,7 +2152,7 @@ def test_build_mc_stats_text_two_currencies_paid_and_pending() -> None:
 
 def test_build_mc_stats_text_includes_approx_line() -> None:
     """_build_mc_stats_text appends approx_line when provided."""
-    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+    from ugc_bot.bot.telegram.handlers.referral import _build_mc_stats_text
 
     mc = _mc_stats(creators_count=1)
     result = _build_mc_stats_text(mc, {}, {}, approx_line="≈ 500.00 ₽")
@@ -2162,7 +2162,7 @@ def test_build_mc_stats_text_includes_approx_line() -> None:
 
 def test_build_mc_stats_text_no_approx_when_empty() -> None:
     """_build_mc_stats_text omits approx line when empty string."""
-    from ugc_bot.bot.handlers.referral import _build_mc_stats_text
+    from ugc_bot.bot.telegram.handlers.referral import _build_mc_stats_text
 
     mc = _mc_stats(creators_count=0)
     result = _build_mc_stats_text(mc, {}, {}, approx_line="")
@@ -2173,7 +2173,7 @@ def test_build_mc_stats_text_no_approx_when_empty() -> None:
 @pytest.mark.asyncio
 async def test_build_approx_line_no_exchange_service_returns_empty() -> None:
     """_build_approx_line returns '' when exchange_rate_service is None."""
-    from ugc_bot.bot.handlers.referral import _build_approx_line
+    from ugc_bot.bot.telegram.handlers.referral import _build_approx_line
 
     mc = _mc_stats(available_by_currency={"RUB": Decimal("100.00")})
     user = __user(external_id="1", username="u")
@@ -2187,7 +2187,7 @@ async def test_build_approx_line_empty_available_returns_empty() -> None:
     """_build_approx_line returns '' when available_by_currency is empty."""
     from unittest.mock import MagicMock
 
-    from ugc_bot.bot.handlers.referral import _build_approx_line
+    from ugc_bot.bot.telegram.handlers.referral import _build_approx_line
 
     mc = _mc_stats(available_by_currency={})
     user = __user(external_id="1", username="u")
@@ -2202,7 +2202,7 @@ async def test_build_approx_line_convert_returns_value() -> None:
     """_build_approx_line returns formatted string from convert_many."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from ugc_bot.bot.handlers.referral import _build_approx_line
+    from ugc_bot.bot.telegram.handlers.referral import _build_approx_line
 
     mc = _mc_stats(available_by_currency={"USD": Decimal("20.00")})
     user = __user(external_id="1", username="u")
@@ -2223,7 +2223,7 @@ async def test_build_approx_line_convert_returns_none() -> None:
     """_build_approx_line returns '' when convert_many returns None."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from ugc_bot.bot.handlers.referral import _build_approx_line
+    from ugc_bot.bot.telegram.handlers.referral import _build_approx_line
 
     mc = _mc_stats(available_by_currency={"USD": Decimal("20.00")})
     user = __user(external_id="1", username="u")
@@ -2237,7 +2237,7 @@ async def test_build_approx_line_convert_returns_none() -> None:
 
 def test_build_mc_payout_keyboard_with_available_currencies() -> None:
     """_build_mc_payout_keyboard returns keyboard with payout buttons."""
-    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+    from ugc_bot.bot.telegram.handlers.referral import _build_mc_payout_keyboard
 
     mc = _mc_stats(
         available_by_currency={
@@ -2258,7 +2258,7 @@ def test_build_mc_payout_keyboard_with_available_currencies() -> None:
 
 def test_build_mc_payout_keyboard_hides_currency_with_today_request() -> None:
     """_build_mc_payout_keyboard omits button when has_request_today."""
-    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+    from ugc_bot.bot.telegram.handlers.referral import _build_mc_payout_keyboard
 
     mc = _mc_stats(
         available_by_currency={
@@ -2280,7 +2280,7 @@ def test_build_mc_payout_keyboard_hides_currency_with_today_request() -> None:
 
 def test_build_mc_payout_keyboard_returns_none_when_all_hidden() -> None:
     """_build_mc_payout_keyboard returns None when no buttons remain."""
-    from ugc_bot.bot.handlers.referral import _build_mc_payout_keyboard
+    from ugc_bot.bot.telegram.handlers.referral import _build_mc_payout_keyboard
 
     mc = _mc_stats(
         available_by_currency={"RUB": Decimal("500.00")},
@@ -2295,7 +2295,7 @@ def test_build_mc_payout_keyboard_returns_none_when_all_hidden() -> None:
 @pytest.mark.asyncio
 async def test_build_currency_symbols_none_repo_returns_empty() -> None:
     """_build_currency_symbols returns {} when country_repo is None."""
-    from ugc_bot.bot.handlers.referral import _build_currency_symbols
+    from ugc_bot.bot.telegram.handlers.referral import _build_currency_symbols
 
     result = await _build_currency_symbols(None)
 
@@ -2305,7 +2305,7 @@ async def test_build_currency_symbols_none_repo_returns_empty() -> None:
 @pytest.mark.asyncio
 async def test_build_currency_symbols_maps_code_to_symbol() -> None:
     """_build_currency_symbols maps currency_code to currency_symbol."""
-    from ugc_bot.bot.handlers.referral import _build_currency_symbols
+    from ugc_bot.bot.telegram.handlers.referral import _build_currency_symbols
     from ugc_bot.domain.entities import Country
     from ugc_bot.infrastructure.memory_repositories import (
         InMemoryCountryRepository,
@@ -2335,7 +2335,7 @@ async def test_build_currency_symbols_maps_code_to_symbol() -> None:
 
 def test_parse_telegram_arg_none_text() -> None:
     """None text returns None."""
-    from ugc_bot.bot.handlers.referral import (
+    from ugc_bot.bot.telegram.handlers.referral import (
         _parse_telegram_arg_from_command,
     )
 
@@ -2346,7 +2346,7 @@ def test_parse_telegram_arg_none_text() -> None:
 @pytest.mark.asyncio
 async def test_resolve_target_non_admin() -> None:
     """Non-admin user always gets themselves back."""
-    from ugc_bot.bot.handlers.referral import (
+    from ugc_bot.bot.telegram.handlers.referral import (
         _resolve_referral_target_user,
     )
     from ugc_bot.domain.entities import User
@@ -2375,7 +2375,7 @@ async def test_resolve_target_non_admin() -> None:
 @pytest.mark.asyncio
 async def test_resolve_target_admin_no_arg() -> None:
     """Admin without telegram_arg gets themselves back."""
-    from ugc_bot.bot.handlers.referral import (
+    from ugc_bot.bot.telegram.handlers.referral import (
         _resolve_referral_target_user,
     )
     from ugc_bot.domain.entities import User

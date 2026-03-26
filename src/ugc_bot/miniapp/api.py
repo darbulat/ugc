@@ -25,8 +25,8 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
-from ugc_bot.bot.handlers.utils import send_with_retry
-from ugc_bot.bot.validators import (
+from ugc_bot.bot.telegram.handlers.utils import send_with_retry
+from ugc_bot.bot.telegram.validators import (
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,
     validate_audience_geo,

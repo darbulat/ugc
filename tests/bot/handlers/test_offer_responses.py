@@ -28,7 +28,7 @@ from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.offer_responses import (
+from ugc_bot.bot.telegram.handlers.offer_responses import (
     OfferSkipStates,
     _send_contact_immediately,
     _send_order_closed_and_remove_keyboard,
@@ -38,8 +38,8 @@ from ugc_bot.bot.handlers.offer_responses import (
     handle_offer_skip,
     handle_rejection_reason,
 )
-from ugc_bot.bot.handlers.utils import RateLimiter
-from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.bot.telegram.handlers.utils import RateLimiter
+from ugc_bot.bot.telegram.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig, OrderConfig
 from ugc_bot.domain.entities import Order, User
@@ -3299,7 +3299,9 @@ def test_rejection_reason_callback_data_within_telegram_limit() -> None:
     """All orr:{uuid}:{reason} callback_data values must fit Telegram's 64-byte limit."""  # noqa: E501
     from uuid import UUID
 
-    from ugc_bot.bot.handlers.offer_responses import _REJECTION_REASON_BUTTONS
+    from ugc_bot.bot.telegram.handlers.offer_responses import (
+        _REJECTION_REASON_BUTTONS,
+    )
 
     max_uuid = UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
     for reason in _REJECTION_REASON_BUTTONS:
@@ -3312,7 +3314,9 @@ def test_rejection_reason_callback_data_within_telegram_limit() -> None:
 
 def test_parse_offer_skip_order_id_returns_none_for_invalid_prefix() -> None:
     """_parse_offer_skip_order_id returns None when prefix is wrong."""
-    from ugc_bot.bot.handlers.offer_responses import _parse_offer_skip_order_id
+    from ugc_bot.bot.telegram.handlers.offer_responses import (
+        _parse_offer_skip_order_id,
+    )
 
     assert _parse_offer_skip_order_id("") is None
     assert _parse_offer_skip_order_id("other:prefix") is None
@@ -3332,7 +3336,7 @@ async def test_reply_offer_response_result_fetches_manager(
     from ugc_bot.application.services.offer_response_service import (
         OfferResponseResult,
     )
-    from ugc_bot.bot.handlers.offer_responses import (
+    from ugc_bot.bot.telegram.handlers.offer_responses import (
         _reply_offer_response_result,
     )
 

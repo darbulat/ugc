@@ -10,35 +10,39 @@ import logging
 from aiogram import Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from ugc_bot.bot.handlers.admin_message_to_user import (
+from ugc_bot.bot.telegram.handlers.admin_message_to_user import (
     router as admin_message_to_user_router,
 )
-from ugc_bot.bot.handlers.admin_moderation import (
+from ugc_bot.bot.telegram.handlers.admin_moderation import (
     router as admin_moderation_router,
 )
-from ugc_bot.bot.handlers.advertiser_registration import (
+from ugc_bot.bot.telegram.handlers.advertiser_registration import (
     router as advertiser_router,
 )
-from ugc_bot.bot.handlers.blogger_registration import router as blogger_router
-from ugc_bot.bot.handlers.complaints import router as complaints_router
-from ugc_bot.bot.handlers.feedback import router as feedback_router
-from ugc_bot.bot.handlers.instagram_verification import (
+from ugc_bot.bot.telegram.handlers.blogger_registration import (
+    router as blogger_router,
+)
+from ugc_bot.bot.telegram.handlers.complaints import router as complaints_router
+from ugc_bot.bot.telegram.handlers.feedback import router as feedback_router
+from ugc_bot.bot.telegram.handlers.instagram_verification import (
     router as instagram_router,
 )
-from ugc_bot.bot.handlers.my_orders import router as my_orders_router
-from ugc_bot.bot.handlers.offer_responses import router as offer_response_router
-from ugc_bot.bot.handlers.order_creation import router as order_router
-from ugc_bot.bot.handlers.payments import router as payments_router
-from ugc_bot.bot.handlers.profile import router as profile_router
-from ugc_bot.bot.handlers.referral import router as referral_router
+from ugc_bot.bot.telegram.handlers.my_orders import router as my_orders_router
+from ugc_bot.bot.telegram.handlers.offer_responses import (
+    router as offer_response_router,
+)
+from ugc_bot.bot.telegram.handlers.order_creation import router as order_router
+from ugc_bot.bot.telegram.handlers.payments import router as payments_router
+from ugc_bot.bot.telegram.handlers.profile import router as profile_router
+from ugc_bot.bot.telegram.handlers.referral import router as referral_router
 
 # Services are built via Container.build_bot_services()
-from ugc_bot.bot.handlers.start import router as start_router
-from ugc_bot.bot.handlers.survey_messenger import (
+from ugc_bot.bot.telegram.handlers.start import router as start_router
+from ugc_bot.bot.telegram.handlers.survey_messenger import (
     router as survey_messenger_router,
 )
-from ugc_bot.bot.middleware.error_handler import ErrorHandlerMiddleware
-from ugc_bot.bot.middleware.locale import LocaleMiddleware
+from ugc_bot.bot.telegram.middleware.error_handler import ErrorHandlerMiddleware
+from ugc_bot.bot.telegram.middleware.locale import LocaleMiddleware
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
 from ugc_bot.infrastructure.fsm_json import fsm_json_dumps, fsm_json_loads

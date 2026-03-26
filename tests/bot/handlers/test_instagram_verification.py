@@ -16,12 +16,14 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.instagram_verification import (
+from ugc_bot.bot.telegram.handlers.instagram_verification import (
     _format_verification_instruction,
     start_verification,
     start_verification_from_profile_callback,
 )
-from ugc_bot.bot.handlers.keyboards import CALLBACK_PROFILE_CONFIRM_INSTAGRAM
+from ugc_bot.bot.telegram.handlers.keyboards import (
+    CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
+)
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType, UserStatus

@@ -1,7 +1,7 @@
 """Tests for keyboard helpers (inline only)."""
 
 from ugc_bot.application.messenger.dto import KeyboardKind
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
     MINIAPP_OPEN_BUTTON_TEXT,
     advertiser_menu_inline_keyboard,
     advertiser_start_keyboard,
@@ -182,7 +182,9 @@ def test_miniapp_open_inline_keyboard_empty_url() -> None:
 
 def test_build_support_telegram_url_with_username() -> None:
     """build_support_telegram_url returns t.me URL for a valid username."""
-    from ugc_bot.bot.handlers.keyboards import build_support_telegram_url
+    from ugc_bot.bot.telegram.handlers.keyboards import (
+        build_support_telegram_url,
+    )
 
     assert (
         build_support_telegram_url("support_bot") == "https://t.me/support_bot"
@@ -194,7 +196,9 @@ def test_build_support_telegram_url_with_username() -> None:
 
 def test_build_support_telegram_url_empty_returns_none() -> None:
     """build_support_telegram_url returns None for empty/whitespace input."""
-    from ugc_bot.bot.handlers.keyboards import build_support_telegram_url
+    from ugc_bot.bot.telegram.handlers.keyboards import (
+        build_support_telegram_url,
+    )
 
     assert build_support_telegram_url("") is None
     assert build_support_telegram_url("   ") is None

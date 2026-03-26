@@ -12,7 +12,7 @@ from tests.helpers.fakes import (
     FakeUser,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.admin_message_to_user import (
+from ugc_bot.bot.telegram.handlers.admin_message_to_user import (
     ACCESS_DENIED,
     CANCELLED,
     INVALID_UUID,
@@ -555,7 +555,9 @@ async def test_require_admin_without_messenger_client_uses_message_answer(
     event_adapter,
 ) -> None:
     """_require_admin with no client falls back to message.answer."""
-    from ugc_bot.bot.handlers.admin_message_to_user import _require_admin
+    from ugc_bot.bot.telegram.handlers.admin_message_to_user import (
+        _require_admin,
+    )
 
     message = FakeMessage(user=FakeUser(999, "nonadmin"))
     result = await _require_admin(

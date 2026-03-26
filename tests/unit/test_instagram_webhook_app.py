@@ -29,6 +29,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryUserRepository,
 )
 from ugc_bot.instagram_webhook_app import (
+    _get_chat_id_and_messenger_factory,
     _notify_user_verification_api_unavailable,
     _notify_user_verification_mismatch,
     _notify_user_verification_success,
@@ -1160,6 +1161,148 @@ async def test_notify_user_verification_api_unavailable_no_user(
     await _notify_user_verification_api_unavailable(
         uuid4(), service, test_config
     )
+
+
+def test_get_chat_id_max_user_with_config():
+    """Max user with max_bot config returns max_id."""
+    user = MagicMock()
+    user.messenger_type = MessengerType.MAX
+    user.max_id = "12345"
+    user.telegram_id = None
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "MAX_BOT_TOKEN": "max_token",
+        }
+    )
+    chat_id, cm = _get_chat_id_and_messenger_factory(user, config)
+    assert chat_id == "12345"
+    assert cm is not None
+
+
+def test_get_chat_id_max_user_no_config():
+    """Max user without max_bot config returns None."""
+    user = MagicMock()
+    user.messenger_type = MessengerType.MAX
+    user.max_id = "12345"
+    user.telegram_id = None
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "t", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    chat_id, cm = _get_chat_id_and_messenger_factory(user, config)
+    assert chat_id is None
+    assert cm is None
+
+
+def test_get_chat_id_telegram_user():
+    """Telegram user returns telegram_id."""
+    user = MagicMock()
+    user.messenger_type = MessengerType.TELEGRAM
+    user.max_id = None
+    user.telegram_id = "99999"
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "t", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    chat_id, cm = _get_chat_id_and_messenger_factory(user, config)
+    assert chat_id == "99999"
+    assert cm is not None
+
+
+def test_get_chat_id_no_messenger_id():
+    """User with no telegram_id and not Max returns None."""
+    user = MagicMock()
+    user.messenger_type = MessengerType.TELEGRAM
+    user.max_id = None
+    user.telegram_id = None
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "t", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    chat_id, cm = _get_chat_id_and_messenger_factory(user, config)
+    assert chat_id is None
+    assert cm is None
+
+
+@pytest.mark.asyncio
+async def test_create_max_messenger_yields_client() -> None:
+    """_create_max_messenger yields MaxMessengerClient."""
+    from ugc_bot.instagram_webhook_app import _create_max_messenger
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "t",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "MAX_BOT_TOKEN": "max_token",
+        }
+    )
+    with patch("aiohttp.ClientSession") as mock_session_cls:
+        mock_session = MagicMock()
+        mock_session.close = AsyncMock()
+        mock_session_cls.return_value = mock_session
+        async with _create_max_messenger(config) as client:
+            from ugc_bot.infrastructure.messenger.max.client import (
+                MaxMessengerClient,
+            )
+
+            assert isinstance(client, MaxMessengerClient)
+        mock_session.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_success_max_user() -> None:
+    """Send notification via Max messenger for Max users."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user = User(
+        user_id=uuid4(),
+        max_id="252972060",
+        messenger_type=MessengerType.MAX,
+        username="max_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=user.user_id,
+            instagram_url="https://instagram.com/test",
+            confirmed=True,
+            city="Moscow",
+            topics={"selected": ["fitness"]},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=35,
+            audience_geo="Moscow",
+            price=1000.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=None,
+        )
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "MAX_BOT_TOKEN": "max_test_token",
+        }
+    )
+    mock_client = AsyncMock()
+    with patch(
+        "ugc_bot.instagram_webhook_app._create_max_messenger",
+    ) as mock_cm:
+        mock_cm.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cm.return_value.__aexit__ = AsyncMock(return_value=False)
+        await _notify_user_verification_success(user.user_id, service, config)
+    mock_client.send_text.assert_called_once()
+    call_kwargs = mock_client.send_text.call_args
+    assert call_kwargs.kwargs["chat_id"] == "252972060"
 
 
 @pytest.mark.asyncio

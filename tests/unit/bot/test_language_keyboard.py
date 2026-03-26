@@ -1,7 +1,7 @@
 """Tests for language_inline_keyboard."""
 
 from ugc_bot.application.messenger.dto import KeyboardKind
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_LANG_PREFIX,
     language_inline_keyboard,
 )

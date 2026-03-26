@@ -34,8 +34,8 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.filters import TextEqualsKey
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.filters import TextEqualsKey
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_PROFILE_AGE_0_17,
     CALLBACK_PROFILE_AGE_18_24,
     CALLBACK_PROFILE_AGE_25_34,
@@ -71,13 +71,13 @@ from ugc_bot.bot.handlers.keyboards import (
     flow_keyboard_phone_request,
     flow_keyboard_remove,
 )
-from ugc_bot.bot.handlers.utils import (
+from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     parse_user_id_from_state,
     resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
-from ugc_bot.bot.validators import (
+from ugc_bot.bot.telegram.validators import (
     INSTAGRAM_URL_REGEX,
     VALIDATOR_ERR_KEYS,
     normalize_instagram_url,

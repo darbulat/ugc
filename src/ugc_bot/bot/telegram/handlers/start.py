@@ -21,8 +21,8 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.filters import TextEqualsKey
-from ugc_bot.bot.handlers.keyboards import (
+from ugc_bot.bot.telegram.filters import TextEqualsKey
+from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_CHANGE_COUNTRY_PREFIX,
     CALLBACK_CHANGE_ROLE,
     CALLBACK_COUNTRY_PREFIX,
@@ -37,7 +37,7 @@ from ugc_bot.bot.handlers.keyboards import (
     miniapp_open_inline_keyboard,
     role_inline_keyboard,
 )
-from ugc_bot.bot.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore

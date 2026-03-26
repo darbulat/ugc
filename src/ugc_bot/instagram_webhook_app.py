@@ -41,6 +41,36 @@ async def _create_messenger(config: AppConfig):
         await bot.session.close()
 
 
+@asynccontextmanager
+async def _create_max_messenger(config: AppConfig):
+    """Create a MaxMessengerClient and close its session on exit."""
+    import aiohttp
+
+    from ugc_bot.infrastructure.messenger.max.client import (
+        MaxMessengerClient,
+    )
+
+    assert config.max_bot is not None
+    session = aiohttp.ClientSession()
+    try:
+        yield MaxMessengerClient(token=config.max_bot.token, session=session)
+    finally:
+        await session.close()
+
+
+def _get_chat_id_and_messenger_factory(user, config: AppConfig):
+    """Return (chat_id, messenger_context_manager) for the user."""
+    from ugc_bot.domain.enums import MessengerType
+
+    if user.messenger_type == MessengerType.MAX and user.max_id:
+        if not config.max_bot:
+            return None, None
+        return user.max_id, _create_max_messenger(config)
+    if user.telegram_id:
+        return user.telegram_id, _create_messenger(config)
+    return None, None
+
+
 def _resolve_locale(user, config: AppConfig) -> str:
     """Resolve user locale with fallback to config default."""
     from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
@@ -210,9 +240,11 @@ async def _notify_user_verification_success(
     verification_service: InstagramVerificationService,
     config: AppConfig,
 ) -> None:
-    """Send Telegram notification to user about successful verification."""
+    """Send notification to user about successful verification."""
     try:
-        from ugc_bot.bot.handlers.keyboards import blogger_menu_inline_keyboard
+        from ugc_bot.bot.telegram.handlers.keyboards import (
+            blogger_menu_inline_keyboard,
+        )
 
         (
             user,
@@ -225,9 +257,10 @@ async def _notify_user_verification_success(
             )
             return
 
-        if not user.telegram_id:
+        chat_id, messenger_cm = _get_chat_id_and_messenger_factory(user, config)
+        if not chat_id or messenger_cm is None:
             logger.warning(
-                "User has no telegram_id for notification",
+                "User has no chat_id for notification",
                 extra={"user_id": user_id},
             )
             return
@@ -241,14 +274,14 @@ async def _notify_user_verification_success(
             "msg_instagram_confirmed",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
-        async with _create_messenger(config) as messenger_client:
+        async with messenger_cm as messenger_client:
             msg_confirmed = locale_texts.get(
                 "msg_instagram_confirmed",
                 "Instagram подтверждён ✅. "
                 "Бренды могут отправлять предложения.",
             )
             await messenger_client.send_text(
-                chat_id=user.telegram_id,
+                chat_id=chat_id,
                 text=msg_confirmed,
                 keyboard=blogger_menu_inline_keyboard(
                     texts, confirmed=confirmed, verification_started=False
@@ -269,7 +302,7 @@ async def _notify_user_verification_mismatch(
 ) -> None:
     """Notify user that profile Instagram does not match sender account."""
     try:
-        from ugc_bot.bot.handlers.keyboards import (
+        from ugc_bot.bot.telegram.handlers.keyboards import (
             blogger_profile_view_inline_keyboard,
         )
 
@@ -284,9 +317,10 @@ async def _notify_user_verification_mismatch(
             )
             return
 
-        if not user.telegram_id:
+        chat_id, messenger_cm = _get_chat_id_and_messenger_factory(user, config)
+        if not chat_id or messenger_cm is None:
             logger.warning(
-                "User has no telegram_id for notification",
+                "User has no chat_id for notification",
                 extra={"user_id": user_id},
             )
             return
@@ -300,7 +334,7 @@ async def _notify_user_verification_mismatch(
             "msg_instagram_mismatch",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
-        async with _create_messenger(config) as messenger_client:
+        async with messenger_cm as messenger_client:
             default_mismatch = (
                 "Указанный в профиле Instagram не совпадает с аккаунтом, "
                 "с которого вы отправили код. Откройте «Мой профиль», "
@@ -310,7 +344,7 @@ async def _notify_user_verification_mismatch(
                 "msg_instagram_mismatch", default_mismatch
             )
             await messenger_client.send_text(
-                chat_id=user.telegram_id,
+                chat_id=chat_id,
                 text=msg_mismatch,
                 keyboard=blogger_profile_view_inline_keyboard(
                     texts, confirmed=False
@@ -335,7 +369,11 @@ async def _notify_user_verification_api_unavailable(
             user,
             _blogger_profile,
         ) = await verification_service.get_notification_recipient(user_id)
-        if user is None or not user.telegram_id:
+        if user is None:
+            return
+
+        chat_id, messenger_cm = _get_chat_id_and_messenger_factory(user, config)
+        if not chat_id or messenger_cm is None:
             return
 
         locale = _resolve_locale(user, config)
@@ -346,9 +384,9 @@ async def _notify_user_verification_api_unavailable(
             "Попробуйте пройти верификацию позже или напишите "
             "в чат поддержки.",
         )
-        async with _create_messenger(config) as messenger_client:
+        async with messenger_cm as messenger_client:
             await messenger_client.send_text(
-                chat_id=user.telegram_id,
+                chat_id=chat_id,
                 text=msg,
             )
     except Exception as exc:

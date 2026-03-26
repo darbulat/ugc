@@ -11,7 +11,7 @@ from tests.helpers.fakes import (
 )
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.survey_messenger import (
+from ugc_bot.bot.telegram.handlers.survey_messenger import (
     SurveyMessengerStates,
     on_survey_max,
     on_survey_other,

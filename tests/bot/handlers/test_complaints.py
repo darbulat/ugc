@@ -14,7 +14,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.handlers.complaints import (
+from ugc_bot.bot.telegram.handlers.complaints import (
     handle_complaint_reason,
     handle_complaint_reason_text,
     select_complaint_target,

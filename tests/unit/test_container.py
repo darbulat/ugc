@@ -425,7 +425,7 @@ def test_container_build_referral_reconciliation_deps() -> None:
 
 def test_build_offer_response_rate_limiter_without_redis() -> None:
     """Rate limiter falls back to in-memory when Redis is not configured."""
-    from ugc_bot.bot.handlers.utils import RateLimiter
+    from ugc_bot.bot.telegram.handlers.utils import RateLimiter
 
     config = AppConfig.model_validate(
         {
@@ -440,7 +440,7 @@ def test_build_offer_response_rate_limiter_without_redis() -> None:
 
 def test_build_geocode_public_rate_limiter_without_redis() -> None:
     """Geocode rate limiter falls back to in-memory without Redis."""
-    from ugc_bot.bot.handlers.utils import RateLimiter
+    from ugc_bot.bot.telegram.handlers.utils import RateLimiter
 
     config = AppConfig.model_validate(
         {
