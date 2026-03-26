@@ -94,11 +94,11 @@ def test_adapter_from_callback_fields():
         "callback": {
             "callback_id": "cb_99",
             "user": {"user_id": 7, "username": "bob"},
-            "message": {
-                "recipient": {"chat_id": 55},
-                "body": {"mid": "m99", "text": "prev"},
-            },
             "payload": "action:do",
+        },
+        "message": {
+            "recipient": {"chat_id": 55},
+            "body": {"mid": "m99", "text": "prev"},
         },
     }
     cb = adapter.from_callback(event)

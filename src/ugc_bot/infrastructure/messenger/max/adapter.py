@@ -40,7 +40,8 @@ class MaxEventAdapter(MessengerEventAdapter):
         event: dict = callback  # type: ignore[assignment]
         cb = event["callback"]
         cb_user = cb["user"]
-        message = cb.get("message", {})
+        # "message" is a top-level field in the event, not nested in "callback"
+        message = event.get("message", {})
         recipient = message.get("recipient", {})
         body = message.get("body", {})
 
