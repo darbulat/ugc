@@ -225,9 +225,7 @@ class MaxMessengerClient(MessengerClient):
         text: str | None = None,
         show_alert: bool = False,
     ) -> None:
-        body: dict[str, Any] = {}
-        if text:
-            body["notification"] = text
+        body: dict[str, Any] = {"notification": text or ""}
         await self._post("/answers", body, params={"callback_id": callback_id})
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
