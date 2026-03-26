@@ -382,7 +382,7 @@ async def test_handle_max_webhook_unknown_update_type():
     state = _make_app_state()
     request = MagicMock()
     request.app.state = state
-    request.json = AsyncMock(return_value={"update_type": "bot_started"})
+    request.json = AsyncMock(return_value={"update_type": "some_future_event"})
     resp = await handle_max_webhook(request)
     assert resp.status_code == 200
 
@@ -427,7 +427,7 @@ async def test_handle_max_webhook_accepts_valid_secret():
     request = MagicMock()
     request.app.state = state
     request.headers = {"X-Max-Bot-Api-Secret": "my-secret"}
-    request.json = AsyncMock(return_value={"update_type": "bot_started"})
+    request.json = AsyncMock(return_value={"update_type": "some_future_event"})
     resp = await handle_max_webhook(request)
     assert resp.status_code == 200
 

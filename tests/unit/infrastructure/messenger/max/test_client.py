@@ -141,7 +141,7 @@ def test_build_inline_keyboard_url_button():
         rows=[[Button(text="Open", url="https://example.com")]],
     )
     result = _build_inline_keyboard(kb)
-    btn = result["payload"]["buttons"][0]
+    btn = result["payload"]["buttons"][0][0]
     assert btn["type"] == "link"
     assert btn["url"] == "https://example.com"
 
@@ -152,7 +152,7 @@ def test_build_inline_keyboard_request_contact():
         rows=[[Button(text="Share", request_contact=True)]],
     )
     result = _build_inline_keyboard(kb)
-    btn = result["payload"]["buttons"][0]
+    btn = result["payload"]["buttons"][0][0]
     assert btn["type"] == "request_contact"
 
 
@@ -162,7 +162,7 @@ def test_build_inline_keyboard_request_location():
         rows=[[Button(text="Location", request_location=True)]],
     )
     result = _build_inline_keyboard(kb)
-    btn = result["payload"]["buttons"][0]
+    btn = result["payload"]["buttons"][0][0]
     assert btn["type"] == "request_geo_location"
 
 

@@ -60,6 +60,25 @@ class MaxEventAdapter(MessengerEventAdapter):
             raw=event,
         )
 
+    def from_bot_started(self, event: object) -> IncomingMessage:
+        """Convert a bot_started event to IncomingMessage (like /start)."""
+        data: dict = event  # type: ignore[assignment]
+        user_data = data["user"]
+
+        user = IncomingUser(
+            external_id=str(user_data["user_id"]),
+            messenger_type=MessengerType.MAX,
+            username=user_data.get("username"),
+        )
+
+        return IncomingMessage(
+            chat_id=str(data["chat_id"]),
+            user=user,
+            text="/start",
+            message_id=None,
+            raw=data,
+        )
+
     def from_pre_checkout(self, query: object) -> IncomingPreCheckout:
         """Max does not support payments."""
         raise NotImplementedError(

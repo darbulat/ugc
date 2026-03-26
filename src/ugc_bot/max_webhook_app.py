@@ -156,8 +156,11 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
     }
 
     try:
-        if update_type == "message_created":
-            incoming = event_adapter.from_message(data)
+        if update_type in ("message_created", "bot_started"):
+            if update_type == "bot_started":
+                incoming = event_adapter.from_bot_started(data)
+            else:
+                incoming = event_adapter.from_message(data)
             state_store = MaxRedisStateStore(
                 redis=state.redis,
                 chat_id=incoming.chat_id,

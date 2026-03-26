@@ -46,10 +46,14 @@ def _strip_html(text: str) -> str:
 
 
 def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
-    buttons = []
+    rows: list[list[dict[str, Any]]] = []
     for row in keyboard.rows:
+        max_row: list[dict[str, Any]] = []
         for btn in row:
-            max_btn: dict[str, Any] = {"text": btn.text, "type": "callback"}
+            max_btn: dict[str, Any] = {
+                "text": btn.text,
+                "type": "callback",
+            }
             if btn.callback_data:
                 max_btn["type"] = "callback"
                 max_btn["payload"] = btn.callback_data
@@ -60,8 +64,9 @@ def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
                 max_btn["type"] = "request_contact"
             elif btn.request_location:
                 max_btn["type"] = "request_geo_location"
-            buttons.append(max_btn)
-    return {"type": "inline_keyboard", "payload": {"buttons": buttons}}
+            max_row.append(max_btn)
+        rows.append(max_row)
+    return {"type": "inline_keyboard", "payload": {"buttons": rows}}
 
 
 class MaxMessengerClient(MessengerClient):
