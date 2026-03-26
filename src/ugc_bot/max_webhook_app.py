@@ -147,6 +147,7 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
         )
 
     update_type = data.get("update_type")
+    logger.debug("Max webhook payload: %s", data)
     event_adapter: MaxEventAdapter = state.event_adapter
 
     deps: dict = {
