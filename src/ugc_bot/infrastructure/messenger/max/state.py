@@ -1,11 +1,14 @@
 """MaxRedisStateStore — Redis-backed FSM state storage for Max messenger."""
 
 import json
+import logging
 from typing import Any
 
 from redis.asyncio import Redis
 
 from ugc_bot.application.messenger.state import StateStore
+
+logger = logging.getLogger(__name__)
 
 
 class MaxRedisStateStore(StateStore):
@@ -48,6 +51,11 @@ class MaxRedisStateStore(StateStore):
         try:
             return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
+            logger.error(
+                "Corrupted FSM data in Redis key %s: %r",
+                self._data_key,
+                raw,
+            )
             return {}
 
     async def clear(self) -> None:

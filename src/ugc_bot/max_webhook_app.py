@@ -4,6 +4,7 @@ Entry point for Max bot. Runs as a separate process on port 8003.
 Usage: uvicorn ugc_bot.max_webhook_app:app --host 0.0.0.0 --port 8003
 """
 
+import hmac
 import logging
 from contextlib import asynccontextmanager
 
@@ -33,6 +34,7 @@ from ugc_bot.bot.max.handlers.order_creation import (
 from ugc_bot.bot.max.handlers.profile import router as profile_router
 from ugc_bot.bot.max.handlers.referral import router as referral_router
 from ugc_bot.bot.max.handlers.start import router as start_router
+from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
@@ -94,20 +96,18 @@ async def _lifespan(app: FastAPI):
     subscription_body: dict = {"url": webhook_url}
     if config.max_bot.webhook_secret:
         subscription_body["secret"] = config.max_bot.webhook_secret
-    try:
-        async with http_session.post(
-            f"{MAX_API_BASE_URL}/subscriptions",
-            json=subscription_body,
-            headers={"Authorization": config.max_bot.token},
-        ) as resp:
-            if resp.status < 300:
-                logger.info("Max webhook registered: %s", webhook_url)
-            else:
-                logger.error(
-                    "Failed to register Max webhook: %s", await resp.text()
-                )
-    except Exception:
-        logger.exception("Error registering Max webhook")
+    async with http_session.post(
+        f"{MAX_API_BASE_URL}/subscriptions",
+        json=subscription_body,
+        headers={"Authorization": config.max_bot.token},
+    ) as resp:
+        if resp.status < 300:
+            logger.info("Max webhook registered: %s", webhook_url)
+        else:
+            body = await resp.text()
+            raise RuntimeError(
+                f"Failed to register Max webhook (HTTP {resp.status}): {body}"
+            )
 
     logger.info("Max webhook app started")
 
@@ -134,15 +134,22 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
     webhook_secret = getattr(state, "webhook_secret", None)
     if webhook_secret:
         header_secret = request.headers.get("X-Max-Bot-Api-Secret", "")
-        if header_secret != webhook_secret:
+        if not hmac.compare_digest(header_secret, webhook_secret):
             logger.warning("Max webhook rejected: invalid secret")
             return JSONResponse({"ok": False}, status_code=403)
 
-    data = await request.json()
+    try:
+        data = await request.json()
+    except (ValueError, UnicodeDecodeError):
+        logger.warning("Max webhook received non-JSON body")
+        return JSONResponse(
+            {"ok": False, "error": "invalid json"}, status_code=400
+        )
+
     update_type = data.get("update_type")
     event_adapter: MaxEventAdapter = state.event_adapter
 
-    deps = {
+    deps: dict = {
         **state.bot_services,
         "messenger_client": state.messenger_client,
         "config": state.config,
@@ -157,6 +164,12 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
                 user_id=incoming.user.external_id,
             )
             deps["state_store"] = state_store
+            locale = await resolve_locale(
+                incoming,
+                state.bot_services["user_role_service"],
+                state.config.market.default_locale,
+            )
+            deps["locale"] = locale
             await state.max_router.route_message(incoming, deps)
 
         elif update_type == "message_callback":
@@ -167,6 +180,12 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
                 user_id=incoming_cb.user.external_id,
             )
             deps["state_store"] = state_store
+            locale = await resolve_locale(
+                incoming_cb,
+                state.bot_services["user_role_service"],
+                state.config.market.default_locale,
+            )
+            deps["locale"] = locale
             await state.max_router.route_callback(incoming_cb, deps)
 
         else:
@@ -174,5 +193,6 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
 
     except Exception:
         logger.exception("Error processing Max update: %s", update_type)
+        return JSONResponse({"ok": False, "error": "internal"}, status_code=500)
 
     return JSONResponse({"ok": True})

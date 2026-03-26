@@ -194,13 +194,16 @@ async def test_request_403_raises_max_user_blocked_error(make_response):
 
 
 @pytest.mark.asyncio
-async def test_request_400_logs_and_returns_json(make_response):
+async def test_request_400_raises_max_api_error(make_response):
+    from ugc_bot.infrastructure.messenger.max.client import MaxAPIError
+
     response = make_response(400)
     session = AsyncMock()
     session.request = AsyncMock(return_value=response)
     client = MaxMessengerClient(token="tok", session=session)
-    result = await client._request("GET", "/test")
-    assert result == {"success": True}
+    with pytest.raises(MaxAPIError) as exc_info:
+        await client._request("GET", "/test")
+    assert exc_info.value.status == 400
 
 
 @pytest.mark.asyncio
@@ -242,17 +245,19 @@ async def test_request_network_error_retries_then_raises(make_response):
 
 
 @pytest.mark.asyncio
-async def test_request_5xx_all_retries_exhausted_returns_empty(make_response):
+async def test_request_5xx_all_retries_exhausted_raises(make_response):
     err_response = make_response(500)
     session = AsyncMock()
     session.request = AsyncMock(return_value=err_response)
     client = MaxMessengerClient(token="tok", session=session)
-    with patch(
-        "ugc_bot.infrastructure.messenger.max.client.asyncio.sleep",
-        new_callable=AsyncMock,
+    with (
+        patch(
+            "ugc_bot.infrastructure.messenger.max.client.asyncio.sleep",
+            new_callable=AsyncMock,
+        ),
+        pytest.raises(RuntimeError, match="failed after"),
     ):
-        result = await client._request("GET", "/test")
-    assert result == {}
+        await client._request("GET", "/test")
 
 
 @pytest.mark.asyncio

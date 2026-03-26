@@ -19,8 +19,20 @@ logger = logging.getLogger(__name__)
 MAX_API_BASE_URL = "https://platform-api.max.ru"
 
 
-class MaxUserBlockedError(Exception):
+class MaxAPIError(Exception):
+    """Raised on non-retriable Max API errors (4xx except 403/429)."""
+
+    def __init__(self, status: int, body: str) -> None:
+        self.status = status
+        self.body = body
+        super().__init__(f"Max API error {status}: {body}")
+
+
+class MaxUserBlockedError(MaxAPIError):
     """Raised when Max API returns 403 (user blocked the bot)."""
+
+    def __init__(self, body: str) -> None:
+        super().__init__(403, body)
 
 
 MAX_RETRY_ATTEMPTS = 3
@@ -101,6 +113,7 @@ class MaxMessengerClient(MessengerClient):
                     if resp.status >= 400:
                         text = await resp.text()
                         logger.error("Max API error %s: %s", resp.status, text)
+                        raise MaxAPIError(resp.status, text)
                     return await resp.json()
             except aiohttp.ClientError as exc:
                 last_exc = exc
@@ -110,11 +123,17 @@ class MaxMessengerClient(MessengerClient):
                 await asyncio.sleep(MAX_RETRY_BASE_DELAY * (2**attempt))
 
         logger.error(
-            "Max API request failed after %d attempts", MAX_RETRY_ATTEMPTS
+            "Max API request failed after %d attempts: %s %s",
+            MAX_RETRY_ATTEMPTS,
+            method,
+            path,
         )
         if last_exc:
             raise last_exc
-        return {}
+        raise RuntimeError(
+            f"Max API request {method} {path} failed after "
+            f"{MAX_RETRY_ATTEMPTS} attempts"
+        )
 
     async def _post(
         self,

@@ -66,10 +66,10 @@ markers = [
 
 # Used by standalone `coverage report`. For pytest-cov use --cov-fail-under=98 (see Makefile).
 [tool.coverage.run]
-omit = [
-    "*/bot/max/handlers/*",
-    "*/max_webhook_app.py",
-]
+# TODO: Remove omit once Max handler unit tests are added (tech debt).
+# Max handlers are thin wrappers over already-tested shared services;
+# max_webhook_app.py is tested (tests/unit/test_max_webhook_app.py).
+omit = ["*/bot/max/handlers/*"]
 
 [tool.coverage.report]
 fail_under = 98

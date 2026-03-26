@@ -9,7 +9,7 @@ from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.max.adapter import MaxEventAdapter
-from ugc_bot.max_webhook_app import handle_max_webhook
+from ugc_bot.max_webhook_app import handle_max_webhook, health
 
 # ---------------------------------------------------------------------------
 # MaxEventAdapter tests
@@ -282,14 +282,38 @@ async def test_resolve_locale_fallback_on_exception():
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
+async def test_health_endpoint():
+    """Health endpoint returns ok."""
+    resp = await health()
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_handle_max_webhook_invalid_json():
+    """Non-JSON body returns 400."""
+    state = MagicMock()
+    state.webhook_secret = None
+    request = MagicMock()
+    request.app.state = state
+    request.headers = {}
+    request.json = AsyncMock(side_effect=ValueError("bad json"))
+    resp = await handle_max_webhook(request)
+    assert resp.status_code == 400
+
+
 def _make_app_state(router=None):
     """Create a mock app state for webhook handler tests."""
+    mock_user_role_service = AsyncMock()
+    mock_user_role_service.get_user = AsyncMock(return_value=None)
+
     state = MagicMock()
     state.event_adapter = MaxEventAdapter()
     state.max_router = router or MaxRouter()
-    state.bot_services = {}
+    state.bot_services = {"user_role_service": mock_user_role_service}
     state.messenger_client = MagicMock()
     state.config = MagicMock()
+    state.config.market.default_locale = "ru"
     state.redis = MagicMock()
     state.webhook_secret = None
     return state
@@ -364,13 +388,14 @@ async def test_handle_max_webhook_unknown_update_type():
 
 
 @pytest.mark.asyncio
-async def test_handle_max_webhook_exception_returns_ok():
-    """Exceptions during routing are caught and response is still ok."""
+async def test_handle_max_webhook_exception_returns_500():
+    """Exceptions during routing are caught and response is 500."""
     state = _make_app_state()
     state.event_adapter = MagicMock()
     state.event_adapter.from_message.side_effect = RuntimeError("parse error")
     request = MagicMock()
     request.app.state = state
+    request.headers = {}
     request.json = AsyncMock(
         return_value={
             "update_type": "message_created",
@@ -378,7 +403,7 @@ async def test_handle_max_webhook_exception_returns_ok():
         }
     )
     resp = await handle_max_webhook(request)
-    assert resp.status_code == 200
+    assert resp.status_code == 500
 
 
 @pytest.mark.asyncio
@@ -511,6 +536,19 @@ async def test_state_store_get_data_returns_empty_when_none():
 
 
 @pytest.mark.asyncio
+async def test_state_store_get_data_corrupted_json_returns_empty():
+    """get_data returns empty dict and logs on corrupted JSON."""
+    from ugc_bot.infrastructure.messenger.max.state import MaxRedisStateStore
+
+    redis = AsyncMock()
+    redis.get = AsyncMock(return_value="not-valid-json{{{")
+
+    store = MaxRedisStateStore(redis=redis, chat_id="1", user_id="2")
+    result = await store.get_data()
+    assert result == {}
+
+
+@pytest.mark.asyncio
 async def test_state_store_clear():
     """clear removes state and data keys."""
     from ugc_bot.infrastructure.messenger.max.state import MaxRedisStateStore
@@ -594,8 +632,8 @@ async def test_lifespan_with_max_bot_sets_state():
 
 
 @pytest.mark.asyncio
-async def test_lifespan_webhook_registration_failure_logged():
-    """On webhook registration failure (non-2xx), app still starts."""
+async def test_lifespan_webhook_registration_failure_raises():
+    """Non-2xx webhook registration raises RuntimeError."""
     from ugc_bot.max_webhook_app import _lifespan
 
     mock_config = MagicMock()
@@ -633,6 +671,7 @@ async def test_lifespan_webhook_registration_failure_logged():
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        pytest.raises(RuntimeError, match="Failed to register Max webhook"),
     ):
         async with _lifespan(fake_app):
-            pass  # app should still start despite registration failure
+            pass

@@ -1,5 +1,6 @@
 """Max handlers for complaints."""
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +26,8 @@ from ugc_bot.bot.telegram.handlers.complaints import (
     _COMPLAINT_REASONS,
 )
 from ugc_bot.domain.enums import MessengerType, UserStatus
+
+logger = logging.getLogger(__name__)
 
 router = MaxRouter()
 
@@ -411,6 +414,7 @@ async def handle_complaint_reason(
             callback_id=incoming.callback_id, text=str(exc)
         )
     except Exception:
+        logger.exception("Error creating complaint via callback")
         msg_error = await bot_texts_service.get("msg_error_later", locale)
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
@@ -498,6 +502,7 @@ async def handle_complaint_reason_text(
         )
         await state_store.clear()
     except Exception:
+        logger.exception("Error creating complaint via text reason")
         msg_error = await bot_texts_service.get("msg_error_later", locale)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
