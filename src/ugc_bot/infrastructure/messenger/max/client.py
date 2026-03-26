@@ -227,10 +227,8 @@ class MaxMessengerClient(MessengerClient):
     ) -> None:
         body: dict[str, Any] = {}
         if text:
-            body["message"] = {"text": text}
-        await self._post(
-            "/answers/callback", body, params={"callback_id": callback_id}
-        )
+            body["notification"] = text
+        await self._post("/answers", body, params={"callback_id": callback_id})
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         raise NotImplementedError(
