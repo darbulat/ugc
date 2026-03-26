@@ -69,9 +69,12 @@ router = APIRouter(prefix="/api", tags=["miniapp"])
 
 
 class InitDataBody(BaseModel):
-    """Body that includes Telegram initData for auth."""
+    """Body that includes initData for auth (Telegram or Max)."""
 
-    init_data: str = Field(..., description="Telegram.WebApp.initData string")
+    init_data: str = Field(..., description="WebApp.initData string")
+    platform: str = Field(
+        default="telegram", description="Platform: 'telegram' or 'max'"
+    )
 
 
 class MeResponse(BaseModel):
@@ -121,6 +124,7 @@ class RegisterAdvertiserRequest(BaseModel):
     """Advertiser registration payload."""
 
     init_data: str
+    platform: str = "telegram"
     phone: str
     brand: str
     site_link: str | None = None
@@ -133,6 +137,7 @@ class RegisterBloggerRequest(BaseModel):
     """Blogger registration payload (all fields as in bot flow)."""
 
     init_data: str
+    platform: str = "telegram"
     instagram_url: str
     city: str
     audience_geo: str
@@ -168,6 +173,7 @@ class CreateOrderRequest(BaseModel):
     """Order creation payload."""
 
     init_data: str
+    platform: str = "telegram"
     product_link: str
     offer_text: str
     price: float = Field(..., ge=0)
@@ -202,6 +208,7 @@ class GetOrderRequest(BaseModel):
     """Request to fetch one order by id."""
 
     init_data: str
+    platform: str = "telegram"
     order_id: str
 
 
@@ -227,6 +234,7 @@ class UpdateOrderRequest(BaseModel):
     """Update order payload (same fields as create)."""
 
     init_data: str
+    platform: str = "telegram"
     order_id: str
     product_link: str
     offer_text: str
@@ -243,6 +251,7 @@ class ManagerOrdersRequest(BaseModel):
     """Manager orders list request."""
 
     init_data: str
+    platform: str = "telegram"
     limit: int = 20
     offset: int = 0
 
@@ -258,6 +267,7 @@ class ManagerCreatorsRequest(BaseModel):
     """Manager creators list request."""
 
     init_data: str
+    platform: str = "telegram"
     in_offer: bool | None = None
     filter: Literal["in_offer", "reserve", "expensive"] | None = None
     search: str | None = None
@@ -286,6 +296,7 @@ class CreatorDetailRequest(BaseModel):
     """Request to fetch a single creator's detail."""
 
     init_data: str
+    platform: str = "telegram"
 
 
 class CreatorDetailResponse(BaseModel):
@@ -302,6 +313,7 @@ class UgcVideoRequest(BaseModel):
     """Request to save a UGC video URL."""
 
     init_data: str
+    platform: str = "telegram"
     url: AnyHttpUrl
 
 
@@ -309,6 +321,7 @@ class ManagerFeedbackRequest(BaseModel):
     """Manager records advertiser-side feedback on an interaction."""
 
     init_data: str
+    platform: str = "telegram"
     status: Literal["ok", "no_deal", "issue"]
     no_deal_reason: str | None = Field(None, max_length=1000)
     issue_description: str | None = Field(None, max_length=5000)
@@ -1186,12 +1199,14 @@ class OrdersListRequest(BaseModel):
     """Request body for listing orders."""
 
     init_data: str
+    platform: str = "telegram"
 
 
 class ReverseGeocodeRequest(BaseModel):
     """Request body for reverse geocode (coordinates to city)."""
 
     init_data: str
+    platform: str = "telegram"
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
 
@@ -1208,6 +1223,7 @@ class ForwardGeocodeRequest(BaseModel):
     """Request body for forward geocode (city name to coordinates)."""
 
     init_data: str
+    platform: str = "telegram"
     city: str
     region: str | None = None
     country: str | None = None
@@ -1510,6 +1526,7 @@ class SetCountryRequest(BaseModel):
     """Request to set country for the current user."""
 
     init_data: str
+    platform: str = "telegram"
     country_code: str
 
 
