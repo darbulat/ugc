@@ -20,15 +20,17 @@ class MaxEventAdapter(MessengerEventAdapter):
         sender = msg["sender"]
         recipient = msg["recipient"]
         body = msg.get("body", {})
+        chat_id = str(recipient["chat_id"])
 
         user = IncomingUser(
-            external_id=str(sender["user_id"]),
+            # Use chat_id as external_id (needed for sending messages back)
+            external_id=chat_id,
             messenger_type=MessengerType.MAX,
             username=sender.get("username"),
         )
 
         return IncomingMessage(
-            chat_id=str(recipient["chat_id"]),
+            chat_id=chat_id,
             user=user,
             text=body.get("text"),
             message_id=body.get("mid"),
@@ -44,16 +46,18 @@ class MaxEventAdapter(MessengerEventAdapter):
         message = event.get("message", {})
         recipient = message.get("recipient", {})
         body = message.get("body", {})
+        chat_id = str(recipient.get("chat_id", ""))
 
         user = IncomingUser(
-            external_id=str(cb_user["user_id"]),
+            # Use chat_id as external_id (needed for sending messages back)
+            external_id=chat_id,
             messenger_type=MessengerType.MAX,
             username=cb_user.get("username"),
         )
 
         return IncomingCallback(
             callback_id=str(cb["callback_id"]),
-            chat_id=str(recipient.get("chat_id", "")),
+            chat_id=chat_id,
             user=user,
             data=cb.get("payload"),
             message_id=body.get("mid"),
@@ -65,15 +69,17 @@ class MaxEventAdapter(MessengerEventAdapter):
         """Convert a bot_started event to IncomingMessage (like /start)."""
         data: dict = event  # type: ignore[assignment]
         user_data = data["user"]
+        chat_id = str(data["chat_id"])
 
         user = IncomingUser(
-            external_id=str(user_data["user_id"]),
+            # Use chat_id as external_id (needed for sending messages back)
+            external_id=chat_id,
             messenger_type=MessengerType.MAX,
             username=user_data.get("username"),
         )
 
         return IncomingMessage(
-            chat_id=str(data["chat_id"]),
+            chat_id=chat_id,
             user=user,
             text="/start",
             message_id=None,

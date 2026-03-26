@@ -82,7 +82,7 @@ def test_adapter_from_message_fields():
     assert msg.chat_id == "99"
     assert msg.text == "hello"
     assert msg.message_id == "abc"
-    assert msg.user.external_id == "42"
+    assert msg.user.external_id == "99"
     assert msg.user.username == "alice"
     assert msg.user.messenger_type == MessengerType.MAX
 
@@ -107,7 +107,7 @@ def test_adapter_from_callback_fields():
     assert cb.data == "action:do"
     assert cb.message_id == "m99"
     assert cb.message_text == "prev"
-    assert cb.user.external_id == "7"
+    assert cb.user.external_id == "55"
     assert cb.user.messenger_type == MessengerType.MAX
 
 
