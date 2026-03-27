@@ -23,7 +23,9 @@ def subscribe_to_messages(page_id: str | None = None) -> None:
         sys.exit(1)
 
     # Use /me if page_id not provided
-    endpoint = "/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
+    endpoint = (
+        "/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
+    )
     url = f"https://graph.instagram.com/v24.0{endpoint}"
 
     print("📡 Subscribing to Instagram webhook field 'messages'...")
@@ -72,7 +74,9 @@ def list_subscriptions(page_id: str | None = None) -> None:
         print("❌ Error: INSTAGRAM_ACCESS_TOKEN is not configured")
         sys.exit(1)
 
-    endpoint = "/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
+    endpoint = (
+        "/me/subscribed_apps" if not page_id else f"/{page_id}/subscribed_apps"
+    )
     url = f"https://graph.instagram.com/v24.0{endpoint}"
 
     print("📋 Listing current subscriptions...")

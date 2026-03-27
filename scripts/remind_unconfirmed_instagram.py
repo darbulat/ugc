@@ -17,10 +17,11 @@ import sys
 from aiogram import Bot
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
 )
+
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import load_config
 from ugc_bot.domain.enums import MessengerType
@@ -29,7 +30,6 @@ from ugc_bot.infrastructure.db.session import create_session_factory
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
-from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,9 @@ def _reminder_keyboard(locale: str) -> Keyboard:
         rows=[
             [
                 Button(
-                    text=texts.get("btn_confirm_instagram", "Подтвердить Instagram"),
+                    text=texts.get(
+                        "btn_confirm_instagram", "Подтвердить Instagram"
+                    ),
                     callback_data=CALLBACK_PROFILE_CONFIRM_INSTAGRAM,
                 )
             ]
@@ -58,7 +60,7 @@ def _reminder_text(locale: str) -> str:
     return texts.get(
         "msg_instagram_confirm_reminder",
         (
-"""Здравствуйте!
+            """Здравствуйте!
 
 ❗️Для вас сейчас есть подходящий заказ в UMC.
 
@@ -102,14 +104,18 @@ async def _send_with_retry(
     for attempt in range(1, _SEND_RETRIES + 1):
         try:
             await client.send_text(
-                chat_id=chat_id, text=text, keyboard=keyboard,
+                chat_id=chat_id,
+                text=text,
+                keyboard=keyboard,
             )
             return True
         except Exception as exc:
             if attempt == _SEND_RETRIES:
                 logger.warning(
                     "Failed to send reminder to %s after %d attempts: %s",
-                    chat_id, _SEND_RETRIES, exc,
+                    chat_id,
+                    _SEND_RETRIES,
+                    exc,
                 )
                 return False
             await asyncio.sleep(_SEND_RETRY_DELAY)

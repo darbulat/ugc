@@ -78,7 +78,8 @@ def list_base_backups(s3_config: dict) -> list[str]:
     keys_with_ts: list[tuple[str, object]] = []
     bucket = s3_config["bucket"]
     for page in paginator.paginate(
-        Bucket=bucket, Prefix="base_backups/",
+        Bucket=bucket,
+        Prefix="base_backups/",
     ):
         for obj in page.get("Contents") or []:
             key = obj.get("Key")
@@ -118,7 +119,8 @@ def download_wal_files(s3_config: dict, wal_dir: Path) -> int:
     bucket = s3_config["bucket"]
     count = 0
     for page in paginator.paginate(
-        Bucket=bucket, Prefix="wal_archive/",
+        Bucket=bucket,
+        Prefix="wal_archive/",
     ):
         for obj in page.get("Contents") or []:
             key = obj.get("Key", "")
@@ -163,9 +165,7 @@ def configure_recovery(
 
     # Remove previous recovery settings
     lines = [
-        line
-        for line in lines
-        if not line.strip().startswith(_RECOVERY_PARAMS)
+        line for line in lines if not line.strip().startswith(_RECOVERY_PARAMS)
     ]
 
     restore_cmd = f"restore_command = 'cp {wal_dir}/%f %p'"
@@ -207,7 +207,9 @@ def _run_restore(args: argparse.Namespace, s3_config: dict) -> None:
 
         print("Configuring recovery...")
         configure_recovery(
-            args.pgdata, args.wal_dir, args.target_time,
+            args.pgdata,
+            args.wal_dir,
+            args.target_time,
         )
 
         print("\nPITR restore prepared successfully!")

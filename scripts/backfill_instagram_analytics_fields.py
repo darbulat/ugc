@@ -74,32 +74,37 @@ async def run(dry_run: bool, all_records: bool) -> int:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "Failed to extract analytics for user_id=%s: %s", model.user_id, exc
+                "Failed to extract analytics for user_id=%s: %s",
+                model.user_id,
+                exc,
             )
             errors += 1
             continue
 
-        has_data = any([
-            analytics.full_name is not None,
-            analytics.is_professional_account is not None,
-            analytics.is_business_account is not None,
-            analytics.category_name is not None,
-            analytics.external_url is not None,
-            analytics.avg_likes is not None,
-            analytics.avg_comments is not None,
-            analytics.avg_video_views is not None,
-            analytics.engagement_rate is not None,
-            analytics.posting_frequency_days is not None,
-            analytics.total_video_count is not None,
-            analytics.total_photo_count is not None,
-            analytics.video_ratio is not None,
-            analytics.followers_to_follows_ratio is not None,
-            analytics.comments_to_likes_ratio is not None,
-        ])
+        has_data = any(
+            [
+                analytics.full_name is not None,
+                analytics.is_professional_account is not None,
+                analytics.is_business_account is not None,
+                analytics.category_name is not None,
+                analytics.external_url is not None,
+                analytics.avg_likes is not None,
+                analytics.avg_comments is not None,
+                analytics.avg_video_views is not None,
+                analytics.engagement_rate is not None,
+                analytics.posting_frequency_days is not None,
+                analytics.total_video_count is not None,
+                analytics.total_photo_count is not None,
+                analytics.video_ratio is not None,
+                analytics.followers_to_follows_ratio is not None,
+                analytics.comments_to_likes_ratio is not None,
+            ]
+        )
 
         if not has_data:
             logger.debug(
-                "No analytics extractable for user_id=%s, skipping.", model.user_id
+                "No analytics extractable for user_id=%s, skipping.",
+                model.user_id,
             )
             skipped += 1
             continue

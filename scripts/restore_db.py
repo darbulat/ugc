@@ -54,7 +54,9 @@ def _get_s3_config_restore() -> dict | None:
         Dict with endpoint_url, bucket, access_key, secret_key if all required
         vars are set; None otherwise.
     """
-    endpoint = os.getenv("S3_ENDPOINT_URL", "https://s3.ru1.storage.beget.cloud")
+    endpoint = os.getenv(
+        "S3_ENDPOINT_URL", "https://s3.ru1.storage.beget.cloud"
+    )
     bucket = os.getenv("S3_BUCKET", "97596cccd207-ugc-s3")
     access_key = os.getenv("S3_ACCESS_KEY_ID", "").strip()
     secret_key = os.getenv("S3_SECRET_ACCESS_KEY", "").strip()
@@ -203,7 +205,9 @@ def restore_backup(
         file_size / (1024 * 1024),
     )
     if file_size == 0:
-        logger.warning("Backup file is empty; restore may not change the database.")
+        logger.warning(
+            "Backup file is empty; restore may not change the database."
+        )
 
     # Set PGPASSWORD environment variable for psql
     env = os.environ.copy()
@@ -222,7 +226,9 @@ def restore_backup(
         "-v",
         "ON_ERROR_STOP=1",
     ]
-    logger.info("Running: psql -h %s -p %s -U %s -d %s ...", host, port, user, database)
+    logger.info(
+        "Running: psql -h %s -p %s -U %s -d %s ...", host, port, user, database
+    )
 
     try:
         if backup_path.suffix == ".gz" or backup_path.name.endswith(".sql.gz"):
@@ -230,7 +236,9 @@ def restore_backup(
             # would give psql the raw fd and gzip bytes; psql expects plain SQL)
             with gzip.open(backup_path, "rt", encoding="utf-8") as f:
                 sql_content = f.read()
-            logger.info("Decompressed backup: %d characters of SQL", len(sql_content))
+            logger.info(
+                "Decompressed backup: %d characters of SQL", len(sql_content)
+            )
             sql_content = _strip_unsupported_set_commands(sql_content)
             result = subprocess.run(
                 psql_cmd,
@@ -258,8 +266,14 @@ def restore_backup(
             print(stderr_text, file=sys.stderr, end="")
 
         if result.returncode != 0:
-            error_msg = result.stderr.decode() if result.stderr else f"exit code {result.returncode}"
-            logger.error("psql failed (exit %s): %s", result.returncode, error_msg)
+            error_msg = (
+                result.stderr.decode()
+                if result.stderr
+                else f"exit code {result.returncode}"
+            )
+            logger.error(
+                "psql failed (exit %s): %s", result.returncode, error_msg
+            )
             print(f"Error restoring backup: {error_msg}", file=sys.stderr)
             raise subprocess.CalledProcessError(
                 result.returncode, psql_cmd, stderr=result.stderr
@@ -278,7 +292,9 @@ def restore_backup(
 
 def main() -> None:
     """Main entry point."""
-    parser = argparse.ArgumentParser(description="Restore PostgreSQL database from backup")
+    parser = argparse.ArgumentParser(
+        description="Restore PostgreSQL database from backup"
+    )
     parser.add_argument(
         "backup_file",
         nargs="?",
@@ -353,7 +369,9 @@ def main() -> None:
             sys.exit(1)
 
     if not args.backup_file:
-        parser.error("backup_file is required (or use --list-s3 to list S3 backups)")
+        parser.error(
+            "backup_file is required (or use --list-s3 to list S3 backups)"
+        )
 
     if args.from_s3:
         s3_config = _get_s3_config_restore()
@@ -364,7 +382,11 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(1)
-        s3_key = args.backup_file if isinstance(args.backup_file, str) else str(args.backup_file)
+        s3_key = (
+            args.backup_file
+            if isinstance(args.backup_file, str)
+            else str(args.backup_file)
+        )
         try:
             backup_path = download_backup_from_s3(s3_config, s3_key)
         except FileNotFoundError as e:
@@ -376,7 +398,9 @@ def main() -> None:
     else:
         backup_path = Path(args.backup_file)
         if not backup_path.exists():
-            print(f"Error: Backup file not found: {backup_path}", file=sys.stderr)
+            print(
+                f"Error: Backup file not found: {backup_path}", file=sys.stderr
+            )
             sys.exit(1)
 
     if not args.password:

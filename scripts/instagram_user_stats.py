@@ -22,7 +22,9 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
-DEFAULT_SESSION_FILE = Path(__file__).resolve().parents[1] / ".instagram_session.json"
+DEFAULT_SESSION_FILE = (
+    Path(__file__).resolve().parents[1] / ".instagram_session.json"
+)
 
 
 def load_dotenv_if_available() -> None:
@@ -118,7 +120,9 @@ async def _fetch_user_async(
         "media_count": user.media_count,
         "biography": user.biography or "",
         "external_url": str(user.external_url) if user.external_url else None,
-        "profile_pic_url": str(user.profile_pic_url) if user.profile_pic_url else None,
+        "profile_pic_url": str(user.profile_pic_url)
+        if user.profile_pic_url
+        else None,
     }
 
 

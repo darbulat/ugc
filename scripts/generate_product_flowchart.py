@@ -607,9 +607,13 @@ def _emit_entry(lines: list[str], ru_texts: dict[str, str]) -> None:
     lines.append("    %% ENTRY POINT")
     _lbl = _make_node_label("/start", "START", ru_texts)
     lines.append(f'    START["{_lbl}"]:::entry')
-    _lbl = _make_node_label("Language<br/>ru|en|be|kk|uz", "LANG_SELECT", ru_texts)
+    _lbl = _make_node_label(
+        "Language<br/>ru|en|be|kk|uz", "LANG_SELECT", ru_texts
+    )
     lines.append(f'    LANG_SELECT{{"{_lbl}"}}:::country')
-    _lbl = _make_node_label("Country<br/>RU|BY|KZ|UZ", "COUNTRY_SELECT", ru_texts)
+    _lbl = _make_node_label(
+        "Country<br/>RU|BY|KZ|UZ", "COUNTRY_SELECT", ru_texts
+    )
     lines.append(f'    COUNTRY_SELECT{{"{_lbl}"}}:::country')
     _lbl = _make_node_label("Role Selection", "ROLE_SELECT", ru_texts)
     lines.append(f'    ROLE_SELECT{{"{_lbl}"}}:::role')
@@ -729,12 +733,24 @@ def _emit_offer_responses(
 ) -> None:
     lines.append("    %% OFFER DISPATCH & RESPONSES")
     _n = _make_node_label
-    lines.append(f'    OFFER_SENT["{_n("Offers Sent", "OFFER_SENT", ru_texts)}"]:::service')
-    lines.append(f'    OFFER_RESPONSE{{"{_n("Blogger Response", "OFFER_RESPONSE", ru_texts)}"}}:::role')
-    lines.append(f'    OFFER_ACCEPT["{_n("Accept", "OFFER_ACCEPT", ru_texts)}"]:::action')
-    lines.append(f'    OFFER_SKIP["{_n("Skip", "OFFER_SKIP", ru_texts)}"]:::action')
-    lines.append(f'    SKIP_REASON{{"{_n("Rejection Reason", "SKIP_REASON", ru_texts)}"}}:::action')
-    lines.append(f'    DESIRED_PRICE["{_n("Desired Price", "DESIRED_PRICE", ru_texts)}"]:::regStep')
+    lines.append(
+        f'    OFFER_SENT["{_n("Offers Sent", "OFFER_SENT", ru_texts)}"]:::service'
+    )
+    lines.append(
+        f'    OFFER_RESPONSE{{"{_n("Blogger Response", "OFFER_RESPONSE", ru_texts)}"}}:::role'
+    )
+    lines.append(
+        f'    OFFER_ACCEPT["{_n("Accept", "OFFER_ACCEPT", ru_texts)}"]:::action'
+    )
+    lines.append(
+        f'    OFFER_SKIP["{_n("Skip", "OFFER_SKIP", ru_texts)}"]:::action'
+    )
+    lines.append(
+        f'    SKIP_REASON{{"{_n("Rejection Reason", "SKIP_REASON", ru_texts)}"}}:::action'
+    )
+    lines.append(
+        f'    DESIRED_PRICE["{_n("Desired Price", "DESIRED_PRICE", ru_texts)}"]:::regStep'
+    )
     lines.append("")
     lines.append("    ORDER_ACTIVE --> OFFER_SENT")
     lines.append("    OFFER_SENT --> OFFER_RESPONSE")
@@ -751,13 +767,27 @@ def _emit_feedback(
 ) -> None:
     lines.append("    %% INTERACTION & FEEDBACK")
     _n = _make_node_label
-    lines.append(f'    INTERACTION["{_n("Interaction", "INTERACTION", ru_texts)}"]:::service')
-    lines.append(f'    FEEDBACK_START["{_n("Feedback Request", "FEEDBACK_START", ru_texts)}"]:::action')
-    lines.append(f'    FB_REASON{{"{_n("Feedback Reason", "FB_REASON", ru_texts)}"}}:::action')
-    lines.append(f'    FB_ISSUE["{_n("Describe Issue", "FB_ISSUE", ru_texts)}"]:::regStep')
-    lines.append(f'    FB_NPS["{_n("NPS Score 1-5", "FB_NPS", ru_texts)}"]:::regStep')
-    lines.append(f'    FB_NPS_COMMENT["{_n("NPS Comment", "FB_NPS_COMMENT", ru_texts)}"]:::regStep')
-    lines.append(f'    FB_COMPLETE["{_n("Feedback Saved", "FB_COMPLETE", ru_texts)}"]:::service')
+    lines.append(
+        f'    INTERACTION["{_n("Interaction", "INTERACTION", ru_texts)}"]:::service'
+    )
+    lines.append(
+        f'    FEEDBACK_START["{_n("Feedback Request", "FEEDBACK_START", ru_texts)}"]:::action'
+    )
+    lines.append(
+        f'    FB_REASON{{"{_n("Feedback Reason", "FB_REASON", ru_texts)}"}}:::action'
+    )
+    lines.append(
+        f'    FB_ISSUE["{_n("Describe Issue", "FB_ISSUE", ru_texts)}"]:::regStep'
+    )
+    lines.append(
+        f'    FB_NPS["{_n("NPS Score 1-5", "FB_NPS", ru_texts)}"]:::regStep'
+    )
+    lines.append(
+        f'    FB_NPS_COMMENT["{_n("NPS Comment", "FB_NPS_COMMENT", ru_texts)}"]:::regStep'
+    )
+    lines.append(
+        f'    FB_COMPLETE["{_n("Feedback Saved", "FB_COMPLETE", ru_texts)}"]:::service'
+    )
     lines.append("")
     lines.append("    OFFER_ACCEPT --> INTERACTION")
     lines.append("    INTERACTION --> FEEDBACK_START")
@@ -777,10 +807,18 @@ def _emit_complaints(
 ) -> None:
     lines.append("    %% COMPLAINTS")
     _n = _make_node_label
-    lines.append(f'    COMPLAINT_START["{_n("Complaint", "COMPLAINT_START", ru_texts)}"]:::action')
-    lines.append(f'    COMPLAINT_TARGET["{_n("Select Target", "COMPLAINT_TARGET", ru_texts)}"]:::action')
-    lines.append(f'    COMPLAINT_REASON{{"{_n("Reason", "COMPLAINT_REASON", ru_texts)}"}}:::action')
-    lines.append(f'    COMPLAINT_SAVED["{_n("Saved", "COMPLAINT_SAVED", ru_texts)}"]:::service')
+    lines.append(
+        f'    COMPLAINT_START["{_n("Complaint", "COMPLAINT_START", ru_texts)}"]:::action'
+    )
+    lines.append(
+        f'    COMPLAINT_TARGET["{_n("Select Target", "COMPLAINT_TARGET", ru_texts)}"]:::action'
+    )
+    lines.append(
+        f'    COMPLAINT_REASON{{"{_n("Reason", "COMPLAINT_REASON", ru_texts)}"}}:::action'
+    )
+    lines.append(
+        f'    COMPLAINT_SAVED["{_n("Saved", "COMPLAINT_SAVED", ru_texts)}"]:::service'
+    )
     lines.append("")
     lines.append("    INTERACTION --> COMPLAINT_START")
     lines.append("    COMPLAINT_START --> COMPLAINT_TARGET")
@@ -795,12 +833,24 @@ def _emit_shared(
 ) -> None:
     lines.append("    %% SHARED FLOWS")
     _n = _make_node_label
-    lines.append(f'    PROFILE_VIEW["{_n("View Profile", "PROFILE_VIEW", ru_texts)}"]:::menu')
-    lines.append(f'    MY_ORDERS["{_n("My Orders", "MY_ORDERS", ru_texts)}"]:::menu')
-    lines.append(f'    EDIT_PROFILE["{_n("Edit Profile", "EDIT_PROFILE", ru_texts)}"]:::action')
-    lines.append(f'    EDIT_TYPE{{"{_n("Profile Type", "EDIT_TYPE", ru_texts)}"}}:::action')
-    lines.append(f'    EDIT_FIELD["{_n("Select Field", "EDIT_FIELD", ru_texts)}"]:::regStep')
-    lines.append(f'    EDIT_VALUE["{_n("Enter Value", "EDIT_VALUE", ru_texts)}"]:::regStep')
+    lines.append(
+        f'    PROFILE_VIEW["{_n("View Profile", "PROFILE_VIEW", ru_texts)}"]:::menu'
+    )
+    lines.append(
+        f'    MY_ORDERS["{_n("My Orders", "MY_ORDERS", ru_texts)}"]:::menu'
+    )
+    lines.append(
+        f'    EDIT_PROFILE["{_n("Edit Profile", "EDIT_PROFILE", ru_texts)}"]:::action'
+    )
+    lines.append(
+        f'    EDIT_TYPE{{"{_n("Profile Type", "EDIT_TYPE", ru_texts)}"}}:::action'
+    )
+    lines.append(
+        f'    EDIT_FIELD["{_n("Select Field", "EDIT_FIELD", ru_texts)}"]:::regStep'
+    )
+    lines.append(
+        f'    EDIT_VALUE["{_n("Enter Value", "EDIT_VALUE", ru_texts)}"]:::regStep'
+    )
     lines.append(f'    SUPPORT["{_n("Support", "SUPPORT", ru_texts)}"]:::menu')
     lines.append("")
     lines.append("    EDIT_PROFILE --> EDIT_TYPE")
@@ -816,15 +866,33 @@ def _emit_infra(
 ) -> None:
     lines.append("    %% INFRASTRUCTURE")
     _n = _make_node_label
-    lines.append(f'    MINIAPP["{_n("Mini App Web UI", "MINIAPP", ru_texts)}"]:::infra')
-    lines.append(f'    MINIAPP_AUTH["{_n("Auth", "MINIAPP_AUTH", ru_texts)}"]:::infra')
-    lines.append(f'    MINIAPP_REG["{_n("Web Registration", "MINIAPP_REG", ru_texts)}"]:::infra')
-    lines.append(f'    MINIAPP_ORDERS["{_n("Web Orders", "MINIAPP_ORDERS", ru_texts)}"]:::infra')
-    lines.append(f'    KAFKA["{_n("Kafka Outbox", "KAFKA", ru_texts)}"]:::infra')
-    lines.append(f'    IG_STATS["{_n("IG Stats", "IG_STATS", ru_texts)}"]:::infra')
-    lines.append(f'    SCHEDULER["{_n("Schedulers", "SCHEDULER", ru_texts)}"]:::infra')
-    lines.append(f'    REFERRAL["{_n("Referral System", "REFERRAL", ru_texts)}"]:::infra')
-    lines.append(f'    ADMIN_PANEL["{_n("Admin Panel", "ADMIN_PANEL", ru_texts)}"]:::infra')
+    lines.append(
+        f'    MINIAPP["{_n("Mini App Web UI", "MINIAPP", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    MINIAPP_AUTH["{_n("Auth", "MINIAPP_AUTH", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    MINIAPP_REG["{_n("Web Registration", "MINIAPP_REG", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    MINIAPP_ORDERS["{_n("Web Orders", "MINIAPP_ORDERS", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    KAFKA["{_n("Kafka Outbox", "KAFKA", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    IG_STATS["{_n("IG Stats", "IG_STATS", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    SCHEDULER["{_n("Schedulers", "SCHEDULER", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    REFERRAL["{_n("Referral System", "REFERRAL", ru_texts)}"]:::infra'
+    )
+    lines.append(
+        f'    ADMIN_PANEL["{_n("Admin Panel", "ADMIN_PANEL", ru_texts)}"]:::infra'
+    )
     lines.append("")
     lines.append("    MINIAPP --> MINIAPP_AUTH")
     lines.append("    MINIAPP_AUTH --> MINIAPP_REG")
@@ -1178,10 +1246,8 @@ def build_html(
 ) -> str:
     """Build self-contained HTML viewer."""
     json_data = json.dumps(node_data, ensure_ascii=False)
-    return (
-        _HTML_TEMPLATE.replace("MERMAID_PLACEHOLDER", mermaid_code).replace(
-            "NODE_DATA_PLACEHOLDER", json_data
-        )
+    return _HTML_TEMPLATE.replace("MERMAID_PLACEHOLDER", mermaid_code).replace(
+        "NODE_DATA_PLACEHOLDER", json_data
     )
 
 
@@ -1232,9 +1298,7 @@ def main() -> None:
     services = extract_service_names(SERVICES_DIR)
     enums = extract_enums(DOMAIN_DIR)
     handler_counts = count_handlers(HANDLERS_DIR)
-    ru_path = (
-        ROOT / "src" / "ugc_bot" / "bot" / "texts" / "defaults" / "ru.py"
-    )
+    ru_path = ROOT / "src" / "ugc_bot" / "bot" / "texts" / "defaults" / "ru.py"
     ru_texts = extract_ru_texts(ru_path)
     node_data = build_node_data(ru_texts)
 
