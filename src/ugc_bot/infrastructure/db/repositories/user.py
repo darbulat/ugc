@@ -132,20 +132,6 @@ class SqlAlchemyUserRepository(UserRepository):
             results = exec_result.scalars().all()
             return [_to_user_entity(row) for row in results]
 
-    async def delete(
-        self, user_id: UUID, session: object | None = None
-    ) -> None:
-        """Delete a user by ID."""
-        async with _resolve_session(
-            self.session_factory, session
-        ) as db_session:
-            exec_result = await db_session.execute(
-                select(UserModel).where(UserModel.user_id == user_id)
-            )
-            model = exec_result.scalar_one_or_none()
-            if model is not None:
-                await db_session.delete(model)
-
     async def list_admins(
         self,
         messenger_type: MessengerType | None = None,

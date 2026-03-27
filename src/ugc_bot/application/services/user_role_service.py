@@ -365,6 +365,7 @@ class UserRoleService:
         instagram_url: str,
         username: str,
         max_chat_id: str | None = None,
+        session: object | None = None,
     ) -> User | None:
         """Link a Max account to existing user by Instagram username.
 
@@ -373,6 +374,9 @@ class UserRoleService:
 
         Returns the updated User if linked, None if no matching user found
         or user already has a different max_id.
+
+        When *session* is provided the operations run within that session
+        (joining an outer transaction) instead of opening a new one.
         """
 
         async def _run(session: object | None) -> User | None:
@@ -400,7 +404,8 @@ class UserRoleService:
                 max_id, MessengerType.MAX, session=session
             )
             if orphan and orphan.user_id != existing.user_id:
-                await self.user_repo.delete(orphan.user_id, session=session)
+                cleared = replace(orphan, max_id=None, max_chat_id=None)
+                await self.user_repo.save(cleared, session=session)
 
             updated = replace(
                 existing,
@@ -411,4 +416,6 @@ class UserRoleService:
             await self.user_repo.save(updated, session=session)
             return updated
 
+        if session is not None:
+            return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)

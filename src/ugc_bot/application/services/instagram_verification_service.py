@@ -225,7 +225,7 @@ class InstagramVerificationService:
             await self.blogger_repo.save(confirmed_profile, session=session)
 
             link_result = await self._try_link_max_account(
-                valid_code, profile.instagram_url or ""
+                valid_code, profile.instagram_url or "", session=session
             )
             if link_result:
                 return link_result
@@ -237,6 +237,7 @@ class InstagramVerificationService:
         self,
         valid_code: InstagramVerificationCode,
         instagram_url: str,
+        session: object | None = None,
     ) -> VerificationLinkSuccess | None:
         """Attempt to link Max account after verification."""
         if not valid_code.link_max_id or not self.user_role_service:
@@ -246,6 +247,7 @@ class InstagramVerificationService:
             instagram_url=instagram_url,
             username=valid_code.link_username or "",
             max_chat_id=valid_code.link_max_chat_id,
+            session=session,
         )
         if linked:
             return VerificationLinkSuccess(
@@ -355,7 +357,9 @@ class InstagramVerificationService:
             instagram_username = profile_info.username
             instagram_stats_fetched_at = now
 
-        async def _confirm(session: object | None) -> None:
+        async def _confirm(
+            session: object | None,
+        ) -> VerificationLinkSuccess | None:
             await self.verification_repo.mark_used(
                 valid_code.code_id, session=session
             )
@@ -369,8 +373,11 @@ class InstagramVerificationService:
                 instagram_stats_fetched_at=instagram_stats_fetched_at,
             )
             await self.blogger_repo.save(confirmed_profile, session=session)
+            return await self._try_link_max_account(
+                valid_code, profile.instagram_url or "", session=session
+            )
 
-        await with_optional_tx(self.transaction_manager, _confirm)
+        link_result = await with_optional_tx(self.transaction_manager, _confirm)
         logger.info(
             "Instagram verification success",
             extra={
@@ -378,10 +385,6 @@ class InstagramVerificationService:
                 "instagram_user_id": instagram_sender_id,
                 "username": api_username,
             },
-        )
-
-        link_result = await self._try_link_max_account(
-            valid_code, profile.instagram_url or ""
         )
         return link_result or VerificationSuccess(user_id=valid_code.user_id)
 

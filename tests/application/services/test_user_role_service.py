@@ -577,8 +577,10 @@ async def test_link_max_account_success() -> None:
     assert linked.messenger_type == MessengerType.TELEGRAM
     assert linked.username == "alice_max"
 
-    deleted_orphan = await user_repo.get_by_id(orphan_user.user_id)
-    assert deleted_orphan is None
+    cleared_orphan = await user_repo.get_by_id(orphan_user.user_id)
+    assert cleared_orphan is not None
+    assert cleared_orphan.max_id is None
+    assert cleared_orphan.max_chat_id is None
 
 
 @pytest.mark.asyncio

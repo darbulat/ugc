@@ -90,7 +90,7 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         self, username: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram username (case-insensitive)."""
-        pattern = f"%instagram.com/{username.lower().strip('/')}%"
+        pattern = f"%instagram.com/{username.lower().strip('/')}"
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
