@@ -696,3 +696,32 @@ async def test_link_max_account_idempotent() -> None:
     assert result is not None
     assert result.max_id == "max_222"
     assert result.username == "alice_updated"
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_no_blogger_repo() -> None:
+    """Return None when blogger_profile_repo is not configured."""
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    result = await service.link_max_account(
+        max_id="max_1",
+        instagram_url="https://instagram.com/alice",
+        username="alice",
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_invalid_url() -> None:
+    """Return None when instagram_url has no valid username."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = UserRoleService(
+        user_repo=user_repo, blogger_profile_repo=blogger_repo
+    )
+    result = await service.link_max_account(
+        max_id="max_1",
+        instagram_url="not-a-valid-url",
+        username="alice",
+    )
+    assert result is None
