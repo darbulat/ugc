@@ -10,7 +10,12 @@ import pytest
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import BloggerProfile, User
-from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
