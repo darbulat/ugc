@@ -414,6 +414,7 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
             max_id=incoming.user.external_id,
             instagram_url=instagram_url,
             username=incoming.user.username or "",
+            max_chat_id=incoming.chat_id,
         )
         if linked_user:
             msg_linked = await bot_texts_service.get(

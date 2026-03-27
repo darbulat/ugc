@@ -1,6 +1,7 @@
 """Service for user creation and lookup."""
 
 import logging
+import re
 import secrets
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -22,6 +23,16 @@ logger = logging.getLogger(__name__)
 REFERRAL_CODE_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 REFERRAL_CODE_LENGTH = 8
 REFERRAL_CODE_MAX_ATTEMPTS = 10
+
+_IG_USERNAME_RE = re.compile(
+    r"(?:https?://)?(?:www\.)?instagram\.com/([A-Za-z0-9_.]+)",
+)
+
+
+def _extract_instagram_username(url: str) -> str | None:
+    """Extract the Instagram username from a URL."""
+    m = _IG_USERNAME_RE.search(url)
+    return m.group(1).lower() if m else None
 
 
 @dataclass(slots=True)
@@ -353,8 +364,12 @@ class UserRoleService:
         max_id: str,
         instagram_url: str,
         username: str,
+        max_chat_id: str | None = None,
     ) -> User | None:
-        """Link a Max account to existing user by Instagram URL.
+        """Link a Max account to existing user by Instagram username.
+
+        Extracts the username from *instagram_url* and looks up existing
+        profiles by that username (case-insensitive).
 
         Returns the updated User if linked, None if no matching user found
         or user already has a different max_id.
@@ -363,8 +378,11 @@ class UserRoleService:
         async def _run(session: object | None) -> User | None:
             if self.blogger_profile_repo is None:
                 return None
-            profile = await self.blogger_profile_repo.get_by_instagram_url(
-                instagram_url, session=session
+            ig_username = _extract_instagram_username(instagram_url)
+            if not ig_username:
+                return None
+            profile = await self.blogger_profile_repo.get_by_instagram_username(
+                ig_username, session=session
             )
             if profile is None:
                 return None
@@ -378,9 +396,17 @@ class UserRoleService:
             if existing.max_id is not None and existing.max_id != max_id:
                 return None
 
+            orphan = await self.user_repo.get_by_external(
+                max_id, MessengerType.MAX, session=session
+            )
+            if orphan and orphan.user_id != existing.user_id:
+                cleared = replace(orphan, max_id=None, max_chat_id=None)
+                await self.user_repo.save(cleared, session=session)
+
             updated = replace(
                 existing,
                 max_id=max_id,
+                max_chat_id=max_chat_id or existing.max_chat_id,
                 messenger_type=MessengerType.MAX,
                 username=username,
             )

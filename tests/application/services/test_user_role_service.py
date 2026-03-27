@@ -510,7 +510,7 @@ async def test_set_country_not_found() -> None:
 
 @pytest.mark.asyncio
 async def test_link_max_account_success() -> None:
-    """Link max_id to existing Telegram user found by instagram_url."""
+    """Link max_id to existing Telegram user, clearing orphan Max user."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
 
@@ -524,6 +524,19 @@ async def test_link_max_account_success() -> None:
         created_at=datetime.now(timezone.utc),
     )
     await user_repo.save(existing_user)
+
+    orphan_user = User(
+        user_id=uuid4(),
+        max_id="max_222",
+        max_chat_id="chat_222",
+        messenger_type=MessengerType.MAX,
+        username="orphan",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(orphan_user)
+
     await blogger_repo.save(
         BloggerProfile(
             user_id=existing_user.user_id,
@@ -546,18 +559,26 @@ async def test_link_max_account_success() -> None:
         user_repo=user_repo,
         blogger_profile_repo=blogger_repo,
     )
+    # URL differs from stored one (trailing slash, www) — match by username
     linked = await service.link_max_account(
         max_id="max_222",
-        instagram_url="https://instagram.com/alice",
+        instagram_url="https://www.instagram.com/Alice/",
         username="alice_max",
+        max_chat_id="chat_222",
     )
 
     assert linked is not None
     assert linked.user_id == existing_user.user_id
     assert linked.max_id == "max_222"
+    assert linked.max_chat_id == "chat_222"
     assert linked.telegram_id == "tg_111"
     assert linked.messenger_type == MessengerType.MAX
     assert linked.username == "alice_max"
+
+    cleared_orphan = await user_repo.get_by_id(orphan_user.user_id)
+    assert cleared_orphan is not None
+    assert cleared_orphan.max_id is None
+    assert cleared_orphan.max_chat_id is None
 
 
 @pytest.mark.asyncio

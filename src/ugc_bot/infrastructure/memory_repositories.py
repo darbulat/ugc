@@ -544,6 +544,17 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
                 return profile
         return None
 
+    async def get_by_instagram_username(
+        self, username: str, session: object | None = None
+    ) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram username (case-insensitive)."""
+        needle = username.lower().strip("/")
+        for profile in self.profiles.values():
+            url = (profile.instagram_url or "").lower()
+            if f"instagram.com/{needle}" in url:
+                return profile
+        return None
+
     async def save(
         self, profile: BloggerProfile, session: object | None = None
     ) -> None:

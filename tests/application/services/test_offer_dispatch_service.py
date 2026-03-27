@@ -1575,6 +1575,11 @@ class _BloggerRepoNoneProfile(BloggerProfileRepository):
     ):
         return None
 
+    async def get_by_instagram_username(
+        self, username: str, session: object | None = None
+    ):
+        return None
+
 
 @pytest.mark.asyncio
 async def test_dispatch_skips_when_profile_fetch_returns_none() -> None:
