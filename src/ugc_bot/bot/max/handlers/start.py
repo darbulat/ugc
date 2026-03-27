@@ -4,6 +4,8 @@ Max messenger is Russia-only: country is always "RU", language "ru".
 Country/language selection screens are skipped.
 """
 
+from urllib.parse import urlparse
+
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
 from ugc_bot.bot.max.middleware import resolve_locale
@@ -17,6 +19,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     country_change_inline_keyboard,
     country_inline_keyboard,
     language_inline_keyboard,
+    miniapp_open_inline_keyboard,
     role_inline_keyboard,
 )
 from ugc_bot.bot.telegram.handlers.start import (
@@ -354,6 +357,30 @@ async def change_role_command(incoming: IncomingMessage, deps: dict) -> None:
         messenger_client=messenger_client,
         start_text=start_text,
         role_kb=role_inline_keyboard(texts),
+    )
+
+
+@router.message(lambda m: bool(m.text and m.text.startswith("/app")))
+async def app_miniapp_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /app — send button to open Mini App."""
+    messenger_client = deps["messenger_client"]
+    config = deps["config"]
+
+    webhook_url = config.max_bot.webhook_url if config.max_bot else ""
+    if not webhook_url:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Mini App временно недоступен.",
+        )
+        return
+
+    parsed = urlparse(webhook_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+    keyboard = miniapp_open_inline_keyboard(base_url, platform="max")
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text="Откройте приложение для регистрации и работы с заказами:",
+        keyboard=keyboard,
     )
 
 

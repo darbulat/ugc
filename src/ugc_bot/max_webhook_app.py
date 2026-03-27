@@ -7,10 +7,12 @@ Usage: uvicorn ugc_bot.max_webhook_app:app --host 0.0.0.0 --port 8003
 import hmac
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import aiohttp
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from redis.asyncio import Redis
 
 from ugc_bot.bot.max.handlers.advertiser_registration import (
@@ -44,6 +46,7 @@ from ugc_bot.infrastructure.messenger.max.client import (
     MaxMessengerClient,
 )
 from ugc_bot.infrastructure.messenger.max.state import MaxRedisStateStore
+from ugc_bot.miniapp.api import router as miniapp_api_router
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +88,8 @@ async def _lifespan(app: FastAPI):
     app.state.config = config
     app.state.redis = redis
     app.state.bot_services = bot_services
+    # Alias: miniapp/api.py reads request.app.state.dispatcher
+    app.state.dispatcher = bot_services
     app.state.messenger_client = messenger_client
     app.state.event_adapter = event_adapter
     app.state.container = container
@@ -119,6 +124,14 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=_lifespan)
+
+app.include_router(miniapp_api_router, prefix="/miniapp")
+
+_miniapp_dir = Path(__file__).resolve().parent / "miniapp"
+if _miniapp_dir.is_dir():
+    app.mount(
+        "/miniapp", StaticFiles(directory=str(_miniapp_dir)), name="miniapp"
+    )
 
 
 @app.get("/health")

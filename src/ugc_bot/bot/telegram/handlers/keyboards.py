@@ -72,11 +72,17 @@ CALLBACK_LANG_PREFIX = "lang:"
 MINIAPP_OPEN_BUTTON_TEXT = "Открыть приложение"
 
 
-def miniapp_open_inline_keyboard(miniapp_url: str) -> Keyboard:
+def miniapp_open_inline_keyboard(
+    miniapp_url: str,
+    *,
+    platform: str = "",
+) -> Keyboard:
     """Inline keyboard with single button to open Mini App."""
     if not (miniapp_url or miniapp_url.strip()):
         return Keyboard(kind=KeyboardKind.INLINE, rows=[])
     url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
+    if platform:
+        url += f"?platform={platform}"
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[

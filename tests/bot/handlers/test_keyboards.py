@@ -204,6 +204,24 @@ def test_build_support_telegram_url_empty_returns_none() -> None:
     assert build_support_telegram_url("   ") is None
 
 
+def test_miniapp_open_inline_keyboard_with_platform() -> None:
+    """miniapp_open_inline_keyboard appends ?platform= when platform given."""
+    kb = miniapp_open_inline_keyboard("https://bot.example.com", platform="max")
+    assert kb.rows
+    btn = kb.rows[0][0]
+    assert (
+        btn.web_app_url
+        == "https://bot.example.com/miniapp/app.html?platform=max"
+    )
+
+
+def test_miniapp_open_inline_keyboard_default_platform() -> None:
+    """No query string when platform omitted."""
+    kb = miniapp_open_inline_keyboard("https://bot.example.com")
+    btn = kb.rows[0][0]
+    assert btn.web_app_url == "https://bot.example.com/miniapp/app.html"
+
+
 def test_keyboard_property_alias() -> None:
     """Keyboard.keyboard property is an alias for rows."""
     from ugc_bot.application.messenger.dto import Keyboard

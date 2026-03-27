@@ -8,8 +8,8 @@ from fastapi import HTTPException
 from ugc_bot.miniapp.api import (
     RegisterAdvertiserRequest,
     RegisterBloggerRequest,
-    _get_telegram_user_id,
-    _get_telegram_username_from_init_data,
+    _get_external_id,
+    _get_username_from_init_data,
     _parse_birth_date_optional,
     _validate_advertiser_body,
     _validate_blogger_body,
@@ -25,38 +25,67 @@ def _make_request(bot_token: str = "test_token") -> MagicMock:
     return request
 
 
-class TestGetTelegramUserIdHelper:
-    """Tests for _get_telegram_user_id (lines 246-248)."""
+class TestGetExternalIdHelper:
+    """Tests for _get_external_id."""
 
     def test_invalid_init_data_raises_http_401(self) -> None:
-        """ValueError from validate_init_data_... becomes HTTP 401."""
+        """ValueError from validate becomes HTTP 401."""
         request = _make_request()
         with pytest.raises(HTTPException) as exc_info:
-            _get_telegram_user_id(request, "invalid_init_data")
+            _get_external_id(request, "invalid_init_data")
         assert exc_info.value.status_code == 401
 
     def test_empty_init_data_raises_http_401(self) -> None:
         """Empty init_data raises HTTPException 401."""
         request = _make_request()
         with pytest.raises(HTTPException) as exc_info:
-            _get_telegram_user_id(request, "")
+            _get_external_id(request, "")
         assert exc_info.value.status_code == 401
 
 
-class TestGetTelegramUsernameFromInitDataHelper:
-    """Tests for _get_telegram_username_from_init_data (lines 261-262)."""
+class TestGetUsernameFromInitDataHelper:
+    """Tests for _get_username_from_init_data."""
 
     def test_invalid_init_data_returns_none(self) -> None:
-        """ValueError from get_telegram_user_id_and_username returns None."""
+        """Invalid init_data returns None."""
         request = _make_request()
-        result = _get_telegram_username_from_init_data(request, "invalid_data")
+        result = _get_username_from_init_data(request, "invalid_data")
         assert result is None
 
     def test_empty_init_data_returns_none(self) -> None:
         """Empty init_data returns None."""
         request = _make_request()
-        result = _get_telegram_username_from_init_data(request, "")
+        result = _get_username_from_init_data(request, "")
         assert result is None
+
+
+class TestExtractUsernameFromInitData:
+    """Tests for _extract_username_from_init_data."""
+
+    def test_extracts_username(self) -> None:
+        from ugc_bot.miniapp.api import _extract_username_from_init_data
+
+        init_data = (
+            "user=%7B%22id%22%3A123%2C%22username%22%3A%22joe%22%7D&auth_date=1"
+        )
+        assert _extract_username_from_init_data(init_data) == "joe"
+
+    def test_returns_none_for_missing_user(self) -> None:
+        from ugc_bot.miniapp.api import _extract_username_from_init_data
+
+        assert _extract_username_from_init_data("auth_date=1") is None
+
+    def test_returns_none_for_invalid_json(self) -> None:
+        from ugc_bot.miniapp.api import _extract_username_from_init_data
+
+        assert (
+            _extract_username_from_init_data("user=notjson&auth_date=1") is None
+        )
+
+    def test_returns_none_for_empty(self) -> None:
+        from ugc_bot.miniapp.api import _extract_username_from_init_data
+
+        assert _extract_username_from_init_data("") is None
 
 
 class TestValidateAdvertiserBodyHelper:
@@ -214,7 +243,7 @@ class TestSetCountryEndpoint:
                 new=AsyncMock(return_value=uuid4()),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):
@@ -262,7 +291,7 @@ class TestSetCountryEndpoint:
                 new=AsyncMock(return_value=uuid4()),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):
@@ -297,7 +326,7 @@ class TestSetCountryEndpoint:
                 new=AsyncMock(return_value=uuid4()),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
             pytest.raises(HTTPException) as exc_info,
@@ -360,7 +389,7 @@ class TestMeEndpointCountryResolution:
                 new=AsyncMock(return_value=uid),
             ),
             patch(
-                "ugc_bot.miniapp.api._get_telegram_user_id",
+                "ugc_bot.miniapp.api._get_external_id",
                 return_value="123",
             ),
         ):

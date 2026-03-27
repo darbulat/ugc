@@ -1,5 +1,6 @@
-"""Validate Telegram Web App initData and extract user id.
+"""Validate WebApp initData (Telegram / Max) and extract user id.
 
+Both platforms use the same HMAC-SHA256 scheme with ``WebAppData`` key.
 See: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
 """
 
@@ -80,6 +81,32 @@ def validate_init_data_and_get_telegram_user_id(
         raise ValueError("init_data user missing id")
 
     return str(telegram_id)
+
+
+def validate_init_data_for_platform(
+    init_data: str,
+    *,
+    platform: str,
+    telegram_bot_token: str,
+    max_bot_token: str,
+) -> str:
+    """Validate initData using the correct bot token for the given platform.
+
+    Returns:
+        User id as string (external_id).
+
+    Raises:
+        ValueError: If platform is unknown or validation fails.
+    """
+    if platform == "telegram":
+        bot_token = telegram_bot_token
+    elif platform == "max":
+        if not max_bot_token:
+            raise ValueError("Max bot is not configured")
+        bot_token = max_bot_token
+    else:
+        raise ValueError(f"Unknown platform: {platform!r}")
+    return validate_init_data_and_get_telegram_user_id(init_data, bot_token)
 
 
 def get_telegram_user_id_and_username(
