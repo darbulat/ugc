@@ -147,6 +147,20 @@ class InMemoryUserRepository(UserRepository):
 
         return list(self.users.values())
 
+    async def delete(
+        self, user_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete a user by ID."""
+        user = self.users.pop(user_id, None)
+        if user is not None:
+            if (
+                user.telegram_id
+                and self.telegram_index.get(user.telegram_id) == user_id
+            ):
+                del self.telegram_index[user.telegram_id]
+            if user.max_id and self.max_index.get(user.max_id) == user_id:
+                del self.max_index[user.max_id]
+
     async def list_admins(
         self,
         messenger_type: MessengerType | None = None,

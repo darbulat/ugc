@@ -400,8 +400,7 @@ class UserRoleService:
                 max_id, MessengerType.MAX, session=session
             )
             if orphan and orphan.user_id != existing.user_id:
-                cleared = replace(orphan, max_id=None, max_chat_id=None)
-                await self.user_repo.save(cleared, session=session)
+                await self.user_repo.delete(orphan.user_id, session=session)
 
             updated = replace(
                 existing,

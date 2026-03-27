@@ -105,6 +105,13 @@ class UserRepository(ABC):
 
         raise NotImplementedError  # pragma: no cover
 
+    async def delete(
+        self, user_id: UUID, session: object | None = None
+    ) -> None:
+        """Delete a user by ID."""
+
+        raise NotImplementedError  # pragma: no cover
+
     async def list_admins(
         self,
         messenger_type: MessengerType | None = None,

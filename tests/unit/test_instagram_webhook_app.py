@@ -1150,6 +1150,45 @@ async def test_notify_user_verification_api_unavailable(
 
 
 @pytest.mark.asyncio
+async def test_notify_user_verification_api_unavailable_no_chat_id(
+    test_config: AppConfig,
+) -> None:
+    """Early return when user has no chat_id."""
+    user_repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        messenger_type=MessengerType.MAX,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+    )
+    await _notify_user_verification_api_unavailable(
+        user.user_id, service, test_config
+    )
+
+
+@pytest.mark.asyncio
+async def test_notify_user_verification_api_unavailable_exception(
+    test_config: AppConfig,
+) -> None:
+    """Exception in api-unavailable notification is handled."""
+    service = MagicMock(spec=InstagramVerificationService)
+    service.get_notification_recipient = AsyncMock(
+        side_effect=RuntimeError("boom")
+    )
+    await _notify_user_verification_api_unavailable(
+        uuid4(), service, test_config
+    )
+
+
+@pytest.mark.asyncio
 async def test_notify_user_verification_api_unavailable_no_user(
     test_config: AppConfig,
 ) -> None:
@@ -1352,7 +1391,9 @@ async def test_webhook_link_success_calls_both_notifications(
     service = MagicMock(spec=InstagramVerificationService)
     service.verify_code_by_instagram_sender = AsyncMock(
         return_value=VerificationLinkSuccess(
-            user_id=user_id, linked_user_id=linked_user_id
+            user_id=user_id,
+            linked_user_id=linked_user_id,
+            max_chat_id="chat_42",
         )
     )
 
@@ -1382,6 +1423,7 @@ async def test_webhook_link_success_calls_both_notifications(
         assert mock_notify_success.call_args[0][0] == user_id
         mock_notify_linked.assert_called_once()
         assert mock_notify_linked.call_args[0][0] == linked_user_id
+        assert mock_notify_linked.call_args.kwargs["max_chat_id"] == "chat_42"
 
 
 @pytest.mark.asyncio
@@ -1437,6 +1479,61 @@ async def test_notify_account_linked_max_user() -> None:
     mock_client.send_text.assert_called_once()
     call_kwargs = mock_client.send_text.call_args
     assert call_kwargs.kwargs["chat_id"] == "chat_42"
+
+
+@pytest.mark.asyncio
+async def test_notify_account_linked_sends_to_max_via_chat_id() -> None:
+    """Send linked notification to Max when max_chat_id is provided."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="tg_user",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+    )
+    await user_repo.save(user)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "MAX_BOT_TOKEN": "max_test_token",
+        }
+    )
+    mock_tg_client = AsyncMock()
+    mock_max_client = AsyncMock()
+    with (
+        patch(
+            "ugc_bot.instagram_webhook_app._create_messenger",
+        ) as mock_tg_cm,
+        patch(
+            "ugc_bot.instagram_webhook_app._create_max_messenger",
+        ) as mock_max_cm,
+    ):
+        mock_tg_cm.return_value.__aenter__ = AsyncMock(
+            return_value=mock_tg_client
+        )
+        mock_tg_cm.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_max_cm.return_value.__aenter__ = AsyncMock(
+            return_value=mock_max_client
+        )
+        mock_max_cm.return_value.__aexit__ = AsyncMock(return_value=False)
+        await _notify_user_account_linked(
+            user.user_id, service, config, max_chat_id="chat_99"
+        )
+    mock_tg_client.send_text.assert_called_once()
+    assert mock_tg_client.send_text.call_args.kwargs["chat_id"] == "tg_111"
+    mock_max_client.send_text.assert_called_once()
+    assert mock_max_client.send_text.call_args.kwargs["chat_id"] == "chat_99"
 
 
 @pytest.mark.asyncio
@@ -1504,6 +1601,10 @@ async def test_notify_max_user_mismatch() -> None:
     assert call_kwargs.kwargs["chat_id"] == "max_chat_99"
     assert "expected_user" in call_kwargs.kwargs["text"]
     assert "actual_user" in call_kwargs.kwargs["text"]
+    keyboard = call_kwargs.kwargs.get("keyboard")
+    assert keyboard is not None
+    assert len(keyboard.rows) == 1
+    assert keyboard.rows[0][0].callback_data == "blogger:retry_instagram"
 
 
 @pytest.mark.asyncio

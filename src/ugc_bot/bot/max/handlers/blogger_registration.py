@@ -42,6 +42,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_BARTER_Y,
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
+    CALLBACK_BLOGGER_RETRY_INSTAGRAM,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
@@ -1087,3 +1088,25 @@ async def handle_agreements_callback(
         text=msg_profile_created,
         keyboard=blogger_after_registration_inline_keyboard(after_texts),
     )
+
+
+@router.callback(
+    lambda c: c.data == CALLBACK_BLOGGER_RETRY_INSTAGRAM,
+)
+async def handle_retry_instagram_callback(
+    incoming: IncomingCallback, deps: dict
+) -> None:
+    """Return user to Instagram URL input step."""
+    messenger_client, state_store, bot_texts_service, locale = _get_services(
+        deps
+    )
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    step_instagram = await bot_texts_service.get(
+        "msg_step_ask_instagram", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=step_instagram,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(STATE_BLOG_INSTAGRAM)

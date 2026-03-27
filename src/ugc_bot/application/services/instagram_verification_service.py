@@ -76,6 +76,7 @@ class VerificationLinkSuccess:
 
     user_id: UUID
     linked_user_id: UUID
+    max_chat_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -250,6 +251,7 @@ class InstagramVerificationService:
             return VerificationLinkSuccess(
                 user_id=valid_code.user_id,
                 linked_user_id=linked.user_id,
+                max_chat_id=valid_code.link_max_chat_id,
             )
         return None
 

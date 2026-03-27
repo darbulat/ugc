@@ -60,10 +60,12 @@ async def test_set_user_updates_existing_user() -> None:
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice-updated",
+        max_chat_id="max-chat-99",
     )
 
     assert updated.user_id == existing.user_id
     assert updated.username == "alice-updated"
+    assert updated.max_chat_id == "max-chat-99"
 
 
 @pytest.mark.asyncio
@@ -575,10 +577,8 @@ async def test_link_max_account_success() -> None:
     assert linked.messenger_type == MessengerType.TELEGRAM
     assert linked.username == "alice_max"
 
-    cleared_orphan = await user_repo.get_by_id(orphan_user.user_id)
-    assert cleared_orphan is not None
-    assert cleared_orphan.max_id is None
-    assert cleared_orphan.max_chat_id is None
+    deleted_orphan = await user_repo.get_by_id(orphan_user.user_id)
+    assert deleted_orphan is None
 
 
 @pytest.mark.asyncio
@@ -597,6 +597,41 @@ async def test_link_max_account_not_found() -> None:
         username="nobody",
     )
 
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_profile_user_missing() -> None:
+    """Return None when profile exists but referenced user is gone."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    missing_uid = uuid4()
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=missing_uid,
+            instagram_url="https://instagram.com/ghost",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_999",
+        instagram_url="https://instagram.com/ghost",
+        username="ghost",
+    )
     assert result is None
 
 

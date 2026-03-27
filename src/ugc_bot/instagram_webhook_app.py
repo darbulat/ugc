@@ -420,10 +420,36 @@ async def _notify_max_user_mismatch(
             expected=result.profile_username or "?",
             actual=result.api_username or "?",
         )
+
+        from ugc_bot.application.messenger.dto import (
+            Button,
+            Keyboard,
+            KeyboardKind,
+        )
+        from ugc_bot.bot.telegram.handlers.keyboards import (
+            CALLBACK_BLOGGER_RETRY_INSTAGRAM,
+        )
+
+        retry_label = locale_texts.get(
+            "btn_retry_instagram",
+            "Указать другой инстаграм",
+        )
+        keyboard = Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[
+                [
+                    Button(
+                        text=retry_label,
+                        callback_data=CALLBACK_BLOGGER_RETRY_INSTAGRAM,
+                    )
+                ]
+            ],
+        )
         async with _create_max_messenger(config) as messenger_client:
             await messenger_client.send_text(
                 chat_id=result.link_max_chat_id,
                 text=msg,
+                keyboard=keyboard,
             )
     except Exception as exc:
         logger.exception(
@@ -437,8 +463,13 @@ async def _notify_user_account_linked(
     user_id: UUID,
     verification_service: InstagramVerificationService,
     config: AppConfig,
+    max_chat_id: str | None = None,
 ) -> None:
-    """Notify the Max user that their account was linked successfully."""
+    """Notify user that their account was linked.
+
+    Sends to Telegram (via user lookup) and, if *max_chat_id* is provided,
+    also directly to the Max chat.
+    """
     try:
         (
             user,
@@ -447,21 +478,29 @@ async def _notify_user_account_linked(
         if user is None:
             return
 
-        chat_id, messenger_cm = _get_chat_id_and_messenger_factory(user, config)
-        if not chat_id or messenger_cm is None:
-            return
-
         locale = _resolve_locale(user, config)
         locale_texts = _get_locale_texts(locale)
         msg = locale_texts.get(
             "msg_account_linked",
             "Ваш аккаунт успешно привязан!",
         )
-        async with messenger_cm as messenger_client:
-            await messenger_client.send_text(
-                chat_id=chat_id,
-                text=msg,
-            )
+
+        # Send to Telegram
+        chat_id, messenger_cm = _get_chat_id_and_messenger_factory(user, config)
+        if chat_id and messenger_cm is not None:
+            async with messenger_cm as messenger_client:
+                await messenger_client.send_text(
+                    chat_id=chat_id,
+                    text=msg,
+                )
+
+        # Send to Max
+        if max_chat_id and config.max_bot:
+            async with _create_max_messenger(config) as max_client:
+                await max_client.send_text(
+                    chat_id=max_chat_id,
+                    text=msg,
+                )
     except Exception as exc:
         logger.exception(
             "Error sending account linked notification",
@@ -481,7 +520,10 @@ async def _dispatch_verification_result(
             result.user_id, verification_service, config
         )
         await _notify_user_account_linked(
-            result.linked_user_id, verification_service, config
+            result.linked_user_id,
+            verification_service,
+            config,
+            max_chat_id=result.max_chat_id,
         )
     elif isinstance(result, VerificationSuccess):
         await _notify_user_verification_success(
