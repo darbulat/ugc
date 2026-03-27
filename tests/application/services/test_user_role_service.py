@@ -9,9 +9,12 @@ import pytest
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserStatus
-from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import AudienceGender, MessengerType, UserStatus, WorkFormat
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryBloggerProfileRepository,
+    InMemoryUserRepository,
+)
 
 
 @pytest.mark.asyncio
@@ -498,3 +501,122 @@ async def test_set_country_not_found() -> None:
             messenger_type=MessengerType.TELEGRAM,
             country_code="ru",
         )
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_success() -> None:
+    """Link max_id to existing Telegram user found by instagram_url."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    existing_user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(existing_user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=existing_user.user_id,
+            instagram_url="https://instagram.com/alice",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    linked = await service.link_max_account(
+        max_id="max_222",
+        instagram_url="https://instagram.com/alice",
+        username="alice_max",
+    )
+
+    assert linked is not None
+    assert linked.user_id == existing_user.user_id
+    assert linked.max_id == "max_222"
+    assert linked.telegram_id == "tg_111"
+    assert linked.messenger_type == MessengerType.MAX
+    assert linked.username == "alice_max"
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_not_found() -> None:
+    """Return None when instagram_url not in DB."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_333",
+        instagram_url="https://instagram.com/unknown",
+        username="nobody",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_already_has_max_id() -> None:
+    """Return None when user already has a different max_id."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    existing_user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        max_id="max_existing",
+        messenger_type=MessengerType.MAX,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(existing_user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=existing_user.user_id,
+            instagram_url="https://instagram.com/alice",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_new",
+        instagram_url="https://instagram.com/alice",
+        username="alice_max",
+    )
+
+    assert result is None
