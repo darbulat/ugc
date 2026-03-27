@@ -407,8 +407,7 @@ class UserRoleService:
                 existing,
                 max_id=max_id,
                 max_chat_id=max_chat_id or existing.max_chat_id,
-                messenger_type=MessengerType.MAX,
-                username=username,
+                username=username or existing.username,
             )
             await self.user_repo.save(updated, session=session)
             return updated

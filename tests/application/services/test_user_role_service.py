@@ -572,7 +572,7 @@ async def test_link_max_account_success() -> None:
     assert linked.max_id == "max_222"
     assert linked.max_chat_id == "chat_222"
     assert linked.telegram_id == "tg_111"
-    assert linked.messenger_type == MessengerType.MAX
+    assert linked.messenger_type == MessengerType.TELEGRAM
     assert linked.username == "alice_max"
 
     cleared_orphan = await user_repo.get_by_id(orphan_user.user_id)
