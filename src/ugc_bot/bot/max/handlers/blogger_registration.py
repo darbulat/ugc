@@ -20,7 +20,10 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.application.services.user_role_service import (
+    UserRoleService,
+    _extract_instagram_username,
+)
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     _format_verification_instruction,
@@ -408,11 +411,13 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         )
         return
 
-    existing_profile = (
-        await blogger_registration_service.get_profile_by_instagram_url(
-            instagram_url
+    ig_username = _extract_instagram_username(instagram_url)
+    existing_profile = None
+    if ig_username:
+        svc = blogger_registration_service
+        existing_profile = await svc.get_profile_by_instagram_username(
+            ig_username
         )
-    )
     if existing_profile is not None:
         instagram_verification_service: InstagramVerificationService = deps[
             "instagram_verification_service"

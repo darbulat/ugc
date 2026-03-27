@@ -115,6 +115,18 @@ class BloggerRegistrationService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def get_profile_by_instagram_username(
+        self, username: str
+    ) -> BloggerProfile | None:
+        """Fetch blogger profile by Instagram username."""
+
+        async def _run(session: object | None):
+            return await self.blogger_repo.get_by_instagram_username(
+                username, session=session
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def resolve_city_from_location(
         self, lat: float, lon: float
     ) -> Optional[tuple[str, Optional[str], Optional[str]]]:
