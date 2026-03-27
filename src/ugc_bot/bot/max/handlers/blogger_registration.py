@@ -409,6 +409,23 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         )
     )
     if existing_profile is not None:
+        user_role_service: UserRoleService = deps["user_role_service"]
+        linked_user = await user_role_service.link_max_account(
+            max_id=incoming.user.external_id,
+            instagram_url=instagram_url,
+            username=incoming.user.username or "",
+        )
+        if linked_user:
+            msg_linked = await bot_texts_service.get(
+                "msg_account_linked", locale
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=msg_linked,
+            )
+            await state_store.clear()
+            return
+        # link failed (user already has different max_id) — reject as duplicate
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_already,
