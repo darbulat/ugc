@@ -4,7 +4,26 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>UGC — Регистрация и заказы</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+  (function() {
+    var params = new URLSearchParams(window.location.search);
+    var platform = params.get('platform') || 'telegram';
+    window.__miniapp_platform = platform;
+
+    var script = document.createElement('script');
+    if (platform === 'max') {
+      script.src = 'https://st.max.ru/js/max-web-app.js';
+    } else {
+      script.src = 'https://telegram.org/js/telegram-web-app.js';
+    }
+    script.onload = function() {
+      if (!window.WebApp && window.Telegram && window.Telegram.WebApp) {
+        window.WebApp = window.Telegram.WebApp;
+      }
+    };
+    document.head.appendChild(script);
+  })();
+  </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
@@ -417,6 +436,7 @@
   <script>
     (function() {
       var tg = window.Telegram && window.Telegram.WebApp;
+      if (!tg && window.WebApp) tg = window.WebApp;
       if (tg) {
         tg.ready();
         tg.expand();
@@ -424,7 +444,8 @@
 
       var base = window.location.origin;
       function getInitData() {
-        return (tg && tg.initData) ? tg.initData : '';
+        var wa = (window.Telegram && window.Telegram.WebApp) || window.WebApp;
+        return (wa && wa.initData) ? wa.initData : '';
       }
 
       function showScreen(id) {
@@ -435,9 +456,10 @@
 
       function openPaymentAndClose(url) {
         if (!url || url === '#') return;
-        if (tg && typeof tg.openLink === 'function') tg.openLink(url);
+        var wa = (window.Telegram && window.Telegram.WebApp) || window.WebApp;
+        if (wa && typeof wa.openLink === 'function') wa.openLink(url);
         else window.open(url, '_blank');
-        if (tg && typeof tg.close === 'function') tg.close();
+        if (wa && typeof wa.close === 'function') wa.close();
       }
 
       function parseApiError(detail, fallback) {
@@ -452,7 +474,8 @@
       function api(path, body) {
         var initData = getInitData();
         if (!initData) return Promise.reject(new Error('No initData'));
-        var payload = typeof body === 'object' ? Object.assign({ init_data: initData }, body) : { init_data: initData };
+        var basePayload = { init_data: initData, platform: window.__miniapp_platform || 'telegram' };
+        var payload = typeof body === 'object' ? Object.assign(basePayload, body) : basePayload;
         return fetch(base + '/miniapp/api' + path, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2752,7 +2775,7 @@
         applyLocale();
         fillBirthDateSelects();
         updateCurrencyLabels(me.currency_symbol);
-        if (!me.country) {
+        if (!me.country && window.__miniapp_platform !== 'max') {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {
