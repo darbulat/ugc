@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
+    VerificationLinkSuccess,
     VerificationMismatch,
     VerificationSuccess,
 )
@@ -397,6 +398,43 @@ async def _notify_user_verification_api_unavailable(
         )
 
 
+async def _notify_user_account_linked(
+    user_id: UUID,
+    verification_service: InstagramVerificationService,
+    config: AppConfig,
+) -> None:
+    """Notify the Max user that their account was linked successfully."""
+    try:
+        (
+            user,
+            _blogger_profile,
+        ) = await verification_service.get_notification_recipient(user_id)
+        if user is None:
+            return
+
+        chat_id, messenger_cm = _get_chat_id_and_messenger_factory(user, config)
+        if not chat_id or messenger_cm is None:
+            return
+
+        locale = _resolve_locale(user, config)
+        locale_texts = _get_locale_texts(locale)
+        msg = locale_texts.get(
+            "msg_account_linked",
+            "Ваш аккаунт успешно привязан!",
+        )
+        async with messenger_cm as messenger_client:
+            await messenger_client.send_text(
+                chat_id=chat_id,
+                text=msg,
+            )
+    except Exception as exc:
+        logger.exception(
+            "Error sending account linked notification",
+            extra={"user_id": user_id},
+            exc_info=exc,
+        )
+
+
 async def _process_single_messaging_event(
     event: dict[str, Any],
     verification_service: InstagramVerificationService,
@@ -428,7 +466,14 @@ async def _process_single_messaging_event(
             code=text,
             admin_instagram_username=config.instagram.admin_instagram_username,
         )
-        if isinstance(result, VerificationSuccess):
+        if isinstance(result, VerificationLinkSuccess):
+            await _notify_user_verification_success(
+                result.user_id, verification_service, config
+            )
+            await _notify_user_account_linked(
+                result.linked_user_id, verification_service, config
+            )
+        elif isinstance(result, VerificationSuccess):
             await _notify_user_verification_success(
                 result.user_id, verification_service, config
             )

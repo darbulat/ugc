@@ -5,8 +5,11 @@ import secrets
 import string
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from uuid import UUID, uuid4
+
+if TYPE_CHECKING:
+    from ugc_bot.application.services.user_role_service import UserRoleService
 
 from ugc_bot.application.errors import (
     BloggerRegistrationError,
@@ -67,6 +70,14 @@ class VerificationMismatch:
 
 
 @dataclass(slots=True)
+class VerificationLinkSuccess:
+    """Verification succeeded and Max account was linked."""
+
+    user_id: UUID
+    linked_user_id: UUID
+
+
+@dataclass(slots=True)
 class VerificationApiUnavailable:
     """Instagram API returned an error; cannot verify username match."""
 
@@ -82,6 +93,7 @@ class InstagramVerificationService:
     verification_repo: InstagramVerificationRepository
     instagram_api_client: InstagramGraphApiClient | None = None
     transaction_manager: TransactionManager | None = None
+    user_role_service: "UserRoleService | None" = None
 
     async def _fetch_profile_and_username(
         self, instagram_sender_id: str
@@ -143,7 +155,13 @@ class InstagramVerificationService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def generate_code(self, user_id: UUID) -> InstagramVerificationCode:
+    async def generate_code(
+        self,
+        user_id: UUID,
+        link_max_id: str | None = None,
+        link_max_chat_id: str | None = None,
+        link_username: str | None = None,
+    ) -> InstagramVerificationCode:
         """Generate and store a new verification code."""
 
         async def _run(session: object | None) -> InstagramVerificationCode:
@@ -161,16 +179,27 @@ class InstagramVerificationService:
                 expires_at=now + timedelta(minutes=15),
                 used=False,
                 created_at=now,
+                link_max_id=link_max_id,
+                link_max_chat_id=link_max_chat_id,
+                link_username=link_username,
             )
             await self.verification_repo.save(verification, session=session)
             return verification
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def verify_code(self, user_id: UUID, code: str) -> bool:
-        """Validate code and confirm blogger profile."""
+    async def verify_code(
+        self, user_id: UUID, code: str
+    ) -> bool | VerificationLinkSuccess:
+        """Validate code and confirm blogger profile.
 
-        async def _run(session: object | None) -> bool:
+        Returns True on normal verification, VerificationLinkSuccess if
+        the code carried linking metadata, or False if the code is invalid.
+        """
+
+        async def _run(
+            session: object | None,
+        ) -> bool | VerificationLinkSuccess:
             profile = await self.blogger_repo.get_by_user_id(
                 user_id, session=session
             )
@@ -192,9 +221,36 @@ class InstagramVerificationService:
                 updated_at=datetime.now(timezone.utc),
             )
             await self.blogger_repo.save(confirmed_profile, session=session)
+
+            link_result = await self._try_link_max_account(
+                valid_code, profile.instagram_url or ""
+            )
+            if link_result:
+                return link_result
             return True
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def _try_link_max_account(
+        self,
+        valid_code: InstagramVerificationCode,
+        instagram_url: str,
+    ) -> VerificationLinkSuccess | None:
+        """Attempt to link Max account after verification."""
+        if not valid_code.link_max_id or not self.user_role_service:
+            return None
+        linked = await self.user_role_service.link_max_account(
+            max_id=valid_code.link_max_id,
+            instagram_url=instagram_url,
+            username=valid_code.link_username or "",
+            max_chat_id=valid_code.link_max_chat_id,
+        )
+        if linked:
+            return VerificationLinkSuccess(
+                user_id=valid_code.user_id,
+                linked_user_id=linked.user_id,
+            )
+        return None
 
     async def verify_code_by_instagram_sender(
         self,
@@ -203,6 +259,7 @@ class InstagramVerificationService:
         admin_instagram_username: str,
     ) -> (
         VerificationSuccess
+        | VerificationLinkSuccess
         | VerificationMismatch
         | VerificationApiUnavailable
         | None
@@ -318,7 +375,11 @@ class InstagramVerificationService:
                 "username": api_username,
             },
         )
-        return VerificationSuccess(user_id=valid_code.user_id)
+
+        link_result = await self._try_link_max_account(
+            valid_code, profile.instagram_url or ""
+        )
+        return link_result or VerificationSuccess(user_id=valid_code.user_id)
 
 
 def _generate_code(length: int = 8) -> str:

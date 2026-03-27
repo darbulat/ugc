@@ -1,6 +1,7 @@
 """Blogger registration flow handlers for Max messenger."""
 
 import logging
+import re
 from datetime import date
 from uuid import UUID
 
@@ -15,9 +16,15 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.instagram_verification_service import (
+    InstagramVerificationService,
+)
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.telegram.handlers.instagram_verification import (
+    _format_verification_instruction,
+)
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_AGE_0_17,
     CALLBACK_BLOGGER_AGE_18_24,
@@ -37,6 +44,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_CREATOR_CREATE,
     CALLBACK_ROLE_CREATOR,
     blogger_after_registration_inline_keyboard,
+    blogger_verification_sent_inline_keyboard,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
@@ -379,9 +387,6 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
     err_empty = await bot_texts_service.get("err_instagram_empty", locale)
     err_format = await bot_texts_service.get("err_instagram_format", locale)
     err_example = await bot_texts_service.get("err_instagram_example", locale)
-    msg_already = await bot_texts_service.get(
-        "msg_instagram_already_registered", locale
-    )
 
     instagram_url = normalize_instagram_url((incoming.text or "").strip())
     if not instagram_url:
@@ -409,28 +414,35 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         )
     )
     if existing_profile is not None:
-        user_role_service: UserRoleService = deps["user_role_service"]
-        linked_user = await user_role_service.link_max_account(
-            max_id=incoming.user.external_id,
-            instagram_url=instagram_url,
-            username=incoming.user.username or "",
-            max_chat_id=incoming.chat_id,
+        instagram_verification_service: InstagramVerificationService = deps[
+            "instagram_verification_service"
+        ]
+        config: AppConfig = deps["config"]
+        verification = await instagram_verification_service.generate_code(
+            existing_profile.user_id,
+            link_max_id=incoming.user.external_id,
+            link_max_chat_id=incoming.chat_id,
+            link_username=incoming.user.username or "",
         )
-        if linked_user:
-            msg_linked = await bot_texts_service.get(
-                "msg_account_linked", locale
-            )
-            await messenger_client.send_text(
-                chat_id=incoming.chat_id,
-                text=msg_linked,
-            )
-            await state_store.clear()
-            return
-        # link failed (user already has different max_id) — reject as duplicate
+        instruction_template = await bot_texts_service.get(
+            "msg_instagram_verify_instruction", locale
+        )
+        instruction = _format_verification_instruction(
+            instruction_template,
+            config.instagram.admin_instagram_username,
+        )
+        instruction_plain = re.sub(r"<[^>]+>", "", instruction)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=msg_already,
+            text=instruction_plain,
         )
+        texts_v = await bot_texts_service.get_many(["btn_my_profile"], locale)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=verification.code,
+            keyboard=blogger_verification_sent_inline_keyboard(texts_v),
+        )
+        await state_store.clear()
         return
 
     await state_store.update_data(instagram_url=instagram_url)

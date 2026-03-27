@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
+    VerificationLinkSuccess,
     VerificationMismatch,
 )
 from ugc_bot.config import AppConfig
@@ -1336,3 +1337,45 @@ async def test_webhook_api_unavailable_calls_notify(
         )
         assert result is True
         mock_notify.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_webhook_link_success_calls_both_notifications(
+    test_config: AppConfig,
+) -> None:
+    """VerificationLinkSuccess triggers both notifications."""
+    user_id = uuid4()
+    linked_user_id = uuid4()
+    service = MagicMock(spec=InstagramVerificationService)
+    service.verify_code_by_instagram_sender = AsyncMock(
+        return_value=VerificationLinkSuccess(
+            user_id=user_id, linked_user_id=linked_user_id
+        )
+    )
+
+    with (
+        patch(
+            "ugc_bot.instagram_webhook_app._notify_user_verification_success",
+            new_callable=AsyncMock,
+        ) as mock_notify_success,
+        patch(
+            "ugc_bot.instagram_webhook_app._notify_user_account_linked",
+            new_callable=AsyncMock,
+        ) as mock_notify_linked,
+    ):
+        from ugc_bot.instagram_webhook_app import (
+            _process_single_messaging_event,
+        )
+
+        event = {
+            "sender": {"id": "sender_123"},
+            "message": {"text": "ABC123"},
+        }
+        result = await _process_single_messaging_event(
+            event, service, test_config
+        )
+        assert result is True
+        mock_notify_success.assert_called_once()
+        assert mock_notify_success.call_args[0][0] == user_id
+        mock_notify_linked.assert_called_once()
+        assert mock_notify_linked.call_args[0][0] == linked_user_id

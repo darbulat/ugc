@@ -223,12 +223,18 @@ def build_instagram_verification_service(
     repos, instagram_api_client, transaction_manager
 ):
     """Build InstagramVerificationService for webhook."""
+    user_role_service = UserRoleService(
+        user_repo=repos["user_repo"],
+        transaction_manager=transaction_manager,
+        blogger_profile_repo=repos["blogger_repo"],
+    )
     return InstagramVerificationService(
         user_repo=repos["user_repo"],
         blogger_repo=repos["blogger_repo"],
         verification_repo=repos["instagram_repo"],
         instagram_api_client=instagram_api_client,
         transaction_manager=transaction_manager,
+        user_role_service=user_role_service,
     )
 
 
@@ -374,15 +380,16 @@ def build_bot_services(
         referral_income_entry_repo=repos.get("referral_income_entry_repo"),
         contact_pricing_repo=repos.get("pricing_repo"),
     )
+    user_role_service = UserRoleService(
+        user_repo=repos["user_repo"],
+        metrics_collector=metrics_collector,
+        transaction_manager=transaction_manager,
+        blogger_profile_repo=repos["blogger_repo"],
+    )
     return {
         "metrics_collector": metrics_collector,
         "content_moderation_service": ContentModerationService(),
-        "user_role_service": UserRoleService(
-            user_repo=repos["user_repo"],
-            metrics_collector=metrics_collector,
-            transaction_manager=transaction_manager,
-            blogger_profile_repo=repos["blogger_repo"],
-        ),
+        "user_role_service": user_role_service,
         "blogger_registration_service": BloggerRegistrationService(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
@@ -405,6 +412,7 @@ def build_bot_services(
             verification_repo=repos["instagram_repo"],
             instagram_api_client=instagram_api_client,
             transaction_manager=transaction_manager,
+            user_role_service=user_role_service,
         ),
         "order_service": OrderService(
             user_repo=repos["user_repo"],

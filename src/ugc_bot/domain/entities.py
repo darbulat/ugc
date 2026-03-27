@@ -300,6 +300,9 @@ class InstagramVerificationCode:
     expires_at: datetime
     used: bool
     created_at: datetime
+    link_max_id: str | None = None
+    link_max_chat_id: str | None = None
+    link_username: str | None = None
 
 
 @dataclass(frozen=True)
