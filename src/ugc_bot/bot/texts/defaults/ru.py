@@ -69,6 +69,7 @@ RU: dict[str, str] = {
     # Messages: user/role
     "msg_user_not_found": "Пользователь не найден.",
     "msg_user_not_found_start": "Пользователь не найден. Начните с /start.",
+    "msg_account_linked": "Мы нашли ваш аккаунт! Все данные сохранены. Теперь вы можете продолжить работу в Max.",
     "msg_registration_blocked": "Заблокированные пользователи не могут регистрироваться.",
     "msg_registration_pause": "Пользователи на паузе не могут регистрироваться.",
     "msg_instagram_blocked": "Заблокированные не могут подтверждать аккаунт.",
