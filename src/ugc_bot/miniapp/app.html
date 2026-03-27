@@ -2791,6 +2791,14 @@
 
       fillBirthDateSelects();
       (window.__webAppReady || Promise.resolve()).then(function() {
+        var wa = _getWebApp();
+        console.log('[DEBUG] WebApp object:', wa);
+        console.log('[DEBUG] initData:', wa && wa.initData);
+        console.log('[DEBUG] window.Telegram:', window.Telegram);
+        console.log('[DEBUG] window.WebApp:', window.WebApp);
+        console.log('[DEBUG] platform:', window.__miniapp_platform);
+        console.log('[DEBUG] location.href:', location.href);
+        console.log('[DEBUG] document.referrer:', document.referrer);
         return Promise.all([loadMe(), loadConfig()]);
       }).then(function(results) {
         var me = results[0];
