@@ -455,6 +455,9 @@
   <script>
     (function() {
       function _getWebApp() {
+        if (window.__miniapp_platform === 'max') {
+          return window.WebApp || null;
+        }
         return (window.Telegram && window.Telegram.WebApp) || window.WebApp || null;
       }
 
