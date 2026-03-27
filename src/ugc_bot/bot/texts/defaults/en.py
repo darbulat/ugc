@@ -65,6 +65,7 @@ EN: dict[str, str] = {
     "deadlines_14": "⏱ Up to 14 days",
     "msg_user_not_found": "User not found.",
     "msg_user_not_found_start": "User not found. Start with /start.",
+    "msg_account_linked": "We found your account! All data is preserved. You can now continue working in Max.",
     "msg_registration_blocked": "Blocked users cannot register.",
     "msg_registration_pause": "Paused users cannot register.",
     "msg_instagram_blocked": "Blocked users cannot verify account.",
