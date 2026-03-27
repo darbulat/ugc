@@ -73,7 +73,9 @@ MINIAPP_OPEN_BUTTON_TEXT = "Открыть приложение"
 
 
 def miniapp_open_inline_keyboard(
-    miniapp_url: str, *, platform: str = "",
+    miniapp_url: str,
+    *,
+    platform: str = "",
 ) -> Keyboard:
     """Inline keyboard with single button to open Mini App."""
     if not (miniapp_url or miniapp_url.strip()):

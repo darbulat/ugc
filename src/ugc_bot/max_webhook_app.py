@@ -39,7 +39,6 @@ from ugc_bot.bot.max.handlers.start import router as start_router
 from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import load_config
-from ugc_bot.miniapp.api import router as miniapp_api_router
 from ugc_bot.container import Container
 from ugc_bot.infrastructure.messenger.max.adapter import MaxEventAdapter
 from ugc_bot.infrastructure.messenger.max.client import (
@@ -47,6 +46,7 @@ from ugc_bot.infrastructure.messenger.max.client import (
     MaxMessengerClient,
 )
 from ugc_bot.infrastructure.messenger.max.state import MaxRedisStateStore
+from ugc_bot.miniapp.api import router as miniapp_api_router
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ async def _lifespan(app: FastAPI):
     app.state.config = config
     app.state.redis = redis
     app.state.bot_services = bot_services
-    # Alias for miniapp API compatibility (miniapp/api.py reads request.app.state.dispatcher)
+    # Alias: miniapp/api.py reads request.app.state.dispatcher
     app.state.dispatcher = bot_services
     app.state.messenger_client = messenger_client
     app.state.event_adapter = event_adapter
@@ -129,7 +129,9 @@ app.include_router(miniapp_api_router, prefix="/miniapp")
 
 _miniapp_dir = Path(__file__).resolve().parent / "miniapp"
 if _miniapp_dir.is_dir():
-    app.mount("/miniapp", StaticFiles(directory=str(_miniapp_dir)), name="miniapp")
+    app.mount(
+        "/miniapp", StaticFiles(directory=str(_miniapp_dir)), name="miniapp"
+    )
 
 
 @app.get("/health")

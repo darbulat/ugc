@@ -261,8 +261,10 @@ class TestValidateInitDataForPlatform:
         max_token = "max_token_456"
         init_data = _make_valid_init_data(tg_token, 111)
         result = validate_init_data_for_platform(
-            init_data, platform="telegram",
-            telegram_bot_token=tg_token, max_bot_token=max_token,
+            init_data,
+            platform="telegram",
+            telegram_bot_token=tg_token,
+            max_bot_token=max_token,
         )
         assert result == "111"
 
@@ -273,8 +275,10 @@ class TestValidateInitDataForPlatform:
         max_token = "max_token_456"
         init_data = _make_valid_init_data(max_token, 222)
         result = validate_init_data_for_platform(
-            init_data, platform="max",
-            telegram_bot_token=tg_token, max_bot_token=max_token,
+            init_data,
+            platform="max",
+            telegram_bot_token=tg_token,
+            max_bot_token=max_token,
         )
         assert result == "222"
 
@@ -283,8 +287,10 @@ class TestValidateInitDataForPlatform:
 
         with pytest.raises(ValueError, match="Unknown platform"):
             validate_init_data_for_platform(
-                "any", platform="vk",
-                telegram_bot_token="t", max_bot_token="m",
+                "any",
+                platform="vk",
+                telegram_bot_token="t",
+                max_bot_token="m",
             )
 
     def test_max_with_telegram_token_fails(self) -> None:
@@ -294,8 +300,10 @@ class TestValidateInitDataForPlatform:
         init_data = _make_valid_init_data(max_token, 333)
         with pytest.raises(ValueError, match="Invalid init_data signature"):
             validate_init_data_for_platform(
-                init_data, platform="telegram",
-                telegram_bot_token="wrong_token", max_bot_token=max_token,
+                init_data,
+                platform="telegram",
+                telegram_bot_token="wrong_token",
+                max_bot_token=max_token,
             )
 
 

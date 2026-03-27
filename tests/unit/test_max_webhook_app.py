@@ -756,7 +756,7 @@ async def test_lifespan_webhook_registration_failure_raises():
 
 @pytest.fixture
 def max_app_client() -> TestClient:
-    """Create test client with mocked lifespan dependencies for Max webhook app."""
+    """Create test client with mocked lifespan deps."""
     from ugc_bot.max_webhook_app import app
 
     mock_config = MagicMock()
@@ -795,15 +795,17 @@ def max_app_client() -> TestClient:
 
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
-        patch("ugc_bot.max_webhook_app.Redis.from_url", return_value=mock_redis),
+        patch(
+            "ugc_bot.max_webhook_app.Redis.from_url", return_value=mock_redis
+        ),
         patch(
             "ugc_bot.max_webhook_app.aiohttp.ClientSession",
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        TestClient(app) as c,
     ):
-        with TestClient(app) as c:
-            yield c
+        yield c
 
 
 def test_miniapp_api_routes_mounted(max_app_client: TestClient) -> None:
