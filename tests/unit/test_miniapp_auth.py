@@ -293,6 +293,18 @@ class TestValidateInitDataForPlatform:
                 max_bot_token="m",
             )
 
+    def test_max_with_empty_token_raises(self) -> None:
+        """platform='max' with empty token raises ValueError."""
+        from ugc_bot.miniapp.auth import validate_init_data_for_platform
+
+        with pytest.raises(ValueError, match="Max bot is not configured"):
+            validate_init_data_for_platform(
+                "any",
+                platform="max",
+                telegram_bot_token="t",
+                max_bot_token="",
+            )
+
     def test_max_with_telegram_token_fails(self) -> None:
         from ugc_bot.miniapp.auth import validate_init_data_for_platform
 

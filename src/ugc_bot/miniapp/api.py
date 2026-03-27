@@ -1,8 +1,10 @@
 """FastAPI router for Mini App HTTP API: auth, registration, orders."""
 
+import json
 import logging
 from datetime import date
 from typing import Any, Literal
+from urllib.parse import parse_qsl
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -62,6 +64,8 @@ from ugc_bot.miniapp.auth import (
 
 logger = logging.getLogger(__name__)
 
+Platform = Literal["telegram", "max"]
+
 router = APIRouter(prefix="/api", tags=["miniapp"])
 
 
@@ -72,7 +76,7 @@ class InitDataBody(BaseModel):
     """Body that includes initData for auth (Telegram or Max)."""
 
     init_data: str = Field(..., description="WebApp.initData string")
-    platform: str = Field(
+    platform: Platform = Field(
         default="telegram", description="Platform: 'telegram' or 'max'"
     )
 
@@ -124,7 +128,7 @@ class RegisterAdvertiserRequest(BaseModel):
     """Advertiser registration payload."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     phone: str
     brand: str
     site_link: str | None = None
@@ -137,7 +141,7 @@ class RegisterBloggerRequest(BaseModel):
     """Blogger registration payload (all fields as in bot flow)."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     instagram_url: str
     city: str
     audience_geo: str
@@ -173,7 +177,7 @@ class CreateOrderRequest(BaseModel):
     """Order creation payload."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     product_link: str
     offer_text: str
     price: float = Field(..., ge=0)
@@ -208,7 +212,7 @@ class GetOrderRequest(BaseModel):
     """Request to fetch one order by id."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     order_id: str
 
 
@@ -234,7 +238,7 @@ class UpdateOrderRequest(BaseModel):
     """Update order payload (same fields as create)."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     order_id: str
     product_link: str
     offer_text: str
@@ -251,7 +255,7 @@ class ManagerOrdersRequest(BaseModel):
     """Manager orders list request."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     limit: int = 20
     offset: int = 0
 
@@ -267,7 +271,7 @@ class ManagerCreatorsRequest(BaseModel):
     """Manager creators list request."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     in_offer: bool | None = None
     filter: Literal["in_offer", "reserve", "expensive"] | None = None
     search: str | None = None
@@ -296,7 +300,7 @@ class CreatorDetailRequest(BaseModel):
     """Request to fetch a single creator's detail."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
 
 
 class CreatorDetailResponse(BaseModel):
@@ -313,7 +317,7 @@ class UgcVideoRequest(BaseModel):
     """Request to save a UGC video URL."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     url: AnyHttpUrl
 
 
@@ -321,7 +325,7 @@ class ManagerFeedbackRequest(BaseModel):
     """Manager records advertiser-side feedback on an interaction."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     status: Literal["ok", "no_deal", "issue"]
     no_deal_reason: str | None = Field(None, max_length=1000)
     issue_description: str | None = Field(None, max_length=5000)
@@ -350,7 +354,7 @@ async def _currency_symbol_map(request: Request) -> dict[str, str]:
 
 
 async def _get_user_locale(
-    request: Request, external_id: str, *, platform: str = "telegram"
+    request: Request, external_id: str, *, platform: Platform = "telegram"
 ) -> str:
     """Resolve locale for user by external_id via user.language."""
     config = request.app.state.config
@@ -388,7 +392,7 @@ def _get_bot_tokens(request: Request) -> tuple[str, str]:
 
 
 def _get_external_id(
-    request: Request, init_data: str, *, platform: str = "telegram"
+    request: Request, init_data: str, *, platform: Platform = "telegram"
 ) -> str:
     """Validate init_data and return external user id. Raises HTTPException."""
     tg_token, max_token = _get_bot_tokens(request)
@@ -405,7 +409,7 @@ def _get_external_id(
 
 
 def _get_username_from_init_data(
-    request: Request, init_data: str, *, platform: str = "telegram"
+    request: Request, init_data: str, *, platform: Platform = "telegram"
 ) -> str | None:
     """Return username from validated init_data, or None."""
     tg_token, max_token = _get_bot_tokens(request)
@@ -417,33 +421,39 @@ def _get_username_from_init_data(
         return None
 
 
-def _get_messenger_type(platform: str) -> MessengerType:
+def _extract_username_from_init_data(init_data: str) -> str | None:
+    """Extract username from init_data without HMAC re-validation."""
+    try:
+        data_dict = dict(parse_qsl(init_data.strip(), keep_blank_values=True))
+        user_json = data_dict.get("user")
+        if not user_json:
+            return None
+        user = json.loads(user_json)
+        if not isinstance(user, dict):
+            return None
+        username = user.get("username")
+        if username is None or not isinstance(username, str):
+            return None
+        return username.strip() or None
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def _get_messenger_type(platform: Platform) -> MessengerType:
     """Map platform string to MessengerType enum."""
     if platform == "max":
         return MessengerType.MAX
     return MessengerType.TELEGRAM
 
 
-# Backward-compatible aliases
-def _get_telegram_user_id(request: Request, init_data: str) -> str:
-    return _get_external_id(request, init_data, platform="telegram")
-
-
-def _get_telegram_username_from_init_data(
-    request: Request, init_data: str
-) -> str | None:
-    return _get_username_from_init_data(request, init_data, platform="telegram")
-
-
 async def _ensure_user_and_get_id(
-    request: Request, init_data: str, *, platform: str = "telegram"
+    request: Request, init_data: str, *, platform: Platform = "telegram"
 ) -> UUID:
     """Ensure user exists (set_user), return internal user_id."""
     external_id = _get_external_id(request, init_data, platform=platform)
     messenger_type = _get_messenger_type(platform)
-    username = _get_username_from_init_data(
-        request, init_data, platform=platform
-    )
+    # Extract username from already-validated init_data without re-running HMAC
+    username = _extract_username_from_init_data(init_data)
     dispatcher = request.app.state.dispatcher
     user_role_service = dispatcher["user_role_service"]
     user = await user_role_service.get_user(
@@ -1275,14 +1285,14 @@ class OrdersListRequest(BaseModel):
     """Request body for listing orders."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
 
 
 class ReverseGeocodeRequest(BaseModel):
     """Request body for reverse geocode (coordinates to city)."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     lat: float = Field(..., ge=-90, le=90)
     lon: float = Field(..., ge=-180, le=180)
 
@@ -1299,7 +1309,7 @@ class ForwardGeocodeRequest(BaseModel):
     """Request body for forward geocode (city name to coordinates)."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     city: str
     region: str | None = None
     country: str | None = None
@@ -1618,7 +1628,7 @@ class SetCountryRequest(BaseModel):
     """Request to set country for the current user."""
 
     init_data: str
-    platform: str = "telegram"
+    platform: Platform = "telegram"
     country_code: str
 
 

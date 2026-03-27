@@ -20,6 +20,11 @@
       if (!window.WebApp && window.Telegram && window.Telegram.WebApp) {
         window.WebApp = window.Telegram.WebApp;
       }
+      var wa = window.WebApp || (window.Telegram && window.Telegram.WebApp);
+      if (wa) {
+        if (typeof wa.ready === 'function') wa.ready();
+        if (typeof wa.expand === 'function') wa.expand();
+      }
     };
     document.head.appendChild(script);
   })();
@@ -435,16 +440,13 @@
 
   <script>
     (function() {
-      var tg = window.Telegram && window.Telegram.WebApp;
-      if (!tg && window.WebApp) tg = window.WebApp;
-      if (tg) {
-        tg.ready();
-        tg.expand();
+      function _getWebApp() {
+        return (window.Telegram && window.Telegram.WebApp) || window.WebApp || null;
       }
 
       var base = window.location.origin;
       function getInitData() {
-        var wa = (window.Telegram && window.Telegram.WebApp) || window.WebApp;
+        var wa = _getWebApp();
         return (wa && wa.initData) ? wa.initData : '';
       }
 
@@ -456,7 +458,7 @@
 
       function openPaymentAndClose(url) {
         if (!url || url === '#') return;
-        var wa = (window.Telegram && window.Telegram.WebApp) || window.WebApp;
+        var wa = _getWebApp();
         if (wa && typeof wa.openLink === 'function') wa.openLink(url);
         else window.open(url, '_blank');
         if (wa && typeof wa.close === 'function') wa.close();
@@ -1904,7 +1906,8 @@
 
       document.getElementById('btn-instagram-open').addEventListener('click', function() {
         var url = window._instagramVerificationUrl;
-        if (url && tg && typeof tg.openLink === 'function') tg.openLink(url);
+        var wa = _getWebApp();
+        if (url && wa && typeof wa.openLink === 'function') wa.openLink(url);
         else if (url) window.open(url, '_blank');
       });
       document.getElementById('btn-instagram-verification-back').addEventListener('click', function() {
@@ -2701,7 +2704,8 @@
       });
 
       document.getElementById('btn-close-blogger').addEventListener('click', function() {
-        if (tg && typeof tg.close === 'function') tg.close();
+        var wa = _getWebApp();
+        if (wa && typeof wa.close === 'function') wa.close();
       });
 
       function updateCurrencyLabels(sym) {
