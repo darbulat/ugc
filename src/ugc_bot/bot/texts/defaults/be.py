@@ -51,6 +51,7 @@ BE: dict[str, str] = {
     "btn_pay_order": "💳 Аплаціць №{creation_number}",
     "btn_open_profile": "🔗 Адкрыць профіль",
     "btn_write_telegram": "Напісаць у тэлеграм",
+    "btn_write_max": "Напісаць у Макс",
     "btn_ok_skipped": "Ок, прапушчана.",
     # Order creation
     "order_type_ugc_only": "🎥 UGC-відэа для брэнда",

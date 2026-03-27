@@ -685,6 +685,10 @@ async def test_lifespan_with_max_bot_sets_state():
     mock_container.build_bot_services = MagicMock(return_value={})
     mock_container.dispose = AsyncMock()
 
+    mock_bot = MagicMock()
+    mock_bot.session = MagicMock()
+    mock_bot.session.close = AsyncMock()
+
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
         patch(
@@ -695,11 +699,15 @@ async def test_lifespan_with_max_bot_sets_state():
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
+        patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
     ):
         async with _lifespan(fake_app):
             assert fake_app.state.config is mock_config
             assert fake_app.state.max_router is not None
+            assert fake_app.state.telegram_messenger_client is not None
 
+    mock_bot.session.close.assert_called_once()
     mock_container.dispose.assert_called_once()
 
 
@@ -733,6 +741,10 @@ async def test_lifespan_webhook_registration_failure_raises():
     mock_container.build_bot_services = MagicMock(return_value={})
     mock_container.dispose = AsyncMock()
 
+    mock_bot = MagicMock()
+    mock_bot.session = MagicMock()
+    mock_bot.session.close = AsyncMock()
+
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
         patch(
@@ -743,6 +755,8 @@ async def test_lifespan_webhook_registration_failure_raises():
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
+        patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
         pytest.raises(RuntimeError, match="Failed to register Max webhook"),
     ):
         async with _lifespan(fake_app):
@@ -793,6 +807,10 @@ def max_app_client() -> TestClient:
     )
     mock_container.dispose = AsyncMock()
 
+    mock_bot = MagicMock()
+    mock_bot.session = MagicMock()
+    mock_bot.session.close = AsyncMock()
+
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
         patch(
@@ -803,6 +821,8 @@ def max_app_client() -> TestClient:
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
+        patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
         TestClient(app) as c,
     ):
         yield c
