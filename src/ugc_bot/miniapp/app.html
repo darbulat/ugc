@@ -10,8 +10,17 @@
     var platform = params.get('platform');
     if (!platform) {
       try {
-        var ref = document.referrer || '';
-        platform = ref.indexOf('max.ru') !== -1 ? 'max' : 'telegram';
+        var isMax = false;
+        // Max native app exposes WebViewHandler bridge
+        if (typeof window.WebViewHandler !== 'undefined') isMax = true;
+        // Max passes initData via URL hash containing WebAppData
+        if (!isMax && location.hash && location.hash.indexOf('WebAppData') !== -1) isMax = true;
+        // Max web version sets referrer to max.ru
+        if (!isMax) {
+          var ref = document.referrer || '';
+          if (ref.indexOf('max.ru') !== -1) isMax = true;
+        }
+        platform = isMax ? 'max' : 'telegram';
       } catch(e) {
         platform = 'telegram';
       }
