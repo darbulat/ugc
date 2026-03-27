@@ -381,6 +381,7 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
+            blogger_profile_repo=repos["blogger_repo"],
         ),
         "blogger_registration_service": BloggerRegistrationService(
             user_repo=repos["user_repo"],
