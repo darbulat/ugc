@@ -1296,6 +1296,7 @@ def test_user_messenger_targets_includes_max_id() -> None:
     user = User(
         user_id=uuid4(),
         max_id="max-99",
+        max_chat_id="max-chat-99",
         messenger_type=MessengerType.MAX,
         username="maxu",
         status=UserStatus.ACTIVE,
@@ -1305,7 +1306,7 @@ def test_user_messenger_targets_includes_max_id() -> None:
     mock_client = Mock()
     targets = _user_messenger_targets(user, {"max": mock_client})
     assert len(targets) == 1
-    assert targets[0][0] == "max-99"
+    assert targets[0][0] == "max-chat-99"
     assert targets[0][1] is mock_client
 
 

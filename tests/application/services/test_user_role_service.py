@@ -138,6 +138,7 @@ async def test_update_status_preserves_optional_fields() -> None:
         user_id=uuid4(),
         telegram_id="opt-1",
         max_id="max-1",
+        max_chat_id="max-chat-1",
         messenger_type=MessengerType.TELEGRAM,
         username="u",
         status=UserStatus.ACTIVE,
@@ -155,6 +156,7 @@ async def test_update_status_preserves_optional_fields() -> None:
     assert found.status == UserStatus.PAUSE
     assert found.telegram_id == "opt-1"
     assert found.max_id == "max-1"
+    assert found.max_chat_id == "max-chat-1"
     assert found.referral_code == "ref123"
     assert found.referral_payout_rate == Decimal("0.10")
     assert found.country == "kz"

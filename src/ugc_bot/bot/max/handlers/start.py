@@ -68,6 +68,7 @@ async def start_handler(incoming: IncomingMessage, deps: dict) -> None:
         role_kb=role_inline_keyboard(texts),
         country_kb=None,
         tg_language_code="ru",
+        max_chat_id=incoming.chat_id,
     )
     # Auto-set country for new Max users
     await user_role_service.set_country(

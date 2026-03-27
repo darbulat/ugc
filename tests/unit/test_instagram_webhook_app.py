@@ -1164,10 +1164,11 @@ async def test_notify_user_verification_api_unavailable_no_user(
 
 
 def test_get_chat_id_max_user_with_config():
-    """Max user with max_bot config returns max_id."""
+    """Max user with max_bot config returns max_chat_id."""
     user = MagicMock()
     user.messenger_type = MessengerType.MAX
-    user.max_id = "12345"
+    user.max_chat_id = "12345"
+    user.max_id = "99"
     user.telegram_id = None
     config = AppConfig.model_validate(
         {
@@ -1185,7 +1186,8 @@ def test_get_chat_id_max_user_no_config():
     """Max user without max_bot config returns None."""
     user = MagicMock()
     user.messenger_type = MessengerType.MAX
-    user.max_id = "12345"
+    user.max_chat_id = "12345"
+    user.max_id = "99"
     user.telegram_id = None
     config = AppConfig.model_validate(
         {"BOT_TOKEN": "t", "DATABASE_URL": "sqlite:///:memory:"}
@@ -1255,7 +1257,8 @@ async def test_notify_user_verification_success_max_user() -> None:
     blogger_repo = InMemoryBloggerProfileRepository()
     user = User(
         user_id=uuid4(),
-        max_id="252972060",
+        max_id="23759393",
+        max_chat_id="252972060",
         messenger_type=MessengerType.MAX,
         username="max_user",
         status=UserStatus.ACTIVE,

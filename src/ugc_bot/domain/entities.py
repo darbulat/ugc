@@ -68,6 +68,7 @@ class User:
     created_at: datetime
     telegram_id: Optional[str] = None
     max_id: Optional[str] = None
+    max_chat_id: Optional[str] = None
     role_chosen_at: Optional[datetime] = None
     last_role_reminder_at: Optional[datetime] = None
     telegram: Optional[str] = None

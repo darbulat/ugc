@@ -128,8 +128,8 @@ def _user_messenger_targets(
     targets: list[tuple[str, MessengerClient]] = []
     if user.telegram_id and "telegram" in messenger_clients:
         targets.append((user.telegram_id, messenger_clients["telegram"]))
-    if user.max_id and "max" in messenger_clients:
-        targets.append((user.max_id, messenger_clients["max"]))
+    if user.max_chat_id and "max" in messenger_clients:
+        targets.append((user.max_chat_id, messenger_clients["max"]))
     return targets
 
 
