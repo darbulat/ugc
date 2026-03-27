@@ -547,14 +547,14 @@ async def test_state_store_get_set_state():
 
     redis = AsyncMock()
     redis.get = AsyncMock(return_value="waiting_input")
-    redis.setex = AsyncMock()
+    redis.set = AsyncMock()
 
     store = MaxRedisStateStore(redis=redis, chat_id="1", user_id="2")
     result = await store.get_state()
     assert result == "waiting_input"
 
     await store.set_state("new_state")
-    redis.setex.assert_called_once()
+    redis.set.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -581,10 +581,10 @@ async def test_state_store_update_and_get_data():
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
 
-    async def fake_setex(key, ttl, value):
+    async def fake_set(key, value):
         stored.append(value)
 
-    redis.setex = AsyncMock(side_effect=fake_setex)
+    redis.set = AsyncMock(side_effect=fake_set)
 
     store = MaxRedisStateStore(redis=redis, chat_id="1", user_id="2")
     await store.update_data(name="Alice", step=3)

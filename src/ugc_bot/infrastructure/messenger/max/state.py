@@ -16,7 +16,6 @@ class MaxRedisStateStore(StateStore):
 
     _STATE_KEY_PREFIX = "max:state:"
     _DATA_KEY_PREFIX = "max:data:"
-    _TTL_SECONDS = 86400  # 24 hours
 
     def __init__(self, redis: Redis, chat_id: str, user_id: str) -> None:
         self._redis = redis
@@ -33,15 +32,13 @@ class MaxRedisStateStore(StateStore):
         if state is None:
             await self._redis.delete(self._state_key)
         else:
-            await self._redis.setex(self._state_key, self._TTL_SECONDS, state)
+            await self._redis.set(self._state_key, state)
 
     async def update_data(self, **kwargs: Any) -> None:
         """Update state data with provided kwargs."""
         existing = await self.get_data()
         existing.update(kwargs)
-        await self._redis.setex(
-            self._data_key, self._TTL_SECONDS, json.dumps(existing)
-        )
+        await self._redis.set(self._data_key, json.dumps(existing))
 
     async def get_data(self) -> dict[str, Any]:
         """Return state data."""

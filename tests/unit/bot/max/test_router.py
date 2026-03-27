@@ -267,11 +267,15 @@ async def test_callback_in_state_with_predicate_fails_predicate(
 
 
 @pytest.mark.asyncio
-async def test_state_message_handler_takes_priority_over_regular(
-    router, incoming_message
-):
+async def test_state_message_handler_takes_priority_over_regular(router):
     called = []
     store = FakeStateStore(state="registration:name")
+    text_msg = IncomingMessage(
+        chat_id="1",
+        user=IncomingUser(external_id="1", messenger_type=MessengerType.MAX),
+        text="hello",
+        message_id="msg_1",
+    )
 
     @router.message_in_state("registration:name")
     async def state_handler(msg, deps):
@@ -281,8 +285,25 @@ async def test_state_message_handler_takes_priority_over_regular(
     async def regular_handler(msg, deps):
         called.append("regular")
 
-    await router.route_message(incoming_message, {"state_store": store})
+    await router.route_message(text_msg, {"state_store": store})
     assert called == ["state"]
+
+
+@pytest.mark.asyncio
+async def test_command_bypasses_state_handler(router, incoming_message):
+    called = []
+    store = FakeStateStore(state="registration:name")
+
+    @router.message_in_state("registration:name")
+    async def state_handler(msg, deps):
+        called.append("state")
+
+    @router.message(lambda m: m.text == "/start")
+    async def cmd_handler(msg, deps):
+        called.append("command")
+
+    await router.route_message(incoming_message, {"state_store": store})
+    assert called == ["command"]
 
 
 @pytest.mark.asyncio

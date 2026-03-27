@@ -32,16 +32,21 @@ def _user_index_key(user_id: UUID, code: str) -> str:
 
 
 def _serialize(vc: InstagramVerificationCode) -> str:
-    return json.dumps(
-        {
-            "code_id": str(vc.code_id),
-            "user_id": str(vc.user_id),
-            "code": vc.code,
-            "expires_at": vc.expires_at.isoformat(),
-            "used": vc.used,
-            "created_at": vc.created_at.isoformat(),
-        }
-    )
+    data: dict = {
+        "code_id": str(vc.code_id),
+        "user_id": str(vc.user_id),
+        "code": vc.code,
+        "expires_at": vc.expires_at.isoformat(),
+        "used": vc.used,
+        "created_at": vc.created_at.isoformat(),
+    }
+    if vc.link_max_id is not None:
+        data["link_max_id"] = vc.link_max_id
+    if vc.link_max_chat_id is not None:
+        data["link_max_chat_id"] = vc.link_max_chat_id
+    if vc.link_username is not None:
+        data["link_username"] = vc.link_username
+    return json.dumps(data)
 
 
 def _deserialize(data: str) -> InstagramVerificationCode:
@@ -53,6 +58,9 @@ def _deserialize(data: str) -> InstagramVerificationCode:
         expires_at=datetime.fromisoformat(d["expires_at"]),
         used=d["used"],
         created_at=datetime.fromisoformat(d["created_at"]),
+        link_max_id=d.get("link_max_id"),
+        link_max_chat_id=d.get("link_max_chat_id"),
+        link_username=d.get("link_username"),
     )
 
 
