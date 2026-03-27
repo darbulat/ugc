@@ -23,8 +23,7 @@ class MaxEventAdapter(MessengerEventAdapter):
         chat_id = str(recipient["chat_id"])
 
         user = IncomingUser(
-            # Use chat_id as external_id (needed for sending messages back)
-            external_id=chat_id,
+            external_id=str(sender["user_id"]),
             messenger_type=MessengerType.MAX,
             username=sender.get("username"),
         )
@@ -49,8 +48,7 @@ class MaxEventAdapter(MessengerEventAdapter):
         chat_id = str(recipient["chat_id"])
 
         user = IncomingUser(
-            # Use chat_id as external_id (needed for sending messages back)
-            external_id=chat_id,
+            external_id=str(cb_user["user_id"]),
             messenger_type=MessengerType.MAX,
             username=cb_user.get("username"),
         )
@@ -72,8 +70,7 @@ class MaxEventAdapter(MessengerEventAdapter):
         chat_id = str(data["chat_id"])
 
         user = IncomingUser(
-            # Use chat_id as external_id (needed for sending messages back)
-            external_id=chat_id,
+            external_id=str(user_data["user_id"]),
             messenger_type=MessengerType.MAX,
             username=user_data.get("username"),
         )
