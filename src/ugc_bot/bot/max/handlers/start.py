@@ -4,6 +4,8 @@ Max messenger is Russia-only: country is always "RU", language "ru".
 Country/language selection screens are skipped.
 """
 
+from urllib.parse import urlparse
+
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
 from ugc_bot.bot.max.middleware import resolve_locale
@@ -364,14 +366,16 @@ async def app_miniapp_command(incoming: IncomingMessage, deps: dict) -> None:
     messenger_client = deps["messenger_client"]
     config = deps["config"]
 
-    base_url = config.max_bot.webhook_url if config.max_bot else ""
-    if not base_url:
+    webhook_url = config.max_bot.webhook_url if config.max_bot else ""
+    if not webhook_url:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text="Mini App временно недоступен.",
         )
         return
 
+    parsed = urlparse(webhook_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
     keyboard = miniapp_open_inline_keyboard(base_url, platform="max")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
