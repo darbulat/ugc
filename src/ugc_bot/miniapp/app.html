@@ -602,7 +602,7 @@
         if (!container) return;
         var cfg = window._config || {};
         var me = window._me || {};
-        var isRu = !me.country || me.country === 'ru';
+        var isRu = !me.country || me.country === 'ru' || window.__miniapp_platform === 'max';
         var offer = ((isRu ? cfg.docs_offer_url : (cfg.docs_offer_url_intl || cfg.docs_offer_url)) || '').trim();
         var privacy = ((isRu ? cfg.docs_privacy_url : (cfg.docs_privacy_url_intl || cfg.docs_privacy_url)) || '').trim();
         var consent = ((isRu ? cfg.docs_consent_url : (cfg.docs_consent_url_intl || cfg.docs_consent_url)) || '').trim();
