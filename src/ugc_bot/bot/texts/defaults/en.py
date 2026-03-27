@@ -67,6 +67,7 @@ EN: dict[str, str] = {
     "msg_user_not_found_start": "User not found. Start with /start.",
     "msg_account_linked": "We found your account! All data is preserved. You can now continue working in Max.",
     "btn_retry_instagram": "Enter different Instagram",
+    "btn_open_direct": "Open Direct",
     "msg_registration_blocked": "Blocked users cannot register.",
     "msg_registration_pause": "Paused users cannot register.",
     "msg_instagram_blocked": "Blocked users cannot verify account.",

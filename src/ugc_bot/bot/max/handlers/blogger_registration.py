@@ -442,11 +442,21 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
             chat_id=incoming.chat_id,
             text=instruction_plain,
         )
-        texts_v = await bot_texts_service.get_many(["btn_my_profile"], locale)
+        admin_username = (
+            config.instagram.admin_instagram_username or ""
+        ).lstrip("@")
+        direct_url = (
+            f"https://ig.me/m/{admin_username}" if admin_username else None
+        )
+        texts_v = await bot_texts_service.get_many(
+            ["btn_open_direct", "btn_my_profile"], locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=verification.code,
-            keyboard=blogger_verification_sent_inline_keyboard(texts_v),
+            keyboard=blogger_verification_sent_inline_keyboard(
+                texts_v, direct_url=direct_url
+            ),
         )
         await state_store.clear()
         return

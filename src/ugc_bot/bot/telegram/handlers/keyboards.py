@@ -365,9 +365,21 @@ def blogger_after_registration_inline_keyboard(
 
 def blogger_verification_sent_inline_keyboard(
     texts: dict[str, str],
+    direct_url: str | None = None,
 ) -> Keyboard:
-    """Inline after code sent: My profile only. Needs: btn_my_profile."""
-
+    """Inline after code sent: open DM link or My profile fallback."""
+    if direct_url:
+        return Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[
+                [
+                    Button(
+                        text=texts.get("btn_open_direct", "Открыть директ"),
+                        url=direct_url,
+                    )
+                ]
+            ],
+        )
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
