@@ -49,6 +49,7 @@ KK: dict[str, str] = {
     "btn_pay_order": "💳 №{creation_number} төлеу",
     "btn_open_profile": "🔗 Профильді ашу",
     "btn_write_telegram": "Телеграмда жазу",
+    "btn_write_max": "Максте жазу",
     "btn_ok_skipped": "Жарайды, өткізіп жібердім.",
     "order_type_ugc_only": "🎥 Бренд үшін UGC-бейне",
     "order_type_ugc_placement": "📢 UGC + креаторда орналастыру",

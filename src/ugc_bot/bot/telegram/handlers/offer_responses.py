@@ -62,6 +62,7 @@ _SEND_CONTACT_TEXTS_KEYS = (
     "msg_order_type_placement",
     "btn_open_profile",
     "btn_write_telegram",
+    "btn_write_max",
 )
 logger = logging.getLogger(__name__)
 _send_retries = 3
@@ -702,6 +703,7 @@ def _build_advertiser_contact_content(
     telegram_handle: str,
     texts: dict[str, str],
     creator_external_id: str | None = None,
+    creator_max_id: str | None = None,
 ) -> tuple[str, Keyboard | None]:
     """Build contact message and inline keyboard for advertiser."""
     t = texts
@@ -747,6 +749,13 @@ def _build_advertiser_contact_content(
                 url=f"tg://user?id={creator_external_id}",
             )
         )
+    if creator_max_id:
+        buttons.append(
+            Button(
+                text=t.get("btn_write_max", "Написать в Макс"),
+                url=f"https://max.ru/profile/{creator_max_id}",
+            )
+        )
     keyboard = (
         Keyboard(kind=KeyboardKind.INLINE, rows=[buttons]) if buttons else None
     )
@@ -779,6 +788,42 @@ def _build_blogger_contacts_text(
     return "".join(parts)
 
 
+async def _deliver_to_recipient(
+    client: MessengerClient,
+    chat_id: str,
+    text: str,
+    keyboard: Keyboard | None,
+    order_id: UUID,
+    response_count: int,
+    warning_text: str,
+    parse_mode: str | None = None,
+    extra: dict | None = None,
+) -> None:
+    """Send contact message + optional first-response warning to a recipient."""
+    send_extra = extra or {"order_id": str(order_id)}
+    await send_with_retry(
+        client,
+        chat_id=chat_id,
+        text=text,
+        keyboard=keyboard,
+        retries=_send_retries,
+        delay_seconds=_send_retry_delay_seconds,
+        logger=logger,
+        extra=send_extra,
+    )
+    if response_count == 1 and warning_text:
+        await send_with_retry(
+            client,
+            chat_id=chat_id,
+            text=warning_text,
+            parse_mode=parse_mode,
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra=send_extra,
+        )
+
+
 async def _send_contact_immediately(
     order: Order,
     blogger_id: UUID,
@@ -792,6 +837,7 @@ async def _send_contact_immediately(
     bot_texts_service: BotTextsService,
     manager: User | None = None,
     currency_symbol: str = "₽",
+    telegram_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
 
@@ -828,32 +874,33 @@ async def _send_contact_immediately(
         telegram_handle=user.telegram or "",
         texts=t_adv,
         creator_external_id=user.telegram_id,
+        creator_max_id=user.max_id,
     )
 
+    # Resolve the right client for the advertiser's messenger
+    tg_client = telegram_messenger_client or messenger_client
+    adv_warning = t_adv.get("msg_advertiser_contacts_warning", "")
     if advertiser and advertiser.telegram_id:
-        await send_with_retry(
-            messenger_client,
+        await _deliver_to_recipient(
+            tg_client,
             chat_id=advertiser.telegram_id,
             text=contact_text,
             keyboard=open_profile_kb,
-            retries=_send_retries,
-            delay_seconds=_send_retry_delay_seconds,
-            logger=logger,
-            extra={"order_id": str(order.order_id)},
+            order_id=order.order_id,
+            response_count=response_count,
+            warning_text=adv_warning,
+            parse_mode="Markdown",
         )
-        if response_count == 1:
-            warning = t_adv.get("msg_advertiser_contacts_warning", "")
-            if warning:
-                await send_with_retry(
-                    messenger_client,
-                    chat_id=advertiser.telegram_id,
-                    text=warning,
-                    parse_mode="Markdown",
-                    retries=_send_retries,
-                    delay_seconds=_send_retry_delay_seconds,
-                    logger=logger,
-                    extra={"order_id": str(order.order_id)},
-                )
+    if advertiser and advertiser.max_chat_id:
+        await _deliver_to_recipient(
+            messenger_client,
+            chat_id=advertiser.max_chat_id,
+            text=contact_text,
+            keyboard=open_profile_kb,
+            order_id=order.order_id,
+            response_count=response_count,
+            warning_text=adv_warning,
+        )
 
     if manager and manager.telegram_id:
         mgr_locale = manager.language or "ru"
@@ -875,10 +922,11 @@ async def _send_contact_immediately(
             telegram_handle=user.telegram or "",
             texts=t_mgr,
             creator_external_id=user.telegram_id,
+            creator_max_id=user.max_id,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
         await send_with_retry(
-            messenger_client,
+            tg_client,
             chat_id=manager.telegram_id,
             text=mgr_contact_text,
             keyboard=mgr_kb,

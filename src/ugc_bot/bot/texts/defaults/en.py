@@ -49,6 +49,7 @@ EN: dict[str, str] = {
     "btn_pay_order": "💳 Pay #{creation_number}",
     "btn_open_profile": "🔗 Open profile",
     "btn_write_telegram": "Message in Telegram",
+    "btn_write_max": "Message in Max",
     "btn_ok_skipped": "OK, skipped.",
     "order_type_ugc_only": "🎥 UGC video for brand",
     "order_type_ugc_placement": "📢 UGC + placement",
