@@ -354,7 +354,7 @@ class UserRoleService:
         instagram_url: str,
         username: str,
     ) -> User | None:
-        """Link a Max messenger account to an existing user found by Instagram URL.
+        """Link a Max account to existing user by Instagram URL.
 
         Returns the updated User if linked, None if no matching user found
         or user already has a different max_id.
