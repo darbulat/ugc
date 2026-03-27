@@ -8,7 +8,11 @@ from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import UserNotFoundError
-from ugc_bot.application.ports import TransactionManager, UserRepository
+from ugc_bot.application.ports import (
+    BloggerProfileRepository,
+    TransactionManager,
+    UserRepository,
+)
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -27,6 +31,7 @@ class UserRoleService:
     user_repo: UserRepository
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    blogger_profile_repo: BloggerProfileRepository | None = None
 
     async def set_user(
         self,
@@ -342,3 +347,44 @@ class UserRoleService:
             await self.user_repo.save(updated, session=session)
 
         await with_optional_tx(self.transaction_manager, _run)
+
+    async def link_max_account(
+        self,
+        max_id: str,
+        instagram_url: str,
+        username: str,
+    ) -> User | None:
+        """Link a Max messenger account to an existing user found by Instagram URL.
+
+        Returns the updated User if linked, None if no matching user found
+        or user already has a different max_id.
+        """
+
+        async def _run(session: object | None) -> User | None:
+            if self.blogger_profile_repo is None:
+                return None
+            profile = await self.blogger_profile_repo.get_by_instagram_url(
+                instagram_url, session=session
+            )
+            if profile is None:
+                return None
+
+            existing = await self.user_repo.get_by_id(
+                profile.user_id, session=session
+            )
+            if existing is None:
+                return None
+
+            if existing.max_id is not None and existing.max_id != max_id:
+                return None
+
+            updated = replace(
+                existing,
+                max_id=max_id,
+                messenger_type=MessengerType.MAX,
+                username=username,
+            )
+            await self.user_repo.save(updated, session=session)
+            return updated
+
+        return await with_optional_tx(self.transaction_manager, _run)
