@@ -7,7 +7,15 @@
   <script>
   (function() {
     var params = new URLSearchParams(window.location.search);
-    var platform = params.get('platform') || 'telegram';
+    var platform = params.get('platform');
+    if (!platform) {
+      try {
+        var ref = document.referrer || '';
+        platform = ref.indexOf('max.ru') !== -1 ? 'max' : 'telegram';
+      } catch(e) {
+        platform = 'telegram';
+      }
+    }
     window.__miniapp_platform = platform;
 
     var script = document.createElement('script');
