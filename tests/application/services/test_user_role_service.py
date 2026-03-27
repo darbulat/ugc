@@ -620,3 +620,53 @@ async def test_link_max_account_already_has_max_id() -> None:
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_idempotent() -> None:
+    """Re-linking with the same max_id succeeds (idempotent)."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    existing_user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        max_id="max_222",
+        messenger_type=MessengerType.MAX,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(existing_user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=existing_user.user_id,
+            instagram_url="https://instagram.com/alice",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_222",
+        instagram_url="https://instagram.com/alice",
+        username="alice_updated",
+    )
+
+    assert result is not None
+    assert result.max_id == "max_222"
+    assert result.username == "alice_updated"
