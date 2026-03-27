@@ -33,16 +33,20 @@
     } else {
       script.src = 'https://telegram.org/js/telegram-web-app.js';
     }
-    script.onload = function() {
-      if (!window.WebApp && window.Telegram && window.Telegram.WebApp) {
-        window.WebApp = window.Telegram.WebApp;
-      }
-      var wa = window.WebApp || (window.Telegram && window.Telegram.WebApp);
-      if (wa) {
-        if (typeof wa.ready === 'function') wa.ready();
-        if (typeof wa.expand === 'function') wa.expand();
-      }
-    };
+    window.__webAppReady = new Promise(function(resolve) {
+      script.onload = function() {
+        if (!window.WebApp && window.Telegram && window.Telegram.WebApp) {
+          window.WebApp = window.Telegram.WebApp;
+        }
+        var wa = window.WebApp || (window.Telegram && window.Telegram.WebApp);
+        if (wa) {
+          if (typeof wa.ready === 'function') wa.ready();
+          if (typeof wa.expand === 'function') wa.expand();
+        }
+        resolve();
+      };
+      script.onerror = function() { resolve(); };
+    });
     document.head.appendChild(script);
   })();
   </script>
@@ -2786,7 +2790,9 @@
       }
 
       fillBirthDateSelects();
-      Promise.all([loadMe(), loadConfig()]).then(function(results) {
+      (window.__webAppReady || Promise.resolve()).then(function() {
+        return Promise.all([loadMe(), loadConfig()]);
+      }).then(function(results) {
         var me = results[0];
         var cfg = results[1];
         if (!me || typeof me !== 'object') {
