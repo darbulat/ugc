@@ -1318,6 +1318,7 @@ async def test_send_offer_to_blogger_includes_max_id_target() -> None:
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001101"),
         max_id="max-blogger-1",
+        max_chat_id="max-chat-blogger-1",
         messenger_type=MessengerType.MAX,
         username="maxblogger",
         status=UserStatus.ACTIVE,
@@ -1359,7 +1360,7 @@ async def test_send_offer_to_blogger_includes_max_id_target() -> None:
         )
     mock_send_via.assert_called_once()
     call_kwargs = mock_send_via.call_args
-    assert call_kwargs[0][0] == "max-blogger-1"
+    assert call_kwargs[0][0] == "max-chat-blogger-1"
 
 
 @pytest.mark.asyncio

@@ -119,8 +119,8 @@ async def run_once(
                 targets.append(
                     (user.telegram_id, messenger_clients["telegram"])
                 )
-            if user.max_id and "max" in messenger_clients:
-                targets.append((user.max_id, messenger_clients["max"]))
+            if user.max_chat_id and "max" in messenger_clients:
+                targets.append((user.max_chat_id, messenger_clients["max"]))
             for chat_id, client in targets:
                 await send_with_retry(
                     client,

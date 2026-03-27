@@ -35,6 +35,7 @@ class UserRoleService:
         username: str,
         role_chosen: bool = False,
         telegram_username: str | None = None,
+        max_chat_id: str | None = None,
     ) -> User:
         """Create or update a user.
 
@@ -63,13 +64,15 @@ class UserRoleService:
                     if telegram_username is not None
                     else existing.telegram
                 )
-                updated = replace(
-                    existing,
-                    username=username,
-                    status=status,
-                    role_chosen_at=role_chosen_at,
-                    telegram=telegram,
-                )
+                update_kwargs: dict = {
+                    "username": username,
+                    "status": status,
+                    "role_chosen_at": role_chosen_at,
+                    "telegram": telegram,
+                }
+                if max_chat_id is not None:
+                    update_kwargs["max_chat_id"] = max_chat_id
+                updated = replace(existing, **update_kwargs)
                 await self.user_repo.save(updated, session=session)
                 return updated
 
@@ -90,6 +93,9 @@ class UserRoleService:
                 ),
                 max_id=(
                     external_id if messenger_type == MessengerType.MAX else None
+                ),
+                max_chat_id=(
+                    max_chat_id if messenger_type == MessengerType.MAX else None
                 ),
                 role_chosen_at=role_chosen_at,
                 last_role_reminder_at=None,

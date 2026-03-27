@@ -580,6 +580,7 @@ async def _start_command(
     country_prompt: str = "Выберите вашу страну:",
     country_kb: Keyboard | None = None,
     tg_language_code: str | None = None,
+    max_chat_id: str | None = None,
 ) -> None:
     """Handle the /start command. Clears FSM so /start always shows role."""
     if not incoming.user.external_id:
@@ -597,6 +598,7 @@ async def _start_command(
         username=username,
         role_chosen=False,
         telegram_username=incoming.user.username,
+        max_chat_id=max_chat_id,
     )
     # Restore user who previously blocked and re-opened the bot
     if user.status == UserStatus.BOT_BLOCKED:

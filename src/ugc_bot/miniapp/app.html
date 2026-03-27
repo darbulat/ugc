@@ -7,7 +7,24 @@
   <script>
   (function() {
     var params = new URLSearchParams(window.location.search);
-    var platform = params.get('platform') || 'telegram';
+    var platform = params.get('platform');
+    if (!platform) {
+      try {
+        var isMax = false;
+        // Max native app exposes WebViewHandler bridge
+        if (typeof window.WebViewHandler !== 'undefined') isMax = true;
+        // Max passes initData via URL hash containing WebAppData
+        if (!isMax && location.hash && location.hash.indexOf('WebAppData') !== -1) isMax = true;
+        // Max web version sets referrer to max.ru
+        if (!isMax) {
+          var ref = document.referrer || '';
+          if (ref.indexOf('max.ru') !== -1) isMax = true;
+        }
+        platform = isMax ? 'max' : 'telegram';
+      } catch(e) {
+        platform = 'telegram';
+      }
+    }
     window.__miniapp_platform = platform;
 
     var script = document.createElement('script');
@@ -594,7 +611,7 @@
         if (!container) return;
         var cfg = window._config || {};
         var me = window._me || {};
-        var isRu = !me.country || me.country === 'ru';
+        var isRu = !me.country || me.country === 'ru' || window.__miniapp_platform === 'max';
         var offer = ((isRu ? cfg.docs_offer_url : (cfg.docs_offer_url_intl || cfg.docs_offer_url)) || '').trim();
         var privacy = ((isRu ? cfg.docs_privacy_url : (cfg.docs_privacy_url_intl || cfg.docs_privacy_url)) || '').trim();
         var consent = ((isRu ? cfg.docs_consent_url : (cfg.docs_consent_url_intl || cfg.docs_consent_url)) || '').trim();

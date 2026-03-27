@@ -270,6 +270,7 @@ async def test_run_once_sends_reminder_to_max_id_user(fake_tm) -> None:
     user = User(
         user_id=uuid4(),
         max_id="max-123",
+        max_chat_id="max-chat-123",
         messenger_type=MessengerType.MAX,
         username="maxuser",
         status=UserStatus.ACTIVE,
@@ -295,7 +296,7 @@ async def test_run_once_sends_reminder_to_max_id_user(fake_tm) -> None:
         await run_once({"max": messenger_client}, service, cutoff, config)
 
         mock_send.assert_called_once()
-        assert mock_send.call_args[1]["chat_id"] == "max-123"
+        assert mock_send.call_args[1]["chat_id"] == "max-chat-123"
 
 
 @pytest.mark.asyncio

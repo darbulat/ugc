@@ -62,10 +62,10 @@ def _get_chat_id_and_messenger_factory(user, config: AppConfig):
     """Return (chat_id, messenger_context_manager) for the user."""
     from ugc_bot.domain.enums import MessengerType
 
-    if user.messenger_type == MessengerType.MAX and user.max_id:
+    if user.messenger_type == MessengerType.MAX and user.max_chat_id:
         if not config.max_bot:
             return None, None
-        return user.max_id, _create_max_messenger(config)
+        return user.max_chat_id, _create_max_messenger(config)
     if user.telegram_id:
         return user.telegram_id, _create_messenger(config)
     return None, None

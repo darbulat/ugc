@@ -128,7 +128,7 @@ async def notify_admins_about_complaint(
 
     for admin in admins:
         try:
-            chat_id = admin.telegram_id or admin.max_id or ""
+            chat_id = admin.telegram_id or admin.max_chat_id or ""
             if complaint.file_ids:
                 await _send_admin_photo(
                     messenger_client,
@@ -264,7 +264,7 @@ async def notify_admins_about_order_created(
 
     for admin in admins:
         try:
-            chat_id = admin.telegram_id or admin.max_id or ""
+            chat_id = admin.telegram_id or admin.max_chat_id or ""
             if order.product_photo_file_id:
                 await _send_admin_photo(
                     messenger_client,
@@ -356,7 +356,7 @@ async def notify_admins_about_order_paid(
 
     for admin in admins:
         try:
-            chat_id = admin.telegram_id or admin.max_id or ""
+            chat_id = admin.telegram_id or admin.max_chat_id or ""
             if order.product_photo_file_id:
                 await _send_admin_photo(
                     messenger_client,

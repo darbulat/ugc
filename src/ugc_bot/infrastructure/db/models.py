@@ -136,6 +136,7 @@ class UserModel(Base):
     max_id: Mapped[Optional[str]] = mapped_column(
         String, nullable=True, unique=True, index=True
     )
+    max_chat_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     messenger_type: Mapped[MessengerType] = mapped_column(
         _enum_column(MessengerType),
         nullable=False,
