@@ -11,11 +11,8 @@
     if (!platform) {
       try {
         var isMax = false;
-        // Max native app exposes WebViewHandler bridge
         if (typeof window.WebViewHandler !== 'undefined') isMax = true;
-        // Max passes initData via URL hash containing WebAppData
         if (!isMax && location.hash && location.hash.indexOf('WebAppData') !== -1) isMax = true;
-        // Max web version sets referrer to max.ru
         if (!isMax) {
           var ref = document.referrer || '';
           if (ref.indexOf('max.ru') !== -1) isMax = true;
@@ -27,29 +24,25 @@
     }
     window.__miniapp_platform = platform;
 
-    var script = document.createElement('script');
     if (platform === 'max') {
+      var script = document.createElement('script');
       script.src = 'https://st.max.ru/js/max-web-app.js';
-    } else {
-      script.src = 'https://telegram.org/js/telegram-web-app.js';
+      window.__webAppReady = new Promise(function(resolve) {
+        script.onload = function() {
+          var wa = window.WebApp;
+          if (wa) {
+            if (typeof wa.ready === 'function') wa.ready();
+            if (typeof wa.expand === 'function') wa.expand();
+          }
+          resolve();
+        };
+        script.onerror = function() { resolve(); };
+      });
+      document.head.appendChild(script);
     }
-    window.__webAppReady = new Promise(function(resolve) {
-      script.onload = function() {
-        if (!window.WebApp && window.Telegram && window.Telegram.WebApp) {
-          window.WebApp = window.Telegram.WebApp;
-        }
-        var wa = window.WebApp || (window.Telegram && window.Telegram.WebApp);
-        if (wa) {
-          if (typeof wa.ready === 'function') wa.ready();
-          if (typeof wa.expand === 'function') wa.expand();
-        }
-        resolve();
-      };
-      script.onerror = function() { resolve(); };
-    });
-    document.head.appendChild(script);
   })();
   </script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
@@ -463,6 +456,12 @@
     (function() {
       function _getWebApp() {
         return (window.Telegram && window.Telegram.WebApp) || window.WebApp || null;
+      }
+
+      var wa = _getWebApp();
+      if (wa) {
+        if (typeof wa.ready === 'function') wa.ready();
+        if (typeof wa.expand === 'function') wa.expand();
       }
 
       var base = window.location.origin;
@@ -2792,13 +2791,6 @@
       fillBirthDateSelects();
       (window.__webAppReady || Promise.resolve()).then(function() {
         var wa = _getWebApp();
-        console.log('[DEBUG] WebApp object:', wa);
-        console.log('[DEBUG] initData:', wa && wa.initData);
-        console.log('[DEBUG] window.Telegram:', window.Telegram);
-        console.log('[DEBUG] window.WebApp:', window.WebApp);
-        console.log('[DEBUG] platform:', window.__miniapp_platform);
-        console.log('[DEBUG] location.href:', location.href);
-        console.log('[DEBUG] document.referrer:', document.referrer);
         return Promise.all([loadMe(), loadConfig()]);
       }).then(function(results) {
         var me = results[0];
