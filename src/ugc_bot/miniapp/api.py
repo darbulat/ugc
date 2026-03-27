@@ -483,7 +483,7 @@ async def _ensure_user_and_get_id(
             await user_role_service.set_country(
                 external_id=external_id,
                 messenger_type=messenger_type,
-                country_code="RU",
+                country_code="ru",
             )
         except Exception:
             logger.debug(
