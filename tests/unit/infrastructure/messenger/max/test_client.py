@@ -164,7 +164,7 @@ def test_build_inline_keyboard_open_app_button():
     result = _build_inline_keyboard(kb)
     btn = result["payload"]["buttons"][0][0]
     assert btn["type"] == "open_app"
-    assert btn["url"] == "https://mini.app/start"
+    assert btn["webApp"] == {"url": "https://mini.app/start"}
     assert "payload" not in btn
 
 
