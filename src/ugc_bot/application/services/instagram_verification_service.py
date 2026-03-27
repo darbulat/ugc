@@ -67,6 +67,7 @@ class VerificationMismatch:
     user_id: UUID
     profile_username: str | None
     api_username: str | None
+    link_max_chat_id: str | None = None
 
 
 @dataclass(slots=True)
@@ -339,6 +340,7 @@ class InstagramVerificationService:
                 user_id=valid_code.user_id,
                 profile_username=profile_username,
                 api_username=api_username,
+                link_max_chat_id=valid_code.link_max_chat_id,
             )
 
         now = datetime.now(timezone.utc)

@@ -398,6 +398,41 @@ async def _notify_user_verification_api_unavailable(
         )
 
 
+async def _notify_max_user_mismatch(
+    result: VerificationMismatch,
+    config: AppConfig,
+) -> None:
+    """Send mismatch notification to the Max user who initiated linking."""
+    try:
+        if not config.max_bot or not result.link_max_chat_id:
+            return
+        locale = config.market.default_locale or "ru"
+        locale_texts = _get_locale_texts(locale)
+        default_msg = (
+            "Instagram не подтверждён.\n"
+            "Ожидаемый аккаунт: {expected}\n"
+            "Код отправлен с: {actual}\n"
+            "Отправьте код с правильного аккаунта "
+            "или введите другой Instagram URL."
+        )
+        template = locale_texts.get("msg_instagram_mismatch_max", default_msg)
+        msg = template.format(
+            expected=result.profile_username or "?",
+            actual=result.api_username or "?",
+        )
+        async with _create_max_messenger(config) as messenger_client:
+            await messenger_client.send_text(
+                chat_id=result.link_max_chat_id,
+                text=msg,
+            )
+    except Exception as exc:
+        logger.exception(
+            "Error sending mismatch notification to Max user",
+            extra={"chat_id": result.link_max_chat_id},
+            exc_info=exc,
+        )
+
+
 async def _notify_user_account_linked(
     user_id: UUID,
     verification_service: InstagramVerificationService,
@@ -435,6 +470,36 @@ async def _notify_user_account_linked(
         )
 
 
+async def _dispatch_verification_result(
+    result: object,
+    verification_service: InstagramVerificationService,
+    config: AppConfig,
+) -> None:
+    """Send appropriate notification based on verification result."""
+    if isinstance(result, VerificationLinkSuccess):
+        await _notify_user_verification_success(
+            result.user_id, verification_service, config
+        )
+        await _notify_user_account_linked(
+            result.linked_user_id, verification_service, config
+        )
+    elif isinstance(result, VerificationSuccess):
+        await _notify_user_verification_success(
+            result.user_id, verification_service, config
+        )
+    elif isinstance(result, VerificationMismatch):
+        if result.link_max_chat_id:
+            await _notify_max_user_mismatch(result, config)
+        else:
+            await _notify_user_verification_mismatch(
+                result.user_id, verification_service, config
+            )
+    elif isinstance(result, VerificationApiUnavailable):
+        await _notify_user_verification_api_unavailable(
+            result.user_id, verification_service, config
+        )
+
+
 async def _process_single_messaging_event(
     event: dict[str, Any],
     verification_service: InstagramVerificationService,
@@ -466,25 +531,9 @@ async def _process_single_messaging_event(
             code=text,
             admin_instagram_username=config.instagram.admin_instagram_username,
         )
-        if isinstance(result, VerificationLinkSuccess):
-            await _notify_user_verification_success(
-                result.user_id, verification_service, config
-            )
-            await _notify_user_account_linked(
-                result.linked_user_id, verification_service, config
-            )
-        elif isinstance(result, VerificationSuccess):
-            await _notify_user_verification_success(
-                result.user_id, verification_service, config
-            )
-        elif isinstance(result, VerificationMismatch):
-            await _notify_user_verification_mismatch(
-                result.user_id, verification_service, config
-            )
-        elif isinstance(result, VerificationApiUnavailable):
-            await _notify_user_verification_api_unavailable(
-                result.user_id, verification_service, config
-            )
+        await _dispatch_verification_result(
+            result, verification_service, config
+        )
     except Exception as exc:
         logger.warning(
             "Error verifying code from Instagram webhook",

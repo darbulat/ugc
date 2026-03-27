@@ -970,3 +970,38 @@ async def test_try_link_no_user_role_service() -> None:
     )
     result = await service.verify_code(user_id, verification.code)
     assert result is True
+
+
+@pytest.mark.asyncio
+async def test_try_link_returns_none_when_link_fails() -> None:
+    """_try_link returns None when user has different max_id."""
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    user = await user_repo.get_by_id(user_id)
+    assert user is not None
+    from dataclasses import replace as dc_replace
+
+    updated = dc_replace(user, max_id="other_max_id")
+    await user_repo.save(updated)
+
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_role_service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=profile_repo,
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        user_role_service=user_role_service,
+    )
+    verification = await service.generate_code(
+        user_id,
+        link_max_id="new_max_id",
+        link_max_chat_id="chat",
+        link_username="maxuser",
+    )
+    result = await service.verify_code(user_id, verification.code)
+    assert result is True
