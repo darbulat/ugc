@@ -12,7 +12,7 @@
       try {
         var isMax = false;
         if (typeof window.WebViewHandler !== 'undefined') isMax = true;
-        if (!isMax && location.hash && location.hash.indexOf('WebAppData') !== -1) isMax = true;
+        if (!isMax && location.hash && location.hash.indexOf('WebAppData') !== -1 && location.hash.indexOf('tgWebAppData') === -1) isMax = true;
         if (!isMax) {
           var ref = document.referrer || '';
           if (ref.indexOf('max.ru') !== -1) isMax = true;
