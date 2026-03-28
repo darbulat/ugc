@@ -81,9 +81,10 @@ def miniapp_open_inline_keyboard(
     """Inline keyboard with single button to open Mini App."""
     if not (miniapp_url or miniapp_url.strip()):
         return Keyboard(kind=KeyboardKind.INLINE, rows=[])
-    url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
-    if platform:
-        url += f"?platform={platform}"
+    if platform == "max":
+        url = miniapp_url.strip().rstrip("/") + "/miniapp/max_app.html"
+    else:
+        url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
