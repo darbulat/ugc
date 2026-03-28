@@ -132,6 +132,24 @@ def flow_keyboard_phone_request(texts: dict[str, str]) -> Keyboard:
     )
 
 
+def flow_inline_keyboard_phone_request(texts: dict[str, str]) -> Keyboard:
+    """Inline KB: Share phone (request_contact). For Max messenger."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts.get(
+                        "btn_phone_request", "📱 Поделиться номером телефона"
+                    ),
+                    request_contact=True,
+                )
+            ]
+        ],
+    )
+
+
 def flow_keyboard_city_request(
     texts: dict[str, str],
     miniapp_location_url: str | None = None,
@@ -162,6 +180,24 @@ def flow_keyboard_city_request(
         rows=rows,
         one_time=True,
         resize=True,
+    )
+
+
+def flow_inline_keyboard_location_request(texts: dict[str, str]) -> Keyboard:
+    """Inline KB: Share location (request_geo_location). For Max messenger."""
+
+    return Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=texts.get(
+                        "btn_location_request", "📍 Поделиться геопозицией"
+                    ),
+                    request_location=True,
+                )
+            ]
+        ],
     )
 
 

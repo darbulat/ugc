@@ -1,5 +1,7 @@
 """MaxEventAdapter — converts raw Max webhook payloads to neutral DTOs."""
 
+import re
+
 from ugc_bot.application.messenger.dto import (
     IncomingCallback,
     IncomingMessage,
@@ -8,6 +10,38 @@ from ugc_bot.application.messenger.dto import (
 )
 from ugc_bot.application.messenger.ports import MessengerEventAdapter
 from ugc_bot.domain.enums import MessengerType
+
+_VCF_TEL_RE = re.compile(r"TEL[^:]*:\s*([+\d\s()\-]+)")
+
+
+def _extract_phone_from_vcf(vcf_info: str | None) -> str | None:
+    """Extract phone number from a VCF/vCard string."""
+    if not vcf_info:
+        return None
+    m = _VCF_TEL_RE.search(vcf_info)
+    return m.group(1).strip() if m else None
+
+
+def _extract_contact_phone(attachments: list[dict]) -> str | None:
+    """Extract phone from ContactAttachment in message attachments."""
+    for att in attachments:
+        if att.get("type") == "contact":
+            payload = att.get("payload") or {}
+            return _extract_phone_from_vcf(payload.get("vcf_info"))
+    return None
+
+
+def _extract_location(
+    attachments: list[dict],
+) -> tuple[float | None, float | None]:
+    """Extract lat/lon from LocationAttachment in message attachments."""
+    for att in attachments:
+        if att.get("type") == "location":
+            lat = att.get("latitude")
+            lon = att.get("longitude")
+            if lat is not None and lon is not None:
+                return float(lat), float(lon)
+    return None, None
 
 
 class MaxEventAdapter(MessengerEventAdapter):
@@ -28,11 +62,18 @@ class MaxEventAdapter(MessengerEventAdapter):
             username=sender.get("username"),
         )
 
+        attachments: list[dict] = body.get("attachments") or []
+        contact_phone = _extract_contact_phone(attachments)
+        location_lat, location_lon = _extract_location(attachments)
+
         return IncomingMessage(
             chat_id=chat_id,
             user=user,
             text=body.get("text"),
             message_id=body.get("mid"),
+            contact_phone=contact_phone,
+            location_lat=location_lat,
+            location_lon=location_lon,
             raw=event,
         )
 

@@ -148,12 +148,21 @@ async def test_reply_keyboard_ignored(client, mock_session):
 
 
 @pytest.mark.asyncio
-async def test_send_text_strips_html(client, mock_session):
+async def test_send_text_html_format(client, mock_session):
     await client.send_text(
         chat_id="123", text="<b>Bold</b> and <i>italic</i>", parse_mode="HTML"
     )
     body = mock_session.request.call_args.kwargs["json"]
-    assert body["text"] == "Bold and italic"
+    assert body["text"] == "<b>Bold</b> and <i>italic</i>"
+    assert body["format"] == "html"
+
+
+@pytest.mark.asyncio
+async def test_send_text_no_format_without_parse_mode(client, mock_session):
+    await client.send_text(chat_id="123", text="plain text")
+    body = mock_session.request.call_args.kwargs["json"]
+    assert body["text"] == "plain text"
+    assert "format" not in body
 
 
 def test_build_inline_keyboard_open_app_button():
@@ -187,6 +196,40 @@ def test_build_inline_keyboard_request_contact():
     result = _build_inline_keyboard(kb)
     btn = result["payload"]["buttons"][0][0]
     assert btn["type"] == "request_contact"
+
+
+def test_flow_inline_keyboard_phone_request():
+    from ugc_bot.bot.telegram.handlers.keyboards import (
+        flow_inline_keyboard_phone_request,
+    )
+
+    kb = flow_inline_keyboard_phone_request({})
+    assert kb.kind == KeyboardKind.INLINE
+    assert len(kb.rows) == 1
+    btn = kb.rows[0][0]
+    assert btn.request_contact is True
+
+    kb_custom = flow_inline_keyboard_phone_request(
+        {"btn_phone_request": "Share phone"}
+    )
+    assert kb_custom.rows[0][0].text == "Share phone"
+
+
+def test_flow_inline_keyboard_location_request():
+    from ugc_bot.bot.telegram.handlers.keyboards import (
+        flow_inline_keyboard_location_request,
+    )
+
+    kb = flow_inline_keyboard_location_request({})
+    assert kb.kind == KeyboardKind.INLINE
+    assert len(kb.rows) == 1
+    btn = kb.rows[0][0]
+    assert btn.request_location is True
+
+    kb_custom = flow_inline_keyboard_location_request(
+        {"btn_location_request": "Share location"}
+    )
+    assert kb_custom.rows[0][0].text == "Share location"
 
 
 def test_build_inline_keyboard_request_location():

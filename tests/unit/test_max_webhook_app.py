@@ -269,6 +269,158 @@ async def test_router_callback_handler_exception_is_swallowed():
 
 
 # ---------------------------------------------------------------------------
+# Adapter contact extraction tests
+# ---------------------------------------------------------------------------
+
+
+def test_adapter_extracts_contact_phone_from_vcf():
+    """ContactAttachment with vcf_info should populate contact_phone."""
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "message_created",
+        "message": {
+            "sender": {"user_id": 42, "username": "alice"},
+            "recipient": {"chat_id": 99},
+            "body": {
+                "mid": "m1",
+                "text": None,
+                "attachments": [
+                    {
+                        "type": "contact",
+                        "payload": {
+                            "vcf_info": (
+                                "BEGIN:VCARD\n"
+                                "VERSION:3.0\n"
+                                "FN:Alice\n"
+                                "TEL:+79001234567\n"
+                                "END:VCARD"
+                            ),
+                            "tam_info": {"user_id": 42, "name": "Alice"},
+                        },
+                    }
+                ],
+            },
+        },
+    }
+    msg = adapter.from_message(event)
+    assert msg.contact_phone == "+79001234567"
+
+
+def test_adapter_contact_phone_none_without_attachment():
+    """Without ContactAttachment, contact_phone should be None."""
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "message_created",
+        "message": {
+            "sender": {"user_id": 1, "username": "u"},
+            "recipient": {"chat_id": 1},
+            "body": {"mid": "m1", "text": "+79009009090"},
+        },
+    }
+    msg = adapter.from_message(event)
+    assert msg.contact_phone is None
+
+
+def test_adapter_contact_phone_none_when_vcf_empty():
+    """ContactAttachment with empty vcf_info should leave contact_phone None."""
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "message_created",
+        "message": {
+            "sender": {"user_id": 1, "username": "u"},
+            "recipient": {"chat_id": 1},
+            "body": {
+                "mid": "m1",
+                "text": None,
+                "attachments": [
+                    {
+                        "type": "contact",
+                        "payload": {"vcf_info": None, "tam_info": None},
+                    }
+                ],
+            },
+        },
+    }
+    msg = adapter.from_message(event)
+    assert msg.contact_phone is None
+
+
+def test_adapter_extracts_location_from_attachment():
+    """LocationAttachment should populate location_lat/lon."""
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "message_created",
+        "message": {
+            "sender": {"user_id": 1, "username": "u"},
+            "recipient": {"chat_id": 1},
+            "body": {
+                "mid": "m1",
+                "text": None,
+                "attachments": [
+                    {
+                        "type": "location",
+                        "latitude": 55.7558,
+                        "longitude": 37.6173,
+                    }
+                ],
+            },
+        },
+    }
+    msg = adapter.from_message(event)
+    assert msg.location_lat == 55.7558
+    assert msg.location_lon == 37.6173
+
+
+def test_adapter_location_none_without_attachment():
+    """Without LocationAttachment, location should be None."""
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "message_created",
+        "message": {
+            "sender": {"user_id": 1, "username": "u"},
+            "recipient": {"chat_id": 1},
+            "body": {"mid": "m1", "text": "Moscow"},
+        },
+    }
+    msg = adapter.from_message(event)
+    assert msg.location_lat is None
+    assert msg.location_lon is None
+
+
+# ---------------------------------------------------------------------------
+# VCF phone extraction unit tests
+# ---------------------------------------------------------------------------
+
+
+def test_extract_phone_from_vcf_standard():
+    from ugc_bot.infrastructure.messenger.max.adapter import (
+        _extract_phone_from_vcf,
+    )
+
+    vcf = "BEGIN:VCARD\nVERSION:3.0\nTEL:+79001234567\nEND:VCARD"
+    assert _extract_phone_from_vcf(vcf) == "+79001234567"
+
+
+def test_extract_phone_from_vcf_with_type():
+    from ugc_bot.infrastructure.messenger.max.adapter import (
+        _extract_phone_from_vcf,
+    )
+
+    vcf = "BEGIN:VCARD\nTEL;TYPE=CELL:+79005556677\nEND:VCARD"
+    assert _extract_phone_from_vcf(vcf) == "+79005556677"
+
+
+def test_extract_phone_from_vcf_none():
+    from ugc_bot.infrastructure.messenger.max.adapter import (
+        _extract_phone_from_vcf,
+    )
+
+    assert _extract_phone_from_vcf(None) is None
+    assert _extract_phone_from_vcf("") is None
+    assert _extract_phone_from_vcf("BEGIN:VCARD\nEND:VCARD") is None
+
+
+# ---------------------------------------------------------------------------
 # Middleware tests
 # ---------------------------------------------------------------------------
 

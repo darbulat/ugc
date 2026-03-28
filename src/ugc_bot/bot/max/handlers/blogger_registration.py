@@ -25,6 +25,10 @@ from ugc_bot.application.services.user_role_service import (
     _extract_instagram_username,
 )
 from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.telegram.handlers.blogger_registration import (
+    _get_location_from_incoming,
+    _handle_city_from_location,
+)
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     _format_verification_instruction,
 )
@@ -53,6 +57,8 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
     flow_inline_keyboard,
+    flow_inline_keyboard_location_request,
+    flow_inline_keyboard_phone_request,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.telegram.handlers.utils import (
@@ -466,11 +472,10 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         ["btn_phone_request", "msg_phone_request"], locale
     )
     phone_prompt = texts.get("msg_phone_request", "")
-    # Max has no contact-sharing, always plain text input
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=phone_prompt,
-        keyboard=flow_keyboard_remove(),
+        keyboard=flow_inline_keyboard_phone_request(texts),
     )
     await state_store.set_state(STATE_BLOG_PHONE)
 
@@ -484,8 +489,7 @@ async def handle_phone(incoming: IncomingMessage, deps: dict) -> None:
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
-    # Max has no contact-sharing, always text input
-    phone = (incoming.text or "").strip()
+    phone = (incoming.contact_phone or incoming.text or "").strip()
     err = validate_phone(phone, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
@@ -496,25 +500,43 @@ async def handle_phone(incoming: IncomingMessage, deps: dict) -> None:
         return
 
     await state_store.update_data(phone=phone)
-    step_city = await bot_texts_service.get("msg_step_ask_city", locale)
-    # Max has no location-sharing, always plain text input
+    city_texts = await bot_texts_service.get_many(
+        ["msg_step_ask_city", "btn_location_request"], locale
+    )
+    step_city = city_texts.get("msg_step_ask_city", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=step_city,
-        keyboard=flow_keyboard_remove(),
+        keyboard=flow_inline_keyboard_location_request(city_texts),
     )
     await state_store.set_state(STATE_BLOG_CITY)
 
 
 @router.message_in_state(STATE_BLOG_CITY)
 async def handle_city(incoming: IncomingMessage, deps: dict) -> None:
-    """Store city (text only) and ask for birth date."""
+    """Store city (text or location) and ask for birth date."""
     messenger_client, state_store, bot_texts_service, locale = _get_services(
         deps
     )
     blogger_registration_service: BloggerRegistrationService = deps[
         "blogger_registration_service"
     ]
+
+    # Handle shared location first
+    location = _get_location_from_incoming(incoming)
+    if location is not None:
+        lat, lon = location
+        await _handle_city_from_location(
+            incoming,
+            state_store,
+            lat,
+            lon,
+            blogger_registration_service,
+            messenger_client,
+            bot_texts_service,
+            locale,
+        )
+        return
 
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
@@ -540,11 +562,13 @@ async def handle_city(incoming: IncomingMessage, deps: dict) -> None:
         err_not_found = await bot_texts_service.get(
             "err_city_not_found_use_map", locale
         )
-        # Max has no map picker, just ask again
+        loc_texts = await bot_texts_service.get_many(
+            ["btn_location_request"], locale
+        )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=err_not_found,
-            keyboard=flow_keyboard_remove(),
+            keyboard=flow_inline_keyboard_location_request(loc_texts),
         )
         return
 

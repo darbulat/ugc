@@ -209,10 +209,7 @@ def test_miniapp_open_inline_keyboard_with_platform() -> None:
     kb = miniapp_open_inline_keyboard("https://bot.example.com", platform="max")
     assert kb.rows
     btn = kb.rows[0][0]
-    assert (
-        btn.web_app_url
-        == "https://bot.example.com/miniapp/max_app.html"
-    )
+    assert btn.web_app_url == "https://bot.example.com/miniapp/max_app.html"
 
 
 def test_miniapp_open_inline_keyboard_default_platform() -> None:
