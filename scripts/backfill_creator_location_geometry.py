@@ -112,9 +112,7 @@ async def _geocode_city_tokens(
                     detail_region,
                     detail_country,
                 ) = details
-                if geocoder.accepts_as_place_or_region(
-                    place_class, place_type
-                ):
+                if geocoder.accepts_as_place_or_region(place_class, place_type):
                     cache[key] = (lat, lon)
                     coord = (lat, lon)
                 else:
@@ -198,19 +196,23 @@ async def run(
         region_str = (region or "").strip() or None
         tokens = _parse_city_tokens(city_str)
         if not tokens:
-            logger.debug("Empty tokens for user_id=%s city=%r", user_id, city_str)
+            logger.debug(
+                "Empty tokens for user_id=%s city=%r", user_id, city_str
+            )
             continue
 
-        coords, region_from_geocoder, country_from_geocoder = (
-            await _geocode_city_tokens(
-                geocoder,
-                tokens,
-                country_for_profile,
-                region_str,
-                geo_cache,
-                provider=config.geocoder.provider,
-                delay_seconds=delay_seconds,
-            )
+        (
+            coords,
+            region_from_geocoder,
+            country_from_geocoder,
+        ) = await _geocode_city_tokens(
+            geocoder,
+            tokens,
+            country_for_profile,
+            region_str,
+            geo_cache,
+            provider=config.geocoder.provider,
+            delay_seconds=delay_seconds,
         )
         if not coords:
             skipped_no_coords += 1
@@ -239,7 +241,9 @@ async def run(
 
         async with session_factory() as session:
             try:
-                profile = await blogger_repo.get_by_user_id(user_id, session=session)
+                profile = await blogger_repo.get_by_user_id(
+                    user_id, session=session
+                )
                 if profile is None:
                     logger.warning("Profile not found for user_id=%s", user_id)
                     errors += 1
@@ -247,7 +251,10 @@ async def run(
                 update_kw: dict = {"location_geometry": wkt}
                 if not (profile.region or "").strip() and region_from_geocoder:
                     update_kw["region"] = region_from_geocoder
-                if not (profile.country or "").strip() and country_from_geocoder:
+                if (
+                    not (profile.country or "").strip()
+                    and country_from_geocoder
+                ):
                     update_kw["country"] = country_from_geocoder
                 updated = replace(profile, **update_kw)
                 await blogger_repo.save(updated, session=session)

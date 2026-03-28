@@ -499,6 +499,7 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
     if result.manager_id:
         manager = await user_role_service.get_user_by_id(result.manager_id)
 
+    telegram_messenger_client = deps.get("telegram_messenger_client")
     await _send_contact_immediately(
         order=result.order,
         blogger_id=user.user_id,
@@ -512,4 +513,5 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         bot_texts_service=bot_texts_service,
         manager=manager,
         currency_symbol=config.market.currency_symbol,
+        telegram_messenger_client=telegram_messenger_client,
     )

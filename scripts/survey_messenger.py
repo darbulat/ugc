@@ -16,14 +16,14 @@ import sys
 
 from aiogram import Bot
 from sqlalchemy import select
-
-from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.handlers.keyboards import (
     CALLBACK_SURVEY_MESSENGER_MAX,
     CALLBACK_SURVEY_MESSENGER_OTHER,
     CALLBACK_SURVEY_MESSENGER_OWN_APP,
     CALLBACK_SURVEY_MESSENGER_TG,
 )
+
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.config import load_config
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.db.models import UserModel

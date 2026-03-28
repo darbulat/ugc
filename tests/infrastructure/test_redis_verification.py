@@ -39,6 +39,37 @@ def test_serialize_deserialize_roundtrip() -> None:
     assert restored.used == vc.used
 
 
+def test_serialize_deserialize_with_link_fields() -> None:
+    """Roundtrip preserves link_max_id, link_max_chat_id, link_username."""
+    now = datetime.now(timezone.utc)
+    vc = InstagramVerificationCode(
+        code_id=uuid4(),
+        user_id=uuid4(),
+        code="LINK1234",
+        expires_at=now + timedelta(minutes=15),
+        used=False,
+        created_at=now,
+        link_max_id="max_user_42",
+        link_max_chat_id="max_chat_99",
+        link_username="testuser",
+    )
+    data = _serialize(vc)
+    restored = _deserialize(data)
+    assert restored.link_max_id == "max_user_42"
+    assert restored.link_max_chat_id == "max_chat_99"
+    assert restored.link_username == "testuser"
+
+
+def test_deserialize_without_link_fields() -> None:
+    """Deserialize old format without link fields returns None."""
+    vc = _make_code()
+    data = _serialize(vc)
+    restored = _deserialize(data)
+    assert restored.link_max_id is None
+    assert restored.link_max_chat_id is None
+    assert restored.link_username is None
+
+
 @pytest.mark.asyncio
 async def test_save_sets_keys_with_ttl() -> None:
     """save stores code under three keys with TTL."""

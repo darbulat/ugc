@@ -61,7 +61,14 @@ def validate_init_data_and_get_telegram_user_id(
     ).hexdigest()
 
     if not hmac.compare_digest(computed_hash, received_hash):
-        logger.warning("initData signature mismatch")
+        logger.warning(
+            "initData signature mismatch: prefix=%s"
+            " computed=%s received=%s check=%s",
+            bot_token[:10] + "...",
+            computed_hash[:16] + "...",
+            received_hash[:16] + "...",
+            data_check_string[:100],
+        )
         raise ValueError("Invalid init_data signature")
 
     user_json = data_dict.get("user")

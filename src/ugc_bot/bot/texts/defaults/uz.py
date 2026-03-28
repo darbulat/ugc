@@ -49,6 +49,7 @@ UZ: dict[str, str] = {
     "btn_pay_order": "💳 №{creation_number} to'lash",
     "btn_open_profile": "🔗 Profilni ochish",
     "btn_write_telegram": "Telegramda yozish",
+    "btn_write_max": "Maksda yozish",
     "btn_ok_skipped": "Ok, o'tkazib yuborildi.",
     "order_type_ugc_only": "🎥 Brend uchun UGC-video",
     "order_type_ugc_placement": "📢 UGC + kreatorda joylashtirish",

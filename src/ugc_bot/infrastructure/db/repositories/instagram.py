@@ -164,6 +164,9 @@ def _to_verification_entity(
         expires_at=model.expires_at,
         used=model.used,
         created_at=model.created_at,
+        link_max_id=model.link_max_id,
+        link_max_chat_id=model.link_max_chat_id,
+        link_username=model.link_username,
     )
 
 
@@ -178,6 +181,9 @@ def _to_verification_model(
         expires_at=code.expires_at,
         used=code.used,
         created_at=code.created_at,
+        link_max_id=code.link_max_id,
+        link_max_chat_id=code.link_max_chat_id,
+        link_username=code.link_username,
     )
 
 

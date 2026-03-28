@@ -132,9 +132,16 @@ class MaxRouter:
     ) -> None:
         """Route an incoming message to the first matching handler.
 
-        State-based handlers are checked first (if a state_store is present in
-        deps), then regular predicate-based handlers.
+        Commands (messages starting with ``/``) are checked against
+        predicate-based handlers first so they work even when the user
+        is in an FSM state.  For regular text the order is reversed:
+        state-based handlers are checked first, then predicate-based.
         """
+        is_command = bool(incoming.text and incoming.text.startswith("/"))
+
+        if is_command and await self._try_predicate_handlers(incoming, deps):
+            return
+
         state_store = deps.get("state_store")
         if state_store is not None and self._state_message_handlers:
             current_state = await state_store.get_state()
@@ -153,6 +160,18 @@ class MaxRouter:
                     await self._send_error(incoming.chat_id, deps)
                 return
 
+        if not is_command and await self._try_predicate_handlers(
+            incoming, deps
+        ):
+            return
+        logger.debug(
+            "No Max message handler matched for text=%r", incoming.text
+        )
+
+    async def _try_predicate_handlers(
+        self, incoming: IncomingMessage, deps: dict[str, Any]
+    ) -> bool:
+        """Try predicate-based handlers. Return True if one matched."""
         for predicate, handler in self._message_handlers:
             try:
                 matched = predicate(incoming)
@@ -168,10 +187,8 @@ class MaxRouter:
                         handler.__name__,
                     )
                     await self._send_error(incoming.chat_id, deps)
-                return
-        logger.debug(
-            "No Max message handler matched for text=%r", incoming.text
-        )
+                return True
+        return False
 
     async def _remove_callback_keyboard(
         self, incoming: IncomingCallback, deps: dict[str, Any]

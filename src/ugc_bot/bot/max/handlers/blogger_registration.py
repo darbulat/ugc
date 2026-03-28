@@ -1,6 +1,7 @@
 """Blogger registration flow handlers for Max messenger."""
 
 import logging
+import re
 from datetime import date
 from uuid import UUID
 
@@ -15,9 +16,18 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.instagram_verification_service import (
+    InstagramVerificationService,
+)
 from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.application.services.user_role_service import (
+    UserRoleService,
+    _extract_instagram_username,
+)
 from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.telegram.handlers.instagram_verification import (
+    _format_verification_instruction,
+)
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_AGE_0_17,
     CALLBACK_BLOGGER_AGE_18_24,
@@ -32,11 +42,13 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_BARTER_Y,
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
+    CALLBACK_BLOGGER_RETRY_INSTAGRAM,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
     CALLBACK_ROLE_CREATOR,
     blogger_after_registration_inline_keyboard,
+    blogger_verification_sent_inline_keyboard,
     confirm_agreement_inline_keyboard,
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
@@ -379,9 +391,6 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
     err_empty = await bot_texts_service.get("err_instagram_empty", locale)
     err_format = await bot_texts_service.get("err_instagram_format", locale)
     err_example = await bot_texts_service.get("err_instagram_example", locale)
-    msg_already = await bot_texts_service.get(
-        "msg_instagram_already_registered", locale
-    )
 
     instagram_url = normalize_instagram_url((incoming.text or "").strip())
     if not instagram_url:
@@ -403,16 +412,53 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         )
         return
 
-    existing_profile = (
-        await blogger_registration_service.get_profile_by_instagram_url(
-            instagram_url
+    ig_username = _extract_instagram_username(instagram_url)
+    existing_profile = None
+    if ig_username:
+        svc = blogger_registration_service
+        existing_profile = await svc.get_profile_by_instagram_username(
+            ig_username
         )
-    )
     if existing_profile is not None:
+        instagram_verification_service: InstagramVerificationService = deps[
+            "instagram_verification_service"
+        ]
+        config: AppConfig = deps["config"]
+        verification = await instagram_verification_service.generate_code(
+            existing_profile.user_id,
+            link_max_id=incoming.user.external_id,
+            link_max_chat_id=incoming.chat_id,
+            link_username=incoming.user.username or "",
+        )
+        instruction_template = await bot_texts_service.get(
+            "msg_instagram_verify_instruction", locale
+        )
+        instruction = _format_verification_instruction(
+            instruction_template,
+            config.instagram.admin_instagram_username,
+        )
+        instruction_plain = re.sub(r"<[^>]+>", "", instruction)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=msg_already,
+            text=instruction_plain,
         )
+        admin_username = (
+            config.instagram.admin_instagram_username or ""
+        ).lstrip("@")
+        direct_url = (
+            f"https://ig.me/m/{admin_username}" if admin_username else None
+        )
+        texts_v = await bot_texts_service.get_many(
+            ["btn_open_direct", "btn_my_profile"], locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=verification.code,
+            keyboard=blogger_verification_sent_inline_keyboard(
+                texts_v, direct_url=direct_url
+            ),
+        )
+        await state_store.clear()
         return
 
     await state_store.update_data(instagram_url=instagram_url)
@@ -1052,3 +1098,25 @@ async def handle_agreements_callback(
         text=msg_profile_created,
         keyboard=blogger_after_registration_inline_keyboard(after_texts),
     )
+
+
+@router.callback(
+    lambda c: c.data == CALLBACK_BLOGGER_RETRY_INSTAGRAM,
+)
+async def handle_retry_instagram_callback(
+    incoming: IncomingCallback, deps: dict
+) -> None:
+    """Return user to Instagram URL input step."""
+    messenger_client, state_store, bot_texts_service, locale = _get_services(
+        deps
+    )
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    step_instagram = await bot_texts_service.get(
+        "msg_step_ask_instagram", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=step_instagram,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(STATE_BLOG_INSTAGRAM)

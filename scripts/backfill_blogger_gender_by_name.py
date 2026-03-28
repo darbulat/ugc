@@ -31,17 +31,51 @@ from ugc_bot.infrastructure.db.session import create_session_factory
 logger = logging.getLogger(__name__)
 
 # Fallback if data files are missing (small set)
-_DEFAULT_MALE: frozenset[str] = frozenset({
-    "александр", "алексей", "андрей", "дмитрий", "иван", "сергей", "михаил",
-    "alexander", "john", "michael", "dmitry", "ivan", "pavel",
-})
-_DEFAULT_FEMALE: frozenset[str] = frozenset({
-    "александра", "анна", "мария", "елена", "ольга", "наталья", "ирина",
-    "anna", "maria", "elena", "olga", "natalia",
-})
-_DEFAULT_AMBIGUOUS: frozenset[str] = frozenset({
-    "саша", "женя", "валя", "слава", "шура", "sasha", "zhenya", "valya",
-})
+_DEFAULT_MALE: frozenset[str] = frozenset(
+    {
+        "александр",
+        "алексей",
+        "андрей",
+        "дмитрий",
+        "иван",
+        "сергей",
+        "михаил",
+        "alexander",
+        "john",
+        "michael",
+        "dmitry",
+        "ivan",
+        "pavel",
+    }
+)
+_DEFAULT_FEMALE: frozenset[str] = frozenset(
+    {
+        "александра",
+        "анна",
+        "мария",
+        "елена",
+        "ольга",
+        "наталья",
+        "ирина",
+        "anna",
+        "maria",
+        "elena",
+        "olga",
+        "natalia",
+    }
+)
+_DEFAULT_AMBIGUOUS: frozenset[str] = frozenset(
+    {
+        "саша",
+        "женя",
+        "валя",
+        "слава",
+        "шура",
+        "sasha",
+        "zhenya",
+        "valya",
+    }
+)
 
 
 def _load_names_from_file(path: Path) -> frozenset[str]:
@@ -56,7 +90,9 @@ def _load_names_from_file(path: Path) -> frozenset[str]:
     return frozenset(names)
 
 
-_NAME_SETS_CACHE: tuple[frozenset[str], frozenset[str], frozenset[str]] | None = None
+_NAME_SETS_CACHE: (
+    tuple[frozenset[str], frozenset[str], frozenset[str]] | None
+) = None
 
 
 def _get_name_sets() -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
@@ -76,6 +112,7 @@ def _get_name_sets() -> tuple[frozenset[str], frozenset[str], frozenset[str]]:
         ambiguous = _DEFAULT_AMBIGUOUS
     _NAME_SETS_CACHE = (male, female, ambiguous)
     return _NAME_SETS_CACHE
+
 
 # Split username by spaces, underscores, digits, or common separators to get first token.
 _FIRST_WORD_RE = re.compile(r"^[^a-zA-Zа-яА-ЯёЁ]*([a-zA-Zа-яА-ЯёЁ]+)")
@@ -229,7 +266,9 @@ async def run(dry_run: bool, use_api: bool = False) -> int:
                 session=session,
             )
             if profile is None:
-                logger.warning("Blogger profile not found for user_id=%s", user_id)
+                logger.warning(
+                    "Blogger profile not found for user_id=%s", user_id
+                )
                 continue
             updated = replace(profile, blogger_gender=gender)
             await blogger_repo.save(updated, session=session)

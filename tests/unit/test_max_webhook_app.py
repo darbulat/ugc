@@ -547,14 +547,14 @@ async def test_state_store_get_set_state():
 
     redis = AsyncMock()
     redis.get = AsyncMock(return_value="waiting_input")
-    redis.setex = AsyncMock()
+    redis.set = AsyncMock()
 
     store = MaxRedisStateStore(redis=redis, chat_id="1", user_id="2")
     result = await store.get_state()
     assert result == "waiting_input"
 
     await store.set_state("new_state")
-    redis.setex.assert_called_once()
+    redis.set.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -581,10 +581,10 @@ async def test_state_store_update_and_get_data():
     redis = AsyncMock()
     redis.get = AsyncMock(return_value=None)
 
-    async def fake_setex(key, ttl, value):
+    async def fake_set(key, value):
         stored.append(value)
 
-    redis.setex = AsyncMock(side_effect=fake_setex)
+    redis.set = AsyncMock(side_effect=fake_set)
 
     store = MaxRedisStateStore(redis=redis, chat_id="1", user_id="2")
     await store.update_data(name="Alice", step=3)
@@ -685,6 +685,10 @@ async def test_lifespan_with_max_bot_sets_state():
     mock_container.build_bot_services = MagicMock(return_value={})
     mock_container.dispose = AsyncMock()
 
+    mock_bot = MagicMock()
+    mock_bot.session = MagicMock()
+    mock_bot.session.close = AsyncMock()
+
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
         patch(
@@ -695,11 +699,15 @@ async def test_lifespan_with_max_bot_sets_state():
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
+        patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
     ):
         async with _lifespan(fake_app):
             assert fake_app.state.config is mock_config
             assert fake_app.state.max_router is not None
+            assert fake_app.state.telegram_messenger_client is not None
 
+    mock_bot.session.close.assert_called_once()
     mock_container.dispose.assert_called_once()
 
 
@@ -733,6 +741,10 @@ async def test_lifespan_webhook_registration_failure_raises():
     mock_container.build_bot_services = MagicMock(return_value={})
     mock_container.dispose = AsyncMock()
 
+    mock_bot = MagicMock()
+    mock_bot.session = MagicMock()
+    mock_bot.session.close = AsyncMock()
+
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
         patch(
@@ -743,6 +755,8 @@ async def test_lifespan_webhook_registration_failure_raises():
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
+        patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
         pytest.raises(RuntimeError, match="Failed to register Max webhook"),
     ):
         async with _lifespan(fake_app):
@@ -793,6 +807,10 @@ def max_app_client() -> TestClient:
     )
     mock_container.dispose = AsyncMock()
 
+    mock_bot = MagicMock()
+    mock_bot.session = MagicMock()
+    mock_bot.session.close = AsyncMock()
+
     with (
         patch("ugc_bot.max_webhook_app.load_config", return_value=mock_config),
         patch(
@@ -803,6 +821,8 @@ def max_app_client() -> TestClient:
             return_value=mock_http_session,
         ),
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
+        patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
+        patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
         TestClient(app) as c,
     ):
         yield c
@@ -813,3 +833,41 @@ def test_miniapp_api_routes_mounted(max_app_client: TestClient) -> None:
     response = max_app_client.post("/miniapp/api/config", json={})
     # 422 = validation error (missing init_data), not 404 = route exists
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_retry_instagram_callback_sets_state() -> None:
+    """Retry instagram callback sets FSM to blog_instagram step."""
+    from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
+    from ugc_bot.bot.max.handlers.blogger_registration import (
+        STATE_BLOG_INSTAGRAM,
+        handle_retry_instagram_callback,
+    )
+
+    incoming = IncomingCallback(
+        callback_id="cb_1",
+        chat_id="chat_42",
+        user=IncomingUser(
+            external_id="user_1",
+            messenger_type=MessengerType.MAX,
+            username="tester",
+        ),
+        data="blogger:retry_instagram",
+    )
+    messenger_client = AsyncMock()
+    state_store = AsyncMock()
+    bot_texts_service = AsyncMock()
+    bot_texts_service.get = AsyncMock(
+        return_value="Пришлите ссылку в формате instagram.com/name"
+    )
+    deps = {
+        "messenger_client": messenger_client,
+        "state_store": state_store,
+        "bot_texts_service": bot_texts_service,
+        "locale": "ru",
+    }
+    await handle_retry_instagram_callback(incoming, deps)
+    messenger_client.answer_callback.assert_called_once_with(callback_id="cb_1")
+    messenger_client.send_text.assert_called_once()
+    assert messenger_client.send_text.call_args.kwargs["chat_id"] == "chat_42"
+    state_store.set_state.assert_called_once_with(STATE_BLOG_INSTAGRAM)

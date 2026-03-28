@@ -113,12 +113,20 @@ async def start_verification(incoming: IncomingMessage, deps: dict) -> None:
         text=instruction_plain,
     )
 
-    texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
+    admin_username = (config.instagram.admin_instagram_username or "").lstrip(
+        "@"
+    )
+    direct_url = f"https://ig.me/m/{admin_username}" if admin_username else None
+    texts = await bot_texts_service.get_many(
+        ["btn_open_direct", "btn_my_profile"], locale
+    )
     # Send verification code as plain text (no <code> tags)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=verification.code,
-        keyboard=blogger_verification_sent_inline_keyboard(texts),
+        keyboard=blogger_verification_sent_inline_keyboard(
+            texts, direct_url=direct_url
+        ),
     )
 
 
@@ -209,9 +217,15 @@ async def start_verification_from_profile_callback(
         text=instruction_plain,
     )
 
-    texts = await bot_texts_service.get_many(["btn_my_profile"], locale)
+    admin_un = (config.instagram.admin_instagram_username or "").lstrip("@")
+    dm_url = f"https://ig.me/m/{admin_un}" if admin_un else None
+    texts = await bot_texts_service.get_many(
+        ["btn_open_direct", "btn_my_profile"], locale
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=verification.code,
-        keyboard=blogger_verification_sent_inline_keyboard(texts),
+        keyboard=blogger_verification_sent_inline_keyboard(
+            texts, direct_url=dm_url
+        ),
     )

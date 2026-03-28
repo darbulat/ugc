@@ -74,7 +74,9 @@ async def run(dry_run: bool, telegram: str | None) -> int:
             result = await session.execute(del_sql, {"norm": normalized})
         else:
             if dry_run:
-                result = await session.execute(text("SELECT COUNT(*) FROM users"))
+                result = await session.execute(
+                    text("SELECT COUNT(*) FROM users")
+                )
                 count = result.scalar_one()
                 print(
                     f"Would delete {count} user(s). Run without --dry-run to apply."

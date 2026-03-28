@@ -13,9 +13,11 @@ from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
+    VerificationLinkSuccess,
     VerificationMismatch,
     VerificationSuccess,
 )
+from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import (
     BloggerProfile,
     InstagramVerificationCode,
@@ -878,3 +880,128 @@ async def test_verify_code_by_instagram_sender_with_transaction_manager(
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True
+
+
+@pytest.mark.asyncio
+async def test_verify_code_by_instagram_sender_link_success() -> None:
+    """verify_code_by_instagram_sender returns VerificationLinkSuccess."""
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_role_service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=profile_repo,
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        user_role_service=user_role_service,
+    )
+    verification = await service.generate_code(
+        user_id,
+        link_max_id="max_sender_42",
+        link_max_chat_id="max_chat_42",
+        link_username="maxuser",
+    )
+    result = await service.verify_code_by_instagram_sender(
+        instagram_sender_id="instagram_123",
+        code=verification.code,
+        admin_instagram_username="admin_test",
+    )
+    assert isinstance(result, VerificationLinkSuccess)
+    assert result.user_id == user_id
+    assert result.linked_user_id == user_id
+    linked_user = await user_repo.get_by_id(user_id)
+    assert linked_user is not None
+    assert linked_user.max_id == "max_sender_42"
+    assert linked_user.max_chat_id == "max_chat_42"
+
+
+@pytest.mark.asyncio
+async def test_verify_code_link_success() -> None:
+    """verify_code returns VerificationLinkSuccess."""
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_role_service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=profile_repo,
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        user_role_service=user_role_service,
+    )
+    verification = await service.generate_code(
+        user_id,
+        link_max_id="max_link_1",
+        link_max_chat_id="max_chat_1",
+        link_username="maxuser",
+    )
+    result = await service.verify_code(user_id, verification.code)
+    assert isinstance(result, VerificationLinkSuccess)
+    assert result.user_id == user_id
+
+
+@pytest.mark.asyncio
+async def test_try_link_no_user_role_service() -> None:
+    """_try_link returns None when no user_role_service."""
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+    )
+    verification = await service.generate_code(
+        user_id,
+        link_max_id="max_link_1",
+        link_max_chat_id="max_chat_1",
+        link_username="maxuser",
+    )
+    result = await service.verify_code(user_id, verification.code)
+    assert result is True
+
+
+@pytest.mark.asyncio
+async def test_try_link_returns_none_when_link_fails() -> None:
+    """_try_link returns None when user has different max_id."""
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    user = await user_repo.get_by_id(user_id)
+    assert user is not None
+    from dataclasses import replace as dc_replace
+
+    updated = dc_replace(user, max_id="other_max_id")
+    await user_repo.save(updated)
+
+    profile_repo = InMemoryBloggerProfileRepository()
+    await _seed_profile(profile_repo, user_id)
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_role_service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=profile_repo,
+    )
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+        user_role_service=user_role_service,
+    )
+    verification = await service.generate_code(
+        user_id,
+        link_max_id="new_max_id",
+        link_max_chat_id="chat",
+        link_username="maxuser",
+    )
+    result = await service.verify_code(user_id, verification.code)
+    assert result is True

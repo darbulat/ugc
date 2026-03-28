@@ -6,6 +6,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+import aiohttp
 from aiogram import Bot
 from aiokafka import (  # type: ignore[import-untyped]
     AIOKafkaConsumer,
@@ -33,6 +34,7 @@ from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
 )
+from ugc_bot.infrastructure.messenger.max.client import MaxMessengerClient
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
     is_user_blocked_bot,
@@ -520,6 +522,12 @@ async def run_consumer() -> None:
     messenger_clients: dict[str, MessengerClient] = {
         "telegram": TelegramMessengerClient(bot),
     }
+    max_session: aiohttp.ClientSession | None = None
+    if config.max_bot and config.max_bot.token:
+        max_session = aiohttp.ClientSession()
+        messenger_clients["max"] = MaxMessengerClient(
+            token=config.max_bot.token, session=max_session
+        )
     try:
         await _consume_forever(
             consumer=consumer,
@@ -533,6 +541,8 @@ async def run_consumer() -> None:
             user_role_service=user_role_service,
         )
     finally:
+        if max_session:
+            await max_session.close()
         await container.dispose()
 
 

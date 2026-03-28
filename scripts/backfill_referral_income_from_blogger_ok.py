@@ -116,7 +116,9 @@ async def run(dry_run: bool = False) -> int:
             skipped_no_country += 1
             continue
 
-        binding = await user_referral_binding_repo.get_by_referred_user(blogger_id)
+        binding = await user_referral_binding_repo.get_by_referred_user(
+            blogger_id
+        )
         if binding is None:
             logger.debug(
                 "No referral binding for blogger=%s (order=%s), skipping",

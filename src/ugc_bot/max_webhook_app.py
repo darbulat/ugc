@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import aiohttp
+from aiogram import Bot
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -46,6 +47,9 @@ from ugc_bot.infrastructure.messenger.max.client import (
     MaxMessengerClient,
 )
 from ugc_bot.infrastructure.messenger.max.state import MaxRedisStateStore
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
+)
 from ugc_bot.miniapp.api import router as miniapp_api_router
 
 logger = logging.getLogger(__name__)
@@ -85,12 +89,16 @@ async def _lifespan(app: FastAPI):
     )
     event_adapter = MaxEventAdapter()
 
+    telegram_bot = Bot(token=config.bot.bot_token)
+    telegram_messenger_client = TelegramMessengerClient(telegram_bot)
+
     app.state.config = config
     app.state.redis = redis
     app.state.bot_services = bot_services
     # Alias: miniapp/api.py reads request.app.state.dispatcher
     app.state.dispatcher = bot_services
     app.state.messenger_client = messenger_client
+    app.state.telegram_messenger_client = telegram_messenger_client
     app.state.event_adapter = event_adapter
     app.state.container = container
     app.state.max_router = max_router
@@ -118,6 +126,7 @@ async def _lifespan(app: FastAPI):
 
     yield
 
+    await telegram_bot.session.close()
     await http_session.close()
     await redis.aclose()
     await container.dispose()
@@ -165,6 +174,7 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
     deps: dict = {
         **state.bot_services,
         "messenger_client": state.messenger_client,
+        "telegram_messenger_client": state.telegram_messenger_client,
         "config": state.config,
     }
 

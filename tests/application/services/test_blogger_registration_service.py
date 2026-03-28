@@ -1137,6 +1137,37 @@ async def test_get_profile_by_instagram_url_without_transaction_manager() -> (
 
 
 @pytest.mark.asyncio
+async def test_get_profile_by_instagram_username() -> None:
+    """get_profile_by_instagram_username finds by username."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/darbulat",
+        confirmed=False,
+        city="Moscow",
+        topics={"selected": []},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="Moscow",
+        price=1000.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+    )
+    await blogger_repo.save(profile)
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=blogger_repo,
+    )
+    result = await service.get_profile_by_instagram_username("darbulat")
+    assert result is not None
+    assert result.user_id == user_id
+
+
+@pytest.mark.asyncio
 async def test_register_blogger_user_not_found_with_transaction_manager(
     fake_tm: object,
 ) -> None:

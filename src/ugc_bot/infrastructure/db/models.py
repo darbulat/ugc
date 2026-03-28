@@ -643,6 +643,15 @@ class InstagramVerificationCodeModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+    link_max_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, default=None
+    )
+    link_max_chat_id: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, default=None
+    )
+    link_username: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, default=None
+    )
 
 
 class ComplaintModel(Base):

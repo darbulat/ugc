@@ -144,6 +144,12 @@ class BloggerProfileRepository(ABC):
         """Fetch blogger profile by Instagram URL."""
 
     @abstractmethod
+    async def get_by_instagram_username(
+        self, username: str, session: object | None = None
+    ) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram username (case-insensitive)."""
+
+    @abstractmethod
     async def save(
         self, profile: BloggerProfile, session: object | None = None
     ) -> None:

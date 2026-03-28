@@ -36,6 +36,7 @@ CALLBACK_BLOGGER_BARTER_N = "blogger:barter:N"
 CALLBACK_BLOGGER_WORK_ADS = "blogger:work:ads"
 CALLBACK_BLOGGER_WORK_UGC = "blogger:work:ugc"
 CALLBACK_BLOGGER_REGION_PREFIX = "blogger:region:"
+CALLBACK_BLOGGER_RETRY_INSTAGRAM = "blogger:retry_instagram"
 CALLBACK_ORDER_AGREE = "order:agree"
 CALLBACK_PROFILE_AGREE = "profile:agree"
 CALLBACK_PROFILE_EDIT = "profile:menu:edit"
@@ -80,9 +81,10 @@ def miniapp_open_inline_keyboard(
     """Inline keyboard with single button to open Mini App."""
     if not (miniapp_url or miniapp_url.strip()):
         return Keyboard(kind=KeyboardKind.INLINE, rows=[])
-    url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
-    if platform:
-        url += f"?platform={platform}"
+    if platform == "max":
+        url = miniapp_url.strip().rstrip("/") + "/miniapp/max_app.html"
+    else:
+        url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
@@ -364,9 +366,21 @@ def blogger_after_registration_inline_keyboard(
 
 def blogger_verification_sent_inline_keyboard(
     texts: dict[str, str],
+    direct_url: str | None = None,
 ) -> Keyboard:
-    """Inline after code sent: My profile only. Needs: btn_my_profile."""
-
+    """Inline after code sent: open DM link or My profile fallback."""
+    if direct_url:
+        return Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[
+                [
+                    Button(
+                        text=texts.get("btn_open_direct", "Открыть директ"),
+                        url=direct_url,
+                    )
+                ]
+            ],
+        )
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[

@@ -9,9 +9,17 @@ import pytest
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.domain.entities import User
-from ugc_bot.domain.enums import MessengerType, UserStatus
-from ugc_bot.infrastructure.memory_repositories import InMemoryUserRepository
+from ugc_bot.domain.entities import BloggerProfile, User
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    MessengerType,
+    UserStatus,
+    WorkFormat,
+)
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryBloggerProfileRepository,
+    InMemoryUserRepository,
+)
 
 
 @pytest.mark.asyncio
@@ -52,10 +60,12 @@ async def test_set_user_updates_existing_user() -> None:
         external_id="123",
         messenger_type=MessengerType.TELEGRAM,
         username="alice-updated",
+        max_chat_id="max-chat-99",
     )
 
     assert updated.user_id == existing.user_id
     assert updated.username == "alice-updated"
+    assert updated.max_chat_id == "max-chat-99"
 
 
 @pytest.mark.asyncio
@@ -498,3 +508,257 @@ async def test_set_country_not_found() -> None:
             messenger_type=MessengerType.TELEGRAM,
             country_code="ru",
         )
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_success() -> None:
+    """Link max_id to existing Telegram user, clearing orphan Max user."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    existing_user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        messenger_type=MessengerType.TELEGRAM,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(existing_user)
+
+    orphan_user = User(
+        user_id=uuid4(),
+        max_id="max_222",
+        max_chat_id="chat_222",
+        messenger_type=MessengerType.MAX,
+        username="orphan",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(orphan_user)
+
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=existing_user.user_id,
+            instagram_url="https://instagram.com/alice",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    # URL differs from stored one (trailing slash, www) — match by username
+    linked = await service.link_max_account(
+        max_id="max_222",
+        instagram_url="https://www.instagram.com/Alice/",
+        username="alice_max",
+        max_chat_id="chat_222",
+    )
+
+    assert linked is not None
+    assert linked.user_id == existing_user.user_id
+    assert linked.max_id == "max_222"
+    assert linked.max_chat_id == "chat_222"
+    assert linked.telegram_id == "tg_111"
+    assert linked.messenger_type == MessengerType.TELEGRAM
+    assert linked.username == "alice_max"
+
+    cleared_orphan = await user_repo.get_by_id(orphan_user.user_id)
+    assert cleared_orphan is not None
+    assert cleared_orphan.max_id is None
+    assert cleared_orphan.max_chat_id is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_not_found() -> None:
+    """Return None when instagram_url not in DB."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_333",
+        instagram_url="https://instagram.com/unknown",
+        username="nobody",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_profile_user_missing() -> None:
+    """Return None when profile exists but referenced user is gone."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    missing_uid = uuid4()
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=missing_uid,
+            instagram_url="https://instagram.com/ghost",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_999",
+        instagram_url="https://instagram.com/ghost",
+        username="ghost",
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_already_has_max_id() -> None:
+    """Return None when user already has a different max_id."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    existing_user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        max_id="max_existing",
+        messenger_type=MessengerType.MAX,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(existing_user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=existing_user.user_id,
+            instagram_url="https://instagram.com/alice",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_new",
+        instagram_url="https://instagram.com/alice",
+        username="alice_max",
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_idempotent() -> None:
+    """Re-linking with the same max_id succeeds (idempotent)."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    existing_user = User(
+        user_id=uuid4(),
+        telegram_id="tg_111",
+        max_id="max_222",
+        messenger_type=MessengerType.MAX,
+        username="alice",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(existing_user)
+    await blogger_repo.save(
+        BloggerProfile(
+            user_id=existing_user.user_id,
+            instagram_url="https://instagram.com/alice",
+            confirmed=True,
+            city="Moscow",
+            topics={},
+            audience_gender=AudienceGender.ALL,
+            audience_age_min=18,
+            audience_age_max=65,
+            audience_geo="RU",
+            price=0.0,
+            barter=False,
+            work_format=WorkFormat.UGC_ONLY,
+            updated_at=datetime.now(timezone.utc),
+        )
+    )
+
+    service = UserRoleService(
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+    )
+    result = await service.link_max_account(
+        max_id="max_222",
+        instagram_url="https://instagram.com/alice",
+        username="alice_updated",
+    )
+
+    assert result is not None
+    assert result.max_id == "max_222"
+    assert result.username == "alice_updated"
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_no_blogger_repo() -> None:
+    """Return None when blogger_profile_repo is not configured."""
+    user_repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=user_repo)
+    result = await service.link_max_account(
+        max_id="max_1",
+        instagram_url="https://instagram.com/alice",
+        username="alice",
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_link_max_account_invalid_url() -> None:
+    """Return None when instagram_url has no valid username."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = UserRoleService(
+        user_repo=user_repo, blogger_profile_repo=blogger_repo
+    )
+    result = await service.link_max_account(
+        max_id="max_1",
+        instagram_url="not-a-valid-url",
+        username="alice",
+    )
+    assert result is None

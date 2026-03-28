@@ -1481,3 +1481,92 @@ async def test_send_offer_to_blogger_skips_record_when_bot_blocked() -> None:
         )
 
     dispatch_service.record_offer_sent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_run_consumer_creates_max_client_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run_consumer creates Max messenger client when max_bot is configured."""
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "token",
+            "DATABASE_URL": "sqlite:///",
+            "KAFKA_ENABLED": True,
+            "KAFKA_BOOTSTRAP_SERVERS": "kafka:9092",
+            "KAFKA_TOPIC": "order_activated",
+            "KAFKA_GROUP_ID": "ugc-bot",
+            "KAFKA_DLQ_TOPIC": "order_activated_dlq",
+            "MAX_BOT_TOKEN": "max-token",
+        }
+    )
+    monkeypatch.setattr("ugc_bot.kafka_consumer.load_config", lambda: config)
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
+    )
+
+    mock_container = type("Container", (), {})()
+    mock_container.build_offer_dispatch_service = lambda: None  # type: ignore[attr-defined]
+    mock_container.build_bot_texts_service = lambda: None  # type: ignore[attr-defined]
+    mock_container.build_user_role_service = lambda: None  # type: ignore[attr-defined]
+    mock_container.dispose = AsyncMock()  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.Container", lambda _: mock_container
+    )
+
+    captured_clients: dict = {}
+
+    async def fake_consume(**kwargs):  # type: ignore[no-untyped-def]
+        captured_clients.update(kwargs.get("messenger_clients", {}))
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr("ugc_bot.kafka_consumer._consume_forever", fake_consume)
+
+    class FakeSession:
+        async def close(self) -> None:
+            pass
+
+    class FakeBot:
+        def __init__(self, token: str) -> None:
+            self.session = FakeSession()
+
+    class FakeConsumer:
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
+
+    class FakeProducer:
+        async def start(self) -> None:
+            pass
+
+        async def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.AIOKafkaConsumer",
+        lambda *a, **kw: FakeConsumer(),
+    )
+    monkeypatch.setattr(
+        "ugc_bot.kafka_consumer.AIOKafkaProducer",
+        lambda *a, **kw: FakeProducer(),
+    )
+    monkeypatch.setattr("ugc_bot.kafka_consumer.Bot", FakeBot)
+
+    max_session_closed = {"value": False}
+    original_session = __import__("aiohttp").ClientSession
+
+    class TrackableSession(original_session):  # type: ignore[misc]
+        async def close(self) -> None:
+            max_session_closed["value"] = True
+            await super().close()
+
+    monkeypatch.setattr("aiohttp.ClientSession", TrackableSession)
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_consumer()
+
+    assert "max" in captured_clients
+    assert max_session_closed["value"] is True

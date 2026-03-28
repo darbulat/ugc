@@ -7,7 +7,7 @@ from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -81,6 +81,22 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
             exec_result = await db_session.execute(
                 select(BloggerProfileModel).where(
                     BloggerProfileModel.instagram_url == instagram_url
+                )
+            )
+            result = exec_result.scalar_one_or_none()
+            return _to_blogger_profile_entity(result) if result else None
+
+    async def get_by_instagram_username(
+        self, username: str, session: object | None = None
+    ) -> Optional[BloggerProfile]:
+        """Fetch blogger profile by Instagram username (case-insensitive)."""
+        pattern = f"%instagram.com/{username.lower().strip('/')}"
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(BloggerProfileModel).where(
+                    func.lower(BloggerProfileModel.instagram_url).like(pattern)
                 )
             )
             result = exec_result.scalar_one_or_none()

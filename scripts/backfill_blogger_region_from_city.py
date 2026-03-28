@@ -43,9 +43,7 @@ async def run(dry_run: bool, only_empty_region: bool) -> int:
         max_overflow=config.db.max_overflow,
         pool_timeout=config.db.pool_timeout,
     )
-    session_factory = async_sessionmaker(
-        bind=engine, expire_on_commit=False
-    )
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
 
     async with session_factory() as session:
         stmt = select(
