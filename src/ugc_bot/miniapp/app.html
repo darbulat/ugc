@@ -6,40 +6,7 @@
   <title>UGC — Регистрация и заказы</title>
   <script>
   (function() {
-    var params = new URLSearchParams(window.location.search);
-    var platform = params.get('platform');
-    if (!platform) {
-      try {
-        var isMax = false;
-        if (typeof window.WebViewHandler !== 'undefined') isMax = true;
-        if (!isMax && location.hash && location.hash.indexOf('WebAppData') !== -1 && location.hash.indexOf('tgWebAppData') === -1) isMax = true;
-        if (!isMax) {
-          var ref = document.referrer || '';
-          if (ref.indexOf('max.ru') !== -1) isMax = true;
-        }
-        platform = isMax ? 'max' : 'telegram';
-      } catch(e) {
-        platform = 'telegram';
-      }
-    }
-    window.__miniapp_platform = platform;
-
-    if (platform === 'max') {
-      var script = document.createElement('script');
-      script.src = 'https://st.max.ru/js/max-web-app.js';
-      window.__webAppReady = new Promise(function(resolve) {
-        script.onload = function() {
-          var wa = window.WebApp;
-          if (wa) {
-            if (typeof wa.ready === 'function') wa.ready();
-            if (typeof wa.expand === 'function') wa.expand();
-          }
-          resolve();
-        };
-        script.onerror = function() { resolve(); };
-      });
-      document.head.appendChild(script);
-    }
+    window.__miniapp_platform = 'telegram';
   })();
   </script>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
@@ -455,10 +422,7 @@
   <script>
     (function() {
       function _getWebApp() {
-        if (window.__miniapp_platform === 'max') {
-          return window.WebApp || null;
-        }
-        return (window.Telegram && window.Telegram.WebApp) || window.WebApp || null;
+        return (window.Telegram && window.Telegram.WebApp) || null;
       }
 
       var wa = _getWebApp();

@@ -205,13 +205,13 @@ def test_build_support_telegram_url_empty_returns_none() -> None:
 
 
 def test_miniapp_open_inline_keyboard_with_platform() -> None:
-    """miniapp_open_inline_keyboard appends ?platform= when platform given."""
+    """miniapp_open_inline_keyboard uses max_app.html when platform is max."""
     kb = miniapp_open_inline_keyboard("https://bot.example.com", platform="max")
     assert kb.rows
     btn = kb.rows[0][0]
     assert (
         btn.web_app_url
-        == "https://bot.example.com/miniapp/app.html?platform=max"
+        == "https://bot.example.com/miniapp/max_app.html"
     )
 
 
