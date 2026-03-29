@@ -184,7 +184,9 @@ async def test_send_contact_includes_blogger_phone(
         ),
         None,
     )
-    assert contact_msg is not None, "Advertiser should receive a contact message"
+    assert contact_msg is not None, (
+        "Advertiser should receive a contact message"
+    )
     assert "+79001234567" in contact_msg, (
         "Blogger phone should appear in advertiser's contact message"
     )
