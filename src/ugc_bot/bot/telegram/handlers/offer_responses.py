@@ -726,7 +726,8 @@ def _build_advertiser_contact_content(
     ) + ("\n\n" + what_next if what_next else "")
 
     if blogger_phone:
-        contact_text += f"\n📞 Телефон: {blogger_phone}"
+        lbl = t.get("lbl_phone", "Телефон")
+        contact_text += f"\n📞 {lbl}: {blogger_phone}"
 
     url = profile_url.strip()
     if url and not url.startswith("http"):
