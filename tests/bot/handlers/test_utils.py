@@ -665,3 +665,52 @@ def test_format_agreements_message_intl_fallback_to_ru() -> None:
     )
     result = format_agreements_message(config, country_code="kz")
     assert "https://ru/offer" in result
+
+
+# ---------- resolve_city_name_from_location ----------
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_name_from_location_success():
+    from unittest.mock import AsyncMock
+
+    from ugc_bot.bot.telegram.handlers.utils import (
+        resolve_city_name_from_location,
+    )
+
+    service = AsyncMock()
+    service.resolve_city_from_location = AsyncMock(
+        return_value=("Казань", "Tatarstan", "Russia")
+    )
+    result = await resolve_city_name_from_location(55.79, 49.12, service)
+    assert result == "казань"
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_name_from_location_none_when_geocoding_fails():
+    from unittest.mock import AsyncMock
+
+    from ugc_bot.bot.telegram.handlers.utils import (
+        resolve_city_name_from_location,
+    )
+
+    service = AsyncMock()
+    service.resolve_city_from_location = AsyncMock(return_value=None)
+    result = await resolve_city_name_from_location(0.0, 0.0, service)
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_city_name_from_location_none_when_normalize_empty():
+    from unittest.mock import AsyncMock
+
+    from ugc_bot.bot.telegram.handlers.utils import (
+        resolve_city_name_from_location,
+    )
+
+    service = AsyncMock()
+    service.resolve_city_from_location = AsyncMock(
+        return_value=("", "Region", "Country")
+    )
+    result = await resolve_city_name_from_location(1.0, 1.0, service)
+    assert result is None

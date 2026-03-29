@@ -28,6 +28,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     handle_role_choice,
     parse_user_id_from_state,
+    resolve_city_name_from_location,
 )
 from ugc_bot.bot.telegram.validators import (
     VALIDATOR_ERR_KEYS,
@@ -312,24 +313,16 @@ async def handle_city(incoming: IncomingMessage, deps: dict) -> None:
         deps
     )
 
-    # Handle shared location via reverse geocoding
+    # Handle shared location via reverse geocoding.
+    # Advertiser profile stores only city (no region/country/geometry)
+    # because advertiser_registration_service uses a flat city field.
     if incoming.location_lat is not None and incoming.location_lon is not None:
-        from ugc_bot.application.services.blogger_registration_service import (
-            BloggerRegistrationService,
+        city = await resolve_city_name_from_location(
+            incoming.location_lat,
+            incoming.location_lon,
+            deps["blogger_registration_service"],
         )
-
-        blogger_reg: BloggerRegistrationService = deps[
-            "blogger_registration_service"
-        ]
-        result = await blogger_reg.resolve_city_from_location(
-            incoming.location_lat, incoming.location_lon
-        )
-        if result is not None:
-            city_from_geo, _region, _country = result
-            from ugc_bot.application.geography import normalize_geo_token
-
-            city = normalize_geo_token(city_from_geo) or None
-        else:
+        if city is None:
             err_loc = await bot_texts_service.get(
                 "err_city_from_location", locale
             )

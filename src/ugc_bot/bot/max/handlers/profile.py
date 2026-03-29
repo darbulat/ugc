@@ -83,6 +83,7 @@ from ugc_bot.bot.telegram.handlers.profile import (
 from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     parse_user_id_from_state,
+    resolve_city_name_from_location,
     resolve_currency_symbol,
 )
 from ugc_bot.bot.telegram.validators import (
@@ -964,20 +965,13 @@ async def handle_profile_edit_value(
         and incoming.location_lat is not None
         and incoming.location_lon is not None
     ):
-        from ugc_bot.application.geography import normalize_geo_token
-        from ugc_bot.application.services.blogger_registration_service import (
-            BloggerRegistrationService,
+        city_resolved = await resolve_city_name_from_location(
+            incoming.location_lat,
+            incoming.location_lon,
+            deps["blogger_registration_service"],
         )
-
-        blogger_reg: BloggerRegistrationService = deps[
-            "blogger_registration_service"
-        ]
-        result = await blogger_reg.resolve_city_from_location(
-            incoming.location_lat, incoming.location_lon
-        )
-        if result is not None:
-            city_from_geo, _region, _country = result
-            text = normalize_geo_token(city_from_geo) or ""
+        if city_resolved is not None:
+            text = city_resolved
         else:
             messenger_client = deps["messenger_client"]
             bot_texts_service = deps["bot_texts_service"]
