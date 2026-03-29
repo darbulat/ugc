@@ -652,6 +652,9 @@ class InstagramVerificationCodeModel(Base):
     link_username: Mapped[Optional[str]] = mapped_column(
         String, nullable=True, default=None
     )
+    link_phone: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True, default=None
+    )
 
 
 class ComplaintModel(Base):

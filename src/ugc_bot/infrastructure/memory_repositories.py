@@ -668,14 +668,7 @@ class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
         if code_id not in self.codes:
             return
         existing = self.codes[code_id]
-        self.codes[code_id] = InstagramVerificationCode(
-            code_id=existing.code_id,
-            user_id=existing.user_id,
-            code=existing.code,
-            expires_at=existing.expires_at,
-            used=True,
-            created_at=existing.created_at,
-        )
+        self.codes[code_id] = replace(existing, used=True)
 
 
 @dataclass

@@ -432,11 +432,13 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
             "instagram_verification_service"
         ]
         config: AppConfig = deps["config"]
+        data = await state_store.get_data()
         verification = await instagram_verification_service.generate_code(
             existing_profile.user_id,
             link_max_id=incoming.user.external_id,
             link_max_chat_id=incoming.chat_id,
             link_username=incoming.user.username or "",
+            link_phone=data.get("phone"),
         )
         instruction_template = await bot_texts_service.get(
             "msg_instagram_verify_instruction", locale

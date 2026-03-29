@@ -167,6 +167,7 @@ def _to_verification_entity(
         link_max_id=model.link_max_id,
         link_max_chat_id=model.link_max_chat_id,
         link_username=model.link_username,
+        link_phone=model.link_phone,
     )
 
 
@@ -184,6 +185,7 @@ def _to_verification_model(
         link_max_id=code.link_max_id,
         link_max_chat_id=code.link_max_chat_id,
         link_username=code.link_username,
+        link_phone=code.link_phone,
     )
 
 

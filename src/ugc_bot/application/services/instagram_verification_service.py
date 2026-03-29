@@ -163,6 +163,7 @@ class InstagramVerificationService:
         link_max_id: str | None = None,
         link_max_chat_id: str | None = None,
         link_username: str | None = None,
+        link_phone: str | None = None,
     ) -> InstagramVerificationCode:
         """Generate and store a new verification code."""
 
@@ -184,6 +185,7 @@ class InstagramVerificationService:
                 link_max_id=link_max_id,
                 link_max_chat_id=link_max_chat_id,
                 link_username=link_username,
+                link_phone=link_phone,
             )
             await self.verification_repo.save(verification, session=session)
             return verification
@@ -250,6 +252,13 @@ class InstagramVerificationService:
             session=session,
         )
         if linked:
+            if valid_code.link_phone:
+                profile = await self.blogger_repo.get_by_user_id(
+                    valid_code.user_id, session=session
+                )
+                if profile and not profile.phone:
+                    updated = replace(profile, phone=valid_code.link_phone)
+                    await self.blogger_repo.save(updated, session=session)
             return VerificationLinkSuccess(
                 user_id=valid_code.user_id,
                 linked_user_id=linked.user_id,

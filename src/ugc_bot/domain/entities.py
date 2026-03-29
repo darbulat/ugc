@@ -303,6 +303,7 @@ class InstagramVerificationCode:
     link_max_id: str | None = None
     link_max_chat_id: str | None = None
     link_username: str | None = None
+    link_phone: str | None = None
 
 
 @dataclass(frozen=True)
