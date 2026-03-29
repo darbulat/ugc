@@ -500,6 +500,15 @@ def test_is_user_blocked_bot_max_user_blocked_error() -> None:
     assert is_user_blocked_bot(MaxUserBlockedError("blocked")) is True
 
 
+def test_is_user_blocked_bot_max_chat_not_found_error() -> None:
+    """is_user_blocked_bot returns True for MaxChatNotFoundError."""
+    from ugc_bot.infrastructure.messenger.max.client import (
+        MaxChatNotFoundError,
+    )
+
+    assert is_user_blocked_bot(MaxChatNotFoundError("chat missing")) is True
+
+
 @pytest.mark.asyncio
 async def test_edit_reply_markup_raises_non_modified_error(
     fake_bot: MagicMock,

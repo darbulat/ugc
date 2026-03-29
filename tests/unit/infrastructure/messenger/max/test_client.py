@@ -283,6 +283,59 @@ async def test_request_400_raises_max_api_error(make_response):
 
 
 @pytest.mark.asyncio
+async def test_request_404_chat_not_found_raises_max_chat_not_found_error(
+    make_response,
+):
+    from ugc_bot.infrastructure.messenger.max.client import MaxChatNotFoundError
+
+    response = make_response(404)
+    response.text = AsyncMock(
+        return_value='{"code":"chat.not.found","message":"Chat not found"}'
+    )
+    session = AsyncMock()
+    session.request = AsyncMock(return_value=response)
+    client = MaxMessengerClient(token="tok", session=session)
+
+    with pytest.raises(MaxChatNotFoundError):
+        await client._request("GET", "/test")
+
+
+@pytest.mark.asyncio
+async def test_request_404_other_error_raises_max_api_error(make_response):
+    from ugc_bot.infrastructure.messenger.max.client import MaxAPIError
+
+    response = make_response(404)
+    response.text = AsyncMock(
+        return_value='{"code":"something.else","message":"Not found"}'
+    )
+    session = AsyncMock()
+    session.request = AsyncMock(return_value=response)
+    client = MaxMessengerClient(token="tok", session=session)
+
+    with pytest.raises(MaxAPIError) as exc_info:
+        await client._request("GET", "/test")
+    assert exc_info.value.status == 404
+
+
+@pytest.mark.asyncio
+async def test_request_404_chat_not_found_non_json_body_raises_specific_error(
+    make_response,
+):
+    from ugc_bot.infrastructure.messenger.max.client import MaxChatNotFoundError
+
+    response = make_response(404)
+    response.text = AsyncMock(
+        return_value='error: {"code":"chat.not.found","message":"missing"}'
+    )
+    session = AsyncMock()
+    session.request = AsyncMock(return_value=response)
+    client = MaxMessengerClient(token="tok", session=session)
+
+    with pytest.raises(MaxChatNotFoundError):
+        await client._request("GET", "/test")
+
+
+@pytest.mark.asyncio
 async def test_request_5xx_retries_then_returns(make_response):
     ok_response = AsyncMock()
     ok_response.status = 200
@@ -368,3 +421,16 @@ async def test_edit_text_with_keyboard(client, mock_session):
     )
     body = mock_session.request.call_args.kwargs["json"]
     assert "attachments" in body
+
+
+@pytest.mark.asyncio
+async def test_edit_text_html_format(client, mock_session):
+    await client.edit_text(
+        chat_id="123",
+        message_id="msg_1",
+        text="<b>Updated</b>",
+        parse_mode="HTML",
+    )
+    body = mock_session.request.call_args.kwargs["json"]
+    assert body["text"] == "<b>Updated</b>"
+    assert body["format"] == "html"
