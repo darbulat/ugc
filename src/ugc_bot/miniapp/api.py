@@ -287,6 +287,7 @@ class CreatorItem(BaseModel):
     telegram: str | None = None
     name: str | None = None
     desired_price: float | None = None
+    phone: str | None = None
 
 
 class ManagerCreatorsResponse(BaseModel):
@@ -311,6 +312,7 @@ class CreatorDetailResponse(BaseModel):
     telegram: str | None = None
     ugc_video_url: str | None = None
     in_offer: bool = True
+    phone: str | None = None
 
 
 class UgcVideoRequest(BaseModel):
@@ -1785,6 +1787,7 @@ async def manager_creators(
                 telegram=tg,
                 name=name,
                 desired_price=price,
+                phone=profile.phone if profile else None,
             )
         )
 
@@ -1838,6 +1841,7 @@ async def manager_creator_detail(
         telegram=user.telegram if user else None,
         ugc_video_url=dispatch.ugc_video_url,
         in_offer=dispatch.in_offer,
+        phone=profile.phone if profile else None,
     )
 
 

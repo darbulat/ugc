@@ -183,6 +183,7 @@ async def create_test_blogger_profile(
         agreement_confirmed_at=kwargs.get(
             "agreement_confirmed_at", datetime.now(timezone.utc)
         ),
+        phone=kwargs.get("phone"),
     )
     await blogger_repo.save(profile)
     return profile

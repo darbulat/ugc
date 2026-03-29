@@ -118,3 +118,145 @@ async def test_send_contact_uses_manager_telegram_when_manager_present(
     assert "advertiser_tg" not in contact_msg, (
         "Advertiser telegram must NOT appear"
     )
+
+
+@pytest.mark.asyncio
+async def test_send_contact_includes_blogger_phone(
+    bot_texts_service,
+    messenger_client: FakeMessengerClient,
+) -> None:
+    """Advertiser message should contain blogger phone when available."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=ADV_ID,
+        external_id="801",
+        username="advertiser",
+        telegram="advertiser_tg",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=BLOGGER_ID,
+        external_id="802",
+        username="blogger",
+    )
+    await create_test_blogger_profile(
+        blogger_repo, BLOGGER_ID, confirmed=True, phone="+79001234567"
+    )
+
+    order = await create_test_order(
+        InMemoryOrderRepository(),
+        ADV_ID,
+        order_id=ORDER_ID,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    await _send_contact_immediately(
+        order=order,
+        blogger_id=BLOGGER_ID,
+        blogger_chat_id=blogger.telegram_id,
+        response_count=1,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        interaction_service=None,
+        messenger_client=messenger_client,
+        texts={},
+        bot_texts_service=bot_texts_service,
+        manager=None,
+    )
+
+    sent_to_advertiser = [
+        s
+        for s in messenger_client.sent_text
+        if s["chat_id"] == advertiser.telegram_id
+    ]
+    contact_msg = next(
+        (
+            s["text"]
+            for s in sent_to_advertiser
+            if "Новый отклик" in s["text"] or "Креатор" in s["text"]
+        ),
+        None,
+    )
+    assert contact_msg is not None, (
+        "Advertiser should receive a contact message"
+    )
+    assert "+79001234567" in contact_msg, (
+        "Blogger phone should appear in advertiser's contact message"
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_contact_omits_phone_when_none(
+    bot_texts_service,
+    messenger_client: FakeMessengerClient,
+) -> None:
+    """Advertiser message should NOT contain phone line when phone is None."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+
+    advertiser = await create_test_user(
+        user_repo,
+        user_id=ADV_ID,
+        external_id="801",
+        username="advertiser",
+        telegram="advertiser_tg",
+    )
+    blogger = await create_test_user(
+        user_repo,
+        user_id=BLOGGER_ID,
+        external_id="802",
+        username="blogger",
+    )
+    await create_test_blogger_profile(blogger_repo, BLOGGER_ID, confirmed=True)
+
+    order = await create_test_order(
+        InMemoryOrderRepository(),
+        ADV_ID,
+        order_id=ORDER_ID,
+        bloggers_needed=2,
+        status=OrderStatus.ACTIVE,
+    )
+
+    user_service = UserRoleService(user_repo=user_repo)
+    profile_service = build_profile_service(user_repo, blogger_repo)
+
+    await _send_contact_immediately(
+        order=order,
+        blogger_id=BLOGGER_ID,
+        blogger_chat_id=blogger.telegram_id,
+        response_count=1,
+        user_role_service=user_service,
+        profile_service=profile_service,
+        interaction_service=None,
+        messenger_client=messenger_client,
+        texts={},
+        bot_texts_service=bot_texts_service,
+        manager=None,
+    )
+
+    sent_to_advertiser = [
+        s
+        for s in messenger_client.sent_text
+        if s["chat_id"] == advertiser.telegram_id
+    ]
+    contact_msg = next(
+        (
+            s["text"]
+            for s in sent_to_advertiser
+            if "Новый отклик" in s["text"] or "Креатор" in s["text"]
+        ),
+        None,
+    )
+    assert contact_msg is not None, (
+        "Advertiser should receive a contact message"
+    )
+    assert "Телефон" not in contact_msg, (
+        "Phone label should not appear when blogger has no phone"
+    )

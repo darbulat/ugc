@@ -183,6 +183,7 @@ class TestManagerCreatorsEndpoint:
 
         profile = MagicMock()
         profile.instagram_url = "https://instagram.com/blogger"
+        profile.phone = "+79001234567"
         profile_service = MagicMock()
         profile_service.get_blogger_profiles = AsyncMock(
             return_value={BLOGGER_ID: profile}
@@ -216,6 +217,7 @@ class TestManagerCreatorsEndpoint:
         )
         assert result.creators[0].name == "Blogger Name"
         assert result.creators[0].desired_price is None
+        assert result.creators[0].phone == "+79001234567"
 
     @pytest.mark.asyncio
     async def test_403_when_not_manager_for_order(self) -> None:
@@ -398,6 +400,7 @@ class TestManagerCreatorDetailEndpoint:
 
         profile = MagicMock()
         profile.instagram_url = "https://instagram.com/creator"
+        profile.phone = "+79009876543"
 
         request, _ = self._make_deps(
             dispatch=dispatch, user=user, profile=profile
@@ -416,6 +419,7 @@ class TestManagerCreatorDetailEndpoint:
         assert result.telegram == "creator_tg"
         assert result.instagram_url == "https://instagram.com/creator"
         assert result.ugc_video_url == "https://example.com/video"
+        assert result.phone == "+79009876543"
 
     @pytest.mark.asyncio
     async def test_403_when_not_manager(self) -> None:
@@ -1059,6 +1063,7 @@ def _creators_deps(
 
     profile = MagicMock()
     profile.instagram_url = "https://instagram.com/blogger"
+    profile.phone = None
     profile_service = MagicMock()
     profile_service.get_blogger_profiles = AsyncMock(
         return_value={BLOGGER_ID: profile}
@@ -1153,11 +1158,14 @@ class TestManagerCreatorsSearch:
 
         profile2 = MagicMock()
         profile2.instagram_url = "https://instagram.com/bob"
+        profile2.phone = None
+        profile1 = MagicMock(
+            instagram_url="https://instagram.com/alice",
+            phone=None,
+        )
         deps["profile_service"].get_blogger_profiles = AsyncMock(
             return_value={
-                BLOGGER_ID: MagicMock(
-                    instagram_url="https://instagram.com/alice"
-                ),
+                BLOGGER_ID: profile1,
                 BLOGGER_ID_2: profile2,
             }
         )
