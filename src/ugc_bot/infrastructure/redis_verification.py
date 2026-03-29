@@ -46,6 +46,8 @@ def _serialize(vc: InstagramVerificationCode) -> str:
         data["link_max_chat_id"] = vc.link_max_chat_id
     if vc.link_username is not None:
         data["link_username"] = vc.link_username
+    if vc.link_phone is not None:
+        data["link_phone"] = vc.link_phone
     return json.dumps(data)
 
 
@@ -61,6 +63,7 @@ def _deserialize(data: str) -> InstagramVerificationCode:
         link_max_id=d.get("link_max_id"),
         link_max_chat_id=d.get("link_max_chat_id"),
         link_username=d.get("link_username"),
+        link_phone=d.get("link_phone"),
     )
 
 
