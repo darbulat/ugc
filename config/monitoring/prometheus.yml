@@ -33,6 +33,7 @@ scrape_configs:
       - targets:
           - app:9999
           - app_2:9999
+          - max_bot:8003
     metrics_path: /metrics
     scrape_interval: 15s
 

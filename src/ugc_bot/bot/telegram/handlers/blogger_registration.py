@@ -293,9 +293,8 @@ async def _start_registration_flow_impl(
     config: AppConfig,
     user_locale: str = "ru",
 ) -> None:
-    """Start blogger registration: first step (name)."""
+    """Start blogger registration: first step (phone)."""
     locale = user_locale
-    step_name = await bot_texts_service.get("msg_step_ask_name", locale)
     user_id = getattr(user, "user_id", None)
     external_id = getattr(user, "telegram_id", None) or getattr(
         user, "max_id", None
@@ -305,12 +304,16 @@ async def _start_registration_flow_impl(
         external_id=external_id,
         user_country=getattr(user, "country", None),
     )
+    texts = await bot_texts_service.get_many(
+        ["btn_phone_request", "msg_phone_request"], locale
+    )
+    phone_prompt = texts.get("msg_phone_request", "")
     await messenger_client.send_text(
         chat_id=chat_id,
-        text=step_name,
-        keyboard=flow_keyboard_remove(),
+        text=phone_prompt,
+        keyboard=flow_keyboard_phone_request(texts),
     )
-    await state_store.set_state(BloggerRegistrationStates.name.state)
+    await state_store.set_state(BloggerRegistrationStates.phone.state)
 
 
 async def _start_registration_flow(
@@ -463,16 +466,15 @@ async def handle_name(
         return
 
     await state_store.update_data(nickname=nickname)
-    texts = await bot_texts_service.get_many(
-        ["btn_phone_request", "msg_phone_request"], locale
+    step_instagram = await bot_texts_service.get(
+        "msg_step_ask_instagram", locale
     )
-    phone_prompt = texts.get("msg_phone_request", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=phone_prompt,
-        keyboard=flow_keyboard_phone_request(texts),
+        text=step_instagram,
+        keyboard=flow_keyboard_remove(),
     )
-    await state_store.set_state(BloggerRegistrationStates.phone.state)
+    await state_store.set_state(BloggerRegistrationStates.instagram.state)
 
 
 @router.message(BloggerRegistrationStates.phone)
@@ -505,15 +507,13 @@ async def handle_phone(
         return
 
     await state_store.update_data(phone=phone)
-    step_instagram = await bot_texts_service.get(
-        "msg_step_ask_instagram", locale
-    )
+    step_name = await bot_texts_service.get("msg_step_ask_name", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=step_instagram,
+        text=step_name,
         keyboard=flow_keyboard_remove(),
     )
-    await state_store.set_state(BloggerRegistrationStates.instagram.state)
+    await state_store.set_state(BloggerRegistrationStates.name.state)
 
 
 @router.message(BloggerRegistrationStates.instagram)

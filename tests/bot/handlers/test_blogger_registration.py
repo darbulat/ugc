@@ -938,10 +938,10 @@ async def test_handle_agreements_shows_verification_button(
 
 
 @pytest.mark.asyncio
-async def test_start_registration_no_username_asks_name(
+async def test_start_registration_no_username_asks_phone(
     user_repo, config, bot_texts_service
 ) -> None:
-    """When user has no username, first step asks for name."""
+    """When user has no username, first step asks for phone."""
     service = UserRoleService(user_repo=user_repo)
     await create_test_user(
         user_repo,
@@ -961,10 +961,7 @@ async def test_start_registration_no_username_asks_name(
         message, state, service, bot_texts_service, config
     )
 
-    ans = message.answers[0]
-    text = (ans if isinstance(ans, str) else ans[0]).lower()
-    assert "имя" in text or "обращаться" in text or "зовут" in text
-    assert state.state == BloggerRegistrationStates.name
+    assert state.state == BloggerRegistrationStates.phone
 
 
 @pytest.mark.asyncio
@@ -2065,10 +2062,7 @@ async def test_start_registration_button(
     )
 
     assert message.answers
-    ans = message.answers[0]
-    text = (ans[0] if isinstance(ans, tuple) else ans).lower()
-    assert "зовут" in text or "имя" in text
-    assert state.state == BloggerRegistrationStates.name
+    assert state.state == BloggerRegistrationStates.phone
 
 
 @pytest.mark.asyncio

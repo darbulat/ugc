@@ -6,7 +6,7 @@ groups:
         expr: |
           sum by (service) (
             count_over_time(
-              {service=~"app|app_2|admin|migrate|instagram_webhook|kafka_consumer|feedback_scheduler|role_reminder_scheduler|outbox_processor|instagram_stats_scheduler|instagram_stats_collector_scheduler"}
+              {service=~"app|app_2|admin|migrate|instagram_webhook|kafka_consumer|feedback_scheduler|role_reminder_scheduler|outbox_processor|instagram_stats_scheduler|instagram_stats_collector_scheduler|max_bot"}
               |~ "Traceback \\(most recent call last\\)|Exception was never retrieved"
               [5m]
             )

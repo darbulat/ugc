@@ -753,7 +753,7 @@ def _build_advertiser_contact_content(
         buttons.append(
             Button(
                 text=t.get("btn_write_max", "Написать в Макс"),
-                url=f"https://max.ru/profile/{creator_max_id}",
+                url=f"max://max.ru/{creator_max_id}",
             )
         )
     keyboard = (

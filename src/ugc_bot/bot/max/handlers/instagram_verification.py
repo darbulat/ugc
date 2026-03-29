@@ -1,5 +1,6 @@
 """Max handlers for Instagram verification flow."""
 
+import html
 import logging
 import re
 
@@ -120,10 +121,10 @@ async def start_verification(incoming: IncomingMessage, deps: dict) -> None:
     texts = await bot_texts_service.get_many(
         ["btn_open_direct", "btn_my_profile"], locale
     )
-    # Send verification code as plain text (no <code> tags)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=verification.code,
+        text=f"<code>{html.escape(verification.code)}</code>",
+        parse_mode="HTML",
         keyboard=blogger_verification_sent_inline_keyboard(
             texts, direct_url=direct_url
         ),
@@ -224,7 +225,8 @@ async def start_verification_from_profile_callback(
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=verification.code,
+        text=f"<code>{html.escape(verification.code)}</code>",
+        parse_mode="HTML",
         keyboard=blogger_verification_sent_inline_keyboard(
             texts, direct_url=dm_url
         ),

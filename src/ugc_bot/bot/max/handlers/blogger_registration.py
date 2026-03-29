@@ -1,5 +1,6 @@
 """Blogger registration flow handlers for Max messenger."""
 
+import html
 import logging
 import re
 from datetime import date
@@ -370,15 +371,16 @@ async def handle_creator_create_callback(
         user_country=getattr(user, "country", None),
     )
 
-    step_instagram = await bot_texts_service.get(
-        "msg_step_ask_instagram", locale
+    texts = await bot_texts_service.get_many(
+        ["btn_phone_request", "msg_phone_request"], locale
     )
+    phone_prompt = texts.get("msg_phone_request", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=step_instagram,
-        keyboard=flow_keyboard_remove(),
+        text=phone_prompt,
+        keyboard=flow_inline_keyboard_phone_request(texts),
     )
-    await state_store.set_state(STATE_BLOG_INSTAGRAM)
+    await state_store.set_state(STATE_BLOG_PHONE)
 
 
 # --- FSM step handlers ---
@@ -459,7 +461,8 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
-            text=verification.code,
+            text=f"<code>{html.escape(verification.code)}</code>",
+            parse_mode="HTML",
             keyboard=blogger_verification_sent_inline_keyboard(
                 texts_v, direct_url=direct_url
             ),
@@ -468,16 +471,16 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
         return
 
     await state_store.update_data(instagram_url=instagram_url)
-    texts = await bot_texts_service.get_many(
-        ["btn_phone_request", "msg_phone_request"], locale
+    city_texts = await bot_texts_service.get_many(
+        ["msg_step_ask_city", "btn_location_request"], locale
     )
-    phone_prompt = texts.get("msg_phone_request", "")
+    step_city = city_texts.get("msg_step_ask_city", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=phone_prompt,
-        keyboard=flow_inline_keyboard_phone_request(texts),
+        text=step_city,
+        keyboard=flow_inline_keyboard_location_request(city_texts),
     )
-    await state_store.set_state(STATE_BLOG_PHONE)
+    await state_store.set_state(STATE_BLOG_CITY)
 
 
 @router.message_in_state(STATE_BLOG_PHONE)
@@ -500,16 +503,15 @@ async def handle_phone(incoming: IncomingMessage, deps: dict) -> None:
         return
 
     await state_store.update_data(phone=phone)
-    city_texts = await bot_texts_service.get_many(
-        ["msg_step_ask_city", "btn_location_request"], locale
+    step_instagram = await bot_texts_service.get(
+        "msg_step_ask_instagram", locale
     )
-    step_city = city_texts.get("msg_step_ask_city", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=step_city,
-        keyboard=flow_inline_keyboard_location_request(city_texts),
+        text=step_instagram,
+        keyboard=flow_keyboard_remove(),
     )
-    await state_store.set_state(STATE_BLOG_CITY)
+    await state_store.set_state(STATE_BLOG_INSTAGRAM)
 
 
 @router.message_in_state(STATE_BLOG_CITY)
