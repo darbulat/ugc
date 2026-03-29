@@ -704,6 +704,7 @@ def _build_advertiser_contact_content(
     texts: dict[str, str],
     creator_external_id: str | None = None,
     creator_max_id: str | None = None,
+    blogger_phone: str | None = None,
 ) -> tuple[str, Keyboard | None]:
     """Build contact message and inline keyboard for advertiser."""
     t = texts
@@ -723,6 +724,9 @@ def _build_advertiser_contact_content(
         format=ugc_format,
         profile_url=profile_url,
     ) + ("\n\n" + what_next if what_next else "")
+
+    if blogger_phone:
+        contact_text += f"\n📞 Телефон: {blogger_phone}"
 
     url = profile_url.strip()
     if url and not url.startswith("http"):
@@ -875,6 +879,7 @@ async def _send_contact_immediately(
         texts=t_adv,
         creator_external_id=user.telegram_id,
         creator_max_id=user.max_id,
+        blogger_phone=profile.phone,
     )
 
     # Resolve the right client for the advertiser's messenger
@@ -923,6 +928,7 @@ async def _send_contact_immediately(
             texts=t_mgr,
             creator_external_id=user.telegram_id,
             creator_max_id=user.max_id,
+            blogger_phone=profile.phone,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
         await send_with_retry(
