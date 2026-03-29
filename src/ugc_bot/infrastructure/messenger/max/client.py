@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-import re
 from typing import Any
 
 import aiohttp
@@ -37,12 +36,6 @@ class MaxUserBlockedError(MaxAPIError):
 
 MAX_RETRY_ATTEMPTS = 3
 MAX_RETRY_BASE_DELAY = 0.5
-
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
-
-
-def _strip_html(text: str) -> str:
-    return _HTML_TAG_RE.sub("", text)
 
 
 def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
@@ -168,12 +161,9 @@ class MaxMessengerClient(MessengerClient):
         parse_mode: str | None = None,
         disable_preview: bool | None = None,
     ) -> None:
-        clean_text = (
-            _strip_html(text)
-            if parse_mode and "html" in parse_mode.lower()
-            else text
-        )
-        body: dict[str, Any] = {"text": clean_text}
+        body: dict[str, Any] = {"text": text}
+        if parse_mode and "html" in parse_mode.lower():
+            body["format"] = "html"
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
         await self._post("/messages", body, params={"chat_id": chat_id})
@@ -199,12 +189,9 @@ class MaxMessengerClient(MessengerClient):
         keyboard: Keyboard | None = None,
         parse_mode: str | None = None,
     ) -> None:
-        clean_text = (
-            _strip_html(text)
-            if parse_mode and "html" in parse_mode.lower()
-            else text
-        )
-        body: dict[str, Any] = {"text": clean_text}
+        body: dict[str, Any] = {"text": text}
+        if parse_mode and "html" in parse_mode.lower():
+            body["format"] = "html"
         if keyboard and keyboard.kind == KeyboardKind.INLINE:
             body["attachments"] = [_build_inline_keyboard(keyboard)]
         else:

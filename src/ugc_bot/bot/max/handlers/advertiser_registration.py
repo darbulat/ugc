@@ -20,12 +20,15 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     advertiser_menu_inline_keyboard,
     advertiser_start_keyboard,
     confirm_agreement_inline_keyboard,
+    flow_inline_keyboard_location_request,
+    flow_inline_keyboard_phone_request,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     handle_role_choice,
     parse_user_id_from_state,
+    resolve_city_name_from_location,
 )
 from ugc_bot.bot.telegram.validators import (
     VALIDATOR_ERR_KEYS,
@@ -259,12 +262,14 @@ async def handle_name(incoming: IncomingMessage, deps: dict) -> None:
         return
 
     await state_store.update_data(name=name)
-    texts = await bot_texts_service.get_many(["msg_phone_request"], locale)
+    texts = await bot_texts_service.get_many(
+        ["btn_phone_request", "msg_phone_request"], locale
+    )
     phone_prompt = texts.get("msg_phone_request", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=phone_prompt,
-        keyboard=flow_keyboard_remove(),
+        keyboard=flow_inline_keyboard_phone_request(texts),
     )
     await state_store.set_state(STATE_ADV_PHONE)
 
@@ -278,8 +283,7 @@ async def handle_phone(incoming: IncomingMessage, deps: dict) -> None:
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
-    # Max has no contact-sharing, always text input
-    phone = (incoming.text or "").strip()
+    phone = (incoming.contact_phone or incoming.text or "").strip()
     err = validate_phone(phone, texts=validator_texts)
     if err is not None:
         await messenger_client.send_text(
@@ -290,34 +294,61 @@ async def handle_phone(incoming: IncomingMessage, deps: dict) -> None:
         return
 
     await state_store.update_data(phone=phone)
-    msg_city = await bot_texts_service.get("msg_what_city", locale)
+    city_texts = await bot_texts_service.get_many(
+        ["msg_what_city", "btn_location_request"], locale
+    )
+    msg_city = city_texts.get("msg_what_city", "")
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_city,
-        keyboard=flow_keyboard_remove(),
+        keyboard=flow_inline_keyboard_location_request(city_texts),
     )
     await state_store.set_state(STATE_ADV_CITY)
 
 
 @router.message_in_state(STATE_ADV_CITY)
 async def handle_city(incoming: IncomingMessage, deps: dict) -> None:
-    """Store city and ask for brand."""
+    """Store city (text or location) and ask for brand."""
     messenger_client, state_store, bot_texts_service, locale = _get_services(
         deps
     )
-    validator_texts = await bot_texts_service.get_many(
-        list(VALIDATOR_ERR_KEYS), locale
-    )
-    # Max has no location-sharing, always text input
-    city = (incoming.text or "").strip() or None
-    err = validate_city(city, required=False, texts=validator_texts)
-    if err is not None:
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=err,
-            keyboard=flow_keyboard_remove(),
+
+    # Handle shared location via reverse geocoding.
+    # Advertiser profile stores only city (no region/country/geometry)
+    # because advertiser_registration_service uses a flat city field.
+    if incoming.location_lat is not None and incoming.location_lon is not None:
+        city = await resolve_city_name_from_location(
+            incoming.location_lat,
+            incoming.location_lon,
+            deps["blogger_registration_service"],
         )
-        return
+        if city is None:
+            err_loc = await bot_texts_service.get(
+                "err_city_from_location", locale
+            )
+            loc_texts = await bot_texts_service.get_many(
+                ["btn_location_request"], locale
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=err_loc,
+                keyboard=flow_inline_keyboard_location_request(loc_texts),
+            )
+            return
+    else:
+        validator_texts = await bot_texts_service.get_many(
+            list(VALIDATOR_ERR_KEYS), locale
+        )
+        city = (incoming.text or "").strip() or None
+        err = validate_city(city, required=False, texts=validator_texts)
+        if err is not None:
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=err,
+                keyboard=flow_keyboard_remove(),
+            )
+            return
+
     await state_store.update_data(city=city)
     msg_brand = await bot_texts_service.get("msg_brand_name", locale)
     await messenger_client.send_text(

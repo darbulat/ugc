@@ -1,8 +1,7 @@
 """Max messenger profile view and edit handlers.
 
 Differences from Telegram:
-- No miniapp buttons (no location picker or phone-request buttons).
-- No contact-sharing / location-sharing — always plain text input.
+- No miniapp buttons (no location picker).
 - After field update, calls Max-native _send_profile instead of
   Telegram show_profile.
 """
@@ -44,6 +43,8 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     edit_field_inline_keyboard,
     edit_profile_type_inline_keyboard,
     edit_work_format_inline_keyboard,
+    flow_inline_keyboard_location_request,
+    flow_inline_keyboard_phone_request,
     flow_keyboard_remove,
 )
 from ugc_bot.bot.telegram.handlers.profile import (
@@ -82,6 +83,7 @@ from ugc_bot.bot.telegram.handlers.profile import (
 from ugc_bot.bot.telegram.handlers.utils import (
     format_agreements_message,
     parse_user_id_from_state,
+    resolve_city_name_from_location,
     resolve_currency_symbol,
 )
 from ugc_bot.bot.telegram.validators import (
@@ -174,7 +176,11 @@ def _get_edit_field_keyboard(
         return edit_barter_inline_keyboard(edit_texts)
     if field_key == "work_format":
         return edit_work_format_inline_keyboard(edit_texts)
-    # city, phone, instagram — plain text input on Max (no special keyboard)
+    if field_key == "phone":
+        return flow_inline_keyboard_phone_request(edit_texts)
+    if field_key == "city":
+        return flow_inline_keyboard_location_request(edit_texts)
+    # instagram — plain text input on Max
     return flow_keyboard_remove()
 
 
@@ -612,6 +618,9 @@ async def handle_profile_agree_callback(
         await state_store.clear()
         return
 
+    # Confirm agreements for ALL profiles the user has to avoid an infinite
+    # loop when both blogger and advertiser profiles exist: _send_profile
+    # checks both via OR, but state can only encode one profile type.
     if current == _BLOGGER_AGREEMENTS_STATE:
         await blogger_registration_service.confirm_blogger_agreement(
             user_id=user_id,
@@ -620,6 +629,28 @@ async def handle_profile_agree_callback(
     else:
         await advertiser_registration_service.confirm_advertiser_agreement(
             user_id=user_id,
+        )
+
+    # Also confirm the other profile if it exists
+    profile_service = deps["profile_service"]
+    blogger = await profile_service.get_blogger_profile(user_id)
+    advertiser = await profile_service.get_advertiser_profile(user_id)
+    if (
+        current == _BLOGGER_AGREEMENTS_STATE
+        and advertiser is not None
+        and advertiser.agreement_confirmed_at is None
+    ):
+        await advertiser_registration_service.confirm_advertiser_agreement(
+            user_id=user_id,
+        )
+    elif (
+        current == _ADVERTISER_AGREEMENTS_STATE
+        and blogger is not None
+        and blogger.agreement_confirmed_at is None
+    ):
+        await blogger_registration_service.confirm_blogger_agreement(
+            user_id=user_id,
+            telegram_username=None,
         )
 
     await state_store.clear()
@@ -871,6 +902,8 @@ async def handle_profile_edit_field_callback(
         "btn_barter_no",
         "btn_work_format_ads",
         "btn_work_format_ugc_only",
+        "btn_phone_request",
+        "btn_location_request",
     ]
     edit_texts = await bot_texts_service.get_many(edit_keys, locale)
     reply_markup = _get_edit_field_keyboard(field_key, profile_type, edit_texts)
@@ -950,7 +983,38 @@ async def handle_profile_edit_value(
         await state_store.clear()
         return
 
-    text = (incoming.text or "").strip()
+    if field_key == "phone":
+        text = (incoming.contact_phone or incoming.text or "").strip()
+    elif (
+        field_key == "city"
+        and incoming.location_lat is not None
+        and incoming.location_lon is not None
+    ):
+        city_resolved = await resolve_city_name_from_location(
+            incoming.location_lat,
+            incoming.location_lon,
+            deps["blogger_registration_service"],
+        )
+        if city_resolved is not None:
+            text = city_resolved
+        else:
+            messenger_client = deps["messenger_client"]
+            bot_texts_service = deps["bot_texts_service"]
+            locale = deps.get("locale", "ru")
+            err_loc = await bot_texts_service.get(
+                "err_city_from_location", locale
+            )
+            loc_texts = await bot_texts_service.get_many(
+                ["btn_location_request"], locale
+            )
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=err_loc,
+                keyboard=flow_inline_keyboard_location_request(loc_texts),
+            )
+            return
+    else:
+        text = (incoming.text or "").strip()
 
     if profile_type == "advertiser":
         await _handle_advertiser_field_update(incoming, field_key, text, deps)

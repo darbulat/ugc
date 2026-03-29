@@ -639,3 +639,25 @@ async def resolve_currency_symbol(
         return default
     country = await country_repo.get_by_code(country_code)
     return country.currency_symbol if country else default
+
+
+async def resolve_city_name_from_location(
+    lat: float,
+    lon: float,
+    blogger_registration_service: Any,
+) -> str | None:
+    """Resolve city name from coordinates via reverse geocoding.
+
+    Returns normalized city name or None if geocoding failed.
+    Callers decide what to save (city only vs city+region+country)
+    and how to handle the error (send message, show button, etc.).
+    """
+    from ugc_bot.application.geography import normalize_geo_token
+
+    result = await blogger_registration_service.resolve_city_from_location(
+        lat, lon
+    )
+    if result is None:
+        return None
+    city_from_geo, _region, _country = result
+    return normalize_geo_token(city_from_geo) or None
