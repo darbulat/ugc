@@ -891,7 +891,7 @@ async def _handle_issue_append_content(
             issue_description_parts=parts,
             issue_file_ids=file_ids,
         )
-    await message.answer("\u200b", reply_markup=_issue_send_keyboard(texts))
+    await message.answer("✅", reply_markup=_issue_send_keyboard(texts))
 
 
 @router.message(FeedbackStates.waiting_issue_description)
