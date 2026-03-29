@@ -17,6 +17,7 @@ import logging
 import sys
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from sqlalchemy import select
 
 from ugc_bot.config import load_config
@@ -76,6 +77,9 @@ async def _send_with_retry(
         try:
             await client.send_text(chat_id=chat_id, text=text)
             return True
+        except (TelegramForbiddenError, TelegramBadRequest) as exc:
+            logger.warning("Skipping %s (non-retryable): %s", chat_id, exc)
+            return False
         except Exception as exc:
             if attempt == _SEND_RETRIES:
                 logger.warning(
