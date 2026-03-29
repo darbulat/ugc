@@ -1,6 +1,7 @@
 """Max messenger client — sends messages via Max Platform API."""
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -34,8 +35,28 @@ class MaxUserBlockedError(MaxAPIError):
         super().__init__(403, body)
 
 
+class MaxChatNotFoundError(MaxAPIError):
+    """Raised when Max API reports that target chat no longer exists."""
+
+    def __init__(self, body: str) -> None:
+        super().__init__(404, body)
+
+
 MAX_RETRY_ATTEMPTS = 3
 MAX_RETRY_BASE_DELAY = 0.5
+
+
+def _is_chat_not_found_error(body: str) -> bool:
+    """Return True when response body indicates Max chat.not.found."""
+    try:
+        parsed = json.loads(body)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        code = parsed.get("code")
+        if isinstance(code, str) and code == "chat.not.found":
+            return True
+    return '"code":"chat.not.found"' in body.replace(" ", "")
 
 
 def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
@@ -114,6 +135,10 @@ class MaxMessengerClient(MessengerClient):
                     if resp.status >= 400:
                         text = await resp.text()
                         logger.error("Max API error %s: %s", resp.status, text)
+                        if resp.status == 404 and _is_chat_not_found_error(
+                            text
+                        ):
+                            raise MaxChatNotFoundError(text)
                         raise MaxAPIError(resp.status, text)
                     return await resp.json()
             except aiohttp.ClientError as exc:

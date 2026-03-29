@@ -9,6 +9,7 @@ from ugc_bot.application.messenger.dto import (
 )
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.domain.enums import MessengerType
+from ugc_bot.infrastructure.messenger.max.client import MaxChatNotFoundError
 
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
@@ -552,3 +553,73 @@ async def test_callback_handler_error_sends_error_message(
     assert mock_client.send_text.call_count >= 1
     last_send = mock_client.send_text.call_args_list[-1]
     assert "ошибка" in last_send[1]["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_callback_handler_chat_not_found_does_not_send_error_message(
+    router, incoming_callback
+):
+    mock_client = AsyncMock()
+
+    @router.callback(lambda c: True)
+    async def chat_missing(cb, deps):
+        raise MaxChatNotFoundError(
+            '{"code":"chat.not.found","message":"Chat missing"}'
+        )
+
+    await router.route_callback(
+        incoming_callback, {"messenger_client": mock_client}
+    )
+    mock_client.send_text.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_handler_error_with_failing_send_error_is_swallowed(
+    router, incoming_message
+):
+    mock_client = AsyncMock()
+    mock_client.send_text.side_effect = RuntimeError("send failed")
+
+    @router.message(lambda m: True)
+    async def bad(msg, deps):
+        raise RuntimeError("boom")
+
+    await router.route_message(
+        incoming_message, {"messenger_client": mock_client}
+    )
+
+
+@pytest.mark.asyncio
+async def test_callback_predicate_false_then_true_handler_runs(
+    router, incoming_callback
+):
+    called = []
+
+    @router.callback(lambda c: False)
+    async def never_called(cb, deps):
+        called.append("never")
+
+    @router.callback(lambda c: True)
+    async def called_handler(cb, deps):
+        called.append("called")
+
+    await router.route_callback(incoming_callback, {})
+    assert called == ["called"]
+
+
+@pytest.mark.asyncio
+async def test_callback_keyboard_removal_failure_does_not_break_routing(
+    router, incoming_callback
+):
+    mock_client = AsyncMock()
+    mock_client.edit_reply_markup.side_effect = RuntimeError("edit failed")
+    called = []
+
+    @router.callback(lambda c: True)
+    async def good(cb, deps):
+        called.append("ok")
+
+    await router.route_callback(
+        incoming_callback, {"messenger_client": mock_client}
+    )
+    assert called == ["ok"]
