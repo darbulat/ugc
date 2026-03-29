@@ -617,6 +617,9 @@ async def handle_profile_agree_callback(
         await state_store.clear()
         return
 
+    # Confirm agreements for ALL profiles the user has to avoid an infinite
+    # loop when both blogger and advertiser profiles exist: _send_profile
+    # checks both via OR, but state can only encode one profile type.
     if current == _BLOGGER_AGREEMENTS_STATE:
         await blogger_registration_service.confirm_blogger_agreement(
             user_id=user_id,
@@ -625,6 +628,28 @@ async def handle_profile_agree_callback(
     else:
         await advertiser_registration_service.confirm_advertiser_agreement(
             user_id=user_id,
+        )
+
+    # Also confirm the other profile if it exists
+    profile_service = deps["profile_service"]
+    blogger = await profile_service.get_blogger_profile(user_id)
+    advertiser = await profile_service.get_advertiser_profile(user_id)
+    if (
+        current == _BLOGGER_AGREEMENTS_STATE
+        and advertiser is not None
+        and advertiser.agreement_confirmed_at is None
+    ):
+        await advertiser_registration_service.confirm_advertiser_agreement(
+            user_id=user_id,
+        )
+    elif (
+        current == _ADVERTISER_AGREEMENTS_STATE
+        and blogger is not None
+        and blogger.agreement_confirmed_at is None
+    ):
+        await blogger_registration_service.confirm_blogger_agreement(
+            user_id=user_id,
+            telegram_username=None,
         )
 
     await state_store.clear()

@@ -1280,6 +1280,9 @@ async def handle_profile_agree_callback(
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
+    # Confirm agreements for ALL profiles the user has to avoid an infinite
+    # loop when both blogger and advertiser profiles exist: show_profile
+    # checks both via OR, but state can only encode one profile type.
     if current == _BLOGGER_AGREEMENTS_STATE:
         telegram_username = getattr(incoming.user, "username", None)
         await blogger_registration_service.confirm_blogger_agreement(
@@ -1290,6 +1293,29 @@ async def handle_profile_agree_callback(
         await advertiser_registration_service.confirm_advertiser_agreement(
             user_id=user_id,
         )
+
+    # Also confirm the other profile if it exists
+    blogger = await profile_service.get_blogger_profile(user_id)
+    advertiser = await profile_service.get_advertiser_profile(user_id)
+    if (
+        current == _BLOGGER_AGREEMENTS_STATE
+        and advertiser is not None
+        and advertiser.agreement_confirmed_at is None
+    ):
+        await advertiser_registration_service.confirm_advertiser_agreement(
+            user_id=user_id,
+        )
+    elif (
+        current == _ADVERTISER_AGREEMENTS_STATE
+        and blogger is not None
+        and blogger.agreement_confirmed_at is None
+    ):
+        telegram_username = getattr(incoming.user, "username", None)
+        await blogger_registration_service.confirm_blogger_agreement(
+            user_id=user_id,
+            telegram_username=telegram_username,
+        )
+
     await state.clear()
     user = await user_role_service.get_user_by_id(user_id)
     locale = user_locale
