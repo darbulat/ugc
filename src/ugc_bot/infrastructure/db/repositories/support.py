@@ -1,4 +1,4 @@
-"""SQLAlchemy complaint, NPS, and manager order repositories."""
+"""SQLAlchemy complaint, NPS, manager order, support repos."""
 
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -12,13 +12,15 @@ from ugc_bot.application.ports import (
     ComplaintRepository,
     ManagerOrderRepository,
     NpsRepository,
+    SupportMessageRepository,
 )
-from ugc_bot.domain.entities import Complaint, ManagerOrder
+from ugc_bot.domain.entities import Complaint, ManagerOrder, SupportMessage
 from ugc_bot.domain.enums import ComplaintStatus
 from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
     ManagerOrderModel,
     NpsResponseModel,
+    SupportMessageModel,
 )
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 
@@ -312,3 +314,50 @@ def _to_manager_order_entity(model: ManagerOrderModel) -> ManagerOrder:
         created_at=model.created_at,
         updated_at=model.updated_at,
     )
+
+
+@dataclass(slots=True)
+class SqlAlchemySupportMessageRepository(SupportMessageRepository):
+    """SQLAlchemy-backed support message repository."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+
+    async def save(
+        self, msg: SupportMessage, session: object | None = None
+    ) -> None:
+        """Persist a support message mapping."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            model = SupportMessageModel(
+                id=msg.id,
+                user_chat_id=msg.user_chat_id,
+                support_chat_message_id=msg.support_chat_message_id,
+                user_text=msg.user_text,
+                created_at=msg.created_at,
+            )
+            await db_session.merge(model)
+
+    async def get_by_support_message_id(
+        self, support_chat_message_id: int, session: object | None = None
+    ) -> Optional[SupportMessage]:
+        """Look up a mapping by the Telegram support group message ID."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(SupportMessageModel).where(
+                    SupportMessageModel.support_chat_message_id
+                    == support_chat_message_id
+                )
+            )
+            result = exec_result.scalar_one_or_none()
+            if result is None:
+                return None
+            return SupportMessage(
+                id=result.id,
+                user_chat_id=result.user_chat_id,
+                support_chat_message_id=result.support_chat_message_id,
+                user_text=result.user_text,
+                created_at=result.created_at,
+            )

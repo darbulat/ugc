@@ -7,7 +7,14 @@ Country/language selection screens are skipped.
 from urllib.parse import urlparse
 
 from ugc_bot.application.errors import UserNotFoundError
-from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
+from ugc_bot.application.messenger.dto import (
+    Button,
+    IncomingCallback,
+    IncomingMessage,
+    Keyboard,
+    KeyboardKind,
+)
+from ugc_bot.bot.max.handlers.support_chat import CALLBACK_SUPPORT_START_CHAT
 from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.keyboards import (
@@ -25,7 +32,6 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
 from ugc_bot.bot.telegram.handlers.start import (
     _change_role_button,
     _start_command,
-    _support_button,
 )
 
 router = MaxRouter()
@@ -387,9 +393,8 @@ async def app_miniapp_command(incoming: IncomingMessage, deps: dict) -> None:
 
 @router.callback(lambda c: c.data == CALLBACK_SUPPORT)
 async def support_callback(incoming: IncomingCallback, deps: dict) -> None:
-    """Handle Support inline button — clear FSM, send support text."""
+    """Handle Support button — show support options."""
     user_role_service = deps["user_role_service"]
-    profile_service = deps["profile_service"]
     messenger_client = deps["messenger_client"]
     bot_texts_service = deps["bot_texts_service"]
     config = deps["config"]
@@ -399,50 +404,55 @@ async def support_callback(incoming: IncomingCallback, deps: dict) -> None:
     locale = await resolve_locale(
         incoming, user_role_service, config.market.default_locale
     )
+    await state_store.clear()
+
     support_text = (
         await bot_texts_service.get("support_response", locale)
     ).strip()
     if not support_text:
         support_text = (config.market.support_response_text or "").strip()
-    if not support_text and (config.market.support_contact or "").strip():
-        support_text = (
-            f"Служба поддержки: {config.market.support_contact.strip()}\n"
-            "Обращайтесь по любым вопросам!"
-        )
     if not support_text:
         support_text = (
             "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
         )
-    menu_texts = await bot_texts_service.get_many(
-        [
-            "btn_support",
-            "btn_change_role",
-            "btn_create_order",
-            "btn_my_orders",
-            "btn_my_profile",
-            "btn_edit_profile",
-        ],
-        locale,
+
+    texts = await bot_texts_service.get_many(
+        ["btn_support_write", "btn_change_role"], locale
     )
-    # Max users can't open t.me links; omit Telegram-specific URL
-    support_url = None
-    await _support_button(
-        incoming=incoming,
-        user_role_service=user_role_service,
-        profile_service=profile_service,
-        state_store=state_store,
-        messenger_client=messenger_client,
-        support_text=support_text,
-        menu_texts=menu_texts,
-        support_url=support_url,
+    rows: list[list[Button]] = []
+    # Add "Write to support" button if support chat is configured
+    if (config.market.support_chat_id or "").strip():
+        rows.append(
+            [
+                Button(
+                    text=texts.get(
+                        "btn_support_write", "✍️ Написать в поддержку"
+                    ),
+                    callback_data=CALLBACK_SUPPORT_START_CHAT,
+                )
+            ]
+        )
+    rows.append(
+        [
+            Button(
+                text=texts.get("btn_change_role", "Смена роли"),
+                callback_data=CALLBACK_CHANGE_ROLE,
+            )
+        ]
+    )
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=rows)
+
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=support_text,
+        keyboard=keyboard,
     )
 
 
 @router.message(lambda m: bool(m.text and m.text.startswith("/support")))
 async def support_command(incoming: IncomingMessage, deps: dict) -> None:
-    """Handle /support — clear FSM, send support text."""
+    """Handle /support — show support options."""
     user_role_service = deps["user_role_service"]
-    profile_service = deps["profile_service"]
     messenger_client = deps["messenger_client"]
     bot_texts_service = deps["bot_texts_service"]
     config = deps["config"]
@@ -451,40 +461,45 @@ async def support_command(incoming: IncomingMessage, deps: dict) -> None:
     locale = await resolve_locale(
         incoming, user_role_service, config.market.default_locale
     )
+    await state_store.clear()
+
     support_text = (
         await bot_texts_service.get("support_response", locale)
     ).strip()
     if not support_text:
         support_text = (config.market.support_response_text or "").strip()
-    if not support_text and (config.market.support_contact or "").strip():
-        support_text = (
-            f"Служба поддержки: {config.market.support_contact.strip()}\n"
-            "Обращайтесь по любым вопросам!"
-        )
     if not support_text:
         support_text = (
             "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
         )
-    menu_texts = await bot_texts_service.get_many(
-        [
-            "btn_support",
-            "btn_change_role",
-            "btn_create_order",
-            "btn_my_orders",
-            "btn_my_profile",
-            "btn_edit_profile",
-        ],
-        locale,
+
+    texts = await bot_texts_service.get_many(
+        ["btn_support_write", "btn_change_role"], locale
     )
-    # Max users can't open t.me links; omit Telegram-specific URL
-    support_url = None
-    await _support_button(
-        incoming=incoming,
-        user_role_service=user_role_service,
-        profile_service=profile_service,
-        state_store=state_store,
-        messenger_client=messenger_client,
-        support_text=support_text,
-        menu_texts=menu_texts,
-        support_url=support_url,
+    rows: list[list[Button]] = []
+    if (config.market.support_chat_id or "").strip():
+        rows.append(
+            [
+                Button(
+                    text=texts.get(
+                        "btn_support_write", "✍️ Написать в поддержку"
+                    ),
+                    callback_data=CALLBACK_SUPPORT_START_CHAT,
+                )
+            ]
+        )
+    rows.append(
+        [
+            Button(
+                text=texts.get("btn_change_role", "Смена роли"),
+                callback_data=CALLBACK_CHANGE_ROLE,
+            )
+        ]
+    )
+    keyboard = Keyboard(kind=KeyboardKind.INLINE, rows=rows)
+
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=support_text,
+        keyboard=keyboard,
     )

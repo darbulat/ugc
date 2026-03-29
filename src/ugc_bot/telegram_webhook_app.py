@@ -112,6 +112,22 @@ async def _lifespan(app: FastAPI):
         dispatcher["event_adapter"] = event_adapter
         dispatcher["payment_provider"] = payment_provider
 
+        # Max messenger client for cross-messenger support replies
+        max_http_session = None
+        max_messenger_client = None
+        if config.max_bot and config.max_bot.token:
+            import aiohttp
+
+            from ugc_bot.infrastructure.messenger.max.client import (
+                MaxMessengerClient,
+            )
+
+            max_http_session = aiohttp.ClientSession()
+            max_messenger_client = MaxMessengerClient(
+                token=config.max_bot.token, session=max_http_session
+            )
+        dispatcher["max_messenger_client"] = max_messenger_client
+
         app.state.config = config
         app.state.dispatcher = dispatcher
         app.state.bot = bot
@@ -122,6 +138,9 @@ async def _lifespan(app: FastAPI):
 
         yield
     finally:
+        if max_http_session is not None:
+            with suppress(Exception):
+                await max_http_session.close()
         if bot is not None:
             with suppress(Exception):
                 await bot.delete_webhook()

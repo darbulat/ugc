@@ -37,6 +37,7 @@ from ugc_bot.bot.max.handlers.order_creation import (
 from ugc_bot.bot.max.handlers.profile import router as profile_router
 from ugc_bot.bot.max.handlers.referral import router as referral_router
 from ugc_bot.bot.max.handlers.start import router as start_router
+from ugc_bot.bot.max.handlers.support_chat import router as support_chat_router
 from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import load_config
@@ -56,6 +57,7 @@ logger = logging.getLogger(__name__)
 
 max_router = MaxRouter()
 max_router.include(start_router)
+max_router.include(support_chat_router)
 max_router.include(adv_reg_router)
 max_router.include(blog_reg_router)
 max_router.include(order_create_router)

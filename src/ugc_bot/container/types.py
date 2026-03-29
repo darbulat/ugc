@@ -40,6 +40,7 @@ from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
 from ugc_bot.application.services.referral_service import ReferralService
+from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.application.services.user_role_service import UserRoleService
 
 
@@ -86,3 +87,4 @@ class BotServices(TypedDict):
     manager_service: ManagerService
     manager_order_repo: Any
     exchange_rate_service: ExchangeRateService | None
+    support_service: SupportService

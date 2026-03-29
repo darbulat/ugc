@@ -34,6 +34,7 @@ from ugc_bot.domain.entities import (
     PayoutRequest,
     ReferralIncomeEntry,
     ReferralOrderIncomeRow,
+    SupportMessage,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -1288,3 +1289,19 @@ class TransactionManager(Protocol):
 
         Use: async with tm.transaction() as session: ...
         """
+
+
+class SupportMessageRepository(ABC):
+    """Repository for support message mappings (forwarded to Telegram group)."""
+
+    @abstractmethod
+    async def save(
+        self, msg: SupportMessage, session: object | None = None
+    ) -> None:
+        """Persist a support message mapping."""
+
+    @abstractmethod
+    async def get_by_support_message_id(
+        self, support_chat_message_id: int, session: object | None = None
+    ) -> Optional[SupportMessage]:
+        """Look up a mapping by the Telegram support group message ID."""
