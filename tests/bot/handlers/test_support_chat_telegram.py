@@ -15,6 +15,12 @@ def _make_config(support_chat_id: str = "-100123456"):
     return cfg
 
 
+def _make_bot_texts_service():
+    svc = AsyncMock()
+    svc.get = AsyncMock(return_value=None)
+    return svc
+
+
 def _make_message(
     chat_id: int = -100123456,
     chat_type: str = "supergroup",
@@ -49,6 +55,7 @@ async def test_reply_forwarded_to_max_user():
         message=message,
         config=config,
         support_service=support_service,
+        bot_texts_service=_make_bot_texts_service(),
         max_messenger_client=max_client,
     )
 
@@ -72,6 +79,7 @@ async def test_reply_unknown_message_id():
         message=message,
         config=config,
         support_service=support_service,
+        bot_texts_service=_make_bot_texts_service(),
         max_messenger_client=max_client,
     )
 
@@ -89,6 +97,7 @@ async def test_reply_wrong_chat_id():
         message=message,
         config=config,
         support_service=support_service,
+        bot_texts_service=_make_bot_texts_service(),
         max_messenger_client=max_client,
     )
 
@@ -108,6 +117,7 @@ async def test_reply_no_max_client():
         message=message,
         config=config,
         support_service=support_service,
+        bot_texts_service=_make_bot_texts_service(),
         max_messenger_client=None,
     )
 
@@ -125,6 +135,7 @@ async def test_reply_no_support_chat_configured():
         message=message,
         config=config,
         support_service=support_service,
+        bot_texts_service=_make_bot_texts_service(),
         max_messenger_client=max_client,
     )
 

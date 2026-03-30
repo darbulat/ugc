@@ -5,6 +5,8 @@ import logging
 from aiogram import F, Router
 from aiogram.types import Message
 
+from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.config import AppConfig
 
@@ -18,7 +20,8 @@ async def handle_support_group_reply(
     message: Message,
     config: AppConfig,
     support_service: SupportService,
-    max_messenger_client: object | None = None,
+    bot_texts_service: BotTextsService,
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Route operator replies from Telegram support group back to Max user."""
     support_chat_id = (config.market.support_chat_id or "").strip()
@@ -48,10 +51,13 @@ async def handle_support_group_reply(
     if not reply_text:
         return
 
+    header = await bot_texts_service.get("support_chat_reply_header", "ru")
+    reply_header = header or "Ответ от поддержки:"
+
     try:
         await max_messenger_client.send_text(
             chat_id=user_chat_id,
-            text=f"Ответ от поддержки:\n\n{reply_text}",
+            text=f"{reply_header}\n\n{reply_text}",
         )
     except Exception:
         logger.exception(

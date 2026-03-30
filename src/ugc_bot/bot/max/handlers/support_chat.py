@@ -43,6 +43,8 @@ async def start_support_chat(incoming: IncomingCallback, deps: dict) -> None:
         incoming, user_role_service, config.market.default_locale
     )
 
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+
     support_chat_id = (config.market.support_chat_id or "").strip()
     if not support_chat_id:
         msg = await bot_texts_service.get("support_chat_not_configured", locale)
@@ -163,6 +165,7 @@ async def exit_support_chat(incoming: IncomingCallback, deps: dict) -> None:
 async def _do_exit(incoming: IncomingCallback, deps: dict) -> None:
     """Clear FSM and send exit confirmation."""
     messenger_client = deps["messenger_client"]
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
     bot_texts_service = deps["bot_texts_service"]
     user_role_service = deps["user_role_service"]
     config = deps["config"]
