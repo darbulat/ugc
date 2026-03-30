@@ -166,3 +166,38 @@ async def test_exit_support_chat(deps):
 
     deps["state_store"].clear.assert_called_once()
     deps["messenger_client"].send_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_exit_support_chat_outside_state(deps):
+    """Exit callback when NOT in support state (stale button)."""
+    deps["state_store"].get_state = AsyncMock(return_value=None)
+    incoming = _make_callback(CALLBACK_SUPPORT_EXIT)
+    await router.route_callback(incoming, deps)
+
+    deps["messenger_client"].answer_callback.assert_called()
+    deps["messenger_client"].send_text.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_handle_user_message_no_telegram_client(deps):
+    """When telegram_messenger_client is missing, user gets unavailable msg."""
+    deps["state_store"].get_state = AsyncMock(return_value=SUPPORT_STATE)
+    deps.pop("telegram_messenger_client", None)
+    incoming = _make_message("Help me!")
+    await router.route_message(incoming, deps)
+
+    deps["messenger_client"].send_text.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_user_message_forwarding_exception(deps):
+    """When Telegram forwarding fails, user gets error message."""
+    deps["state_store"].get_state = AsyncMock(return_value=SUPPORT_STATE)
+    deps["telegram_messenger_client"]._bot.send_message = AsyncMock(
+        side_effect=Exception("Network error")
+    )
+    incoming = _make_message("Help me!")
+    await router.route_message(incoming, deps)
+
+    deps["messenger_client"].send_text.assert_called()
