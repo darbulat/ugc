@@ -275,6 +275,43 @@ async def _save_blogger_and_show_agreements(
 # --- Role selection ---
 
 
+@router.message(lambda m: bool(m.text and m.text.startswith("/creator")))
+async def creator_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /creator command — show menu or registration prompt."""
+    messenger_client, state_store, bot_texts_service, locale = _get_services(
+        deps
+    )
+    profile_service: ProfileService = deps["profile_service"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_profile",
+            "btn_edit_profile",
+            "btn_my_profile",
+            "btn_my_orders",
+            "btn_support",
+            "msg_choose_action",
+        ],
+        locale,
+    )
+    choose_action_text = texts.get("msg_choose_action", "Выберите действие:")
+    intro_text = await bot_texts_service.get("msg_creator_intro", locale)
+
+    await handle_role_choice(
+        incoming,  # type: ignore[arg-type]
+        messenger_client,
+        user_role_service,
+        state_store,
+        profile_getter=profile_service.get_blogger_profile,
+        choose_action_text=choose_action_text,
+        intro_text=intro_text or choose_action_text,
+        menu_keyboard=creator_filled_profile_inline_keyboard,
+        start_keyboard=creator_start_keyboard,
+        texts=texts,
+    )
+
+
 @router.callback(lambda c: c.data == CALLBACK_ROLE_CREATOR)
 async def handle_role_creator_callback(
     incoming: IncomingCallback, deps: dict

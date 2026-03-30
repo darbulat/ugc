@@ -93,6 +93,48 @@ async def _remove_inline_keyboard(
 # --- Role selection ---
 
 
+@router.message(lambda m: bool(m.text and m.text.startswith("/advertiser")))
+async def advertiser_command(incoming: IncomingMessage, deps: dict) -> None:
+    """Handle /advertiser command — show menu or registration prompt."""
+    messenger_client, state_store, bot_texts_service, locale = _get_services(
+        deps
+    )
+    profile_service: ProfileService = deps["profile_service"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+
+    texts = await bot_texts_service.get_many(
+        [
+            "btn_create_order",
+            "btn_my_orders",
+            "btn_my_profile",
+            "btn_edit_profile",
+            "btn_support",
+            "btn_advertiser_start",
+            "msg_choose_action",
+        ],
+        locale,
+    )
+    choose_action_text = texts.get(
+        "msg_choose_action", ADVERTISER_CHOOSE_ACTION_TEXT
+    )
+    intro_text = await bot_texts_service.get("msg_advertiser_intro", locale)
+    if not intro_text:
+        intro_text = ADVERTISER_INTRO_TEXT
+
+    await handle_role_choice(
+        incoming,  # type: ignore[arg-type]
+        messenger_client,
+        user_role_service,
+        state_store,
+        profile_getter=profile_service.get_advertiser_profile,
+        choose_action_text=choose_action_text,
+        intro_text=intro_text,
+        menu_keyboard=advertiser_menu_inline_keyboard,
+        start_keyboard=advertiser_start_keyboard,
+        texts=texts,
+    )
+
+
 @router.callback(lambda c: c.data == CALLBACK_ROLE_ADVERTISER)
 async def handle_role_advertiser_callback(
     incoming: IncomingCallback, deps: dict
