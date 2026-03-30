@@ -2154,10 +2154,24 @@
             orders.forEach(function(o) {
               var li = document.createElement('li');
               li.style.cursor = 'pointer';
+              var rawLink = o.product_link || '';
+              var displayLink = rawLink.replace(/^https?:\/\//, '');
+              if (displayLink.length > 40) displayLink = displayLink.substring(0, 40) + '\u2026';
               var strong = document.createElement('strong');
-              strong.textContent = o.product_link || o.order_id;
+              if (rawLink) {
+                var a = document.createElement('a');
+                a.href = rawLink.match(/^https?:\/\//) ? rawLink : 'https://' + rawLink;
+                a.target = '_blank';
+                a.rel = 'noopener';
+                a.textContent = displayLink;
+                a.addEventListener('click', function(e) { e.stopPropagation(); });
+                strong.appendChild(a);
+              } else {
+                strong.textContent = o.order_id;
+              }
               li.appendChild(strong);
-              li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol)));
+              var datePart = fmtDate(o.created_at);
+              li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol) + (datePart ? ' \u00b7 ' + datePart : '')));
               li.addEventListener('click', function() {
                 openManagerOrder(o.order_id, o.product_link || o.order_id);
               });
