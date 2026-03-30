@@ -57,6 +57,7 @@ class Container:
             )
         )
         self._repos: dict | None = None
+        self._exchange_rate_service: object | None = None
 
     @property
     def session_factory(self):
@@ -233,6 +234,11 @@ class Container:
 
         Call this during application shutdown to prevent connection leaks.
         """
+        if self._exchange_rate_service is not None and hasattr(
+            self._exchange_rate_service, "close"
+        ):
+            await self._exchange_rate_service.close()  # type: ignore[union-attr]
+            self._exchange_rate_service = None
         if self._session_factory is not None:
             engine = get_engine(self._session_factory)
             if engine is not None:
@@ -253,7 +259,7 @@ class Container:
             order_repo=repos["order_repo"],
             transaction_manager=self._transaction_manager,
         )
-        return service_factory.build_bot_services(
+        bot_services = service_factory.build_bot_services(
             self._config,
             repos,
             self._transaction_manager,
@@ -264,3 +270,5 @@ class Container:
             offer_response_rate_limiter,
             geocode_public_rate_limiter,
         )
+        self._exchange_rate_service = bot_services["exchange_rate_service"]
+        return bot_services

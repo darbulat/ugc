@@ -127,6 +127,7 @@ _FLAT_KEYS = {
         "BOT_SUPPORT_RESPONSE_TEXT",
         "BOT_SUPPORT_CONTACT",
         "BOT_RECEIPT_SERVICE_DESCRIPTION",
+        "SUPPORT_CHAT_ID",
     ],
 }
 
@@ -572,6 +573,7 @@ class MarketConfig(BaseSettings):
     receipt_service_description: str = Field(
         default="", alias="BOT_RECEIPT_SERVICE_DESCRIPTION"
     )
+    support_chat_id: str = Field(default="", alias="SUPPORT_CHAT_ID")
 
 
 class ReferralConfig(BaseSettings):

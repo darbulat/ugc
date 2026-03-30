@@ -8,6 +8,13 @@ EN: dict[str, str] = {
     "support_response": (
         "Support: @usemycontent\nContact us for any questions!"
     ),
+    "support_chat_prompt": "Write your message and we'll reply shortly.",
+    "support_chat_sent": "Message sent to support.",
+    "support_chat_reply_header": "Reply from support:",
+    "support_chat_exit": "You left the support chat.",
+    "support_chat_not_configured": "Support chat is temporarily unavailable.",
+    "btn_support_write": "✍️ Write to support",
+    "btn_support_exit": "❌ End conversation",
     "receipt_description": "Use My Content platform services",
     "btn_creator": "I'm a creator",
     "btn_advertiser": "I need UGC creators",

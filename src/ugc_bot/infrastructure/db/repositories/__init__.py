@@ -53,6 +53,7 @@ from ugc_bot.infrastructure.db.repositories.support import (
     SqlAlchemyComplaintRepository,
     SqlAlchemyManagerOrderRepository,
     SqlAlchemyNpsRepository,
+    SqlAlchemySupportMessageRepository,
 )
 from ugc_bot.infrastructure.db.repositories.user import (
     SqlAlchemyUserRepository,
@@ -83,5 +84,6 @@ __all__ = [
     "SqlAlchemyUserReferralBindingRepository",
     "SqlAlchemyUserReferralPendingRepository",
     "SqlAlchemyUserRepository",
+    "SqlAlchemySupportMessageRepository",
     "SqlReferralOrderIncomeLoader",
 ]

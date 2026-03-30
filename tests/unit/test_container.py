@@ -531,3 +531,18 @@ async def test_container_dispose_no_session_factory() -> None:
     container = Container(config)
     container._session_factory = None
     await container.dispose()  # Should not raise
+
+
+@pytest.mark.asyncio
+async def test_container_dispose_closes_exchange_rate_service() -> None:
+    """Container.dispose() closes ExchangeRateService if present."""
+    mock_service = AsyncMock()
+    config = _config("")
+    container = Container(config)
+    container._session_factory = None
+    container._exchange_rate_service = mock_service
+
+    await container.dispose()
+
+    mock_service.close.assert_awaited_once()
+    assert container._exchange_rate_service is None

@@ -28,6 +28,7 @@ from ugc_bot.application.ports import (
     PaymentRepository,
     PayoutRequestRepository,
     ReferralIncomeEntryRepository,
+    SupportMessageRepository,
     UserReferralBindingRepository,
     UserReferralPendingRepository,
     UserRepository,
@@ -49,6 +50,7 @@ from ugc_bot.domain.entities import (
     Payment,
     PayoutRequest,
     ReferralIncomeEntry,
+    SupportMessage,
     User,
     UserReferralBinding,
     UserReferralPending,
@@ -1701,3 +1703,20 @@ class InMemoryBotTextsRepository(BotTextsRepository):
         self, session: object | None = None
     ) -> List[Tuple[str, str, str]]:
         return [(k, loc, val) for (k, loc), val in self._texts.items()]
+
+
+@dataclass
+class InMemorySupportMessageRepository(SupportMessageRepository):
+    """In-memory implementation of support message repository."""
+
+    messages: Dict[int, SupportMessage] = field(default_factory=dict)
+
+    async def save(
+        self, msg: SupportMessage, session: object | None = None
+    ) -> None:
+        self.messages[msg.support_chat_message_id] = msg
+
+    async def get_by_support_message_id(
+        self, support_chat_message_id: int, session: object | None = None
+    ) -> Optional[SupportMessage]:
+        return self.messages.get(support_chat_message_id)

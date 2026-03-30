@@ -61,6 +61,7 @@ from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
 from ugc_bot.application.services.referral_service import ReferralService
+from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.container.types import BotServices
@@ -526,6 +527,10 @@ def build_bot_services(
         ),
         "manager_order_repo": repos["manager_order_repo"],
         "exchange_rate_service": exchange_rate_service,
+        "support_service": SupportService(
+            support_message_repo=repos["support_message_repo"],
+            transaction_manager=transaction_manager,
+        ),
     }
 
 

@@ -8,6 +8,15 @@ RU: dict[str, str] = {
     "support_response": (
         "Служба поддержки: @usemycontent\nОбращайтесь по любым вопросам!"
     ),
+    "support_chat_prompt": (
+        "Напишите ваше сообщение, и мы ответим в ближайшее время."
+    ),
+    "support_chat_sent": "Сообщение отправлено в поддержку.",
+    "support_chat_reply_header": "Ответ от поддержки:",
+    "support_chat_exit": "Вы вышли из чата с поддержкой.",
+    "support_chat_not_configured": "Чат поддержки временно недоступен.",
+    "btn_support_write": "✍️ Написать в поддержку",
+    "btn_support_exit": "❌ Завершить диалог",
     "receipt_description": "Услуги платформы Use My Content",
     # Role selection buttons
     "btn_creator": "Я креатор",

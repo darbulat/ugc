@@ -38,6 +38,9 @@ from ugc_bot.bot.telegram.handlers.referral import router as referral_router
 
 # Services are built via Container.build_bot_services()
 from ugc_bot.bot.telegram.handlers.start import router as start_router
+from ugc_bot.bot.telegram.handlers.support_chat import (
+    router as support_chat_router,
+)
 from ugc_bot.bot.telegram.handlers.survey_messenger import (
     router as survey_messenger_router,
 )
@@ -111,6 +114,7 @@ def build_dispatcher(
         dispatcher.include_router(
             payments_router
         )  # before start for /start pay_
+        dispatcher.include_router(support_chat_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)
         dispatcher.include_router(admin_moderation_router)

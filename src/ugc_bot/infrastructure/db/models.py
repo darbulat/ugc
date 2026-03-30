@@ -11,6 +11,7 @@ from geoalchemy2 import Geometry
 from geoalchemy2.elements import WKTElement
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -754,6 +755,28 @@ class NpsResponseModel(Base):
     )
     score: Mapped[int] = mapped_column(Integer, nullable=False)
     comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class SupportMessageModel(Base):
+    """Support message mapping: Telegram group message → Max user chat."""
+
+    __tablename__ = "support_messages"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    user_chat_id: Mapped[str] = mapped_column(
+        String(255), nullable=False, index=True
+    )
+    support_chat_message_id: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, index=True, unique=True
+    )
+    user_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )

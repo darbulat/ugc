@@ -23,6 +23,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyPaymentRepository,
     SqlAlchemyPayoutRequestRepository,
     SqlAlchemyReferralIncomeEntryRepository,
+    SqlAlchemySupportMessageRepository,
     SqlAlchemyUserReferralBindingRepository,
     SqlAlchemyUserReferralPendingRepository,
     SqlAlchemyUserRepository,
@@ -130,6 +131,9 @@ def build_repos(
             session_factory=session_factory
         ),
         "referral_income_entry_repo": SqlAlchemyReferralIncomeEntryRepository(
+            session_factory=session_factory
+        ),
+        "support_message_repo": SqlAlchemySupportMessageRepository(
             session_factory=session_factory
         ),
     }

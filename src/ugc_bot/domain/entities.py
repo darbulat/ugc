@@ -461,3 +461,14 @@ class MissingReferralIncome:
     referred_user_id: UUID
     advertiser_country_code: str
     income_type: str  # 'creator' or 'advertiser'
+
+
+@dataclass(frozen=True)
+class SupportMessage:
+    """Mapping: forwarded support message in TG group ↔ Max user."""
+
+    id: UUID
+    user_chat_id: str
+    support_chat_message_id: int
+    user_text: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.utcnow)
