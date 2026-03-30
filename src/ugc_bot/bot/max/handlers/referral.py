@@ -178,14 +178,11 @@ async def referral_command(
         mc_stats, currency_symbols, stats_texts, approx_line
     )
 
-    # Referral deep-link is Telegram-only (t.me/...), skip for Max users
-    bot_username = (config.referral.referral_bot_username or "").strip()
-    if (
-        bot_username
-        and user.referral_code
-        and incoming.user.messenger_type != MessengerType.MAX
-    ):
-        link = f"https://t.me/{bot_username}?start=ref_{user.referral_code}"
+    max_bot_username = (config.referral.max_referral_bot_username or "").strip()
+    if max_bot_username and user.referral_code:
+        link = (
+            f"https://max.ru/{max_bot_username}?start=ref_{user.referral_code}"
+        )
         intro = stats_texts.get("msg_referral_link_intro", "")
         text = f"{intro}\n{link}\n\n{text}"
 

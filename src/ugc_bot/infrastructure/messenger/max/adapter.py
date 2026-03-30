@@ -116,10 +116,15 @@ class MaxEventAdapter(MessengerEventAdapter):
             username=user_data.get("username"),
         )
 
+        payload = data.get("payload")
+        if payload and len(payload) > 200:
+            payload = None
+        text = f"/start {payload}" if payload else "/start"
+
         return IncomingMessage(
             chat_id=chat_id,
             user=user,
-            text="/start",
+            text=text,
             message_id=None,
             raw=data,
         )

@@ -589,6 +589,10 @@ class ReferralConfig(BaseSettings):
         default="",
         alias="REFERRAL_BOT_USERNAME",
     )
+    max_referral_bot_username: str = Field(
+        default="",
+        alias="MAX_REFERRAL_BOT_USERNAME",
+    )
     referral_stats_limit: int = Field(
         default=10_000,
         alias="REFERRAL_STATS_LIMIT",
