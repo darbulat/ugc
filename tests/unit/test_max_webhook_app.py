@@ -624,8 +624,8 @@ async def test_handle_max_webhook_unknown_update_type():
 
 
 @pytest.mark.asyncio
-async def test_handle_max_webhook_exception_returns_500():
-    """Exceptions during routing are caught and response is 500."""
+async def test_handle_max_webhook_exception_returns_200():
+    """Exceptions during routing return 200 to prevent retries."""
     state = _make_app_state()
     state.event_adapter = MagicMock()
     state.event_adapter.from_message.side_effect = RuntimeError("parse error")
@@ -639,7 +639,7 @@ async def test_handle_max_webhook_exception_returns_500():
         }
     )
     resp = await handle_max_webhook(request)
-    assert resp.status_code == 500
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio

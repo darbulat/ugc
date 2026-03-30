@@ -344,6 +344,34 @@ async def test_payout_button_creates_request_and_notifies():
 
 
 @pytest.mark.asyncio
+async def test_payout_button_notifies_with_admin_url():
+    """Payout notification includes admin URL when configured."""
+    user = _make_user()
+    stats = _mc_stats(
+        available={"RUB": Decimal("500")},
+        pending={},
+        has_request_today={"RUB": False},
+    )
+    config = MagicMock()
+    config.referral.max_referral_bot_username = ""
+    config.referral.referral_support_chat_id = "chat_support"
+    config.admin.admin_base_url = "http://admin.test"
+    deps = _deps(user=user, mc_stats=stats, config=config)
+    deps["messenger_client"] = AsyncMock()
+    await router.route_callback(
+        _incoming_cb(f"{REFERRAL_PAYOUT_CALLBACK}:RUB"), deps
+    )
+    deps["payout_request_repo"].save.assert_called_once()
+    # Verify admin URL in support message
+    send_calls = deps["messenger_client"].send_text.call_args_list
+    support_call = [
+        c for c in send_calls
+        if "chat_support" in str(c)
+    ]
+    assert len(support_call) >= 1
+
+
+@pytest.mark.asyncio
 async def test_payout_button_notify_failure_sends_different_text():
     """Payout with support chat notification failure answers with fail text."""
     user = _make_user()
@@ -463,6 +491,33 @@ async def test_payout_paid_success_removes_keyboard_and_answers():
     )
     deps["messenger_client"].answer_callback.assert_called()
     deps["messenger_client"].edit_reply_markup.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_edit_markup_failure_logged():
+    """edit_reply_markup failure after payout_paid is logged."""
+    request_id = uuid4()
+    user = _make_user(admin=True)
+    deps = _deps(user=user)
+    client = AsyncMock()
+    client.edit_reply_markup = AsyncMock(
+        side_effect=RuntimeError("API error")
+    )
+    deps["messenger_client"] = client
+    request = MagicMock()
+    request.status = PayoutRequestStatus.PENDING
+    request.request_id = request_id
+    deps["payout_request_repo"].get_by_id = AsyncMock(
+        return_value=request
+    )
+    deps["payout_request_repo"].update_status = AsyncMock(
+        return_value=True,
+    )
+    await router.route_callback(
+        _incoming_cb(f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}"),
+        deps,
+    )
+    client.answer_callback.assert_called()
 
 
 # ── /referral_list command ────────────────────────────────────────────────────

@@ -231,6 +231,6 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
 
     except Exception:
         logger.exception("Error processing Max update: %s", update_type)
-        return JSONResponse({"ok": False, "error": "internal"}, status_code=500)
+        return JSONResponse({"ok": True})
 
     return JSONResponse({"ok": True})

@@ -1294,6 +1294,19 @@ async def test_create_max_messenger_yields_client() -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_max_messenger_raises_without_config() -> None:
+    """_create_max_messenger raises ValueError when max_bot is None."""
+    from ugc_bot.instagram_webhook_app import _create_max_messenger
+
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "t", "DATABASE_URL": "sqlite:///:memory:"}
+    )
+    with pytest.raises(ValueError, match="MAX_BOT_TOKEN is required"):
+        async with _create_max_messenger(config):
+            pass  # pragma: no cover
+
+
+@pytest.mark.asyncio
 async def test_notify_user_verification_success_max_user() -> None:
     """Send notification via Max messenger for Max users."""
     user_repo = InMemoryUserRepository()

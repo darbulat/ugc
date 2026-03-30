@@ -1,6 +1,5 @@
 """Max handlers for offer responses."""
 
-import contextlib
 import logging
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
@@ -38,6 +37,20 @@ logger = logging.getLogger(__name__)
 STATE_WAITING_DESIRED_PRICE = "offer_desired_price"
 
 
+async def _safe_clear_markup(
+    messenger_client, chat_id: str, message_id: str
+) -> None:
+    """Clear reply markup, logging on failure."""
+    try:
+        await messenger_client.edit_reply_markup(
+            chat_id=chat_id,
+            message_id=message_id,
+            keyboard=None,
+        )
+    except Exception:
+        logger.warning("Failed to clear reply markup", exc_info=True)
+
+
 @router.callback(lambda cb: bool(cb.data and cb.data.startswith("offer_skip:")))
 async def handle_offer_skip(incoming: IncomingCallback, deps: dict) -> None:
     """Handle blogger pressing skip on offer — show rejection reason menu."""
@@ -58,12 +71,9 @@ async def handle_offer_skip(incoming: IncomingCallback, deps: dict) -> None:
         callback_id=incoming.callback_id, text=""
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
-            await messenger_client.edit_reply_markup(
-                chat_id=incoming.chat_id,
-                message_id=incoming.message_id,
-                keyboard=None,
-            )
+        await _safe_clear_markup(
+            messenger_client, incoming.chat_id, incoming.message_id
+        )
 
     user = await user_role_service.get_user(
         external_id=incoming.user.external_id,
@@ -138,12 +148,9 @@ async def handle_cancel_price_entry(
         callback_id=incoming.callback_id, text=msg_cancelled
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
-            await messenger_client.edit_reply_markup(
-                chat_id=incoming.chat_id,
-                message_id=incoming.message_id,
-                keyboard=None,
-            )
+        await _safe_clear_markup(
+            messenger_client, incoming.chat_id, incoming.message_id
+        )
 
 
 @router.callback(
@@ -183,12 +190,9 @@ async def handle_rejection_reason(
         callback_id=incoming.callback_id, text=""
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
-            await messenger_client.edit_reply_markup(
-                chat_id=incoming.chat_id,
-                message_id=incoming.message_id,
-                keyboard=None,
-            )
+        await _safe_clear_markup(
+            messenger_client, incoming.chat_id, incoming.message_id
+        )
 
     user = await user_role_service.get_user(
         external_id=incoming.user.external_id,
@@ -463,12 +467,9 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         text=text,
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
-            await messenger_client.edit_reply_markup(
-                chat_id=incoming.chat_id,
-                message_id=incoming.message_id,
-                keyboard=None,
-            )
+        await _safe_clear_markup(
+            messenger_client, incoming.chat_id, incoming.message_id
+        )
 
     if not result.accepted:
         msg_waitlist = await bot_texts_service.get(

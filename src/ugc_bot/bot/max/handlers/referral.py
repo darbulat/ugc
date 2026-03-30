@@ -1,6 +1,5 @@
 """Max handlers for referral: /referral, /referral_list and payout button."""
 
-import contextlib
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -411,11 +410,16 @@ async def payout_paid_callback(
         )
 
     if updated and incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
