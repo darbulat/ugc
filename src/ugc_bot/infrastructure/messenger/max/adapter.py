@@ -117,6 +117,8 @@ class MaxEventAdapter(MessengerEventAdapter):
         )
 
         payload = data.get("payload")
+        if payload and len(payload) > 200:
+            payload = None
         text = f"/start {payload}" if payload else "/start"
 
         return IncomingMessage(

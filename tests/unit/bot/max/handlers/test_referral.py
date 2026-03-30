@@ -1,6 +1,5 @@
 """Tests for Max referral handler — referral deep-link generation."""
 
-from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
