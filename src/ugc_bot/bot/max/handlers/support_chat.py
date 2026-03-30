@@ -74,6 +74,7 @@ async def handle_user_support_message(
     messenger_client = deps["messenger_client"]
     bot_texts_service = deps["bot_texts_service"]
     user_role_service = deps["user_role_service"]
+    profile_service = deps["profile_service"]
     support_service = deps["support_service"]
     config = deps["config"]
 
@@ -104,9 +105,22 @@ async def handle_user_support_message(
         messenger_type=incoming.user.messenger_type,
     )
     username = user.username if user else incoming.user.username or "—"
-    header = (
-        f"💬 Max Support\nUser: {username} (chat: {incoming.chat_id})\n\n{text}"
-    )
+    info_lines = [
+        "💬 Max Support",
+        f"User: {username} (chat: {incoming.chat_id})",
+    ]
+    if user:
+        if user.max_id:
+            info_lines.append(f"Max ID: {user.max_id}")
+        if user.telegram:
+            info_lines.append(f"Telegram: @{user.telegram}")
+        profile = await profile_service.get_blogger_profile(user.user_id)
+        if profile:
+            if profile.phone:
+                info_lines.append(f"Телефон: {profile.phone}")
+            if profile.instagram_url:
+                info_lines.append(f"Instagram: {profile.instagram_url}")
+    header = "\n".join(info_lines) + f"\n\n{text}"
 
     # Send to Telegram support group via the Telegram messenger client
     telegram_client = deps.get("telegram_messenger_client")

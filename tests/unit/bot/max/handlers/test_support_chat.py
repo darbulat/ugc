@@ -1,6 +1,7 @@
 """Tests for Max support chat handlers."""
 
 from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
 
@@ -36,9 +37,17 @@ def _config_no_chat():
 
 @pytest.fixture
 def deps(_config):
-    mock_user = AsyncMock(language="ru", username="alice")
+    mock_user = AsyncMock(
+        language="ru", username="alice", user_id=uuid4(), telegram="alice_tg"
+    )
     user_role_service = AsyncMock()
     user_role_service.get_user = AsyncMock(return_value=mock_user)
+
+    mock_profile = AsyncMock(
+        phone="+79991234567", instagram_url="https://instagram.com/alice"
+    )
+    profile_service = AsyncMock()
+    profile_service.get_blogger_profile = AsyncMock(return_value=mock_profile)
 
     bot_texts_service = AsyncMock()
     bot_texts_service.get = AsyncMock(return_value="")
@@ -57,6 +66,7 @@ def deps(_config):
         "telegram_messenger_client": telegram_client,
         "user_role_service": user_role_service,
         "bot_texts_service": bot_texts_service,
+        "profile_service": profile_service,
         "support_service": AsyncMock(),
         "state_store": AsyncMock(),
         "config": _config,
