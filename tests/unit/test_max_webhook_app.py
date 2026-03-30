@@ -175,6 +175,18 @@ def test_adapter_from_bot_started_fields():
     assert msg.user.username == "alice"
 
 
+def test_adapter_from_bot_started_with_payload():
+    adapter = MaxEventAdapter()
+    event = {
+        "update_type": "bot_started",
+        "chat_id": 252972060,
+        "user": {"user_id": 23759393, "username": "alice"},
+        "payload": "ref_abc123",
+    }
+    msg = adapter.from_bot_started(event)
+    assert msg.text == "/start ref_abc123"
+
+
 def test_adapter_from_pre_checkout_raises():
     adapter = MaxEventAdapter()
     import pytest as _pt
