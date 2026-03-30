@@ -124,6 +124,16 @@ async def _lifespan(app: FastAPI):
                 f"Failed to register Max webhook (HTTP {resp.status}): {body}"
             )
 
+    await messenger_client.set_my_commands(
+        [
+            {"name": "creator", "description": "Меню блогера"},
+            {"name": "advertiser", "description": "Меню рекламодателя"},
+            {"name": "profile", "description": "Мой профиль"},
+            {"name": "support", "description": "Поддержка"},
+        ]
+    )
+    logger.info("Max bot commands registered")
+
     logger.info("Max webhook app started")
 
     yield

@@ -161,6 +161,14 @@ class MaxMessengerClient(MessengerClient):
             f"{MAX_RETRY_ATTEMPTS} attempts"
         )
 
+    async def _patch(
+        self,
+        path: str,
+        json_body: dict | None = None,
+        params: dict[str, str] | None = None,
+    ) -> dict:
+        return await self._request("PATCH", path, json_body, params=params)
+
     async def _post(
         self,
         path: str,
@@ -248,6 +256,10 @@ class MaxMessengerClient(MessengerClient):
     ) -> None:
         body: dict[str, Any] = {"notification": text or ""}
         await self._post("/answers", body, params={"callback_id": callback_id})
+
+    async def set_my_commands(self, commands: list[dict[str, str]]) -> None:
+        """Set bot command suggestions via PATCH /me."""
+        await self._patch("/me", {"commands": commands})
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         raise NotImplementedError(

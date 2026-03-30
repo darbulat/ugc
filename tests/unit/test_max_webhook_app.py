@@ -853,6 +853,10 @@ async def test_lifespan_with_max_bot_sets_state():
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
         patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
         patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
+        patch(
+            "ugc_bot.max_webhook_app.MaxMessengerClient.set_my_commands",
+            new_callable=AsyncMock,
+        ),
     ):
         async with _lifespan(fake_app):
             assert fake_app.state.config is mock_config
@@ -975,6 +979,10 @@ def max_app_client() -> TestClient:
         patch("ugc_bot.max_webhook_app.Container", return_value=mock_container),
         patch("ugc_bot.max_webhook_app.Bot", return_value=mock_bot),
         patch("ugc_bot.max_webhook_app.TelegramMessengerClient"),
+        patch(
+            "ugc_bot.max_webhook_app.MaxMessengerClient.set_my_commands",
+            new_callable=AsyncMock,
+        ),
         TestClient(app) as c,
     ):
         yield c
