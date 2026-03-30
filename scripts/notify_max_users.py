@@ -51,7 +51,7 @@ async def _fetch_max_users(session_factory) -> list[str]:
     """Return external_ids of users who chose MAX (score=0, comment='MAX')."""
     async with session_factory() as session:
         stmt = (
-            select(UserModel.external_id)
+            select(UserModel.telegram_id)
             .join(
                 NpsResponseModel,
                 NpsResponseModel.user_id == UserModel.user_id,
@@ -65,7 +65,7 @@ async def _fetch_max_users(session_factory) -> list[str]:
             .distinct()
         )
         result = await session.execute(stmt)
-        return [row.external_id for row in result.all()]
+        return [row.telegram_id for row in result.all()]
 
 
 async def _send_with_retry(
