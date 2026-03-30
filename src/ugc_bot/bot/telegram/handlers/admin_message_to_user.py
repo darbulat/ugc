@@ -234,6 +234,7 @@ async def step_text(
         await messenger_client.send_text(
             chat_id=target.telegram_id,
             text=text_to_send,
+            parse_mode="HTML",
         )
         logger.info(
             "Admin sent message to user",
