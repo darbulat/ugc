@@ -221,6 +221,24 @@ class TestAuditBeforeFlush:
         entity_ids = {e.entity_id for e in entries}
         assert entity_ids == {p1.payment_id, p2.payment_id}
 
+    def test_create_with_null_pk_skips_audit(self, db_session):
+        """Payment with server-generated PK (None) skips audit."""
+        from ugc_bot.infrastructure.db.audit import _collect_audit_entries
+
+        payment = _make_payment(payment_id=None)
+        db_session.add(payment)
+
+        # Call the collector directly so we can inspect entries
+        # without flushing (SQLite lacks uuid_generate_v4).
+        _collect_audit_entries(db_session)
+
+        audit_objects = [
+            obj
+            for obj in db_session.new
+            if isinstance(obj, AuditLogModel)
+        ]
+        assert len(audit_objects) == 0
+
     def test_register_audit_listener_idempotent(self, db_session):
         """Multiple register calls don't duplicate entries."""
         from ugc_bot.infrastructure.db.audit import register_audit_listener

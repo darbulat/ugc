@@ -110,11 +110,20 @@ def _collect_audit_entries(session: Session) -> None:
         if cfg is None:
             continue
         entity_type, pk_attr = cfg
+        entity_id = getattr(obj, pk_attr)
+        if entity_id is None:
+            logger.warning(
+                "Audit: skipping CREATE for %s — %s is None "
+                "(server-generated PK not yet available before flush)",
+                entity_type,
+                pk_attr,
+            )
+            continue
         new_values = _get_all_values(obj)
         entries.append(
             AuditLogModel(
                 entity_type=entity_type,
-                entity_id=getattr(obj, pk_attr),
+                entity_id=entity_id,
                 action=AuditAction.CREATE,
                 old_values=None,
                 new_values=new_values,
