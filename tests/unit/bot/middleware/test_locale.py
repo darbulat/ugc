@@ -26,10 +26,13 @@ def _make_user(language: str | None = "ru", country: str | None = None) -> User:
     )
 
 
-def _make_tg_user(user_id: int = 123) -> MagicMock:
+def _make_tg_user(
+    user_id: int = 123, username: str | None = "tguser"
+) -> MagicMock:
     """Create a mock Telegram user object."""
     tg_user = MagicMock()
     tg_user.id = user_id
+    tg_user.username = username
     return tg_user
 
 
@@ -199,6 +202,7 @@ class TestLocaleMiddlewareCall:
         user = _make_user(language="en")
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
+        user_role_service.update_telegram = AsyncMock(return_value=user)
 
         middleware = LocaleMiddleware()
         handler = AsyncMock(return_value=None)
@@ -225,6 +229,7 @@ class TestLocaleMiddlewareCall:
         user = _make_user(language="ru", country="kz")
         user_role_service = MagicMock()
         user_role_service.get_user = AsyncMock(return_value=user)
+        user_role_service.update_telegram = AsyncMock(return_value=user)
         country_repo = MagicMock()
         country_repo.get_by_code = AsyncMock(return_value=kz)
 
@@ -253,3 +258,101 @@ class TestLocaleMiddlewareCall:
         result = await middleware(handler, event, data)
 
         assert result == 42
+
+    @pytest.mark.asyncio
+    async def test_call_syncs_telegram_username(self) -> None:
+        """__call__ updates telegram username via update_telegram."""
+        user = _make_user(language="ru")
+        user_role_service = MagicMock()
+        user_role_service.get_user = AsyncMock(return_value=user)
+        user_role_service.update_telegram = AsyncMock(return_value=user)
+
+        middleware = LocaleMiddleware()
+        handler = AsyncMock(return_value=None)
+        event = MagicMock()
+        tg_user = _make_tg_user(username="new_username")
+        data: dict = {
+            "user_role_service": user_role_service,
+            "event_from_user": tg_user,
+        }
+
+        await middleware(handler, event, data)
+
+        user_role_service.update_telegram.assert_awaited_once_with(
+            user, "new_username"
+        )
+
+
+class TestLocaleMiddlewareSyncTelegramUsername:
+    """Tests for LocaleMiddleware._sync_telegram_username static method."""
+
+    @pytest.mark.asyncio
+    async def test_no_user_skips_sync(self) -> None:
+        """When user is None, sync is skipped."""
+        data: dict = {
+            "event_from_user": _make_tg_user(),
+            "user_role_service": MagicMock(),
+        }
+        await LocaleMiddleware._sync_telegram_username(None, data)
+        # No exception, no calls
+
+    @pytest.mark.asyncio
+    async def test_no_tg_user_skips_sync(self) -> None:
+        """When event_from_user is missing, sync is skipped."""
+        user = _make_user()
+        data: dict = {"user_role_service": MagicMock()}
+        await LocaleMiddleware._sync_telegram_username(user, data)
+
+    @pytest.mark.asyncio
+    async def test_no_service_skips_sync(self) -> None:
+        """When user_role_service is missing, sync is skipped."""
+        user = _make_user()
+        data: dict = {"event_from_user": _make_tg_user()}
+        await LocaleMiddleware._sync_telegram_username(user, data)
+
+    @pytest.mark.asyncio
+    async def test_calls_update_telegram(self) -> None:
+        """Calls update_telegram with user and tg username."""
+        user = _make_user()
+        svc = MagicMock()
+        svc.update_telegram = AsyncMock(return_value=user)
+        tg_user = _make_tg_user(username="fresh_name")
+        data: dict = {
+            "event_from_user": tg_user,
+            "user_role_service": svc,
+        }
+
+        await LocaleMiddleware._sync_telegram_username(user, data)
+
+        svc.update_telegram.assert_awaited_once_with(user, "fresh_name")
+
+    @pytest.mark.asyncio
+    async def test_none_username_passed_through(self) -> None:
+        """When tg_user.username is None, passes None to update_telegram."""
+        user = _make_user()
+        svc = MagicMock()
+        svc.update_telegram = AsyncMock(return_value=user)
+        tg_user = _make_tg_user(username=None)
+        data: dict = {
+            "event_from_user": tg_user,
+            "user_role_service": svc,
+        }
+
+        await LocaleMiddleware._sync_telegram_username(user, data)
+
+        svc.update_telegram.assert_awaited_once_with(user, None)
+
+    @pytest.mark.asyncio
+    async def test_exception_is_caught_and_logged(self) -> None:
+        """Errors in update_telegram are caught, handler still runs."""
+        user = _make_user()
+        svc = MagicMock()
+        svc.update_telegram = AsyncMock(side_effect=RuntimeError("db down"))
+        tg_user = _make_tg_user(username="oops")
+        data: dict = {
+            "event_from_user": tg_user,
+            "user_role_service": svc,
+        }
+
+        # Should not raise
+        await LocaleMiddleware._sync_telegram_username(user, data)
