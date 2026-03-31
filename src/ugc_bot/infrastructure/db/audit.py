@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
@@ -110,11 +110,15 @@ def _collect_audit_entries(session: Session) -> None:
         if cfg is None:
             continue
         entity_type, pk_attr = cfg
+        entity_id = getattr(obj, pk_attr)
+        if entity_id is None:
+            entity_id = uuid4()
+            setattr(obj, pk_attr, entity_id)
         new_values = _get_all_values(obj)
         entries.append(
             AuditLogModel(
                 entity_type=entity_type,
-                entity_id=getattr(obj, pk_attr),
+                entity_id=entity_id,
                 action=AuditAction.CREATE,
                 old_values=None,
                 new_values=new_values,
