@@ -7,7 +7,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import event, inspect
 from sqlalchemy.orm import Session
@@ -112,13 +112,8 @@ def _collect_audit_entries(session: Session) -> None:
         entity_type, pk_attr = cfg
         entity_id = getattr(obj, pk_attr)
         if entity_id is None:
-            logger.warning(
-                "Audit: skipping CREATE for %s — %s is None "
-                "(server-generated PK not yet available before flush)",
-                entity_type,
-                pk_attr,
-            )
-            continue
+            entity_id = uuid4()
+            setattr(obj, pk_attr, entity_id)
         new_values = _get_all_values(obj)
         entries.append(
             AuditLogModel(
