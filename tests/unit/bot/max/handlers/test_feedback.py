@@ -462,6 +462,24 @@ async def test_handle_feedback_no_deal_removes_keyboard_when_message_id():
     assert len(deps["messenger_client"].answered_callbacks) >= 1
 
 
+@pytest.mark.asyncio
+async def test_handle_feedback_no_deal_edit_markup_failure():
+    """edit_reply_markup failure in no_deal is logged, not raised."""
+    user = _make_user()
+    interaction = _make_interaction(advertiser_id=user.user_id)
+    interaction_id = interaction.interaction_id
+    deps = _make_deps(user=user, interaction=interaction)
+    deps["messenger_client"].edit_reply_markup = AsyncMock(
+        side_effect=RuntimeError("API error")
+    )
+    incoming = _make_callback(
+        f"feedback:adv:{interaction_id}:no_deal",
+        message_id="msg_99",
+    )
+    await router.route_callback(incoming, deps)
+    assert len(deps["messenger_client"].answered_callbacks) >= 1
+
+
 # ---------------------------------------------------------------------------
 # handle_feedback_reason — "fb_r:" prefix
 # ---------------------------------------------------------------------------

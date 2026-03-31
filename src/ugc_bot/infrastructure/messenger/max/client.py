@@ -102,6 +102,7 @@ class MaxMessengerClient(MessengerClient):
         url = f"{self._base_url}{path}"
         headers = {"Authorization": self._token}
         last_exc: Exception | None = None
+        last_body: str | None = None
 
         for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
@@ -126,9 +127,11 @@ class MaxMessengerClient(MessengerClient):
                         )
                         raise MaxUserBlockedError(text)
                     if resp.status >= 500:
-                        text = await resp.text()
+                        last_body = await resp.text()
                         logger.error(
-                            "Max API 5xx error %s: %s", resp.status, text
+                            "Max API 5xx error %s: %s",
+                            resp.status,
+                            last_body,
                         )
                         await asyncio.sleep(MAX_RETRY_BASE_DELAY * (2**attempt))
                         continue
@@ -159,6 +162,7 @@ class MaxMessengerClient(MessengerClient):
         raise RuntimeError(
             f"Max API request {method} {path} failed after "
             f"{MAX_RETRY_ATTEMPTS} attempts"
+            f"{f': {last_body}' if last_body else ''}"
         )
 
     async def _patch(
@@ -210,6 +214,10 @@ class MaxMessengerClient(MessengerClient):
         keyboard: Keyboard | None = None,
         parse_mode: str | None = None,
     ) -> None:
+        if file_id:
+            logger.warning(
+                "send_photo: photos not supported on Max, sending caption only"
+            )
         text = caption or ""
         await self.send_text(chat_id=chat_id, text=text, keyboard=keyboard)
 

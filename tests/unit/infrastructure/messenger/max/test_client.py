@@ -89,6 +89,15 @@ async def test_answer_callback(client, mock_session):
 
 
 @pytest.mark.asyncio
+async def test_set_my_commands(client, mock_session):
+    cmds = [{"name": "/start", "description": "Start"}]
+    await client.set_my_commands(cmds)
+    args, kwargs = mock_session.request.call_args
+    assert args[0] == "PATCH"
+    assert kwargs["json"] == {"commands": cmds}
+
+
+@pytest.mark.asyncio
 async def test_send_invoice_raises(client):
     invoice = Invoice(
         title="Test",
@@ -376,6 +385,7 @@ async def test_request_network_error_retries_then_raises(make_response):
 @pytest.mark.asyncio
 async def test_request_5xx_all_retries_exhausted_raises(make_response):
     err_response = make_response(500)
+    err_response.text = AsyncMock(return_value="server crash")
     session = AsyncMock()
     session.request = AsyncMock(return_value=err_response)
     client = MaxMessengerClient(token="tok", session=session)
@@ -384,7 +394,7 @@ async def test_request_5xx_all_retries_exhausted_raises(make_response):
             "ugc_bot.infrastructure.messenger.max.client.asyncio.sleep",
             new_callable=AsyncMock,
         ),
-        pytest.raises(RuntimeError, match="failed after"),
+        pytest.raises(RuntimeError, match="server crash"),
     ):
         await client._request("GET", "/test")
 

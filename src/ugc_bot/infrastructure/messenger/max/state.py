@@ -25,7 +25,9 @@ class MaxRedisStateStore(StateStore):
     async def get_state(self) -> str | None:
         """Return current state name."""
         value = await self._redis.get(self._state_key)
-        return value if isinstance(value, str) else None
+        if value is None:
+            return None
+        return value if isinstance(value, str) else value.decode()
 
     async def set_state(self, state: str | None) -> None:
         """Set current state name (None clears)."""
@@ -49,10 +51,11 @@ class MaxRedisStateStore(StateStore):
             return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             logger.error(
-                "Corrupted FSM data in Redis key %s: %r",
+                "Corrupted FSM data in Redis key %s: %r — clearing",
                 self._data_key,
                 raw,
             )
+            await self._redis.delete(self._data_key)
             return {}
 
     async def clear(self) -> None:

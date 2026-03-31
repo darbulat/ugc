@@ -51,7 +51,10 @@ async def _create_max_messenger(config: AppConfig):
         MaxMessengerClient,
     )
 
-    assert config.max_bot is not None
+    if config.max_bot is None:
+        raise ValueError(
+            "MAX_BOT_TOKEN is required for Max messenger notifications."
+        )
     session = aiohttp.ClientSession()
     try:
         yield MaxMessengerClient(token=config.max_bot.token, session=session)

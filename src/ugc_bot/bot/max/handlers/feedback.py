@@ -1,6 +1,5 @@
 """Max handlers for feedback after contacts sharing."""
 
-import contextlib
 import logging
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
@@ -132,11 +131,16 @@ async def _handle_feedback_no_deal(
     """Handle no_deal status in feedback callback."""
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     if incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
     question = (
         texts.get("msg_fb_no_deal_question_blog", "")
@@ -170,11 +174,16 @@ async def _handle_feedback_issue(
         text=texts.get("msg_fb_thanks_short", "Спасибо."),
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -231,11 +240,16 @@ async def _send_feedback_response(
 ) -> None:
     """Remove reply markup and dispatch the appropriate status response."""
     if incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
 
     if status_raw == "postpone":
@@ -492,11 +506,16 @@ async def _handle_reason_other(
         feedback_kind=kind,
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await messenger_client.send_text(
@@ -537,11 +556,16 @@ async def _record_reason_and_respond(
         )
 
     if incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
@@ -1016,11 +1040,16 @@ async def handle_nps(incoming: IncomingCallback, deps: dict[str, Any]) -> None:
         nps_kind=kind,
     )
     if incoming.message_id:
-        with contextlib.suppress(Exception):
+        try:
             await messenger_client.edit_reply_markup(
                 chat_id=incoming.chat_id,
                 message_id=incoming.message_id,
                 keyboard=None,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to clear reply markup",
+                exc_info=True,
             )
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,

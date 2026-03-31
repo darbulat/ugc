@@ -91,6 +91,25 @@ def _deps(user=None, *, blogger_profile=None, state=None, state_data=None):
     }
 
 
+# ── _safe_clear_markup ──────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_safe_clear_markup_logs_on_failure():
+    """edit_reply_markup failure is logged, not raised."""
+    from ugc_bot.bot.max.handlers.offer_responses import (
+        _safe_clear_markup,
+    )
+
+    client = AsyncMock()
+    client.edit_reply_markup = AsyncMock(
+        side_effect=RuntimeError("API down")
+    )
+    # Should not raise
+    await _safe_clear_markup(client, "chat", "msg")
+    client.edit_reply_markup.assert_called_once()
+
+
 # ── offer_skip ──────────────────────────────────────────────────────────────
 
 
@@ -233,7 +252,10 @@ async def test_rejection_reason_user_not_found_returns_early():
     order_id = uuid4()
     deps = _deps(user=None)
     await router.route_callback(
-        _incoming_cb(f"orr:{order_id}:TOO_EXPENSIVE"), deps
+        _incoming_cb(
+            f"orr:{order_id}:{RejectionReason.NO_TIME.value}"
+        ),
+        deps,
     )
     deps["offer_dispatch_service"].record_skip.assert_not_called()
 
