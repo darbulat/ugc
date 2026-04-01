@@ -102,9 +102,7 @@ async def test_safe_clear_markup_logs_on_failure():
     )
 
     client = AsyncMock()
-    client.edit_reply_markup = AsyncMock(
-        side_effect=RuntimeError("API down")
-    )
+    client.edit_reply_markup = AsyncMock(side_effect=RuntimeError("API down"))
     # Should not raise
     await _safe_clear_markup(client, "chat", "msg")
     client.edit_reply_markup.assert_called_once()
@@ -252,9 +250,7 @@ async def test_rejection_reason_user_not_found_returns_early():
     order_id = uuid4()
     deps = _deps(user=None)
     await router.route_callback(
-        _incoming_cb(
-            f"orr:{order_id}:{RejectionReason.NO_TIME.value}"
-        ),
+        _incoming_cb(f"orr:{order_id}:{RejectionReason.NO_TIME.value}"),
         deps,
     )
     deps["offer_dispatch_service"].record_skip.assert_not_called()
