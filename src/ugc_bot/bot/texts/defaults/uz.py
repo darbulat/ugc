@@ -878,6 +878,21 @@ UZ: dict[str, str] = {
     "offer_format_label_ugc_only": "Brend uchun UGC-video",
     "btn_offer_accept": "UGC suratga olishga tayyor",
     "btn_offer_skip": "O'tkazib yuborish",
+    "btn_offer_confirm": "Tayyor",
+    "btn_offer_cancel": "Bekor qilish",
+    "msg_offer_brief_link": "📋 TZ havolasi:",
+    "msg_offer_confirm_response": (
+        "Javobingizni tasdiqlang\n\n"
+        "«Tayyor» tugmasini bosish orqali siz quyidagilarni tasdiqlaysiz:\n\n"
+        "- TZni diqqat bilan o'qib chiqdingiz\n"
+        "- buyurtmani ko'rsatilgan shartlarda bajarishga tayyorsiz\n\n"
+        "Agar javobdan so'ng buyurtmachiga javob bermasangiz yoki "
+        "asosli sabablarsiz bajarishdan bosh tortsangiz, bu tizim tomonidan "
+        "qayd etiladi. Takroriy holatlar yangi buyurtmalarga kirishni cheklashga olib kelishi mumkin.\n\n"
+        "TZ bo'yicha savollaringiz bo'lsa — javob berishdan oldin "
+        "qo'llab-quvvatlash xizmatiga (http://t.me/usemycontent) murojaat qilishni tavsiya etamiz."
+    ),
+    "msg_offer_confirm_cancelled": "Javob bekor qilindi",
     "msg_ugc_video_saved_creator": "✅ Videongiz menejer tomonidan qabul qilindi va saqlandi.",
     "msg_ugc_video_saved_advertiser": (
         "✅ Kreator {telegram} buyurtmani muvaffaqiyatli bajarib bo'ldi!\nVideo havolasi: {url}"

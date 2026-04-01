@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi import HTTPException
 
-from ugc_bot.domain.entities import OfferDispatch, Order
+from ugc_bot.domain.entities import AdvertiserProfile, OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType, RejectionReason
 from ugc_bot.miniapp.api import (
     CreatorDetailRequest,
@@ -64,10 +64,24 @@ class TestManagerOrdersEndpoint:
         manager_service.list_orders_for_manager = AsyncMock(
             return_value=([order], 1)
         )
+        profile_service = MagicMock()
+        profile_service.get_advertiser_profiles = AsyncMock(
+            return_value={
+                order.advertiser_id: AdvertiserProfile(
+                    user_id=order.advertiser_id,
+                    phone="+70000000000",
+                    brand="TestBrand",
+                )
+            }
+        )
 
+        services = {
+            "manager_service": manager_service,
+            "profile_service": profile_service,
+        }
         dispatcher = MagicMock()
-        dispatcher.__getitem__ = lambda self, k: manager_service
-        dispatcher.get = lambda k: None
+        dispatcher.__getitem__ = lambda self, k: services[k]
+        dispatcher.get = lambda k: services.get(k)
 
         cfg = MagicMock()
         cfg.bot.bot_username = "testbot"
@@ -89,6 +103,7 @@ class TestManagerOrdersEndpoint:
         assert result.orders[0].order_id == str(ORDER_ID)
         assert result.orders[0].status == "active"
         assert result.orders[0].price == 1000.0
+        assert result.orders[0].brand_name == "TestBrand"
 
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_orders(self) -> None:
@@ -96,10 +111,16 @@ class TestManagerOrdersEndpoint:
         manager_service.list_orders_for_manager = AsyncMock(
             return_value=([], 0)
         )
+        profile_service = MagicMock()
+        profile_service.get_advertiser_profiles = AsyncMock(return_value={})
 
+        services = {
+            "manager_service": manager_service,
+            "profile_service": profile_service,
+        }
         dispatcher = MagicMock()
-        dispatcher.__getitem__ = lambda self, k: manager_service
-        dispatcher.get = lambda k: None
+        dispatcher.__getitem__ = lambda self, k: services[k]
+        dispatcher.get = lambda k: services.get(k)
 
         cfg = MagicMock()
         cfg.bot.bot_username = "testbot"
@@ -139,10 +160,16 @@ class TestManagerOrdersEndpoint:
         manager_service.list_orders_for_manager = AsyncMock(
             return_value=([order], 1)
         )
+        profile_service = MagicMock()
+        profile_service.get_advertiser_profiles = AsyncMock(return_value={})
 
+        services = {
+            "manager_service": manager_service,
+            "profile_service": profile_service,
+        }
         dispatcher = MagicMock()
-        dispatcher.__getitem__ = lambda self, k: manager_service
-        dispatcher.get = lambda k: None
+        dispatcher.__getitem__ = lambda self, k: services[k]
+        dispatcher.get = lambda k: services.get(k)
 
         cfg = MagicMock()
         cfg.bot.bot_username = "testbot"

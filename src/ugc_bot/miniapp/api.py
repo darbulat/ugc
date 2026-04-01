@@ -200,6 +200,7 @@ class OrderListItem(BaseModel):
     created_at: str
     payment_link: str = ""  # t.me/bot?start=pay_ORDER_ID
     currency_symbol: str = "₽"
+    brand_name: str = ""
 
 
 class OrdersListResponse(BaseModel):
@@ -1689,6 +1690,10 @@ async def manager_orders(
     cfg = request.app.state.config
     bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
     cur_map = await _currency_symbol_map(request)
+    profile_service = dispatcher["profile_service"]
+    adv_ids = list({o.advertiser_id for o in orders})
+    adv_profiles = await profile_service.get_advertiser_profiles(adv_ids)
+    brand_map = {uid: p.brand for uid, p in adv_profiles.items()}
     items = [
         OrderListItem(
             order_id=str(o.order_id),
@@ -1701,6 +1706,7 @@ async def manager_orders(
             if o.status == OrderStatus.NEW
             else "",
             currency_symbol=cur_map.get(o.currency, "₽"),
+            brand_name=brand_map.get(o.advertiser_id, ""),
         )
         for o in orders
     ]

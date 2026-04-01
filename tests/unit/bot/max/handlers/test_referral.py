@@ -364,10 +364,7 @@ async def test_payout_button_notifies_with_admin_url():
     deps["payout_request_repo"].save.assert_called_once()
     # Verify admin URL in support message
     send_calls = deps["messenger_client"].send_text.call_args_list
-    support_call = [
-        c for c in send_calls
-        if "chat_support" in str(c)
-    ]
+    support_call = [c for c in send_calls if "chat_support" in str(c)]
     assert len(support_call) >= 1
 
 
@@ -500,16 +497,12 @@ async def test_payout_paid_edit_markup_failure_logged():
     user = _make_user(admin=True)
     deps = _deps(user=user)
     client = AsyncMock()
-    client.edit_reply_markup = AsyncMock(
-        side_effect=RuntimeError("API error")
-    )
+    client.edit_reply_markup = AsyncMock(side_effect=RuntimeError("API error"))
     deps["messenger_client"] = client
     request = MagicMock()
     request.status = PayoutRequestStatus.PENDING
     request.request_id = request_id
-    deps["payout_request_repo"].get_by_id = AsyncMock(
-        return_value=request
-    )
+    deps["payout_request_repo"].get_by_id = AsyncMock(return_value=request)
     deps["payout_request_repo"].update_status = AsyncMock(
         return_value=True,
     )

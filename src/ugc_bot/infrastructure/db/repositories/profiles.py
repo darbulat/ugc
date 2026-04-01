@@ -247,6 +247,27 @@ class SqlAlchemyAdvertiserProfileRepository(AdvertiserProfileRepository):
             result = exec_result.scalar_one_or_none()
             return _to_advertiser_profile_entity(result) if result else None
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, AdvertiserProfile]:
+        """Fetch advertiser profiles by user IDs in one query."""
+        if not user_ids:
+            return {}
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            exec_result = await db_session.execute(
+                select(AdvertiserProfileModel).where(
+                    AdvertiserProfileModel.user_id.in_(user_ids)
+                )
+            )
+            rows = exec_result.scalars().all()
+            return {
+                row.user_id: _to_advertiser_profile_entity(row) for row in rows
+            }
+
     async def save(
         self, profile: AdvertiserProfile, session: object | None = None
     ) -> None:

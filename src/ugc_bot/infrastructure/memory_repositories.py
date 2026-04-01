@@ -614,6 +614,16 @@ class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):
 
         return self.profiles.get(user_id)
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, AdvertiserProfile]:
+        """Fetch advertiser profiles by user IDs."""
+        return {
+            uid: self.profiles[uid] for uid in user_ids if uid in self.profiles
+        }
+
     async def save(
         self, profile: AdvertiserProfile, session: object | None = None
     ) -> None:

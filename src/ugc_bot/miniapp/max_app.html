@@ -2169,6 +2169,14 @@
               } else {
                 strong.textContent = o.order_id;
               }
+              if (o.brand_name) {
+                var brandSpan = document.createElement('span');
+                brandSpan.style.color = 'var(--tg-theme-hint-color, #999)';
+                brandSpan.style.fontSize = '0.9em';
+                brandSpan.textContent = o.brand_name;
+                li.appendChild(brandSpan);
+                li.appendChild(document.createElement('br'));
+              }
               li.appendChild(strong);
               var datePart = fmtDate(o.created_at);
               li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol) + (datePart ? ' \u00b7 ' + datePart : '')));

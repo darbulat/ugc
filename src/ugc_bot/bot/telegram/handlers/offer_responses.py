@@ -22,6 +22,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.ports import OrderRepository
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.offer_dispatch_service import (
@@ -588,8 +589,7 @@ async def handle_offer_response(
     state: FSMContext,
     user_role_service: UserRoleService,
     profile_service: ProfileService,
-    offer_response_service: OfferResponseService,
-    interaction_service: InteractionService,
+    order_repo: OrderRepository,
     offer_response_rate_limiter: Any,
     config: AppConfig,
     bot_texts_service: BotTextsService,
@@ -597,7 +597,7 @@ async def handle_offer_response(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle blogger response to offer."""
+    """Show confirmation message with brief link before accepting offer."""
 
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
@@ -661,6 +661,113 @@ async def handle_offer_response(
         )
         return
 
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        await _send_order_closed_and_remove_keyboard(
+            incoming, messenger_client, bot_texts_service, locale
+        )
+        return
+
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text="",
+    )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
+
+    if order.brief_link:
+        brief_label = await bot_texts_service.get(
+            "msg_offer_brief_link", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=f"{brief_label}\n{order.brief_link}",
+        )
+
+    confirm_text = await bot_texts_service.get(
+        "msg_offer_confirm_response", locale
+    )
+    btn_texts = await bot_texts_service.get_many(
+        ["btn_offer_confirm", "btn_offer_cancel"], locale
+    )
+    keyboard = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=btn_texts.get("btn_offer_confirm", "Готов"),
+                    callback_data=f"offer_confirm:{order_id}",
+                )
+            ],
+            [
+                Button(
+                    text=btn_texts.get("btn_offer_cancel", "Отмена"),
+                    callback_data=f"offer_cancel:{order_id}",
+                )
+            ],
+        ],
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=confirm_text,
+        keyboard=keyboard,
+    )
+
+
+@router.callback_query(
+    lambda cb: cb.data and cb.data.startswith("offer_confirm:")
+)
+async def handle_offer_confirm(
+    callback: CallbackQuery,
+    state: FSMContext,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    offer_response_service: OfferResponseService,
+    interaction_service: InteractionService,
+    offer_response_rate_limiter: Any,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Confirm offer response after creator reviewed the brief."""
+
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    locale = user_locale
+    offer_msgs = await bot_texts_service.get_many(
+        list(OFFER_RESPONSE_TEXTS_KEYS), locale
+    )
+    user = await get_user_and_ensure_allowed_callback(
+        incoming,
+        messenger_client,
+        user_role_service,
+        user_not_found_msg=offer_msgs.get("msg_profile_not_found_role", ""),
+        blocked_msg=offer_msgs.get("msg_offer_response_blocked", ""),
+        pause_msg=offer_msgs.get("msg_offer_response_pause", ""),
+    )
+    if user is None:
+        return
+
+    raw = incoming.data.split("offer_confirm:", 1)[-1] if incoming.data else ""
+    try:
+        order_id = UUID(raw)
+    except ValueError:
+        msg = await bot_texts_service.get("err_order_invalid_id", locale)
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=msg,
+        )
+        return
+
     try:
         result = await offer_response_service.respond_and_finalize(
             order_id, user.user_id
@@ -683,6 +790,40 @@ async def handle_offer_response(
         locale,
         currency_symbol=config.market.currency_symbol,
     )
+
+
+@router.callback_query(
+    lambda callback: callback.data and callback.data.startswith("offer_cancel:")
+)
+async def handle_offer_cancel(
+    callback: CallbackQuery,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    """Cancel offer response — remove confirmation keyboard."""
+
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    locale = user_locale
+
+    msg_cancelled = await bot_texts_service.get(
+        "msg_offer_confirm_cancelled", locale
+    )
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text=msg_cancelled,
+    )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
 
 
 def _format_ugc_type(order: Order, texts: dict[str, str] | None = None) -> str:
