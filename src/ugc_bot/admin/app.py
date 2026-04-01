@@ -1533,6 +1533,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
+        OrderModel.brief_link,
         OrderModel.created_at,
         OrderModel.updated_at,
         OrderModel.completed_at,
@@ -1575,6 +1576,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.price_filter_delta: "Дельта цены (диапазон ±)",
         OrderModel.filter_by_placement: "Фильтр по размещению",
         OrderModel.filter_by_barter: "Фильтр по бартеру",
+        OrderModel.brief_link: "Ссылка на ТЗ",
     }
     form_columns = [
         OrderModel.order_type,
@@ -1599,6 +1601,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.price_filter_delta,
         OrderModel.filter_by_placement,
         OrderModel.filter_by_barter,
+        OrderModel.brief_link,
     ]
     edit_template = "order_edit.html"
 

@@ -288,6 +288,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         location_geometry=_geometry_to_wkt(model.location_geometry),
         currency=model.currency,
         last_round_robin_index=model.last_round_robin_index,
+        brief_link=model.brief_link,
     )
 
 
@@ -324,6 +325,7 @@ def _to_order_model(order: Order) -> OrderModel:
         location_geometry=_wkt_to_geometry_element(order.location_geometry),
         currency=order.currency,
         last_round_robin_index=order.last_round_robin_index,
+        brief_link=order.brief_link,
     )
 
 

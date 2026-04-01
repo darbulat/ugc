@@ -440,6 +440,7 @@ class OrderModel(Base):
     last_round_robin_index: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
+    brief_link: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class CountryModel(Base):
