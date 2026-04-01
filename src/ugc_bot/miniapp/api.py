@@ -1691,12 +1691,9 @@ async def manager_orders(
     bot_username = (cfg.bot.bot_username or "").strip().lstrip("@")
     cur_map = await _currency_symbol_map(request)
     profile_service = dispatcher["profile_service"]
-    adv_ids = {o.advertiser_id for o in orders}
-    brand_map: dict[UUID, str] = {}
-    for adv_id in adv_ids:
-        profile = await profile_service.get_advertiser_profile(adv_id)
-        if profile:
-            brand_map[adv_id] = profile.brand
+    adv_ids = list({o.advertiser_id for o in orders})
+    adv_profiles = await profile_service.get_advertiser_profiles(adv_ids)
+    brand_map = {uid: p.brand for uid, p in adv_profiles.items()}
     items = [
         OrderListItem(
             order_id=str(o.order_id),

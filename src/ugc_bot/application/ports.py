@@ -193,6 +193,19 @@ class AdvertiserProfileRepository(ABC):
     ) -> Optional[AdvertiserProfile]:
         """Fetch advertiser profile by user id."""
 
+    async def get_by_user_ids(
+        self,
+        user_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, AdvertiserProfile]:
+        """Fetch advertiser profiles by user IDs. Override for batch impl."""
+        result: Dict[UUID, AdvertiserProfile] = {}
+        for uid in user_ids:
+            p = await self.get_by_user_id(uid, session=session)
+            if p is not None:
+                result[uid] = p  # pragma: no cover
+        return result
+
     @abstractmethod
     async def save(
         self, profile: AdvertiserProfile, session: object | None = None

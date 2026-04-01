@@ -65,12 +65,14 @@ class TestManagerOrdersEndpoint:
             return_value=([order], 1)
         )
         profile_service = MagicMock()
-        profile_service.get_advertiser_profile = AsyncMock(
-            return_value=AdvertiserProfile(
-                user_id=order.advertiser_id,
-                phone="+70000000000",
-                brand="TestBrand",
-            )
+        profile_service.get_advertiser_profiles = AsyncMock(
+            return_value={
+                order.advertiser_id: AdvertiserProfile(
+                    user_id=order.advertiser_id,
+                    phone="+70000000000",
+                    brand="TestBrand",
+                )
+            }
         )
 
         services = {
@@ -110,6 +112,7 @@ class TestManagerOrdersEndpoint:
             return_value=([], 0)
         )
         profile_service = MagicMock()
+        profile_service.get_advertiser_profiles = AsyncMock(return_value={})
 
         services = {
             "manager_service": manager_service,
@@ -158,7 +161,7 @@ class TestManagerOrdersEndpoint:
             return_value=([order], 1)
         )
         profile_service = MagicMock()
-        profile_service.get_advertiser_profile = AsyncMock(return_value=None)
+        profile_service.get_advertiser_profiles = AsyncMock(return_value={})
 
         services = {
             "manager_service": manager_service,
