@@ -13,6 +13,7 @@ from ugc_bot.application.ports import (
     ComplaintRepository,
     ContactPricingRepository,
     CountryRepository,
+    EscrowHoldRepository,
     InstagramGraphApiClient,
     InstagramProfileInfo,
     InstagramRapidApiClient,
@@ -39,6 +40,7 @@ from ugc_bot.domain.entities import (
     Complaint,
     ContactPricing,
     Country,
+    EscrowHold,
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
@@ -57,6 +59,7 @@ from ugc_bot.domain.entities import (
 )
 from ugc_bot.domain.enums import (
     ComplaintStatus,
+    EscrowStatus,
     InteractionStatus,
     MessengerType,
     OrderStatus,
@@ -1720,3 +1723,50 @@ class InMemorySupportMessageRepository(SupportMessageRepository):
         self, support_chat_message_id: int, session: object | None = None
     ) -> Optional[SupportMessage]:
         return self.messages.get(support_chat_message_id)
+
+
+@dataclass
+class InMemoryEscrowHoldRepository(EscrowHoldRepository):
+    """In-memory implementation of escrow hold repository."""
+
+    holds: Dict[UUID, EscrowHold] = field(default_factory=dict)
+
+    async def get_by_id(
+        self, escrow_id: UUID, session: object | None = None
+    ) -> Optional[EscrowHold]:
+        return self.holds.get(escrow_id)
+
+    async def get_by_interaction(
+        self, interaction_id: UUID, session: object | None = None
+    ) -> Optional[EscrowHold]:
+        for hold in self.holds.values():
+            if hold.interaction_id == interaction_id:
+                return hold
+        return None
+
+    async def get_unassigned_for_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[EscrowHold]:
+        for hold in self.holds.values():
+            if (
+                hold.order_id == order_id
+                and hold.status == EscrowStatus.HELD
+                and hold.interaction_id is None
+            ):
+                return hold
+        return None
+
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[EscrowHold]:
+        return [h for h in self.holds.values() if h.order_id == order_id]
+
+    async def list_by_payment(
+        self, payment_id: UUID, session: object | None = None
+    ) -> list[EscrowHold]:
+        return [h for h in self.holds.values() if h.payment_id == payment_id]
+
+    async def save(
+        self, hold: EscrowHold, session: object | None = None
+    ) -> None:
+        self.holds[hold.escrow_id] = hold

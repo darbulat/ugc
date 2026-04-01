@@ -42,6 +42,7 @@ class InteractionService:
     order_repo: OrderRepository | None = None
     user_repo: UserRepository | None = None
     referral_income_service: Optional[Any] = None
+    escrow_service: Optional[Any] = None
 
     async def _save(self, interaction: Interaction) -> None:
         """Persist interaction using an optional transaction boundary."""
@@ -117,6 +118,12 @@ class InteractionService:
             updated_at=now,
         )
         await self._save(interaction)
+
+        if self.escrow_service:
+            await self.escrow_service.assign_interaction(
+                order_id, blogger_id, interaction.interaction_id
+            )
+
         return interaction
 
     async def reactivate_or_create_for_contacts_sent(
@@ -248,6 +255,11 @@ class InteractionService:
         ):
             await self._try_record_creator_referral_income(updated)
 
+        if self.escrow_service and updated.status == InteractionStatus.OK:
+            await self.escrow_service.release_hold(updated.interaction_id)
+        elif self.escrow_service and updated.status == InteractionStatus.ISSUE:
+            await self.escrow_service.dispute_hold(updated.interaction_id)
+
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
             self.metrics_collector.record_interaction_issue(
@@ -314,6 +326,11 @@ class InteractionService:
             and self.referral_income_service
         ):
             await self._try_record_creator_referral_income(updated)
+
+        if self.escrow_service and updated.status == InteractionStatus.OK:
+            await self.escrow_service.release_hold(updated.interaction_id)
+        elif self.escrow_service and updated.status == InteractionStatus.ISSUE:
+            await self.escrow_service.dispute_hold(updated.interaction_id)
 
         # Record ISSUE metric
         if final_status == InteractionStatus.ISSUE and self.metrics_collector:
@@ -522,6 +539,14 @@ class InteractionService:
         )
         await self._save(resolved)
 
+        if self.escrow_service:
+            if final_status == InteractionStatus.OK:
+                await self.escrow_service.release_hold(resolved.interaction_id)
+            elif final_status == InteractionStatus.NO_DEAL:
+                await self.escrow_service.refund_hold_by_interaction(
+                    resolved.interaction_id
+                )
+
         logger.info(
             "Interaction issue manually resolved",
             extra={
@@ -566,6 +591,12 @@ class InteractionService:
             updated_at=now,
         )
         await self._save(resolved)
+
+        if self.escrow_service:
+            await self.escrow_service.cancel_hold_by_interaction(
+                resolved.interaction_id
+            )
+
         logger.info(
             "Interaction cancelled (creator removed from order)",
             extra={

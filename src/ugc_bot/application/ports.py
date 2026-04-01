@@ -21,6 +21,7 @@ from ugc_bot.domain.entities import (
     Complaint,
     ContactPricing,
     Country,
+    EscrowHold,
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
@@ -726,6 +727,46 @@ class PaymentRepository(ABC):
         self, payment: Payment, session: object | None = None
     ) -> None:
         """Persist payment."""
+
+
+class EscrowHoldRepository(ABC):
+    """Port for escrow hold persistence."""
+
+    @abstractmethod
+    async def get_by_id(
+        self, escrow_id: UUID, session: object | None = None
+    ) -> Optional[EscrowHold]:
+        """Fetch escrow hold by id."""
+
+    @abstractmethod
+    async def get_by_interaction(
+        self, interaction_id: UUID, session: object | None = None
+    ) -> Optional[EscrowHold]:
+        """Fetch escrow hold by interaction id."""
+
+    @abstractmethod
+    async def get_unassigned_for_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> Optional[EscrowHold]:
+        """Fetch first HELD escrow hold without interaction_id for an order."""
+
+    @abstractmethod
+    async def list_by_order(
+        self, order_id: UUID, session: object | None = None
+    ) -> list[EscrowHold]:
+        """List all escrow holds for an order."""
+
+    @abstractmethod
+    async def list_by_payment(
+        self, payment_id: UUID, session: object | None = None
+    ) -> list[EscrowHold]:
+        """List all escrow holds for a payment."""
+
+    @abstractmethod
+    async def save(
+        self, hold: EscrowHold, session: object | None = None
+    ) -> None:
+        """Persist escrow hold."""
 
 
 class ContactPricingRepository(ABC):

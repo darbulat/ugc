@@ -20,6 +20,7 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.escrow_service import EscrowService
 from ugc_bot.application.services.exchange_rate_service import (
     ExchangeRateService,
 )
@@ -366,6 +367,10 @@ def build_bot_services(
         user_referral_binding_repo=repos["user_referral_binding_repo"],
         transaction_manager=transaction_manager,
     )
+    escrow_service = EscrowService(
+        escrow_repo=repos["escrow_repo"],
+        transaction_manager=transaction_manager,
+    )
     geocoder = build_geocoder(config)
     exchange_rate_service = build_exchange_rate_service(config)
     referral_income_service = ReferralIncomeService(
@@ -457,6 +462,7 @@ def build_bot_services(
             order_repo=repos["order_repo"],
             user_repo=repos["user_repo"],
             referral_income_service=referral_income_service,
+            escrow_service=escrow_service,
         ),
         "payment_service": PaymentService(
             user_repo=repos["user_repo"],
@@ -467,6 +473,7 @@ def build_bot_services(
             country_repo=repos.get("country_repo"),
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
+            escrow_service=escrow_service,
         ),
         "contact_pricing_service": ContactPricingService(
             pricing_repo=repos["pricing_repo"],

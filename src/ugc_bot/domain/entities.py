@@ -10,6 +10,7 @@ from ugc_bot.domain.enums import (
     AudienceGender,
     BloggerGender,
     ComplaintStatus,
+    EscrowStatus,
     InteractionStatus,
     MessengerType,
     OrderStatus,
@@ -353,6 +354,31 @@ class Payment:
     created_at: datetime
     updated_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class EscrowHold:
+    """Per-blogger escrow hold within a paid order.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "EscrowHold(" src/
+    3. For updates of existing hold use dataclasses.replace(hold, ...).
+    4. Update escrow entity/model mapping in db/repositories/escrow.py.
+    """
+
+    escrow_id: UUID
+    payment_id: UUID
+    order_id: UUID
+    blogger_id: UUID
+    status: EscrowStatus
+    amount: Decimal
+    currency: str
+    created_at: datetime
+    interaction_id: Optional[UUID] = None
+    released_at: Optional[datetime] = None
+    refunded_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 @dataclass(frozen=True)

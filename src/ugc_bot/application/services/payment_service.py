@@ -106,6 +106,7 @@ class PaymentService:
     country_repo: CountryRepository | None = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    escrow_service: Optional[Any] = None
 
     async def confirm_telegram_payment(
         self,
@@ -345,6 +346,11 @@ class PaymentService:
                 order, status=OrderStatus.PENDING_MODERATION
             )
             await self.order_repo.save(order_pending, session=session)
+
+            if self.escrow_service is not None:
+                await self.escrow_service.create_holds_for_order(
+                    payment, order, session=session
+                )
 
         logger.info(
             "Payment confirmed",

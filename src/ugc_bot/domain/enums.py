@@ -124,6 +124,16 @@ class RejectionReason(StrEnum):
     ALREADY_WORKING_WITH_BRAND = "already_working"
 
 
+class EscrowStatus(StrEnum):
+    """Escrow hold lifecycle status."""
+
+    HELD = "held"
+    RELEASED = "released"
+    REFUNDED = "refunded"
+    DISPUTED = "disputed"
+    CANCELLED = "cancelled"
+
+
 class AuditAction(StrEnum):
     """Audit log action type."""
 

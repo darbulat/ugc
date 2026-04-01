@@ -34,6 +34,7 @@ from ugc_bot.domain.enums import (
     AuditAction,
     BloggerGender,
     ComplaintStatus,
+    EscrowStatus,
     InteractionStatus,
     MessengerType,
     OrderStatus,
@@ -106,6 +107,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     PayoutRequestStatus: "payout_request_status",
     WorkFormat: "work_format",
     AuditAction: "audit_action",
+    EscrowStatus: "escrow_status",
 }
 
 
@@ -734,6 +736,59 @@ class PaymentModel(Base):
     )
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
+    )
+
+
+class EscrowHoldModel(Base):
+    """Per-blogger escrow hold within a paid order."""
+
+    __tablename__ = "escrow_holds"
+
+    escrow_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    payment_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("payments.payment_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.order_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    blogger_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    interaction_id: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("interactions.interaction_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    status: Mapped[EscrowStatus] = mapped_column(
+        _enum_column(EscrowStatus), nullable=False, index=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    released_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        server_default=text("now()"),
     )
 
 

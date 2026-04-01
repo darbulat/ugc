@@ -11,6 +11,7 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyComplaintRepository,
     SqlAlchemyContactPricingRepository,
     SqlAlchemyCountryRepository,
+    SqlAlchemyEscrowHoldRepository,
     SqlAlchemyInstagramStatsRepository,
     SqlAlchemyInstagramVerificationRepository,
     SqlAlchemyInteractionRepository,
@@ -134,6 +135,9 @@ def build_repos(
             session_factory=session_factory
         ),
         "support_message_repo": SqlAlchemySupportMessageRepository(
+            session_factory=session_factory
+        ),
+        "escrow_repo": SqlAlchemyEscrowHoldRepository(
             session_factory=session_factory
         ),
     }

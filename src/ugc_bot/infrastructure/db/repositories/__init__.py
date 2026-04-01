@@ -13,6 +13,9 @@ from ugc_bot.infrastructure.db.repositories._shared import (
     _resolve_session,  # noqa: F401
     _wkt_to_geometry_element,  # noqa: F401
 )
+from ugc_bot.infrastructure.db.repositories.escrow import (
+    SqlAlchemyEscrowHoldRepository,
+)
 from ugc_bot.infrastructure.db.repositories.instagram import (
     SqlAlchemyInstagramStatsRepository,
     SqlAlchemyInstagramVerificationRepository,
@@ -67,6 +70,7 @@ __all__ = [
     "SqlAlchemyBloggerProfileRepository",
     "SqlAlchemyBotTextsRepository",
     "SqlAlchemyComplaintRepository",
+    "SqlAlchemyEscrowHoldRepository",
     "SqlAlchemyContactPricingRepository",
     "SqlAlchemyCountryRepository",
     "SqlAlchemyInstagramStatsRepository",

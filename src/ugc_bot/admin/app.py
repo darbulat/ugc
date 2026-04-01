@@ -59,6 +59,7 @@ from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
     ContactPricingModel,
     CountryModel,
+    EscrowHoldModel,
     InstagramVerificationCodeModel,
     InteractionModel,
     LanguageModel,
@@ -2198,6 +2199,49 @@ class PaymentAdmin(ModelView, model=PaymentModel):
     }
 
 
+class EscrowHoldAdmin(ModelView, model=EscrowHoldModel):
+    """Admin view for escrow holds."""
+
+    name = "Эскроу"
+    name_plural = "Эскроу"
+    can_create = False
+    can_edit = True
+    can_delete = False
+    column_list = [
+        EscrowHoldModel.escrow_id,
+        EscrowHoldModel.order_id,
+        EscrowHoldModel.blogger_id,
+        EscrowHoldModel.status,
+        EscrowHoldModel.amount,
+        EscrowHoldModel.currency,
+        EscrowHoldModel.interaction_id,
+        EscrowHoldModel.created_at,
+        EscrowHoldModel.released_at,
+        EscrowHoldModel.refunded_at,
+    ]
+    column_sortable_list = [
+        EscrowHoldModel.status,
+        EscrowHoldModel.amount,
+        EscrowHoldModel.created_at,
+    ]
+    column_default_sort = (EscrowHoldModel.created_at, True)
+    form_columns = [
+        EscrowHoldModel.status,
+    ]
+    column_labels = {
+        EscrowHoldModel.escrow_id: "ID эскроу",
+        EscrowHoldModel.order_id: "ID заказа",
+        EscrowHoldModel.blogger_id: "ID блогера",
+        EscrowHoldModel.status: "Статус",
+        EscrowHoldModel.amount: "Сумма",
+        EscrowHoldModel.currency: "Валюта",
+        EscrowHoldModel.interaction_id: "ID взаимодействия",
+        EscrowHoldModel.created_at: "Создано",
+        EscrowHoldModel.released_at: "Выдано",
+        EscrowHoldModel.refunded_at: "Возвращено",
+    }
+
+
 class AuditLogAdmin(ModelView, model=AuditLogModel):
     """Read-only audit log viewer."""
 
@@ -2429,6 +2473,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(BotTextAdmin)
     admin.add_view(NpsResponseAdmin)
     admin.add_view(PaymentAdmin)
+    admin.add_view(EscrowHoldAdmin)
     admin.add_view(PayoutRequestAdmin)
     admin.add_view(ReferralIncomeEntryAdmin)
     admin.add_view(AuditLogAdmin)
