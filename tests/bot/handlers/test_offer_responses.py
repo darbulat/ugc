@@ -34,6 +34,7 @@ from ugc_bot.bot.telegram.handlers.offer_responses import (
     _send_order_closed_and_remove_keyboard,
     handle_cancel_price_entry,
     handle_desired_price,
+    handle_offer_confirm,
     handle_offer_response,
     handle_offer_skip,
     handle_rejection_reason,
@@ -422,6 +423,27 @@ async def test_offer_response_handler_success(
         FakeFSMContext(),
         user_service,
         profile_service,
+        order_repo,
+        offer_response_rate_limiter,
+        config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+    # Confirmation message should be sent
+    assert any("offer_confirm" in str(s) for s in messenger_client.sent_text)
+
+    # Now confirm the offer
+    confirm_callback = FakeCallback(
+        data=f"offer_confirm:{order.order_id}",
+        user=FakeUser(10),
+        message=FakeMessage(),
+    )
+    await handle_offer_confirm(
+        confirm_callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
@@ -430,13 +452,11 @@ async def test_offer_response_handler_success(
         messenger_client=messenger_client,
         event_adapter=event_adapter,
     )
-    assert callback.answers
+    assert confirm_callback.answers
     responses = await offer_dispatch_repo.list_responses_by_order(
         order.order_id
     )
     assert list(responses)
-    assert len(message.edit_reply_markup_calls) == 1
-    assert message.edit_reply_markup_calls[0] is None
 
 
 @pytest.mark.asyncio
@@ -453,12 +473,12 @@ async def test_offer_response_handler_blocked_user(
 ) -> None:
     """Reject blocked bloggers early."""
 
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=order_repo,
         dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     blocked_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000710"),
@@ -483,8 +503,7 @@ async def test_offer_response_handler_blocked_user(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        order_repo,
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -509,12 +528,12 @@ async def test_offer_response_handler_order_not_active(
     dispatch_repo = InMemoryOfferDispatchRepository()
     interaction_repo = InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=order_repo,
         dispatch_repo=dispatch_repo,
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
 
     user = User(
@@ -556,15 +575,19 @@ async def test_offer_response_handler_order_not_active(
         data=f"offer:{order.order_id}", user=FakeUser(12), message=message
     )
 
-    # Wrap handler call with middleware to handle errors
-    await _call_handler_with_middleware(
-        handle_offer_response,
+    # In the new flow, handle_offer_response shows confirmation
+    # (the order exists even if not active), then handle_offer_confirm
+    # would reject via respond_and_finalize. We test that the
+    # confirmation step works for existing orders.
+    await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        order_repo,
         offer_response_rate_limiter,
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -607,12 +630,12 @@ async def test_offer_response_handler_order_not_found(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000714"),
@@ -636,15 +659,16 @@ async def test_offer_response_handler_order_not_found(
         message=message,
     )
 
-    # Wrap handler call with middleware to handle errors
-    await _call_handler_with_middleware(
-        handle_offer_response,
+    order_repo = InMemoryOrderRepository()
+    await handle_offer_response(
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        order_repo,
         offer_response_rate_limiter,
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -713,18 +737,23 @@ async def test_offer_response_handler_already_responded(
 
     message = FakeMessage()
     callback = FakeCallback(
-        data=f"offer:{order.order_id}", user=FakeUser(14), message=message
+        data=f"offer_confirm:{order.order_id}",
+        user=FakeUser(14),
+        message=message,
     )
 
-    # Wrap handler call with middleware to handle errors
+    # Already responded — handle_offer_confirm should reject
     await _call_handler_with_middleware(
-        handle_offer_response,
+        handle_offer_confirm,
         callback,
+        FakeFSMContext(),
         user_service,
         profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
+        config,
+        bot_texts_service=bot_texts_service,
     )
 
     assert callback.answers
@@ -799,11 +828,13 @@ async def test_offer_response_handler_overflow_saved_no_contact(
 
     message = FakeMessage()
     callback = FakeCallback(
-        data=f"offer:{order.order_id}", user=FakeUser(15), message=message
+        data=f"offer_confirm:{order.order_id}",
+        user=FakeUser(15),
+        message=message,
     )
 
     await _call_handler_with_middleware(
-        handle_offer_response,
+        handle_offer_confirm,
         callback,
         FakeFSMContext(),
         user_service,
@@ -848,12 +879,12 @@ async def test_offer_response_handler_no_from_user(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user_service = UserRoleService(user_repo=user_repo)
 
@@ -868,8 +899,7 @@ async def test_offer_response_handler_no_from_user(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        InMemoryOrderRepository(),
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -890,12 +920,12 @@ async def test_offer_response_handler_user_not_found(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user_service = UserRoleService(user_repo=user_repo)
 
@@ -909,8 +939,7 @@ async def test_offer_response_handler_user_not_found(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        InMemoryOrderRepository(),
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -937,12 +966,12 @@ async def test_offer_response_handler_paused_user(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     paused_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000730"),
@@ -966,8 +995,7 @@ async def test_offer_response_handler_paused_user(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        InMemoryOrderRepository(),
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -989,12 +1017,12 @@ async def test_offer_response_handler_no_blogger_profile(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000731"),
@@ -1018,8 +1046,7 @@ async def test_offer_response_handler_no_blogger_profile(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        InMemoryOrderRepository(),
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -1044,12 +1071,12 @@ async def test_offer_response_handler_unconfirmed_profile(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000732"),
@@ -1076,8 +1103,7 @@ async def test_offer_response_handler_unconfirmed_profile(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        InMemoryOrderRepository(),
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -1147,6 +1173,25 @@ async def test_offer_response_handler_allows_response_without_agreement(
         FakeFSMContext(),
         user_service,
         profile_service,
+        order_repo,
+        offer_response_rate_limiter,
+        config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=messenger_client,
+        event_adapter=event_adapter,
+    )
+
+    # Now confirm
+    confirm_callback = FakeCallback(
+        data=f"offer_confirm:{order.order_id}",
+        user=FakeUser(88),
+        message=FakeMessage(),
+    )
+    await handle_offer_confirm(
+        confirm_callback,
+        FakeFSMContext(),
+        user_service,
+        profile_service,
         response_service,
         interaction_service,
         offer_response_rate_limiter,
@@ -1174,12 +1219,12 @@ async def test_offer_response_handler_invalid_uuid(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     interaction_repo = InMemoryInteractionRepository()
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000733"),
@@ -1206,8 +1251,7 @@ async def test_offer_response_handler_invalid_uuid(
         FakeFSMContext(),
         user_service,
         profile_service,
-        response_service,
-        interaction_service,
+        InMemoryOrderRepository(),
         offer_response_rate_limiter,
         config,
         bot_texts_service=bot_texts_service,
@@ -1287,9 +1331,11 @@ async def test_offer_response_handler_exception(
         data=f"offer:{order.order_id}", user=FakeUser(20), message=message
     )
 
+    callback.data = f"offer_confirm:{order.order_id}"
+
     # Wrap handler call with middleware to handle exceptions
     await _call_handler_with_middleware(
-        handle_offer_response,
+        handle_offer_confirm,
         callback,
         FakeFSMContext(),
         user_service,
@@ -1533,12 +1579,12 @@ async def test_offer_response_handler_rate_limited(
     """Reject when rate limit exceeded."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    response_service = OfferResponseService(
+    OfferResponseService(
         order_repo=order_repo,
         dispatch_repo=offer_dispatch_repo,
         transaction_manager=fake_tm,
     )
-    interaction_service = InteractionService(interaction_repo=interaction_repo)
+    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
 
     user = await create_test_user(
@@ -1586,8 +1632,7 @@ async def test_offer_response_handler_rate_limited(
             FakeFSMContext(),
             user_service,
             profile_service,
-            response_service,
-            interaction_service,
+            order_repo,
             strict_rate_limiter,
             config,
             bot_texts_service=bot_texts_service,
@@ -1647,10 +1692,12 @@ async def test_offer_response_sends_product_link_and_what_next(
 
     message = FakeMessage(user=FakeUser(123))
     callback = FakeCallback(
-        data=f"offer:{order.order_id}", user=FakeUser(22), message=message
+        data=f"offer_confirm:{order.order_id}",
+        user=FakeUser(22),
+        message=message,
     )
 
-    await handle_offer_response(
+    await handle_offer_confirm(
         callback,
         FakeFSMContext(),
         user_service,
@@ -3274,7 +3321,8 @@ async def test_handle_offer_response_order_creation_error(
         message=message,
     )
 
-    await handle_offer_response(
+    callback.data = f"offer_confirm:{order.order_id}"
+    await handle_offer_confirm(
         callback,
         FakeFSMContext(),
         user_service,

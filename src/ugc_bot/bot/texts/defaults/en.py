@@ -813,6 +813,21 @@ EN: dict[str, str] = {
     "offer_format_label_ugc_only": "UGC video for brand",
     "btn_offer_accept": "Ready to shoot UGC",
     "btn_offer_skip": "Skip",
+    "btn_offer_confirm": "Confirm",
+    "btn_offer_cancel": "Cancel",
+    "msg_offer_brief_link": "📋 Brief link:",
+    "msg_offer_confirm_response": (
+        "Confirm your response\n\n"
+        "By clicking «Confirm», you acknowledge that:\n\n"
+        "- you have carefully read the brief\n"
+        "- you are ready to complete the order on the stated terms\n\n"
+        "If after responding you do not reply to the advertiser or refuse "
+        "to complete the work without a valid reason, this will be recorded "
+        "by the system. Repeated cases may lead to restricted access to new orders.\n\n"
+        "If you have questions about the brief — we recommend clarifying them "
+        "with support (http://t.me/usemycontent) before responding."
+    ),
+    "msg_offer_confirm_cancelled": "Response cancelled",
     "msg_ugc_video_saved_creator": "✅ Your video has been accepted by the manager and saved.",
     "msg_ugc_video_saved_advertiser": (
         "✅ Creator {telegram} has successfully completed the order!\nVideo link: {url}"

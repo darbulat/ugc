@@ -12,6 +12,7 @@ from ugc_bot.application.messenger.dto import (
     Keyboard,
     KeyboardKind,
 )
+from ugc_bot.application.ports import OrderRepository
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
@@ -413,16 +414,11 @@ async def _check_offer_response_eligibility(
 
 @router.callback(lambda cb: bool(cb.data and cb.data.startswith("offer:")))
 async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
-    """Handle blogger response to offer."""
+    """Show confirmation message with brief link before accepting offer."""
     messenger_client = deps["messenger_client"]
     user_role_service: UserRoleService = deps["user_role_service"]
-    profile_service: ProfileService = deps["profile_service"]
-    offer_response_service: OfferResponseService = deps[
-        "offer_response_service"
-    ]
-    interaction_service = deps["interaction_service"]
+    order_repo: OrderRepository = deps["order_repo"]
     bot_texts_service = deps["bot_texts_service"]
-    config = deps["config"]
     locale: str = deps.get("locale", "ru")
 
     if not await _check_offer_response_eligibility(incoming, deps, locale):
@@ -436,6 +432,91 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         return
 
     raw = (incoming.data or "").split("offer:", 1)[-1]
+    try:
+        order_id = UUID(raw)
+    except ValueError:
+        msg = await bot_texts_service.get("err_order_invalid_id", locale)
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=msg,
+        )
+        return
+
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        await _send_order_closed_and_remove_keyboard(
+            incoming, messenger_client, bot_texts_service, locale
+        )
+        return
+
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text="",
+    )
+
+    if order.brief_link:
+        brief_label = await bot_texts_service.get(
+            "msg_offer_brief_link", locale
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=f"{brief_label}\n{order.brief_link}",
+        )
+
+    confirm_text = await bot_texts_service.get(
+        "msg_offer_confirm_response", locale
+    )
+    btn_texts = await bot_texts_service.get_many(
+        ["btn_offer_confirm", "btn_offer_cancel"], locale
+    )
+    keyboard = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=btn_texts.get("btn_offer_confirm", "Готов"),
+                    callback_data=f"offer_confirm:{order_id}",
+                )
+            ],
+            [
+                Button(
+                    text=btn_texts.get("btn_offer_cancel", "Отмена"),
+                    callback_data=f"offer_cancel:{order_id}",
+                )
+            ],
+        ],
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=confirm_text,
+        keyboard=keyboard,
+    )
+
+
+@router.callback(
+    lambda cb: bool(cb.data and cb.data.startswith("offer_confirm:"))
+)
+async def handle_offer_confirm(incoming: IncomingCallback, deps: dict) -> None:
+    """Confirm offer response after creator reviewed the brief."""
+    messenger_client = deps["messenger_client"]
+    user_role_service: UserRoleService = deps["user_role_service"]
+    profile_service: ProfileService = deps["profile_service"]
+    offer_response_service: OfferResponseService = deps[
+        "offer_response_service"
+    ]
+    interaction_service = deps["interaction_service"]
+    bot_texts_service = deps["bot_texts_service"]
+    config = deps["config"]
+    locale: str = deps.get("locale", "ru")
+
+    user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=MessengerType.MAX,
+    )
+    if user is None:
+        return
+
+    raw = (incoming.data or "").split("offer_confirm:", 1)[-1]
     try:
         order_id = UUID(raw)
     except ValueError:
@@ -516,3 +597,25 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         currency_symbol=config.market.currency_symbol,
         telegram_messenger_client=telegram_messenger_client,
     )
+
+
+@router.callback(
+    lambda cb: bool(cb.data and cb.data.startswith("offer_cancel:"))
+)
+async def handle_offer_cancel(incoming: IncomingCallback, deps: dict) -> None:
+    """Cancel offer response — remove confirmation keyboard."""
+    messenger_client = deps["messenger_client"]
+    bot_texts_service = deps["bot_texts_service"]
+    locale: str = deps.get("locale", "ru")
+
+    msg_cancelled = await bot_texts_service.get(
+        "msg_offer_confirm_cancelled", locale
+    )
+    await messenger_client.answer_callback(
+        callback_id=incoming.callback_id,
+        text=msg_cancelled,
+    )
+    if incoming.message_id:
+        await _safe_clear_markup(
+            messenger_client, incoming.chat_id, incoming.message_id
+        )
