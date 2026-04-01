@@ -672,6 +672,13 @@ async def handle_offer_response(
         callback_id=incoming.callback_id,
         text="",
     )
+    if incoming.message_id:
+        with contextlib.suppress(Exception):
+            await messenger_client.edit_reply_markup(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                keyboard=None,
+            )
 
     if order.brief_link:
         brief_label = await bot_texts_service.get(

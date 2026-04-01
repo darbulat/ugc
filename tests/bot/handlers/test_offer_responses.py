@@ -473,12 +473,6 @@ async def test_offer_response_handler_blocked_user(
 ) -> None:
     """Reject blocked bloggers early."""
 
-    OfferResponseService(
-        order_repo=order_repo,
-        dispatch_repo=offer_dispatch_repo,
-        transaction_manager=fake_tm,
-    )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     blocked_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000710"),
@@ -525,15 +519,9 @@ async def test_offer_response_handler_order_not_active(
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
-    dispatch_repo = InMemoryOfferDispatchRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryOfferDispatchRepository()
+    InMemoryInteractionRepository()
     user_service = UserRoleService(user_repo=user_repo)
-    OfferResponseService(
-        order_repo=order_repo,
-        dispatch_repo=dispatch_repo,
-        transaction_manager=fake_tm,
-    )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
 
     user = User(
@@ -629,13 +617,12 @@ async def test_offer_response_handler_order_not_found(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000714"),
@@ -878,13 +865,12 @@ async def test_offer_response_handler_no_from_user(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user_service = UserRoleService(user_repo=user_repo)
 
@@ -919,13 +905,12 @@ async def test_offer_response_handler_user_not_found(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user_service = UserRoleService(user_repo=user_repo)
 
@@ -965,13 +950,12 @@ async def test_offer_response_handler_paused_user(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     paused_user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000730"),
@@ -1016,13 +1000,12 @@ async def test_offer_response_handler_no_blogger_profile(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000731"),
@@ -1070,13 +1053,12 @@ async def test_offer_response_handler_unconfirmed_profile(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000732"),
@@ -1218,13 +1200,12 @@ async def test_offer_response_handler_invalid_uuid(
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
-    interaction_repo = InMemoryInteractionRepository()
+    InMemoryInteractionRepository()
     OfferResponseService(
         order_repo=InMemoryOrderRepository(),
         dispatch_repo=InMemoryOfferDispatchRepository(),
         transaction_manager=fake_tm,
     )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
     user = User(
         user_id=UUID("00000000-0000-0000-0000-000000000733"),
@@ -1579,12 +1560,6 @@ async def test_offer_response_handler_rate_limited(
     """Reject when rate limit exceeded."""
 
     user_service = UserRoleService(user_repo=user_repo)
-    OfferResponseService(
-        order_repo=order_repo,
-        dispatch_repo=offer_dispatch_repo,
-        transaction_manager=fake_tm,
-    )
-    InteractionService(interaction_repo=interaction_repo)
     profile_service = build_profile_service(user_repo, blogger_repo)
 
     user = await create_test_user(

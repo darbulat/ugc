@@ -453,6 +453,10 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         callback_id=incoming.callback_id,
         text="",
     )
+    if incoming.message_id:
+        await _safe_clear_markup(
+            messenger_client, incoming.chat_id, incoming.message_id
+        )
 
     if order.brief_link:
         brief_label = await bot_texts_service.get(
@@ -508,6 +512,9 @@ async def handle_offer_confirm(incoming: IncomingCallback, deps: dict) -> None:
     bot_texts_service = deps["bot_texts_service"]
     config = deps["config"]
     locale: str = deps.get("locale", "ru")
+
+    if not await _check_offer_response_eligibility(incoming, deps, locale):
+        return
 
     user = await user_role_service.get_user(
         external_id=incoming.user.external_id,
