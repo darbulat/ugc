@@ -978,9 +978,10 @@ async def handle_geography(
         product_photo_file_id=None,  # No photo upload on Max
     )
 
+    telegram_messenger = deps["telegram_messenger_client"]
     await notify_admins_about_order_created(
         order=order,
-        messenger_client=messenger_client,
+        messenger_client=telegram_messenger,
         user_role_service=user_role_service,
         content_moderation=content_moderation_service,
         admin_base_url=config.admin.admin_base_url,
@@ -999,7 +1000,7 @@ async def handle_geography(
                 order=order,
                 advertiser_user=advertiser_user,
                 advertiser_profile=advertiser_profile,
-                messenger_client=messenger_client,
+                messenger_client=telegram_messenger,
                 support_chat_id=support_chat_id,
                 admin_base_url=config.admin.admin_base_url,
                 currency_symbol=config.market.currency_symbol,

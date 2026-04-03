@@ -398,8 +398,9 @@ async def handle_complaint_reason(
             order_id=order_id,
             reason=reason,
         )
+        telegram_messenger = deps["telegram_messenger_client"]
         await notify_admins_about_complaint(
-            complaint, messenger_client, user_role_service
+            complaint, telegram_messenger, user_role_service
         )
         msg_received = await bot_texts_service.get(
             "msg_complaint_received", locale
@@ -484,8 +485,9 @@ async def handle_complaint_reason_text(
             order_id=order_id,
             reason=full_reason,
         )
+        telegram_messenger = deps["telegram_messenger_client"]
         await notify_admins_about_complaint(
-            complaint, messenger_client, user_role_service
+            complaint, telegram_messenger, user_role_service
         )
         msg_received = await bot_texts_service.get(
             "msg_complaint_received", locale

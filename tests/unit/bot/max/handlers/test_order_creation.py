@@ -144,6 +144,7 @@ def _deps(user=None, advertiser=None):
 
     return {
         "messenger_client": AsyncMock(),
+        "telegram_messenger_client": AsyncMock(),
         "user_role_service": user_role_service,
         "profile_service": profile_service,
         "bot_texts_service": AsyncMock(

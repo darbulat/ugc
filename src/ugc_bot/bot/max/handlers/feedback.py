@@ -788,6 +788,7 @@ async def _handle_issue_submit(
     interaction_id_raw: str,
     data: dict,
     messenger_client: "MessengerClient",
+    telegram_messenger_client: "MessengerClient",
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
     complaint_service: ComplaintService,
@@ -860,7 +861,7 @@ async def _handle_issue_submit(
             reason=reason,
         )
         await notify_admins_about_complaint(
-            complaint, messenger_client, user_role_service
+            complaint, telegram_messenger_client, user_role_service
         )
     except Exception:
         logger.exception("Failed to create complaint from feedback issue")
@@ -937,6 +938,7 @@ async def handle_issue_description(
             interaction_id_raw,
             data,
             messenger_client,
+            deps["telegram_messenger_client"],
             user_role_service,
             interaction_service,
             complaint_service,

@@ -82,6 +82,7 @@ def _deps(
 
     return {
         "messenger_client": AsyncMock(),
+        "telegram_messenger_client": AsyncMock(),
         "user_role_service": user_role_service,
         "order_service": order_service,
         "offer_response_service": offer_response_service,
