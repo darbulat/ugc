@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
+from wtforms import SelectField
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import (
@@ -2208,20 +2209,28 @@ class PaymentAdmin(ModelView, model=PaymentModel):
         PaymentModel.created_at: "Дата создания",
         PaymentModel.paid_at: "Дата оплаты",
     }
-    form_choices = {
-        "provider": [
-            ("manual", "manual"),
-            ("yookassa_telegram", "yookassa_telegram"),
-            ("telegram_payments", "telegram_payments"),
-        ],
-        "currency": [
-            ("RUB", "RUB"),
-            ("USD", "USD"),
-            ("EUR", "EUR"),
-            ("KZT", "KZT"),
-            ("UZS", "UZS"),
-            ("BYN", "BYN"),
-        ],
+    form_overrides = {
+        "provider": SelectField,
+        "currency": SelectField,
+    }
+    form_args = {
+        "provider": {
+            "choices": [
+                ("manual", "manual"),
+                ("yookassa_telegram", "yookassa_telegram"),
+                ("telegram_payments", "telegram_payments"),
+            ],
+        },
+        "currency": {
+            "choices": [
+                ("RUB", "RUB"),
+                ("USD", "USD"),
+                ("EUR", "EUR"),
+                ("KZT", "KZT"),
+                ("UZS", "UZS"),
+                ("BYN", "BYN"),
+            ],
+        },
     }
 
 
