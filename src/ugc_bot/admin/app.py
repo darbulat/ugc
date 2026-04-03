@@ -1517,35 +1517,28 @@ class OrderAdmin(ModelView, model=OrderModel):
     can_delete = False
     name = "Заказ"
     name_plural = "Заказы"
+    list_template = "order_list.html"
+    page_size = 25
+    page_size_options = [25, 50, 100]
     column_list = [
         OrderModel.order_id,
         OrderModel.advertiser_id,
         OrderModel.order_type,
-        OrderModel.product_link,
         OrderModel.offer_text,
-        OrderModel.barter_description,
         OrderModel.price,
         OrderModel.bloggers_needed,
         OrderModel.status,
-        OrderModel.content_usage,
-        OrderModel.deadlines,
         OrderModel.geography,
-        OrderModel.product_photo_file_id,
-        OrderModel.min_followers,
-        OrderModel.max_followers,
-        OrderModel.min_age,
-        OrderModel.max_age,
-        OrderModel.min_publications,
-        OrderModel.max_publications,
-        OrderModel.required_blogger_gender,
-        OrderModel.filter_by_price,
-        OrderModel.price_filter_delta,
-        OrderModel.filter_by_placement,
-        OrderModel.filter_by_barter,
         OrderModel.brief_link,
         OrderModel.created_at,
-        OrderModel.updated_at,
         OrderModel.completed_at,
+    ]
+    column_searchable_list = [
+        OrderModel.offer_text,
+        OrderModel.barter_description,
+        OrderModel.product_link,
+        OrderModel.geography,
+        OrderModel.brief_link,
     ]
     column_sortable_list = list(column_list)
     column_default_sort = (OrderModel.created_at, True)
