@@ -788,6 +788,7 @@ async def _handle_issue_submit(
     interaction_id_raw: str,
     data: dict,
     messenger_client: "MessengerClient",
+    telegram_messenger_client: "MessengerClient | None",
     user_role_service: UserRoleService,
     interaction_service: InteractionService,
     complaint_service: ComplaintService,
@@ -859,9 +860,6 @@ async def _handle_issue_submit(
             order_id=interaction.order_id,
             reason=reason,
         )
-        await notify_admins_about_complaint(
-            complaint, messenger_client, user_role_service
-        )
     except Exception:
         logger.exception("Failed to create complaint from feedback issue")
         await state_store.clear()
@@ -870,6 +868,14 @@ async def _handle_issue_submit(
             text=texts.get("msg_fb_complaint_error", ""),
         )
         return
+
+    if telegram_messenger_client is not None:
+        try:
+            await notify_admins_about_complaint(
+                complaint, telegram_messenger_client, user_role_service
+            )
+        except Exception:
+            logger.exception("Failed to notify admins about complaint")
 
     feedback_text_val = texts.get("msg_fb_feedback_issue", "")
     if kind == "adv":
@@ -936,14 +942,15 @@ async def handle_issue_description(
             kind,
             interaction_id_raw,
             data,
-            messenger_client,
-            user_role_service,
-            interaction_service,
-            complaint_service,
-            nps_service,
-            order_service,
-            state_store,
-            texts,
+            messenger_client=messenger_client,
+            telegram_messenger_client=deps.get("telegram_messenger_client"),
+            user_role_service=user_role_service,
+            interaction_service=interaction_service,
+            complaint_service=complaint_service,
+            nps_service=nps_service,
+            order_service=order_service,
+            state_store=state_store,
+            texts=texts,
         )
         return
 

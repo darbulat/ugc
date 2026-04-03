@@ -122,6 +122,7 @@ async def _reply_offer_response_result(
     bot_texts_service: BotTextsService,
     locale: str,
     currency_symbol: str = "₽",
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Answer callback, remove keyboard; if accepted, send link and contact."""
     if result.accepted:
@@ -179,6 +180,7 @@ async def _reply_offer_response_result(
             bot_texts_service=bot_texts_service,
             manager=manager,
             currency_symbol=currency_symbol,
+            max_messenger_client=max_messenger_client,
         )
 
 
@@ -735,6 +737,7 @@ async def handle_offer_confirm(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Confirm offer response after creator reviewed the brief."""
 
@@ -789,6 +792,7 @@ async def handle_offer_confirm(
         bot_texts_service,
         locale,
         currency_symbol=config.market.currency_symbol,
+        max_messenger_client=max_messenger_client,
     )
 
 
@@ -984,6 +988,7 @@ async def _send_contact_immediately(
     manager: User | None = None,
     currency_symbol: str = "₽",
     telegram_messenger_client: MessengerClient | None = None,
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
 
@@ -1038,9 +1043,10 @@ async def _send_contact_immediately(
             warning_text=adv_warning,
             parse_mode="Markdown",
         )
+    max_client = max_messenger_client or messenger_client
     if advertiser and advertiser.max_chat_id:
         await _deliver_to_recipient(
-            messenger_client,
+            max_client,
             chat_id=advertiser.max_chat_id,
             text=contact_text,
             keyboard=open_profile_kb,
@@ -1076,6 +1082,43 @@ async def _send_contact_immediately(
         await send_with_retry(
             tg_client,
             chat_id=manager.telegram_id,
+            text=mgr_contact_text,
+            keyboard=mgr_kb,
+            retries=_send_retries,
+            delay_seconds=_send_retry_delay_seconds,
+            logger=logger,
+            extra={
+                "order_id": str(order.order_id),
+                "manager_id": str(manager.user_id),
+            },
+        )
+    if manager and manager.max_chat_id:
+        mgr_locale = manager.language or "ru"
+        mgr_texts = await bot_texts_service.get_many(
+            list(_SEND_CONTACT_TEXTS_KEYS), mgr_locale
+        )
+        t_mgr = mgr_texts
+        mgr_creator_name = user.username or t_mgr.get(
+            "lbl_creator_fallback", "Креатор"
+        )
+        mgr_ugc_format = _format_ugc_type(order, t_mgr)
+        mgr_contact_text, mgr_kb = _build_advertiser_contact_content(
+            order,
+            creator_name=mgr_creator_name,
+            city=profile.city or "—",
+            ugc_format=mgr_ugc_format,
+            profile_url=profile.instagram_url,
+            has_telegram=bool(user.telegram and user.telegram.strip()),
+            telegram_handle=user.telegram or "",
+            texts=t_mgr,
+            creator_external_id=user.telegram_id,
+            creator_max_id=user.max_id,
+            blogger_phone=profile.phone,
+        )
+        mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
+        await send_with_retry(
+            max_client,
+            chat_id=manager.max_chat_id,
             text=mgr_contact_text,
             keyboard=mgr_kb,
             retries=_send_retries,

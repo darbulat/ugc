@@ -142,6 +142,7 @@ def _make_deps(
 
     return {
         "messenger_client": FakeMessengerClient(),
+        "telegram_messenger_client": FakeMessengerClient(),
         "user_role_service": user_role_service,
         "interaction_service": interaction_service,
         "nps_service": nps_service,

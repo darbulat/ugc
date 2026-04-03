@@ -2180,7 +2180,7 @@ class PaymentAdmin(ModelView, model=PaymentModel):
     ]
     column_default_sort = (PaymentModel.created_at, True)
     form_columns = [
-        PaymentModel.order_id,
+        PaymentModel.order,
         PaymentModel.provider,
         PaymentModel.status,
         PaymentModel.amount,
@@ -2191,6 +2191,7 @@ class PaymentAdmin(ModelView, model=PaymentModel):
     column_labels = {
         PaymentModel.payment_id: "ID платежа",
         PaymentModel.order_id: "ID заказа",
+        PaymentModel.order: "Заказ",
         PaymentModel.provider: "Провайдер",
         PaymentModel.status: "Статус",
         PaymentModel.amount: "Сумма",

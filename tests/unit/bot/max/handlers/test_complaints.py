@@ -1,6 +1,6 @@
 """Tests for Max complaints handlers."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -82,6 +82,7 @@ def _deps(
 
     return {
         "messenger_client": AsyncMock(),
+        "telegram_messenger_client": AsyncMock(),
         "user_role_service": user_role_service,
         "order_service": order_service,
         "offer_response_service": offer_response_service,
@@ -387,9 +388,16 @@ async def test_complaint_reason_non_other_creates_complaint():
         return_value=complaint
     )
     # Use index 0 (first non-other reason)
-    await router.route_callback(_incoming_cb("complaint_reason:0"), deps)
+    with patch(
+        "ugc_bot.bot.max.handlers.complaints.notify_admins_about_complaint",
+        new_callable=AsyncMock,
+    ) as mock_notify:
+        await router.route_callback(_incoming_cb("complaint_reason:0"), deps)
     deps["complaint_service"].create_complaint.assert_called_once()
     deps["messenger_client"].send_text.assert_called()
+    # Admin notification goes via Telegram client, not Max client
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][1] is deps["telegram_messenger_client"]
 
 
 @pytest.mark.asyncio
@@ -505,7 +513,11 @@ async def test_complaint_reason_text_creates_complaint():
     deps["complaint_service"].create_complaint = AsyncMock(
         return_value=complaint
     )
-    await router.route_message(_incoming_msg("They were rude"), deps)
+    with patch(
+        "ugc_bot.bot.max.handlers.complaints.notify_admins_about_complaint",
+        new_callable=AsyncMock,
+    ) as mock_notify:
+        await router.route_message(_incoming_msg("They were rude"), deps)
     deps["complaint_service"].create_complaint.assert_called_once()
     # Reason should be prefixed
     call_kwargs = deps["complaint_service"].create_complaint.call_args.kwargs
@@ -514,6 +526,9 @@ async def test_complaint_reason_text_creates_complaint():
         or "They were rude" in call_kwargs["reason"]
     )
     deps["state_store"].clear.assert_called()
+    # Admin notification goes via Telegram client
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][1] is deps["telegram_messenger_client"]
 
 
 @pytest.mark.asyncio

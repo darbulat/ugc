@@ -398,21 +398,11 @@ async def handle_complaint_reason(
             order_id=order_id,
             reason=reason,
         )
-        await notify_admins_about_complaint(
-            complaint, messenger_client, user_role_service
-        )
-        msg_received = await bot_texts_service.get(
-            "msg_complaint_received", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_received,
-        )
-        await state_store.clear()
     except ValueError as exc:
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id, text=str(exc)
         )
+        return
     except Exception:
         logger.exception("Error creating complaint via callback")
         msg_error = await bot_texts_service.get("msg_error_later", locale)
@@ -420,6 +410,25 @@ async def handle_complaint_reason(
             callback_id=incoming.callback_id,
             text=msg_error,
         )
+        return
+
+    telegram_messenger = deps.get("telegram_messenger_client")
+    if telegram_messenger is not None:
+        try:
+            await notify_admins_about_complaint(
+                complaint, telegram_messenger, user_role_service
+            )
+        except Exception:
+            logger.exception("Failed to notify admins about complaint")
+
+    msg_received = await bot_texts_service.get(
+        "msg_complaint_received", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=msg_received,
+    )
+    await state_store.clear()
 
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
@@ -484,23 +493,13 @@ async def handle_complaint_reason_text(
             order_id=order_id,
             reason=full_reason,
         )
-        await notify_admins_about_complaint(
-            complaint, messenger_client, user_role_service
-        )
-        msg_received = await bot_texts_service.get(
-            "msg_complaint_received", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=msg_received,
-        )
-        await state_store.clear()
     except ValueError as exc:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=str(exc),
         )
         await state_store.clear()
+        return
     except Exception:
         logger.exception("Error creating complaint via text reason")
         msg_error = await bot_texts_service.get("msg_error_later", locale)
@@ -509,3 +508,22 @@ async def handle_complaint_reason_text(
             text=msg_error,
         )
         await state_store.clear()
+        return
+
+    telegram_messenger = deps.get("telegram_messenger_client")
+    if telegram_messenger is not None:
+        try:
+            await notify_admins_about_complaint(
+                complaint, telegram_messenger, user_role_service
+            )
+        except Exception:
+            logger.exception("Failed to notify admins about complaint")
+
+    msg_received = await bot_texts_service.get(
+        "msg_complaint_received", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=msg_received,
+    )
+    await state_store.clear()
