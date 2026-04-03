@@ -449,7 +449,8 @@ class OrderModel(Base):
             self.created_at.strftime("%Y-%m-%d") if self.created_at else ""
         )
         price = f"{self.price:,.0f}" if self.price is not None else "0"
-        return f"{short_text} ({price} {self.currency}, {created})"
+        short_id = str(self.order_id)[:8]
+        return f"[{short_id}] {short_text} ({price} {self.currency}, {created})"
 
 
 class CountryModel(Base):
