@@ -102,7 +102,7 @@ def _get_order_moderation_deps(
 ) -> tuple[ContentModerationService, OutboxPublisher, OrderRepository]:
     """Get ContentModerationService, OutboxPublisher, OrderRepository."""
     content_moderation = ContentModerationService()
-    outbox_publisher, _ = container.build_outbox_deps()
+    outbox_publisher = container.build_outbox_publisher()
     order_repo = container.build_repos()["order_repo"]
     return (content_moderation, outbox_publisher, order_repo)
 

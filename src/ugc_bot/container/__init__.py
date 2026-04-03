@@ -127,6 +127,15 @@ class Container:
             repos, self._transaction_manager
         )
 
+    def build_outbox_publisher(self) -> OutboxPublisher:
+        """OutboxPublisher only (no Kafka producer). Use in admin."""
+        repos = self.build_repos()
+        return OutboxPublisher(
+            outbox_repo=repos["outbox_repo"],
+            order_repo=repos["order_repo"],
+            transaction_manager=self._transaction_manager,
+        )
+
     def build_outbox_deps(
         self,
     ) -> tuple[OutboxPublisher, KafkaOrderActivationPublisher | None]:
