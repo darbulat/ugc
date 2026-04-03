@@ -265,6 +265,96 @@ body {
   transition: width 0.2s ease;
 }
 
+/* ── Orders toolbar ── */
+
+.orders-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.orders-toolbar__left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+}
+
+.orders-toolbar__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.orders-toolbar__right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.orders-toolbar__per-page {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+/* ── Orders search ── */
+
+.orders-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.orders-search__input {
+  width: 280px;
+  padding: 7px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.orders-search__input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+.orders-search__btn {
+  padding: 7px 14px;
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.orders-search__btn:hover {
+  background: #1d4ed8;
+}
+
+.orders-search__clear {
+  color: #6b7280;
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.orders-search__clear:hover {
+  color: #dc2626;
+}
+
+/* ── Pagination ── */
+
 .pagination {
   display: flex;
   flex-wrap: wrap;
@@ -272,6 +362,12 @@ body {
   gap: 16px;
   margin-top: 16px;
   padding: 12px 0;
+}
+
+.pagination--top {
+  margin-top: 0;
+  margin-bottom: 8px;
+  padding-top: 0;
 }
 
 .pagination__info {
@@ -282,7 +378,7 @@ body {
 .pagination__links {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .pagination__link {
@@ -293,6 +389,23 @@ body {
 
 .pagination__link:hover {
   text-decoration: underline;
+}
+
+.pagination__page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.pagination__page--current {
+  background: #2563eb;
+  color: #fff;
 }
 
 .pagination__current {

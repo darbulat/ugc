@@ -667,13 +667,17 @@ async def _render_orders_page(
     per_page: int,
     sort: str,
     order: str,
+    search: str | None = None,
 ):
     """Render orders list HTML page."""
     if not await auth.authenticate(request):
         return RedirectResponse(url="/admin/login")
     period_key = _normalize_period(period)
+    search_term = search.strip() if search else ""
     cache_key = (
-        f"orders:{period_key}:{status or ''}:{page}:{per_page}:{sort}:{order}"
+        f"orders:{period_key}:{status or ''}"
+        f":{page}:{per_page}:{sort}:{order}"
+        f":{search_term}"
         if cache
         else None
     )
@@ -686,6 +690,7 @@ async def _render_orders_page(
             per_page=per_page,
             sort=sort,
             order=order,
+            search=search_term or None,
         )
 
     result = await _get_cached_or_fetch(
@@ -707,6 +712,7 @@ async def _render_orders_page(
             "status_labels": _STATUS_LABELS,
             "sort": sort,
             "order": order,
+            "search_query": search_term,
         },
     )
 
@@ -1113,6 +1119,7 @@ def _register_dashboard_html_routes(
         per_page: int = 25,
         sort: str = "created_at",
         order: str = "desc",
+        search: str | None = None,
     ):
         return await _render_orders_page(
             request,
@@ -1127,6 +1134,7 @@ def _register_dashboard_html_routes(
             per_page,
             sort,
             order,
+            search,
         )
 
     @app.get("/admin/orders/{order_id}", response_class=HTMLResponse)
