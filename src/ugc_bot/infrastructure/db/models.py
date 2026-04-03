@@ -443,15 +443,13 @@ class OrderModel(Base):
     brief_link: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     def __str__(self) -> str:
-        short_text = (
-            (self.offer_text[:50] + "…")
-            if len(self.offer_text) > 50
-            else self.offer_text
-        )
+        text = self.offer_text or ""
+        short_text = (text[:50] + "…") if len(text) > 50 else text
         created = (
             self.created_at.strftime("%Y-%m-%d") if self.created_at else ""
         )
-        return f"{short_text} ({self.price} {self.currency}, {created})"
+        price = f"{self.price:,.0f}" if self.price is not None else "0"
+        return f"{short_text} ({price} {self.currency}, {created})"
 
 
 class CountryModel(Base):
