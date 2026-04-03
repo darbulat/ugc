@@ -1956,7 +1956,10 @@ class AdminDashboardService:
     @staticmethod
     def _order_search_condition(search: str) -> ColumnElement[bool]:
         """Return SQL condition for free-text order search."""
-        like_pattern = f"%{search}%"
+        escaped = (
+            search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        like_pattern = f"%{escaped}%"
         conditions = [
             func.coalesce(
                 AdvertiserProfileModel.brand, UserModel.username

@@ -9,6 +9,33 @@
 {{ orders_url(st=col, od='asc' if sort == col and order == 'desc' else 'desc', pg=1) }}
 {%- endmacro %}
 
+{% macro pagination_nav(css_extra='') %}
+  {% if total_pages > 1 %}
+    <nav class="pagination {{ css_extra }}" aria-label="Пагинация заказов">
+      <span class="pagination__info">
+        {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
+      </span>
+      <div class="pagination__links">
+        {% if page > 1 %}
+          <a class="pagination__link" href="{{ orders_url(pg=page - 1) }}">&#8592; Назад</a>
+        {% endif %}
+        {% set start_page = [1, page - 2] | max %}
+        {% set end_page = [total_pages, page + 2] | min %}
+        {% for p in range(start_page, end_page + 1) %}
+          {% if p == page %}
+            <span class="pagination__page pagination__page--current">{{ p }}</span>
+          {% else %}
+            <a class="pagination__page pagination__link" href="{{ orders_url(pg=p) }}">{{ p }}</a>
+          {% endif %}
+        {% endfor %}
+        {% if page < total_pages %}
+          <a class="pagination__link" href="{{ orders_url(pg=page + 1) }}">Вперёд &#8594;</a>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+{% endmacro %}
+
 {% block content %}
   <section class="section">
     <div class="orders-toolbar">
@@ -76,30 +103,7 @@
   </section>
 
   <section class="section">
-    {% if total_pages > 1 %}
-      <nav class="pagination pagination--top" aria-label="Пагинация заказов">
-        <span class="pagination__info">
-          {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
-        </span>
-        <div class="pagination__links">
-          {% if page > 1 %}
-            <a class="pagination__link" href="{{ orders_url(pg=page - 1) }}">&#8592; Назад</a>
-          {% endif %}
-          {% set start_page = [1, page - 2] | max %}
-          {% set end_page = [total_pages, page + 2] | min %}
-          {% for p in range(start_page, end_page + 1) %}
-            {% if p == page %}
-              <span class="pagination__page pagination__page--current">{{ p }}</span>
-            {% else %}
-              <a class="pagination__page pagination__link" href="{{ orders_url(pg=p) }}">{{ p }}</a>
-            {% endif %}
-          {% endfor %}
-          {% if page < total_pages %}
-            <a class="pagination__link" href="{{ orders_url(pg=page + 1) }}">Вперёд &#8594;</a>
-          {% endif %}
-        </div>
-      </nav>
-    {% endif %}
+    {{ pagination_nav('pagination--top') }}
 
     <table class="table">
       <thead>
@@ -119,7 +123,7 @@
       <tbody>
         {% for order in orders %}
           <tr>
-            <td><a href="/admin/orders/{{ order.order_id }}">{{ order.order_id[:8] }}...</a></td>
+            <td><a href="/admin/orders/{{ order.order_id }}" title="{{ order.order_id }}">{{ order.order_id[:8] }}...</a></td>
             <td>{{ order.advertiser }}</td>
             <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
             <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
@@ -142,29 +146,7 @@
     {% if orders|length == 0 %}
       <div class="empty">Заказы не найдены.{% if search_query %} Попробуйте изменить поисковый запрос.{% endif %}</div>
     {% endif %}
-    {% if total_pages > 1 %}
-      <nav class="pagination" aria-label="Пагинация заказов">
-        <span class="pagination__info">
-          {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
-        </span>
-        <div class="pagination__links">
-          {% if page > 1 %}
-            <a class="pagination__link" href="{{ orders_url(pg=page - 1) }}">&#8592; Назад</a>
-          {% endif %}
-          {% set start_page = [1, page - 2] | max %}
-          {% set end_page = [total_pages, page + 2] | min %}
-          {% for p in range(start_page, end_page + 1) %}
-            {% if p == page %}
-              <span class="pagination__page pagination__page--current">{{ p }}</span>
-            {% else %}
-              <a class="pagination__page pagination__link" href="{{ orders_url(pg=p) }}">{{ p }}</a>
-            {% endif %}
-          {% endfor %}
-          {% if page < total_pages %}
-            <a class="pagination__link" href="{{ orders_url(pg=page + 1) }}">Вперёд &#8594;</a>
-          {% endif %}
-        </div>
-      </nav>
-    {% endif %}
+
+    {{ pagination_nav() }}
   </section>
 {% endblock %}
