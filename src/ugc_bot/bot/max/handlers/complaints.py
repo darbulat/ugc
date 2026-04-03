@@ -421,9 +421,7 @@ async def handle_complaint_reason(
         except Exception:
             logger.exception("Failed to notify admins about complaint")
 
-    msg_received = await bot_texts_service.get(
-        "msg_complaint_received", locale
-    )
+    msg_received = await bot_texts_service.get("msg_complaint_received", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_received,
@@ -519,9 +517,7 @@ async def handle_complaint_reason_text(
         except Exception:
             logger.exception("Failed to notify admins about complaint")
 
-    msg_received = await bot_texts_service.get(
-        "msg_complaint_received", locale
-    )
+    msg_received = await bot_texts_service.get("msg_complaint_received", locale)
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_received,

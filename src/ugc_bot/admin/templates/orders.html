@@ -1,14 +1,56 @@
 {% extends "base.html" %}
 {% block title %}Заказы{% endblock %}
+
+{% macro orders_url(p=period, s=status_filter, pg=page, pp=per_page, st=sort, od=order, q=search_query) -%}
+/admin/orders?period={{ p }}&per_page={{ pp }}&sort={{ st }}&order={{ od }}{% if s %}&status={{ s }}{% endif %}{% if q %}&search={{ q }}{% endif %}{% if pg > 1 %}&page={{ pg }}{% endif %}
+{%- endmacro %}
+
+{% macro sort_url(col) -%}
+{{ orders_url(st=col, od='asc' if sort == col and order == 'desc' else 'desc', pg=1) }}
+{%- endmacro %}
+
 {% block content %}
   <section class="section">
-    <h1>Заказы</h1>
+    <div class="orders-toolbar">
+      <div class="orders-toolbar__left">
+        <h1 class="orders-toolbar__title">Заказы</h1>
+        <form class="orders-search" action="/admin/orders" method="get" role="search">
+          <input type="hidden" name="period" value="{{ period }}" />
+          {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}" />{% endif %}
+          <input type="hidden" name="per_page" value="{{ per_page }}" />
+          <input type="hidden" name="sort" value="{{ sort }}" />
+          <input type="hidden" name="order" value="{{ order }}" />
+          <input
+            class="orders-search__input"
+            type="search"
+            name="search"
+            placeholder="Поиск: имя, ID заказа, ссылка..."
+            value="{{ search_query or '' }}"
+          />
+          <button class="orders-search__btn" type="submit">Найти</button>
+          {% if search_query %}
+            <a class="orders-search__clear" href="{{ orders_url(q='', pg=1) }}">Сбросить</a>
+          {% endif %}
+        </form>
+      </div>
+      <div class="orders-toolbar__right">
+        <div class="orders-toolbar__per-page">
+          Показать:
+          {% for n in [25, 50, 100] %}
+            <a class="chip {% if per_page == n %}chip--active{% endif %}" href="{{ orders_url(pp=n, pg=1) }}">{{ n }}</a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
     <div class="filters">
       <div class="periods">
         {% for p in periods %}
           <a
             class="chip {% if p == period %}chip--active{% endif %}"
-            href="/admin/orders?period={{ p }}{% if status_filter %}&status={{ status_filter }}{% endif %}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
+            href="{{ orders_url(p=p, pg=1) }}"
           >
             {{ period_labels.get(p, p) }}
           </a>
@@ -18,14 +60,14 @@
         {% for key, label in status_labels.items() %}
           <a
             class="chip {% if status_filter == key %}chip--active{% endif %}"
-            href="/admin/orders?period={{ period }}&status={{ key }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
+            href="{{ orders_url(s=key, pg=1) }}"
           >
             {{ label }}
           </a>
         {% endfor %}
         <a
           class="chip {% if not status_filter %}chip--active{% endif %}"
-          href="/admin/orders?period={{ period }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}"
+          href="{{ orders_url(s='', pg=1) }}"
         >
           Все
         </a>
@@ -34,25 +76,50 @@
   </section>
 
   <section class="section">
+    {% if total_pages > 1 %}
+      <nav class="pagination pagination--top" aria-label="Пагинация заказов">
+        <span class="pagination__info">
+          {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
+        </span>
+        <div class="pagination__links">
+          {% if page > 1 %}
+            <a class="pagination__link" href="{{ orders_url(pg=page - 1) }}">&#8592; Назад</a>
+          {% endif %}
+          {% set start_page = [1, page - 2] | max %}
+          {% set end_page = [total_pages, page + 2] | min %}
+          {% for p in range(start_page, end_page + 1) %}
+            {% if p == page %}
+              <span class="pagination__page pagination__page--current">{{ p }}</span>
+            {% else %}
+              <a class="pagination__page pagination__link" href="{{ orders_url(pg=p) }}">{{ p }}</a>
+            {% endif %}
+          {% endfor %}
+          {% if page < total_pages %}
+            <a class="pagination__link" href="{{ orders_url(pg=page + 1) }}">Вперёд &#8594;</a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+
     <table class="table">
       <thead>
         <tr>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=order_id&order={% if sort == 'order_id' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">ID</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=advertiser&order={% if sort == 'advertiser' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Заказчик</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status&order={% if sort == 'status' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Статус</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=picked_count&order={% if sort == 'picked_count' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Подобрано</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=dispatched_count&order={% if sort == 'dispatched_count' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Отправлено уведомлений</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=responses&order={% if sort == 'responses' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Откликов</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Дата создания</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=status_age_hours&order={% if sort == 'status_age_hours' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Время в статусе (ч)</a></th>
-          <th><a href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&sort=open_complaints&order={% if sort == 'open_complaints' and order == 'desc' %}asc{% else %}desc{% endif %}&per_page={{ per_page }}">Проблема</a></th>
-          <th>Telegram заказчика</th>
+          <th><a href="{{ sort_url('order_id') }}">ID{% if sort == 'order_id' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('advertiser') }}">Заказчик{% if sort == 'advertiser' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('status') }}">Статус{% if sort == 'status' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('picked_count') }}">Подобрано{% if sort == 'picked_count' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('dispatched_count') }}">Отправлено{% if sort == 'dispatched_count' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('responses') }}">Откликов{% if sort == 'responses' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('created_at') }}">Дата создания{% if sort == 'created_at' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('status_age_hours') }}">Время в статусе (ч){% if sort == 'status_age_hours' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th><a href="{{ sort_url('open_complaints') }}">Проблема{% if sort == 'open_complaints' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+          <th>Telegram</th>
         </tr>
       </thead>
       <tbody>
         {% for order in orders %}
           <tr>
-            <td><a href="/admin/orders/{{ order.order_id }}">{{ order.order_id }}</a></td>
+            <td><a href="/admin/orders/{{ order.order_id }}">{{ order.order_id[:8] }}...</a></td>
             <td>{{ order.advertiser }}</td>
             <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
             <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
@@ -67,13 +134,13 @@
                 <span class="badge badge--ok">Нет</span>
               {% endif %}
             </td>
-            <td>{% set tg = order.advertiser_telegram %}{% if tg %}<a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a>{% else %}—{% endif %}</td>
+            <td>{% set tg = order.advertiser_telegram %}{% if tg %}<a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a>{% else %}&mdash;{% endif %}</td>
           </tr>
         {% endfor %}
       </tbody>
     </table>
     {% if orders|length == 0 %}
-      <div class="empty">Заказы не найдены.</div>
+      <div class="empty">Заказы не найдены.{% if search_query %} Попробуйте изменить поисковый запрос.{% endif %}</div>
     {% endif %}
     {% if total_pages > 1 %}
       <nav class="pagination" aria-label="Пагинация заказов">
@@ -82,11 +149,19 @@
         </span>
         <div class="pagination__links">
           {% if page > 1 %}
-            <a class="pagination__link" href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ page - 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}">← Назад</a>
+            <a class="pagination__link" href="{{ orders_url(pg=page - 1) }}">&#8592; Назад</a>
           {% endif %}
-          <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
+          {% set start_page = [1, page - 2] | max %}
+          {% set end_page = [total_pages, page + 2] | min %}
+          {% for p in range(start_page, end_page + 1) %}
+            {% if p == page %}
+              <span class="pagination__page pagination__page--current">{{ p }}</span>
+            {% else %}
+              <a class="pagination__page pagination__link" href="{{ orders_url(pg=p) }}">{{ p }}</a>
+            {% endif %}
+          {% endfor %}
           {% if page < total_pages %}
-            <a class="pagination__link" href="/admin/orders?period={{ period }}{% if status_filter %}&status={{ status_filter }}{% endif %}&page={{ page + 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}">Вперёд →</a>
+            <a class="pagination__link" href="{{ orders_url(pg=page + 1) }}">Вперёд &#8594;</a>
           {% endif %}
         </div>
       </nav>

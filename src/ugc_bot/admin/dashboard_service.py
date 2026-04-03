@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, case, distinct, func, or_, select
+from sqlalchemy import String, and_, case, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
@@ -499,13 +499,19 @@ class AdminDashboardService:
         per_page: int = 25,
         sort: str = "created_at",
         order: str = "desc",
+        search: str | None = None,
     ) -> dict:
         """Return paginated order list for the selected period."""
         window = self._build_period_window(period)
         page = max(1, page)
         per_page = max(1, min(100, per_page))
+        search_term = search.strip() if search else None
+        if search_term == "":
+            search_term = None
         async with self._session_factory() as session:
-            total = await self._count_orders(session, window, status_filter)
+            total = await self._count_orders(
+                session, window, status_filter, search_term
+            )
             items = await self._list_orders(
                 session,
                 window,
@@ -514,6 +520,7 @@ class AdminDashboardService:
                 offset=(page - 1) * per_page,
                 sort_by=sort,
                 order_asc=order == "asc",
+                search=search_term,
             )
         return _paginated(total, page, per_page, items)
 
@@ -1516,6 +1523,7 @@ class AdminDashboardService:
         session: AsyncSession,
         window: PeriodWindow,
         status_filter: str | None,
+        search: str | None = None,
     ) -> int:
         """Count orders in period matching status filter."""
         responses = self._order_responses_subquery()
@@ -1545,6 +1553,8 @@ class AdminDashboardService:
         )
         if status_cond is not None:
             query = query.where(status_cond)
+        if search:
+            query = query.where(self._order_search_condition(search))
         result = await session.execute(query)
         return int(result.scalar() or 0)
 
@@ -1557,6 +1567,7 @@ class AdminDashboardService:
         offset: int = 0,
         sort_by: str = "created_at",
         order_asc: bool = False,
+        search: str | None = None,
     ) -> list[dict]:
         """List orders with derived status labels and flags."""
         responses = self._order_responses_subquery()
@@ -1611,28 +1622,28 @@ class AdminDashboardService:
         )
         if status_cond is not None:
             query = query.where(status_cond)
-        if sort_by == "order_id":
-            order_col: Any = OrderModel.order_id
-        elif sort_by == "advertiser":
-            order_col = func.coalesce(
+        if search:
+            query = query.where(self._order_search_condition(search))
+        sort_map: dict[str, Any] = {
+            "order_id": OrderModel.order_id,
+            "advertiser": func.coalesce(
                 AdvertiserProfileModel.brand, UserModel.username
-            )
-        elif sort_by == "status":
-            order_col = OrderModel.status
-        elif sort_by in ("picked_count", "responses"):
-            order_col = func.coalesce(responses.c.responses, 0)
-        elif sort_by == "dispatched_count":
-            order_col = func.coalesce(dispatched_subq.c.dispatched_count, 0)
-        elif sort_by == "open_complaints":
-            order_col = func.coalesce(open_complaints.c.open_complaints, 0)
-        elif sort_by == "status_age_hours":
-            order_col = func.coalesce(
+            ),
+            "status": OrderModel.status,
+            "picked_count": func.coalesce(responses.c.responses, 0),
+            "responses": func.coalesce(responses.c.responses, 0),
+            "dispatched_count": func.coalesce(
+                dispatched_subq.c.dispatched_count, 0
+            ),
+            "open_complaints": func.coalesce(
+                open_complaints.c.open_complaints, 0
+            ),
+            "status_age_hours": func.coalesce(
                 OrderModel.completed_at, OrderModel.created_at
-            )
-        elif sort_by == "created_at":
-            order_col = OrderModel.created_at
-        else:
-            order_col = OrderModel.created_at
+            ),
+            "created_at": OrderModel.created_at,
+        }
+        order_col = sort_map.get(sort_by, OrderModel.created_at)
         query = query.order_by(
             order_col.asc() if order_asc else order_col.desc()
         )
@@ -1941,6 +1952,23 @@ class AdminDashboardService:
                 ),
             )
         return None
+
+    @staticmethod
+    def _order_search_condition(search: str) -> ColumnElement[bool]:
+        """Return SQL condition for free-text order search."""
+        like_pattern = f"%{search}%"
+        conditions = [
+            func.coalesce(
+                AdvertiserProfileModel.brand, UserModel.username
+            ).ilike(like_pattern),
+            UserModel.username.ilike(like_pattern),
+            UserModel.telegram.ilike(like_pattern),
+            OrderModel.offer_text.ilike(like_pattern),
+            OrderModel.barter_description.ilike(like_pattern),
+            OrderModel.product_link.ilike(like_pattern),
+            func.cast(OrderModel.order_id, String).ilike(like_pattern),
+        ]
+        return or_(*conditions)
 
     def _is_completed(self, order: OrderModel, responses: int) -> bool:
         """Return True when order is completed."""
