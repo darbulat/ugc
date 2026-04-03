@@ -978,34 +978,49 @@ async def handle_geography(
         product_photo_file_id=None,  # No photo upload on Max
     )
 
-    telegram_messenger = deps["telegram_messenger_client"]
-    await notify_admins_about_order_created(
-        order=order,
-        messenger_client=telegram_messenger,
-        user_role_service=user_role_service,
-        content_moderation=content_moderation_service,
-        admin_base_url=config.admin.admin_base_url,
-        currency_symbol=config.market.currency_symbol,
-        country_repo=country_repo,
-    )
-
-    support_chat_id = config.referral.referral_support_chat_id
-    if support_chat_id.strip():
-        advertiser_user = await user_role_service.get_user_by_id(user_id)
-        advertiser_profile = await profile_service.get_advertiser_profile(
-            user_id
-        )
-        if advertiser_user:
-            await notify_support_chat_about_new_order(
+    telegram_messenger = deps.get("telegram_messenger_client")
+    if telegram_messenger is not None:
+        try:
+            await notify_admins_about_order_created(
                 order=order,
-                advertiser_user=advertiser_user,
-                advertiser_profile=advertiser_profile,
                 messenger_client=telegram_messenger,
-                support_chat_id=support_chat_id,
+                user_role_service=user_role_service,
+                content_moderation=content_moderation_service,
                 admin_base_url=config.admin.admin_base_url,
                 currency_symbol=config.market.currency_symbol,
                 country_repo=country_repo,
             )
+
+            support_chat_id = config.referral.referral_support_chat_id
+            if support_chat_id.strip():
+                advertiser_user = await user_role_service.get_user_by_id(
+                    user_id
+                )
+                advertiser_profile = (
+                    await profile_service.get_advertiser_profile(user_id)
+                )
+                if advertiser_user:
+                    await notify_support_chat_about_new_order(
+                        order=order,
+                        advertiser_user=advertiser_user,
+                        advertiser_profile=advertiser_profile,
+                        messenger_client=telegram_messenger,
+                        support_chat_id=support_chat_id,
+                        admin_base_url=config.admin.admin_base_url,
+                        currency_symbol=config.market.currency_symbol,
+                        country_repo=country_repo,
+                    )
+        except Exception:
+            logger.exception(
+                "Failed to send admin notifications for order %s",
+                order.order_id,
+            )
+    else:
+        logger.error(
+            "telegram_messenger_client not in deps; "
+            "skipping admin notifications for order %s",
+            order.order_id,
+        )
 
     await state_store.clear()
 

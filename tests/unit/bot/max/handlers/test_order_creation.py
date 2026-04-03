@@ -1,6 +1,6 @@
 """Tests for Max order creation handlers."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -1088,10 +1088,20 @@ async def test_geography_notifies_support_chat_when_configured():
     deps["order_service"].create_order = AsyncMock(return_value=order_mock)
     deps["user_role_service"].get_user_by_id = AsyncMock(return_value=user)
 
-    await router.route_message(_incoming_msg("Moscow"), deps)
+    with patch(
+        "ugc_bot.bot.max.handlers.order_creation.notify_admins_about_order_created",
+        new_callable=AsyncMock,
+    ) as mock_admin, patch(
+        "ugc_bot.bot.max.handlers.order_creation.notify_support_chat_about_new_order",
+        new_callable=AsyncMock,
+    ) as mock_support:
+        await router.route_message(_incoming_msg("Moscow"), deps)
 
-    # Support chat notification uses send_text (multiple calls expected)
-    assert deps["messenger_client"].send_text.call_count >= 1
+    # Both notifications go via Telegram client, not Max client
+    mock_admin.assert_called_once()
+    assert mock_admin.call_args.kwargs["messenger_client"] is deps["telegram_messenger_client"]
+    mock_support.assert_called_once()
+    assert mock_support.call_args.kwargs["messenger_client"] is deps["telegram_messenger_client"]
 
 
 @pytest.mark.asyncio
