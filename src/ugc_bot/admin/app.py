@@ -2200,6 +2200,21 @@ class PaymentAdmin(ModelView, model=PaymentModel):
         PaymentModel.created_at: "Дата создания",
         PaymentModel.paid_at: "Дата оплаты",
     }
+    form_choices = {
+        "provider": [
+            ("manual", "manual"),
+            ("yookassa_telegram", "yookassa_telegram"),
+            ("telegram_payments", "telegram_payments"),
+        ],
+        "currency": [
+            ("RUB", "RUB"),
+            ("USD", "USD"),
+            ("EUR", "EUR"),
+            ("KZT", "KZT"),
+            ("UZS", "UZS"),
+            ("BYN", "BYN"),
+        ],
+    }
 
 
 class AuditLogAdmin(ModelView, model=AuditLogModel):
