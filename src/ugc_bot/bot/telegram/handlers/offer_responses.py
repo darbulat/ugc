@@ -122,6 +122,7 @@ async def _reply_offer_response_result(
     bot_texts_service: BotTextsService,
     locale: str,
     currency_symbol: str = "₽",
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Answer callback, remove keyboard; if accepted, send link and contact."""
     if result.accepted:
@@ -179,6 +180,7 @@ async def _reply_offer_response_result(
             bot_texts_service=bot_texts_service,
             manager=manager,
             currency_symbol=currency_symbol,
+            max_messenger_client=max_messenger_client,
         )
 
 
@@ -735,6 +737,7 @@ async def handle_offer_confirm(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Confirm offer response after creator reviewed the brief."""
 
@@ -789,6 +792,7 @@ async def handle_offer_confirm(
         bot_texts_service,
         locale,
         currency_symbol=config.market.currency_symbol,
+        max_messenger_client=max_messenger_client,
     )
 
 
@@ -984,6 +988,7 @@ async def _send_contact_immediately(
     manager: User | None = None,
     currency_symbol: str = "₽",
     telegram_messenger_client: MessengerClient | None = None,
+    max_messenger_client: MessengerClient | None = None,
 ) -> None:
     """Send contact to advertiser after each response (TZ format).
 
@@ -1038,9 +1043,10 @@ async def _send_contact_immediately(
             warning_text=adv_warning,
             parse_mode="Markdown",
         )
+    max_client = max_messenger_client or messenger_client
     if advertiser and advertiser.max_chat_id:
         await _deliver_to_recipient(
-            messenger_client,
+            max_client,
             chat_id=advertiser.max_chat_id,
             text=contact_text,
             keyboard=open_profile_kb,
