@@ -26,7 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import TypeDecorator
 
 from ugc_bot.domain.enums import (
@@ -442,6 +442,9 @@ class OrderModel(Base):
     )
     brief_link: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    def __str__(self) -> str:
+        return f"Заказ {self.order_id}"
+
 
 class CountryModel(Base):
     """Country ORM model."""
@@ -736,6 +739,8 @@ class PaymentModel(Base):
     paid_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+
+    order: Mapped["OrderModel"] = relationship(lazy="selectin")
 
 
 class NpsResponseModel(Base):
