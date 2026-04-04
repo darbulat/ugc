@@ -232,7 +232,7 @@ services:
     command: ["python", "-m", "ugc_bot.kafka_consumer"]
     restart: unless-stopped
 
-  feedback_scheduler:
+  scheduler:
     build: .
     env_file: .env
     environment:
@@ -242,33 +242,7 @@ services:
         condition: service_healthy
       pgbouncer:
         condition: service_started
-    command: ["python", "-m", "ugc_bot.feedback_scheduler"]
-    restart: unless-stopped
-
-  role_reminder_scheduler:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
-    depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-    command: ["python", "-m", "ugc_bot.role_reminder_scheduler"]
-    restart: unless-stopped
-
-  referral_reconciliation_scheduler:
-    build: .
-    env_file: .env
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
-    depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-    command: ["python", "-m", "ugc_bot.referral_reconciliation_scheduler"]
+    command: ["python", "-m", "ugc_bot.combined_scheduler"]
     restart: unless-stopped
 
   outbox_processor:
@@ -532,13 +506,22 @@ services:
       - default
 
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=30s"
+      - "--disable_metrics=accelerator,cpu_topology,disk,diskIO,memory_numa,hugetlb,referenced_memory,resctrl,tcp,udp,advtcp,process,sched"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
     restart: unless-stopped
     networks:
       - default
