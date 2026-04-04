@@ -440,6 +440,7 @@ async def run_loop(
     default_locale: str = "ru",
     max_iterations: int | None = None,
     bot_texts_service: BotTextsService | None = None,
+    close_clients_on_exit: bool = True,
 ) -> None:
     """Run periodic feedback dispatch."""
     install_asyncio_exception_handler("feedback-scheduler")
@@ -474,14 +475,15 @@ async def run_loop(
             "Feedback scheduler loop stopped",
             extra={"total_iterations": iterations},
         )
-        for client in messenger_clients.values():
-            close_method = getattr(client, "close", None)
-            if callable(close_method):
-                await close_method()
-            else:
-                session = getattr(client, "session", None)
-                if session is not None and hasattr(session, "close"):
-                    await session.close()
+        if close_clients_on_exit:
+            for client in messenger_clients.values():
+                close_method = getattr(client, "close", None)
+                if callable(close_method):
+                    await close_method()
+                else:
+                    session = getattr(client, "session", None)
+                    if session is not None and hasattr(session, "close"):
+                        await session.close()
 
 
 def main() -> None:

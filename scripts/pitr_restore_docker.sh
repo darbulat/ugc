@@ -57,8 +57,8 @@ echo ""
 read -rp "WARNING: This will stop ALL services and overwrite the database. Continue? (yes/no): " answer
 [[ "$answer" == "yes" ]] || { echo "Cancelled."; exit 0; }
 
-APP_SERVICES="app app_2 admin kafka_consumer outbox_processor feedback_scheduler \
-    role_reminder_scheduler instagram_stats_scheduler \
+APP_SERVICES="app app_2 admin kafka_consumer outbox_processor scheduler \
+    instagram_stats_scheduler \
     instagram_stats_collector_scheduler instagram_webhook db_backup"
 
 echo ""

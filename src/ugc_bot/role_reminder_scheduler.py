@@ -20,6 +20,7 @@ from ugc_bot.infrastructure.db.repositories import SqlAlchemyUserRepository
 from ugc_bot.infrastructure.db.session import (
     SessionTransactionManager,
     create_session_factory,
+    get_engine,
 )
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
@@ -207,6 +208,9 @@ def main() -> None:  # pragma: no cover
             session = getattr(bot, "session", None)
             if session is not None:
                 await session.close()
+            engine = get_engine(session_factory)
+            if engine is not None:
+                await engine.dispose()
 
     asyncio.run(_run_with_cleanup())
 
