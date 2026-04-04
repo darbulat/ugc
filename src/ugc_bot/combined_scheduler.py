@@ -59,6 +59,7 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
                     transaction_manager=deps["transaction_manager"],
                     default_locale=default_locale,
                     bot_texts_service=bot_texts_service,
+                    close_clients_on_exit=False,
                 ),
                 name="feedback-scheduler",
             )
@@ -117,6 +118,7 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
             )
     for task in pending:
         task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
 
 
 def main() -> None:
