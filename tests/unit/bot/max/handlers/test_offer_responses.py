@@ -86,6 +86,7 @@ def _deps(user=None, *, blogger_profile=None, state=None, state_data=None):
         "profile_service": profile_service,
         "interaction_service": AsyncMock(),
         "state_store": state_store,
+        "order_repo": AsyncMock(),
         "config": MagicMock(market=MagicMock(currency_symbol="₽")),
         "locale": "ru",
     }
@@ -598,3 +599,116 @@ async def test_offer_response_rate_limit_denies():
     await router.route_callback(_incoming_cb(f"offer:{order_id}"), deps)
     deps["messenger_client"].answer_callback.assert_called()
     deps["offer_response_service"].respond_and_finalize.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_offer_response_order_not_found_sends_closed():
+    """Offer accept with non-existent order sends closed message."""
+    order_id = uuid4()
+    profile = MagicMock()
+    profile.confirmed = True
+    deps = _deps(user=_user(), blogger_profile=profile)
+    deps["order_repo"].get_by_id = AsyncMock(return_value=None)
+    await router.route_callback(_incoming_cb(f"offer:{order_id}"), deps)
+    deps["messenger_client"].send_text.assert_called()
+
+
+# ── offer_confirm: ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_offer_confirm_user_not_found():
+    """Offer confirm with no user answers callback."""
+    order_id = uuid4()
+    deps = _deps(user=None)
+    await router.route_callback(_incoming_cb(f"offer_confirm:{order_id}"), deps)
+    deps["messenger_client"].answer_callback.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_offer_confirm_invalid_uuid():
+    """Offer confirm with bad UUID answers error."""
+    profile = MagicMock()
+    profile.confirmed = True
+    deps = _deps(user=_user(), blogger_profile=profile)
+    await router.route_callback(_incoming_cb("offer_confirm:not-a-uuid"), deps)
+    deps["messenger_client"].answer_callback.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_offer_confirm_creation_error_sends_closed():
+    """OrderCreationError in confirm sends order-closed."""
+    order_id = uuid4()
+    profile = MagicMock()
+    profile.confirmed = True
+    deps = _deps(user=_user(), blogger_profile=profile)
+    deps["offer_response_service"].respond_and_finalize = AsyncMock(
+        side_effect=OrderCreationError("closed")
+    )
+    await router.route_callback(_incoming_cb(f"offer_confirm:{order_id}"), deps)
+    deps["messenger_client"].send_text.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_offer_confirm_accepted():
+    """Accepted confirm sends what-next and product link."""
+    order_id = uuid4()
+    profile = MagicMock()
+    profile.confirmed = True
+    deps = _deps(user=_user(), blogger_profile=profile)
+
+    result = MagicMock()
+    result.accepted = True
+    result.manager_id = None
+    result.response_count = 1
+    result.order = MagicMock()
+    result.order.product_link = "https://example.com/product"
+    deps["offer_response_service"].respond_and_finalize = AsyncMock(
+        return_value=result
+    )
+    await router.route_callback(_incoming_cb(f"offer_confirm:{order_id}"), deps)
+    deps["messenger_client"].answer_callback.assert_called()
+    deps["messenger_client"].send_text.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_offer_confirm_not_accepted_sends_waitlist():
+    """Non-accepted confirm sends waitlist message."""
+    order_id = uuid4()
+    profile = MagicMock()
+    profile.confirmed = True
+    deps = _deps(user=_user(), blogger_profile=profile)
+
+    result = MagicMock()
+    result.accepted = False
+    result.manager_id = None
+    deps["offer_response_service"].respond_and_finalize = AsyncMock(
+        return_value=result
+    )
+    await router.route_callback(_incoming_cb(f"offer_confirm:{order_id}"), deps)
+    deps["messenger_client"].send_text.assert_called()
+
+
+# ── offer_cancel: ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_offer_cancel_answers_and_clears_markup():
+    """Offer cancel answers callback and clears markup."""
+    order_id = uuid4()
+    deps = _deps()
+    await router.route_callback(_incoming_cb(f"offer_cancel:{order_id}"), deps)
+    deps["messenger_client"].answer_callback.assert_called()
+    deps["messenger_client"].edit_reply_markup.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_offer_cancel_no_message_id_skips_clear():
+    """Offer cancel without message_id skips markup clearing."""
+    order_id = uuid4()
+    deps = _deps()
+    await router.route_callback(
+        _incoming_cb(f"offer_cancel:{order_id}", message_id=None), deps
+    )
+    deps["messenger_client"].answer_callback.assert_called()
+    deps["messenger_client"].edit_reply_markup.assert_not_called()

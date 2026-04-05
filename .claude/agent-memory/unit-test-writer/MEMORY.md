@@ -41,3 +41,15 @@
 
 ### InstagramStatsModel Fields (gotcha)
 The ORM model uses: `user_id`, `raw_response` (dict), `fetched_at`, `followers_count`, `follows_count`, `media_count`, `instagram_username`, `biography`, `provider`, `instagram_id`. NOT `followers`, `following`, `posts`, `er`.
+
+### Max Handler Test Patterns
+- **_deps() mock config**: Must include `mock_config.docs.get_urls_for_country = MagicMock(return_value=(...))` when testing handlers that call `format_agreements_message` (advertiser/blogger registration, my_orders agreement prompt)
+- **keyboard text keys**: `role_inline_keyboard` needs `btn_creator`, `btn_advertiser`, `btn_support` in `get_many` return; `confirm_agreement_inline_keyboard` needs `btn_confirm_agreement`
+- **RejectionReason values**: Only `LOW_PRICE`, `WRONG_FORMAT`, `UNINTERESTING_PRODUCT`, `NO_TIME`, `ALREADY_WORKING_WITH_BRAND` — no `TOO_EXPENSIVE`
+- **TransactionManager mock**: Use `@asynccontextmanager` on a nested function for `tm.transaction` when the handler uses `async with transaction_manager.transaction() as session`
+- **FakeMessengerClient for /referral**: Use `from tests.helpers.fakes import FakeMessengerClient` when testing handlers that append `sent_text` (use `.sent_text[0]["text"]` to inspect)
+- **Defensive `else` branches**: Cannot be reached through router routing (state predicates block them); test them by importing and calling handler functions directly
+- **Pre-existing failure**: `tests/unit/bot/max/handlers/test_feedback.py::test_handle_no_deal_other_text_user_not_found` fails — not related to blogger/advertiser handler tests
+- **instagram_stats_collector_service**: Pure functions `_safe_float`, `_safe_bool`, `_extract_post_metrics`, `_extract_posting_frequency`, `_extract_profile_fields`, `_get_posts_from_raw`, `_get_user_dict`, `_extract_analytics_fields` are testable without mocking; extra tests in `tests/application/services/test_instagram_stats_collector_service_extra.py`
+- **Max handler `if not incoming.data:` guards**: Test by importing handler functions directly and calling with `data=None` IncomingCallback; don't rely on router routing
+- **Unreachable defensive branches**: Lines guarded by `if not isinstance(data, dict): return []` in `_get_posts_from_raw` (line 395) and similar are truly unreachable when args are correctly typed; don't waste time trying to cover them

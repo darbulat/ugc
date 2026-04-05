@@ -820,8 +820,8 @@ def test_get_order_moderation_deps() -> None:
     with (
         patch.object(
             container,
-            "build_outbox_deps",
-            return_value=(mock_outbox_publisher, None),
+            "build_outbox_publisher",
+            return_value=mock_outbox_publisher,
         ),
         patch.object(
             container,
@@ -834,8 +834,8 @@ def test_get_order_moderation_deps() -> None:
         )
 
     assert content_moderation is not None
-    assert outbox_publisher is not None
-    assert order_repo is not None
+    assert outbox_publisher is mock_outbox_publisher
+    assert order_repo is mock_order_repo
 
 
 @pytest.mark.asyncio
@@ -1053,12 +1053,17 @@ async def test_order_admin_update_model_activation_publishes() -> None:
     mock_tm = MagicMock()
     mock_tm.transaction = MagicMock(return_value=_tx())
 
+    mock_manager_service = AsyncMock()
+
     mock_container = MagicMock()
-    mock_container.build_outbox_deps = MagicMock(
-        return_value=(mock_outbox_publisher, None)
+    mock_container.build_outbox_publisher = MagicMock(
+        return_value=mock_outbox_publisher,
     )
     mock_container.build_repos = MagicMock(
         return_value={"order_repo": mock_order_repo}
+    )
+    mock_container.build_manager_service = MagicMock(
+        return_value=mock_manager_service
     )
     mock_container.transaction_manager = mock_tm
 
@@ -1220,12 +1225,17 @@ async def test_order_admin_update_model_activation_exception_handled() -> None:
     mock_tm = MagicMock()
     mock_tm.transaction = MagicMock(return_value=_tx())
 
+    mock_manager_service = AsyncMock()
+
     mock_container = MagicMock()
-    mock_container.build_outbox_deps = MagicMock(
-        return_value=(mock_outbox_publisher, None)
+    mock_container.build_outbox_publisher = MagicMock(
+        return_value=mock_outbox_publisher,
     )
     mock_container.build_repos = MagicMock(
         return_value={"order_repo": mock_order_repo}
+    )
+    mock_container.build_manager_service = MagicMock(
+        return_value=mock_manager_service
     )
     mock_container.transaction_manager = mock_tm
 

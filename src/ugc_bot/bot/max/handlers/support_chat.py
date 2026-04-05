@@ -1,6 +1,13 @@
 """Max support chat handlers — forward messages to TG group."""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ugc_bot.application.services.profile_service import ProfileService
+    from ugc_bot.application.services.user_role_service import UserRoleService
 
 from ugc_bot.application.messenger.dto import (
     Button,
@@ -66,6 +73,35 @@ async def start_support_chat(incoming: IncomingCallback, deps: dict) -> None:
     )
 
 
+async def _build_support_header(
+    incoming: IncomingMessage,
+    text: str,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+) -> str:
+    user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    username = user.username if user else incoming.user.username or "—"
+    info_lines = [
+        "💬 Max Support",
+        f"User: {username} (chat: {incoming.chat_id})",
+    ]
+    if user:
+        if user.max_id:
+            info_lines.append(f"Max ID: {user.max_id}")
+        if user.telegram:
+            info_lines.append(f"Telegram: @{user.telegram}")
+        profile = await profile_service.get_blogger_profile(user.user_id)
+        if profile:
+            if profile.phone:
+                info_lines.append(f"Телефон: {profile.phone}")
+            if profile.instagram_url:
+                info_lines.append(f"Instagram: {profile.instagram_url}")
+    return "\n".join(info_lines) + f"\n\n{text}"
+
+
 @router.message_in_state(SUPPORT_STATE)
 async def handle_user_support_message(
     incoming: IncomingMessage, deps: dict
@@ -99,28 +135,9 @@ async def handle_user_support_message(
         )
         return
 
-    # Build header for support group
-    user = await user_role_service.get_user(
-        external_id=incoming.user.external_id,
-        messenger_type=incoming.user.messenger_type,
+    header = await _build_support_header(
+        incoming, text, user_role_service, profile_service
     )
-    username = user.username if user else incoming.user.username or "—"
-    info_lines = [
-        "💬 Max Support",
-        f"User: {username} (chat: {incoming.chat_id})",
-    ]
-    if user:
-        if user.max_id:
-            info_lines.append(f"Max ID: {user.max_id}")
-        if user.telegram:
-            info_lines.append(f"Telegram: @{user.telegram}")
-        profile = await profile_service.get_blogger_profile(user.user_id)
-        if profile:
-            if profile.phone:
-                info_lines.append(f"Телефон: {profile.phone}")
-            if profile.instagram_url:
-                info_lines.append(f"Instagram: {profile.instagram_url}")
-    header = "\n".join(info_lines) + f"\n\n{text}"
 
     # Send to Telegram support group via the Telegram messenger client
     telegram_client = deps.get("telegram_messenger_client")
