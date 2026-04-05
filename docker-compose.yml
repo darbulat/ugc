@@ -510,7 +510,7 @@ services:
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=30s"
-      - "--disable_metrics=accelerator,cpu_topology,disk,diskIO,memory_numa,hugetlb,referenced_memory,resctrl,tcp,udp,advtcp,process,sched"
+      - "--disable_metrics=cpu_topology,disk,diskIO,memory_numa,hugetlb,referenced_memory,resctrl,tcp,udp,advtcp,process,sched"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
