@@ -395,6 +395,54 @@ async def test_update_last_role_reminder_at_nonexistent_user(
 
 
 @pytest.mark.asyncio
+async def test_clear_max_chat_id(fake_tm: object) -> None:
+    """clear_max_chat_id nullifies max_chat_id in the DB."""
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    user = await service.set_user(
+        external_id="max-clear-1",
+        messenger_type=MessengerType.MAX,
+        username="mgr",
+        max_chat_id="chat-123",
+    )
+    assert user.max_chat_id == "chat-123"
+
+    await service.clear_max_chat_id(user.user_id)
+
+    updated = await service.get_user_by_id(user.user_id)
+    assert updated is not None
+    assert updated.max_chat_id is None
+    assert updated.max_id == "max-clear-1"
+
+
+@pytest.mark.asyncio
+async def test_clear_max_chat_id_nonexistent_user(fake_tm: object) -> None:
+    """clear_max_chat_id does nothing when user not found."""
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    await service.clear_max_chat_id(
+        UUID("00000000-0000-0000-0000-000000000999")
+    )
+
+
+@pytest.mark.asyncio
+async def test_clear_max_chat_id_already_none(fake_tm: object) -> None:
+    """clear_max_chat_id is a no-op when max_chat_id is already None."""
+    repo = InMemoryUserRepository()
+    service = UserRoleService(user_repo=repo, transaction_manager=fake_tm)
+    user = await service.set_user(
+        external_id="tg-user-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="tg",
+    )
+    assert user.max_chat_id is None
+    await service.clear_max_chat_id(user.user_id)
+    updated = await service.get_user_by_id(user.user_id)
+    assert updated is not None
+    assert updated.max_chat_id is None
+
+
+@pytest.mark.asyncio
 async def test_create_user_with_default_username() -> None:
     """create_user uses default username when username is None."""
 

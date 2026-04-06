@@ -3,7 +3,6 @@
 import contextlib
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -73,17 +72,16 @@ _send_retry_delay_seconds = 0.5
 
 
 async def _clear_max_chat_id(
-    user: User, user_role_service: UserRoleService
+    user_id: UUID, user_role_service: UserRoleService
 ) -> None:
     """Clear invalid max_chat_id when Max chat is not found."""
     try:
-        updated = replace(user, max_chat_id=None)
-        await user_role_service.user_repo.save(updated)
-        logger.info("Cleared invalid max_chat_id for user %s", user.user_id)
+        await user_role_service.clear_max_chat_id(user_id)
+        logger.info("Cleared invalid max_chat_id for user %s", user_id)
     except Exception:
         logger.warning(
             "Failed to clear max_chat_id for user %s",
-            user.user_id,
+            user_id,
             exc_info=True,
         )
 
@@ -1076,7 +1074,7 @@ async def _send_contact_immediately(
             response_count=response_count,
             warning_text=adv_warning,
             on_bot_blocked=lambda: _clear_max_chat_id(
-                advertiser, user_role_service
+                advertiser.user_id, user_role_service
             ),
         )
 
@@ -1154,7 +1152,7 @@ async def _send_contact_immediately(
                 "manager_id": str(manager.user_id),
             },
             on_bot_blocked=lambda: _clear_max_chat_id(
-                manager, user_role_service
+                manager.user_id, user_role_service
             ),
         )
 
