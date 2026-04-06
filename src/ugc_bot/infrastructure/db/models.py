@@ -186,6 +186,13 @@ class BloggerProfileModel(Base):
     """Blogger profile ORM model."""
 
     __tablename__ = "blogger_profiles"
+    __table_args__ = (
+        sa.Index(
+            "ix_blogger_profiles_confirmed",
+            "confirmed",
+            postgresql_where=sa.text("confirmed = true"),
+        ),
+    )
 
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -589,6 +596,13 @@ class InteractionModel(Base):
     """Interaction ORM model."""
 
     __tablename__ = "interactions"
+    __table_args__ = (
+        sa.Index(
+            "ix_interactions_status_next_check_at",
+            "status",
+            "next_check_at",
+        ),
+    )
 
     interaction_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -611,7 +625,7 @@ class InteractionModel(Base):
         nullable=False,
     )
     status: Mapped[InteractionStatus] = mapped_column(
-        _enum_column(InteractionStatus), nullable=False, index=True
+        _enum_column(InteractionStatus), nullable=False
     )
     from_advertiser: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     from_blogger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -619,7 +633,7 @@ class InteractionModel(Base):
         Integer, nullable=False, server_default=text("0")
     )
     next_check_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True
+        DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
