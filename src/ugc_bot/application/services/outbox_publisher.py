@@ -108,7 +108,11 @@ class OutboxPublisher:
         batch_limit: int = 100,
         concurrency: int = 10,
     ) -> None:
-        """Process pending events (claim atomically, retry on failure)."""
+        """Process pending events (claim atomically, retry on failure).
+
+        concurrency must not exceed the DB connection pool capacity
+        (pool_size + max_overflow, default 15).
+        """
 
         await self._reset_stale_events()
 
