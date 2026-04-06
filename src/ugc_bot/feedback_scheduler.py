@@ -260,30 +260,20 @@ _FEEDBACK_TEXT_KEYS = [
 ]
 
 
-async def _send_feedback_requests(
+async def _send_feedback_requests_with_preloaded(
     messenger_clients: dict[str, MessengerClient],
     interaction: Interaction,
     interaction_service: InteractionService,
     user_role_service: UserRoleService,
-    profile_service: Optional[ProfileService],
+    blogger: Optional[User],
+    advertiser: Optional[User],
+    blogger_profile: Optional[BloggerProfile],
     order: Optional[Order],
     feedback_config: FeedbackConfig,
     locale: str,
     bot_texts_service: BotTextsService | None = None,
 ) -> None:
-    """Send feedback requests to both sides for a single interaction."""
-
-    logger.debug(
-        "Processing interaction for feedback",
-        extra={
-            "interaction_id": str(interaction.interaction_id),
-            "order_id": str(interaction.order_id),
-        },
-    )
-    blogger = await user_role_service.get_user_by_id(interaction.blogger_id)
-    advertiser = await user_role_service.get_user_by_id(
-        interaction.advertiser_id
-    )
+    """Send feedback requests using pre-loaded users/profiles/orders."""
     if not blogger:
         logger.debug(
             "Skipping blogger feedback: user not found",
@@ -296,11 +286,6 @@ async def _send_feedback_requests(
         )
     if not blogger and not advertiser:
         return
-    blogger_profile = (
-        await profile_service.get_blogger_profile(interaction.blogger_id)
-        if profile_service
-        else None
-    )
     next_reminder = next_reminder_datetime(
         feedback_config.feedback_reminder_timezone,
         feedback_config.feedback_reminder_hour,
@@ -386,26 +371,57 @@ async def run_once(
         extra={"cutoff": cutoff.isoformat()},
     )
 
-    interactions = await _iter_due_interactions(
+    interactions_list = await _iter_due_interactions(
         interaction_repo, cutoff, transaction_manager
     )
+    if not interactions_list:
+        logger.info(
+            "Feedback cycle completed",
+            extra={"interactions_processed": 0, "cutoff": cutoff.isoformat()},
+        )
+        return
+
+    # Batch-load users, orders, and profiles to avoid N+1 queries
+    all_user_ids: set[UUID] = set()
+    all_order_ids: set[UUID] = set()
+    for ix in interactions_list:
+        all_user_ids.add(ix.blogger_id)
+        all_user_ids.add(ix.advertiser_id)
+        all_order_ids.add(ix.order_id)
+
+    users_map = await user_role_service.get_users_by_ids(list(all_user_ids))
+    blogger_ids = [ix.blogger_id for ix in interactions_list]
+    profiles_map: dict[UUID, BloggerProfile] = {}
+    if profile_service:
+        profiles_map = await profile_service.get_blogger_profiles(blogger_ids)
+
+    async def _load_orders(session: object | None) -> dict[UUID, Order]:
+        orders = await order_repo.get_by_ids(
+            list(all_order_ids), session=session
+        )
+        return {o.order_id: o for o in orders}
+
+    orders_map = await with_optional_tx(transaction_manager, _load_orders)
+
     interaction_count = 0
-    for interaction in interactions:
+    for interaction in interactions_list:
         interaction_count += 1
         try:
-            async with transaction_manager.transaction() as session:
-                order = await order_repo.get_by_id(
-                    interaction.order_id, session=session
-                )
-            await _send_feedback_requests(
+            order = orders_map.get(interaction.order_id)
+            blogger = users_map.get(interaction.blogger_id)
+            advertiser = users_map.get(interaction.advertiser_id)
+            blogger_profile = profiles_map.get(interaction.blogger_id)
+            await _send_feedback_requests_with_preloaded(
                 messenger_clients,
                 interaction,
                 interaction_service,
                 user_role_service,
-                profile_service,
-                order,
-                feedback_config,
-                locale,
+                blogger=blogger,
+                advertiser=advertiser,
+                blogger_profile=blogger_profile,
+                order=order,
+                feedback_config=feedback_config,
+                locale=locale,
                 bot_texts_service=bot_texts_service,
             )
         except (
