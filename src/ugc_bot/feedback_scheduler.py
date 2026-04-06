@@ -260,112 +260,6 @@ _FEEDBACK_TEXT_KEYS = [
 ]
 
 
-async def _send_feedback_requests(
-    messenger_clients: dict[str, MessengerClient],
-    interaction: Interaction,
-    interaction_service: InteractionService,
-    user_role_service: UserRoleService,
-    profile_service: Optional[ProfileService],
-    order: Optional[Order],
-    feedback_config: FeedbackConfig,
-    locale: str,
-    bot_texts_service: BotTextsService | None = None,
-) -> None:
-    """Send feedback requests to both sides for a single interaction."""
-
-    logger.debug(
-        "Processing interaction for feedback",
-        extra={
-            "interaction_id": str(interaction.interaction_id),
-            "order_id": str(interaction.order_id),
-        },
-    )
-    blogger = await user_role_service.get_user_by_id(interaction.blogger_id)
-    advertiser = await user_role_service.get_user_by_id(
-        interaction.advertiser_id
-    )
-    if not blogger:
-        logger.debug(
-            "Skipping blogger feedback: user not found",
-            extra={"blogger_id": str(interaction.blogger_id)},
-        )
-    if not advertiser:
-        logger.debug(
-            "Skipping advertiser feedback: user not found",
-            extra={"advertiser_id": str(interaction.advertiser_id)},
-        )
-    if not blogger and not advertiser:
-        return
-    blogger_profile = (
-        await profile_service.get_blogger_profile(interaction.blogger_id)
-        if profile_service
-        else None
-    )
-    next_reminder = next_reminder_datetime(
-        feedback_config.feedback_reminder_timezone,
-        feedback_config.feedback_reminder_hour,
-        feedback_config.feedback_reminder_minute,
-    )
-    sent_to_adv = False
-    sent_to_blog = False
-
-    if (
-        advertiser
-        and needs_feedback_reminder(interaction.from_advertiser)
-        and (advertiser.telegram_id or advertiser.max_id)
-    ):
-        adv_locale = getattr(advertiser, "language", None) or locale
-        if bot_texts_service is not None:
-            adv_texts = await bot_texts_service.get_many(
-                _FEEDBACK_TEXT_KEYS, adv_locale
-            )
-        else:
-            adv_texts = _feedback_texts_for_locale(adv_locale)
-        sent_to_adv = await _send_advertiser_feedback(
-            messenger_clients,
-            interaction,
-            advertiser,
-            blogger_profile,
-            adv_texts,
-            user_role_service,
-        )
-
-    if (
-        blogger
-        and needs_feedback_reminder(interaction.from_blogger)
-        and (blogger.telegram_id or blogger.max_id)
-    ):
-        blog_locale = getattr(blogger, "language", None) or locale
-        if bot_texts_service is not None:
-            blog_texts = await bot_texts_service.get_many(
-                _FEEDBACK_TEXT_KEYS, blog_locale
-            )
-        else:
-            blog_texts = _feedback_texts_for_locale(blog_locale)
-        sent_to_blog = await _send_blogger_feedback(
-            messenger_clients,
-            interaction,
-            blogger,
-            order,
-            blog_texts,
-            user_role_service,
-        )
-
-    if sent_to_adv or sent_to_blog:
-        await interaction_service.schedule_next_reminder(
-            interaction.interaction_id, next_reminder
-        )
-        logger.debug(
-            "Scheduled next reminder for interaction",
-            extra={
-                "interaction_id": str(interaction.interaction_id),
-                "next_reminder": next_reminder.isoformat()
-                if next_reminder
-                else None,
-            },
-        )
-
-
 async def _send_feedback_requests_with_preloaded(
     messenger_clients: dict[str, MessengerClient],
     interaction: Interaction,
@@ -446,6 +340,15 @@ async def _send_feedback_requests_with_preloaded(
         await interaction_service.schedule_next_reminder(
             interaction.interaction_id, next_reminder
         )
+        logger.debug(
+            "Scheduled next reminder for interaction",
+            extra={
+                "interaction_id": str(interaction.interaction_id),
+                "next_reminder": next_reminder.isoformat()
+                if next_reminder
+                else None,
+            },
+        )
 
 
 async def run_once(
@@ -468,10 +371,9 @@ async def run_once(
         extra={"cutoff": cutoff.isoformat()},
     )
 
-    interactions = await _iter_due_interactions(
+    interactions_list = await _iter_due_interactions(
         interaction_repo, cutoff, transaction_manager
     )
-    interactions_list = list(interactions)
     if not interactions_list:
         logger.info(
             "Feedback cycle completed",
