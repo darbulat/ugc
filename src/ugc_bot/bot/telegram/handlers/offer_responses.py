@@ -64,7 +64,6 @@ _SEND_CONTACT_TEXTS_KEYS = (
     "msg_order_type_placement",
     "btn_open_profile",
     "btn_write_telegram",
-    "btn_write_max",
 )
 logger = logging.getLogger(__name__)
 _send_retries = 3
@@ -864,7 +863,6 @@ def _build_advertiser_contact_content(
     telegram_handle: str,
     texts: dict[str, str],
     creator_external_id: str | None = None,
-    creator_max_id: str | None = None,
     blogger_phone: str | None = None,
 ) -> tuple[str, Keyboard | None]:
     """Build contact message and inline keyboard for advertiser."""
@@ -913,13 +911,6 @@ def _build_advertiser_contact_content(
             Button(
                 text=t.get("btn_write_telegram", "Написать в телеграм"),
                 url=f"tg://user?id={creator_external_id}",
-            )
-        )
-    if creator_max_id:
-        buttons.append(
-            Button(
-                text=t.get("btn_write_max", "Написать в Макс"),
-                url=f"max://max.ru/{creator_max_id}",
             )
         )
     keyboard = (
@@ -1045,7 +1036,7 @@ async def _send_contact_immediately(
         telegram_handle=user.telegram or "",
         texts=t_adv,
         creator_external_id=user.telegram_id,
-        creator_max_id=user.max_id,
+
         blogger_phone=profile.phone,
     )
 
@@ -1098,7 +1089,7 @@ async def _send_contact_immediately(
             telegram_handle=user.telegram or "",
             texts=t_mgr,
             creator_external_id=user.telegram_id,
-            creator_max_id=user.max_id,
+    
             blogger_phone=profile.phone,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
@@ -1135,7 +1126,7 @@ async def _send_contact_immediately(
             telegram_handle=user.telegram or "",
             texts=t_mgr,
             creator_external_id=user.telegram_id,
-            creator_max_id=user.max_id,
+    
             blogger_phone=profile.phone,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
