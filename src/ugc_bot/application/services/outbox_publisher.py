@@ -1,5 +1,6 @@
 """Outbox publisher service for reliable event publishing."""
 
+import asyncio
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -105,8 +106,13 @@ class OutboxPublisher:
         kafka_publisher: OrderActivationPublisher,
         max_retries: int = 3,
         batch_limit: int = 100,
+        concurrency: int = 10,
     ) -> None:
-        """Process pending events (claim atomically, retry on failure)."""
+        """Process pending events (claim atomically, retry on failure).
+
+        concurrency must not exceed the DB connection pool capacity
+        (pool_size + max_overflow, default 15).
+        """
 
         await self._reset_stale_events()
 
@@ -119,27 +125,33 @@ class OutboxPublisher:
             self.transaction_manager, _claim
         )
 
-        for event in claimed_events:
-            if event.retry_count >= max_retries:
-                await self._mark_failed(
-                    event.event_id,
-                    f"Max retries ({max_retries}) exceeded",
-                    event.retry_count,
-                )
-                continue
+        sem = asyncio.Semaphore(concurrency)
 
-            try:
-                await self._process_one_event(
-                    event, kafka_publisher, max_retries
-                )
-            except Exception as e:
-                next_retry = event.retry_count + 1
-                if next_retry >= max_retries:
-                    await self._mark_failed(event.event_id, str(e), next_retry)
-                else:
-                    await self._mark_for_retry(
-                        event.event_id, str(e), next_retry
+        async def _handle(event: OutboxEvent) -> None:
+            async with sem:
+                if event.retry_count >= max_retries:
+                    await self._mark_failed(
+                        event.event_id,
+                        f"Max retries ({max_retries}) exceeded",
+                        event.retry_count,
                     )
+                    return
+                try:
+                    await self._process_one_event(
+                        event, kafka_publisher, max_retries
+                    )
+                except Exception as e:
+                    next_retry = event.retry_count + 1
+                    if next_retry >= max_retries:
+                        await self._mark_failed(
+                            event.event_id, str(e), next_retry
+                        )
+                    else:
+                        await self._mark_for_retry(
+                            event.event_id, str(e), next_retry
+                        )
+
+        await asyncio.gather(*[_handle(ev) for ev in claimed_events])
 
     async def _mark_failed(
         self, event_id: UUID, error: str, retry_count: int
