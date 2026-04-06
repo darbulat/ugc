@@ -78,3 +78,29 @@ async def test_on_bot_blocked_none_does_not_raise() -> None:
     )
 
     assert result is False
+
+
+@pytest.mark.asyncio
+async def test_on_bot_blocked_called_on_max_chat_not_found() -> None:
+    """on_bot_blocked callback is invoked on MaxChatNotFoundError."""
+    from ugc_bot.infrastructure.messenger.max.client import MaxChatNotFoundError
+
+    client = AsyncMock()
+    client.send_text = AsyncMock(
+        side_effect=MaxChatNotFoundError('{"code":"chat.not.found"}')
+    )
+    on_blocked = AsyncMock()
+
+    result = await send_with_retry(
+        client,
+        chat_id="999",
+        text="hi",
+        retries=3,
+        delay_seconds=0,
+        logger=logger,
+        on_bot_blocked=on_blocked,
+    )
+
+    assert result is False
+    on_blocked.assert_awaited_once()
+    assert client.send_text.await_count == 1

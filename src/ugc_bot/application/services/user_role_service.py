@@ -359,6 +359,18 @@ class UserRoleService:
 
         await with_optional_tx(self.transaction_manager, _run)
 
+    async def clear_max_chat_id(self, user_id: UUID) -> None:
+        """Nullify max_chat_id when Max chat no longer exists."""
+
+        async def _run(session: object | None) -> None:
+            user = await self.user_repo.get_by_id(user_id, session=session)
+            if user is None or user.max_chat_id is None:
+                return
+            updated = replace(user, max_chat_id=None)
+            await self.user_repo.save(updated, session=session)
+
+        await with_optional_tx(self.transaction_manager, _run)
+
     async def link_max_account(
         self,
         max_id: str,
