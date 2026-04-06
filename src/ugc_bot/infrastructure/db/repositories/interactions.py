@@ -24,6 +24,8 @@ from ugc_bot.infrastructure.db.models import (
 )
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(slots=True)
 class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
@@ -581,7 +583,7 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
             )
             result = list(exec_result.scalars().all())
             if len(result) > 5000:
-                logging.getLogger(__name__).warning(
+                logger.warning(
                     "Large unfulfilled interaction set: %d blogger IDs",
                     len(result),
                 )

@@ -1,5 +1,6 @@
 """SQLAlchemy blogger and advertiser profile repositories."""
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
@@ -27,6 +28,8 @@ from ugc_bot.infrastructure.db.repositories._shared import (
     _resolve_session,
     _wkt_to_geometry_element,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -136,10 +139,6 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         When location_geometry_wkt is set (PostgreSQL only), only return
         bloggers whose location_geometry intersects the order geometry.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         db_session = _require_session(
             session if isinstance(session, AsyncSession) else None
         )
