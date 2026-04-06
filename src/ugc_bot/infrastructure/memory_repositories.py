@@ -550,10 +550,18 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
         self, username: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram username (case-insensitive)."""
-        needle = username.lower().strip("/")
+        normalized = username.lower().strip("/").strip()
+        if not normalized:
+            return None
+        # Check instagram_username first (mirrors indexed lookup)
+        for profile in self.profiles.values():
+            ig_username = (profile.instagram_username or "").lower().strip()
+            if ig_username and ig_username == normalized:
+                return profile
+        # Fallback: check instagram_url for legacy data
         for profile in self.profiles.values():
             url = (profile.instagram_url or "").lower().rstrip("/")
-            if url.endswith(f"instagram.com/{needle}"):
+            if url.endswith(f"instagram.com/{normalized}"):
                 return profile
         return None
 

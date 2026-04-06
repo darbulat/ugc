@@ -90,10 +90,24 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
         self, username: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram username (case-insensitive)."""
-        pattern = f"%instagram.com/{username.lower().strip('/')}"
+        normalized = username.lower().strip("/").strip()
+        if not normalized:
+            return None
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
+            # Use instagram_username column with functional index
+            exec_result = await db_session.execute(
+                select(BloggerProfileModel).where(
+                    func.lower(BloggerProfileModel.instagram_username)
+                    == normalized
+                )
+            )
+            result = exec_result.scalar_one_or_none()
+            if result is not None:
+                return _to_blogger_profile_entity(result)
+            # Fallback: LIKE on instagram_url for legacy data
+            pattern = f"%instagram.com/{normalized}"
             exec_result = await db_session.execute(
                 select(BloggerProfileModel).where(
                     func.lower(BloggerProfileModel.instagram_url).like(pattern)
