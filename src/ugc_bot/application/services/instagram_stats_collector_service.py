@@ -517,6 +517,7 @@ class InstagramStatsCollectorService:
         delay_seconds: float = 1.0,
         stats_update_interval_seconds: int = 86400,
         aiograpi_fetcher: Optional[AiograpiStatsFetcherProtocol] = None,
+        concurrency: int = 5,
     ) -> None:
         """Initialize the service.
 
@@ -540,6 +541,7 @@ class InstagramStatsCollectorService:
         self._delay_seconds = delay_seconds
         self._stats_update_interval_seconds = stats_update_interval_seconds
         self._aiograpi_fetcher = aiograpi_fetcher
+        self._concurrency = concurrency
 
     async def _fetch_raw_stats(
         self, username: str, user_id_str: str
@@ -723,20 +725,44 @@ class InstagramStatsCollectorService:
                 updated=0, errors=0, updated_users=[], failed_users=[]
             )
 
+        sem = asyncio.Semaphore(self._concurrency)
+
+        async def _process_limited(
+            profile: BloggerProfile,
+        ) -> tuple[bool, dict]:
+            async with sem:
+                try:
+                    result = await self._process_one_profile(profile, now)
+                except Exception as exc:
+                    logger.warning(
+                        "Unexpected error processing profile %s: %s",
+                        profile.user_id,
+                        exc,
+                    )
+                    result = (
+                        False,
+                        {
+                            "user_id": str(profile.user_id),
+                            "username": _username_from_profile(profile) or "",
+                            "reason": str(exc),
+                        },
+                    )
+                await asyncio.sleep(random_delay_seconds(self._delay_seconds))
+                return result
+
+        results = await asyncio.gather(*[_process_limited(p) for p in profiles])
+
         updated = 0
         errors = 0
         updated_users: list[dict] = []
         failed_users: list[dict] = []
-
-        for profile in profiles:
-            success, user_info = await self._process_one_profile(profile, now)
+        for success, user_info in results:
             if success:
                 updated += 1
                 updated_users.append(user_info)
             else:
                 errors += 1
                 failed_users.append(user_info)
-            await asyncio.sleep(random_delay_seconds(self._delay_seconds))
 
         return RunOnceResult(
             updated=updated,
