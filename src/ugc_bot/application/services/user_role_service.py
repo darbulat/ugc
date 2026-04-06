@@ -176,6 +176,16 @@ class UserRoleService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def get_users_by_ids(self, user_ids: list[UUID]) -> dict[UUID, User]:
+        """Fetch users by IDs in a single query."""
+
+        async def _run(
+            session: object | None,
+        ) -> dict[UUID, User]:
+            return await self.user_repo.get_by_ids(user_ids, session=session)
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def get_user_by_telegram(self, telegram: str) -> User | None:
         """Fetch a user by Telegram username (case-insensitive, @ stripped)."""
         normalized = (telegram or "").strip().lstrip("@").lower()
