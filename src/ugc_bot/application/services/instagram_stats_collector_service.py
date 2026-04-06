@@ -731,7 +731,22 @@ class InstagramStatsCollectorService:
             profile: BloggerProfile,
         ) -> tuple[bool, dict]:
             async with sem:
-                result = await self._process_one_profile(profile, now)
+                try:
+                    result = await self._process_one_profile(profile, now)
+                except Exception as exc:
+                    logger.warning(
+                        "Unexpected error processing profile %s: %s",
+                        profile.user_id,
+                        exc,
+                    )
+                    result = (
+                        False,
+                        {
+                            "user_id": str(profile.user_id),
+                            "username": _username_from_profile(profile) or "",
+                            "reason": str(exc),
+                        },
+                    )
                 await asyncio.sleep(random_delay_seconds(self._delay_seconds))
                 return result
 

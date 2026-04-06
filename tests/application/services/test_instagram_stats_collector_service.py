@@ -931,9 +931,11 @@ async def test_run_once_scrapecreators_api_error_propagates() -> None:
         ),
         delay_seconds=0.0,
     )
-    with pytest.raises(ScrapeCreatorsAPIError) as exc_info:
-        await service.run_once()
-    assert exc_info.value.status_code == 402
+    result = await service.run_once()
+    assert result.errors == 1
+    assert result.updated == 0
+    assert len(result.failed_users) == 1
+    assert "402" in result.failed_users[0].get("reason", "")
 
 
 @pytest.mark.asyncio
