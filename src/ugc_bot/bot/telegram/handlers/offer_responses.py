@@ -2,6 +2,8 @@
 
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from typing import Any
 from uuid import UUID
@@ -68,6 +70,22 @@ _SEND_CONTACT_TEXTS_KEYS = (
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+
+async def _clear_max_chat_id(
+    user: User, user_role_service: UserRoleService
+) -> None:
+    """Clear invalid max_chat_id when Max chat is not found."""
+    try:
+        updated = replace(user, max_chat_id=None)
+        await user_role_service.user_repo.save(updated)
+        logger.info("Cleared invalid max_chat_id for user %s", user.user_id)
+    except Exception:
+        logger.warning(
+            "Failed to clear max_chat_id for user %s",
+            user.user_id,
+            exc_info=True,
+        )
 
 
 class OfferSkipStates(StatesGroup):
@@ -948,10 +966,11 @@ async def _deliver_to_recipient(
     warning_text: str,
     parse_mode: str | None = None,
     extra: dict | None = None,
+    on_bot_blocked: Callable[[], Awaitable[None]] | None = None,
 ) -> None:
     """Send contact message + optional first-response warning to a recipient."""
     send_extra = extra or {"order_id": str(order_id)}
-    await send_with_retry(
+    ok = await send_with_retry(
         client,
         chat_id=chat_id,
         text=text,
@@ -960,7 +979,10 @@ async def _deliver_to_recipient(
         delay_seconds=_send_retry_delay_seconds,
         logger=logger,
         extra=send_extra,
+        on_bot_blocked=on_bot_blocked,
     )
+    if not ok:
+        return
     if response_count == 1 and warning_text:
         await send_with_retry(
             client,
@@ -1053,6 +1075,9 @@ async def _send_contact_immediately(
             order_id=order.order_id,
             response_count=response_count,
             warning_text=adv_warning,
+            on_bot_blocked=lambda: _clear_max_chat_id(
+                advertiser, user_role_service
+            ),
         )
 
     if manager and manager.telegram_id:
@@ -1128,6 +1153,9 @@ async def _send_contact_immediately(
                 "order_id": str(order.order_id),
                 "manager_id": str(manager.user_id),
             },
+            on_bot_blocked=lambda: _clear_max_chat_id(
+                manager, user_role_service
+            ),
         )
 
     if manager:
