@@ -1,5 +1,6 @@
 """SQLAlchemy interaction and offer dispatch repositories."""
 
+import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -578,7 +579,13 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
                 )
                 .distinct()
             )
-            return list(exec_result.scalars().all())
+            result = list(exec_result.scalars().all())
+            if len(result) > 5000:
+                logging.getLogger(__name__).warning(
+                    "Large unfulfilled interaction set: %d blogger IDs",
+                    len(result),
+                )
+            return result
 
 
 def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:

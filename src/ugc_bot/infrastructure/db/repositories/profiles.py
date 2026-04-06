@@ -179,8 +179,13 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
                 )
                 return []
         exec_result = await db_session.execute(stmt)
-        results = exec_result.scalars()
-        return list(results)
+        result = list(exec_result.scalars())
+        if len(result) > 5000:
+            logger.warning(
+                "Large confirmed user ID set: %d bloggers",
+                len(result),
+            )
+        return result
 
     async def list_confirmed_with_instagram_id(
         self,
