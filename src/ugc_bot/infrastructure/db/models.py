@@ -186,6 +186,13 @@ class BloggerProfileModel(Base):
     """Blogger profile ORM model."""
 
     __tablename__ = "blogger_profiles"
+    __table_args__ = (
+        sa.Index(
+            "ix_blogger_profiles_confirmed",
+            "confirmed",
+            postgresql_where=sa.text("confirmed = true"),
+        ),
+    )
 
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -369,6 +376,7 @@ class OrderModel(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     order_type: Mapped[OrderType] = mapped_column(
         _enum_column(OrderType),
@@ -383,7 +391,7 @@ class OrderModel(Base):
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     bloggers_needed: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[OrderStatus] = mapped_column(
-        _enum_column(OrderStatus), nullable=False
+        _enum_column(OrderStatus), nullable=False, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -588,6 +596,13 @@ class InteractionModel(Base):
     """Interaction ORM model."""
 
     __tablename__ = "interactions"
+    __table_args__ = (
+        sa.Index(
+            "ix_interactions_status_next_check_at",
+            "status",
+            "next_check_at",
+        ),
+    )
 
     interaction_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
