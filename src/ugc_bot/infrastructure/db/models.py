@@ -369,6 +369,7 @@ class OrderModel(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
     order_type: Mapped[OrderType] = mapped_column(
         _enum_column(OrderType),
@@ -383,7 +384,7 @@ class OrderModel(Base):
     price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     bloggers_needed: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[OrderStatus] = mapped_column(
-        _enum_column(OrderStatus), nullable=False
+        _enum_column(OrderStatus), nullable=False, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -610,7 +611,7 @@ class InteractionModel(Base):
         nullable=False,
     )
     status: Mapped[InteractionStatus] = mapped_column(
-        _enum_column(InteractionStatus), nullable=False
+        _enum_column(InteractionStatus), nullable=False, index=True
     )
     from_advertiser: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     from_blogger: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -618,7 +619,7 @@ class InteractionModel(Base):
         Integer, nullable=False, server_default=text("0")
     )
     next_check_at: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(timezone=True), nullable=True, index=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
