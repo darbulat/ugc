@@ -297,7 +297,12 @@ def _make_profile(
     )
 
 
-def _make_user(user_id, telegram_id="12345", language="ru") -> User:
+def _make_user(
+    user_id,
+    telegram_id: str | None = "12345",
+    language="ru",
+    max_id: str | None = None,
+) -> User:
     return User(
         user_id=user_id,
         messenger_type=MessengerType.TELEGRAM,
@@ -306,6 +311,7 @@ def _make_user(user_id, telegram_id="12345", language="ru") -> User:
         issue_count=0,
         created_at=datetime.now(timezone.utc),
         telegram_id=telegram_id,
+        max_id=max_id,
         language=language,
     )
 
@@ -382,7 +388,7 @@ async def test_unconfirms_blogger_on_instagram_user_not_found() -> None:
         batch_size=10,
         delay_seconds=0,
         user_repo=user_repo,
-        messenger_client=messenger,
+        telegram_messenger_client=messenger,
         bot_texts_service=bot_texts,
     )
 
@@ -593,7 +599,7 @@ async def test_unconfirm_without_bot_texts_uses_fallback() -> None:
         batch_size=10,
         delay_seconds=0,
         user_repo=user_repo,
-        messenger_client=messenger,
+        telegram_messenger_client=messenger,
         bot_texts_service=None,
     )
 
@@ -626,7 +632,7 @@ async def test_unconfirm_no_notification_when_user_missing() -> None:
         batch_size=10,
         delay_seconds=0,
         user_repo=user_repo,
-        messenger_client=messenger,
+        telegram_messenger_client=messenger,
     )
 
     _, errors = await service.run_once()
@@ -663,7 +669,7 @@ async def test_unconfirm_messenger_error_does_not_crash() -> None:
         batch_size=10,
         delay_seconds=0,
         user_repo=user_repo,
-        messenger_client=messenger,
+        telegram_messenger_client=messenger,
         bot_texts_service=bot_texts,
     )
 
@@ -672,4 +678,116 @@ async def test_unconfirm_messenger_error_does_not_crash() -> None:
     saved = await blogger_repo.get_by_user_id(uid)
     assert saved is not None
     assert saved.confirmed is False
+    assert errors == 1
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_notifies_both_telegram_and_max() -> None:
+    """User with both telegram_id and max_id receives notification on both."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    user = _make_user(uid, telegram_id="999", max_id="max_111")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    tg = MagicMock()
+    tg.send_text = AsyncMock()
+    mx = MagicMock()
+    mx.send_text = AsyncMock()
+    bot_texts = MagicMock()
+    bot_texts.get = AsyncMock(return_value="Your IG was deleted.")
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        telegram_messenger_client=tg,
+        max_messenger_client=mx,
+        bot_texts_service=bot_texts,
+    )
+
+    await service.run_once()
+
+    tg.send_text.assert_called_once()
+    assert tg.send_text.call_args.kwargs["chat_id"] == "999"
+    mx.send_text.assert_called_once()
+    assert mx.send_text.call_args.kwargs["chat_id"] == "max_111"
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_notifies_only_max_when_no_telegram_id() -> None:
+    """User with only max_id is notified via Max only."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    user = _make_user(uid, telegram_id=None, max_id="max_222")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    tg = MagicMock()
+    tg.send_text = AsyncMock()
+    mx = MagicMock()
+    mx.send_text = AsyncMock()
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        telegram_messenger_client=tg,
+        max_messenger_client=mx,
+    )
+
+    await service.run_once()
+
+    tg.send_text.assert_not_called()
+    mx.send_text.assert_called_once()
+    assert mx.send_text.call_args.kwargs["chat_id"] == "max_222"
+
+
+@pytest.mark.asyncio
+async def test_unconfirm_max_failure_does_not_block_telegram() -> None:
+    """If Max send fails, Telegram still receives the notification."""
+    uid = uuid4()
+    profile = _make_profile(user_id=uid, instagram_user_id="ig_gone")
+    user = _make_user(uid, telegram_id="999", max_id="max_333")
+
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(user)
+
+    ig_client = _NotFoundGraphApiClient(not_found_ids={"ig_gone"})
+    tg = MagicMock()
+    tg.send_text = AsyncMock()
+    mx = MagicMock()
+    mx.send_text = AsyncMock(side_effect=RuntimeError("max api down"))
+
+    service = InstagramStatsUpdateService(
+        blogger_repo=blogger_repo,
+        instagram_api_client=ig_client,
+        batch_size=10,
+        delay_seconds=0,
+        user_repo=user_repo,
+        telegram_messenger_client=tg,
+        max_messenger_client=mx,
+    )
+
+    _, errors = await service.run_once()
+
+    saved = await blogger_repo.get_by_user_id(uid)
+    assert saved is not None
+    assert saved.confirmed is False
+    tg.send_text.assert_called_once()
+    mx.send_text.assert_called_once()
     assert errors == 1

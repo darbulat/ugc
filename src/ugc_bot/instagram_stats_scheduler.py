@@ -3,6 +3,7 @@
 import asyncio
 import logging
 
+import aiohttp
 from aiogram import Bot
 
 from ugc_bot.config import load_config
@@ -11,6 +12,7 @@ from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
 )
+from ugc_bot.infrastructure.messenger.max.client import MaxMessengerClient
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
@@ -86,10 +88,24 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
     container = Container(config)
     bot_texts_service = container.build_bot_texts_service()
     bot = Bot(token=config.bot.bot_token)
-    messenger_client = TelegramMessengerClient(bot)
+    telegram_messenger_client = TelegramMessengerClient(bot)
+
+    max_session: aiohttp.ClientSession | None = None
+    max_messenger_client: MaxMessengerClient | None = None
+    if config.max_bot is not None and config.max_bot.token:
+        max_session = aiohttp.ClientSession()
+        max_messenger_client = MaxMessengerClient(
+            token=config.max_bot.token, session=max_session
+        )
+    else:
+        logger.info(
+            "MAX_BOT token not configured; "
+            "Instagram-loss notifications via Max disabled"
+        )
 
     deps = container.build_instagram_stats_scheduler_deps(
-        messenger_client=messenger_client,
+        telegram_messenger_client=telegram_messenger_client,
+        max_messenger_client=max_messenger_client,
         bot_texts_service=bot_texts_service,
     )
     service = deps["instagram_stats_update_service"]
@@ -106,6 +122,8 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
         session = getattr(bot, "session", None)
         if session is not None:
             asyncio.run(session.close())
+        if max_session is not None:
+            asyncio.run(max_session.close())
         asyncio.run(container.dispose())
 
 

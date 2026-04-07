@@ -1036,7 +1036,6 @@ async def _send_contact_immediately(
         telegram_handle=user.telegram or "",
         texts=t_adv,
         creator_external_id=user.telegram_id,
-
         blogger_phone=profile.phone,
     )
 
@@ -1089,7 +1088,6 @@ async def _send_contact_immediately(
             telegram_handle=user.telegram or "",
             texts=t_mgr,
             creator_external_id=user.telegram_id,
-    
             blogger_phone=profile.phone,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"
@@ -1126,7 +1124,6 @@ async def _send_contact_immediately(
             telegram_handle=user.telegram or "",
             texts=t_mgr,
             creator_external_id=user.telegram_id,
-    
             blogger_phone=profile.phone,
         )
         mgr_contact_text += f"\n💰 Цена заказа: {order.price} {currency_symbol}"

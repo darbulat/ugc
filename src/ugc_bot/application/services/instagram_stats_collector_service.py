@@ -615,6 +615,25 @@ class InstagramStatsCollectorService:
 
         return None, "", error_reason or "no_stats_data"
 
+    async def _mark_failed_attempt(
+        self, profile: BloggerProfile, now: datetime
+    ) -> None:
+        """Bump fetched_at on failure so profile is skipped until next cycle."""
+
+        async def _touch(session: object | None) -> None:
+            await self.instagram_stats_repo.touch_fetched_at(
+                profile.user_id, now, session=session
+            )
+
+        try:
+            await with_optional_tx(self.transaction_manager, _touch)
+        except Exception as exc:
+            logger.warning(
+                "Failed to mark Instagram stats failed-attempt for %s: %s",
+                profile.user_id,
+                exc,
+            )
+
     async def _process_one_profile(
         self, profile: BloggerProfile, now: datetime
     ) -> tuple[bool, dict]:
@@ -747,6 +766,8 @@ class InstagramStatsCollectorService:
                             "reason": str(exc),
                         },
                     )
+                if not result[0]:
+                    await self._mark_failed_attempt(profile, now)
                 await asyncio.sleep(random_delay_seconds(self._delay_seconds))
                 return result
 

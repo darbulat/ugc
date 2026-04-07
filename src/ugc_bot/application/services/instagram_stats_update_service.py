@@ -35,7 +35,8 @@ class InstagramStatsUpdateService:
         batch_size: int = 50,
         delay_seconds: float = 1.0,
         user_repo: Optional["UserRepository"] = None,
-        messenger_client: Optional["MessengerClient"] = None,
+        telegram_messenger_client: Optional["MessengerClient"] = None,
+        max_messenger_client: Optional["MessengerClient"] = None,
         bot_texts_service: Optional["BotTextsService"] = None,
         default_locale: str = "ru",
     ) -> None:
@@ -48,7 +49,8 @@ class InstagramStatsUpdateService:
             batch_size: Max profiles to process per run.
             delay_seconds: Delay between API requests to respect rate limits.
             user_repo: Optional user repository for notifications.
-            messenger_client: Optional messenger for notifications.
+            telegram_messenger_client: Telegram messenger for notifications.
+            max_messenger_client: Max messenger for notifications.
             bot_texts_service: Optional localized texts service.
             default_locale: Default locale for messages.
         """
@@ -58,7 +60,8 @@ class InstagramStatsUpdateService:
         self._batch_size = batch_size
         self._delay_seconds = delay_seconds
         self.user_repo = user_repo
-        self.messenger_client = messenger_client
+        self.telegram_messenger_client = telegram_messenger_client
+        self.max_messenger_client = max_messenger_client
         self.bot_texts_service = bot_texts_service
         self._default_locale = default_locale
 
@@ -88,7 +91,10 @@ class InstagramStatsUpdateService:
             },
         )
 
-        if self.user_repo is None or self.messenger_client is None:
+        if self.user_repo is None or (
+            self.telegram_messenger_client is None
+            and self.max_messenger_client is None
+        ):
             return
 
         async def _get_user(session: object | None):
@@ -98,7 +104,7 @@ class InstagramStatsUpdateService:
             )
 
         user = await with_optional_tx(self.transaction_manager, _get_user)
-        if user is None or not user.telegram_id:
+        if user is None:
             return
 
         locale = getattr(user, "language", None) or self._default_locale
@@ -115,17 +121,40 @@ class InstagramStatsUpdateService:
                 "и пройдите верификацию заново."
             )
 
+        await self._send_account_lost_notice(
+            user_id=profile.user_id,
+            chat_id=user.telegram_id,
+            client=self.telegram_messenger_client,
+            text=text,
+            channel="Telegram",
+        )
+        await self._send_account_lost_notice(
+            user_id=profile.user_id,
+            chat_id=user.max_id,
+            client=self.max_messenger_client,
+            text=text,
+            channel="Max",
+        )
+
+    async def _send_account_lost_notice(
+        self,
+        *,
+        user_id: object,
+        chat_id: Optional[str],
+        client: Optional["MessengerClient"],
+        text: str,
+        channel: str,
+    ) -> None:
+        """Send the account-lost notice to one messenger, swallowing errors."""
+        if not chat_id or client is None:
+            return
         try:
-            await self.messenger_client.send_text(
-                chat_id=user.telegram_id, text=text
-            )
+            await client.send_text(chat_id=chat_id, text=text)
         except Exception as exc:
             logger.warning(
-                "Failed to notify user about Instagram account loss",
-                extra={
-                    "user_id": str(profile.user_id),
-                    "error": str(exc),
-                },
+                "Failed to notify user via %s about Instagram loss",
+                channel,
+                extra={"user_id": str(user_id), "error": str(exc)},
             )
 
     async def run_once(self) -> tuple[int, int]:

@@ -717,6 +717,23 @@ class InMemoryInstagramStatsRepository(InstagramStatsRepository):
         """Persist or update Instagram stats (upsert by user_id)."""
         self.stats[stats.user_id] = stats
 
+    async def touch_fetched_at(
+        self,
+        user_id: UUID,
+        fetched_at: datetime,
+        session: object | None = None,
+    ) -> None:
+        """Update only fetched_at; insert minimal row if absent."""
+        existing = self.stats.get(user_id)
+        if existing is not None:
+            self.stats[user_id] = replace(existing, fetched_at=fetched_at)
+            return
+        self.stats[user_id] = InstagramStats(
+            user_id=user_id,
+            raw_response={},
+            fetched_at=fetched_at,
+        )
+
 
 @dataclass
 class InMemoryInstagramRapidApiClient(InstagramRapidApiClient):

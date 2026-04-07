@@ -244,7 +244,8 @@ def build_instagram_stats_scheduler_deps(
     repos,
     transaction_manager,
     instagram_api_client,
-    messenger_client=None,
+    telegram_messenger_client=None,
+    max_messenger_client=None,
     bot_texts_service=None,
 ):
     """Build deps for Instagram stats update scheduler."""
@@ -258,7 +259,8 @@ def build_instagram_stats_scheduler_deps(
             batch_size=ig_config.instagram_stats_batch_size,
             delay_seconds=ig_config.instagram_stats_delay_seconds,
             user_repo=repos["user_repo"],
-            messenger_client=messenger_client,
+            telegram_messenger_client=telegram_messenger_client,
+            max_messenger_client=max_messenger_client,
             bot_texts_service=bot_texts_service,
             default_locale=default_locale,
         ),

@@ -807,7 +807,11 @@ async def test_run_once_skips_profile_without_username() -> None:
     result = await service.run_once()
     assert result.updated == 0
     assert result.errors == 1
-    assert await stats_repo.get_by_user_id(user_id) is None
+    # Failed attempt is recorded so the profile is skipped until next cycle.
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.followers_count is None
+    assert saved.raw_response == {}
 
 
 @pytest.mark.asyncio
@@ -984,3 +988,115 @@ async def test_run_once_scrapecreators_5xx_treated_as_transient() -> None:
     assert result.errors == 1
     assert len(result.failed_users) == 1
     assert "500" in (result.failed_users[0].get("reason") or "")
+
+
+@pytest.mark.asyncio
+async def test_failed_attempt_marks_fetched_at_to_skip_until_next_cycle() -> (
+    None
+):
+    """On failure, fetched_at is bumped so the profile is not re-listed."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=0.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_1",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    class FailingClient(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise ValueError("network error")
+
+    stats_repo = InMemoryInstagramStatsRepository()
+    service = InstagramStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=SingleProviderWrapper(
+            FailingClient(), "rapid_api"
+        ),
+        delay_seconds=0.0,
+    )
+
+    result = await service.run_once()
+    assert result.errors == 1
+    assert result.updated == 0
+
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    assert saved.raw_response == {}
+    assert saved.followers_count is None
+    assert saved.fetched_at is not None
+
+
+@pytest.mark.asyncio
+async def test_failed_attempt_preserves_existing_stats() -> None:
+    """Touch on failure must NOT wipe previously stored stats."""
+    user_id = uuid4()
+    profile = BloggerProfile(
+        user_id=user_id,
+        instagram_url="https://instagram.com/jane",
+        confirmed=True,
+        city="",
+        topics={},
+        audience_gender=AudienceGender.ALL,
+        audience_age_min=18,
+        audience_age_max=35,
+        audience_geo="",
+        price=0.0,
+        barter=False,
+        work_format=WorkFormat.UGC_ONLY,
+        updated_at=datetime.now(timezone.utc),
+        instagram_user_id="ig_1",
+        instagram_username="jane",
+    )
+    blogger_repo = InMemoryBloggerProfileRepository()
+    await blogger_repo.save(profile)
+
+    from ugc_bot.domain.entities import InstagramStats
+
+    old_fetched = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    stats_repo = InMemoryInstagramStatsRepository()
+    await stats_repo.save(
+        InstagramStats(
+            user_id=user_id,
+            raw_response={"data": {"followers_count": 1234}},
+            fetched_at=old_fetched,
+            followers_count=1234,
+            instagram_username="jane",
+            provider="scrapecreators",
+        )
+    )
+
+    class FailingClient(InMemoryInstagramRapidApiClient):
+        async def get_profile_stats_by_username(self, username: str):
+            raise ValueError("network error")
+
+    service = InstagramStatsCollectorService(
+        blogger_repo=blogger_repo,
+        instagram_stats_repo=stats_repo,
+        stats_provider_client=SingleProviderWrapper(
+            FailingClient(), "rapid_api"
+        ),
+        delay_seconds=0.0,
+    )
+    await service.run_once()
+
+    saved = await stats_repo.get_by_user_id(user_id)
+    assert saved is not None
+    # Real data preserved, only fetched_at bumped.
+    assert saved.followers_count == 1234
+    assert saved.raw_response == {"data": {"followers_count": 1234}}
+    assert saved.fetched_at > old_fetched

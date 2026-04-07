@@ -37,12 +37,23 @@ def _is_ig_business_scoped_id_error(response_text: str) -> bool:
 
 
 def _is_no_matching_user_error(response_text: str) -> bool:
-    """True if Instagram API error code 9010 (account deleted/changed)."""
+    """True if Instagram API reports the requested user no longer exists.
+
+    Covers two known shapes:
+    - error.code == 9010 — Business Discovery "no matching user" (legacy).
+    - error.code == 100 with error_subcode == 2534014 — IGApiException
+      "Cannot find requested user" (returned by /{ig-user-id} for a
+      deleted/changed account).
+    """
     try:
         data = json.loads(response_text)
-        return data.get("error", {}).get("code") == 9010
     except (ValueError, AttributeError):
         return False
+    error = data.get("error") or {}
+    code = error.get("code")
+    if code == 9010:
+        return True
+    return code == 100 and error.get("error_subcode") == 2534014
 
 
 def _is_token_expired_error(response_text: str) -> bool:

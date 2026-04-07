@@ -153,7 +153,10 @@ class Container:
         )
 
     def build_instagram_stats_scheduler_deps(
-        self, messenger_client=None, bot_texts_service=None
+        self,
+        telegram_messenger_client=None,
+        max_messenger_client=None,
+        bot_texts_service=None,
     ) -> dict:
         """Deps for Instagram stats update scheduler."""
         repos = self.build_repos()
@@ -163,7 +166,8 @@ class Container:
             repos,
             self._transaction_manager,
             instagram_api_client,
-            messenger_client=messenger_client,
+            telegram_messenger_client=telegram_messenger_client,
+            max_messenger_client=max_messenger_client,
             bot_texts_service=bot_texts_service,
         )
 

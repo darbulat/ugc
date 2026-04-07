@@ -684,6 +684,83 @@ async def test_get_profile_by_id_raises_on_9010_error() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_profile_by_id_raises_on_code_100_subcode_2534014() -> None:
+    """Error code 100 + error_subcode 2534014 also means user not found."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=3
+    )
+    error_body = json.dumps(
+        {
+            "error": {
+                "message": "Не удается найти запрошенного пользователя.",
+                "type": "IGApiException",
+                "code": 100,
+                "error_subcode": 2534014,
+                "fbtrace_id": "AStq4bj9BIfJtjUb1_Ya6mO",
+            }
+        }
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = error_body
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with pytest.raises(InstagramUserNotFoundError) as exc_info:
+            await client.get_profile_by_id("1435180361529404")
+        assert exc_info.value.instagram_user_id == "1435180361529404"
+        # Should NOT retry — only 1 call
+        assert mock_client.get.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_get_profile_by_id_does_not_raise_on_code_100_other_subcode() -> (
+    None
+):
+    """Code 100 without subcode 2534014 must NOT trigger unconfirm flow."""
+    client = HttpInstagramGraphApiClient(
+        access_token="test_token", retry_attempts=1
+    )
+    error_body = json.dumps(
+        {
+            "error": {
+                "message": "Bad fields",
+                "type": "OAuthException",
+                "code": 100,
+                "error_subcode": 33,
+            }
+        }
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 400
+    mock_response.text = error_body
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+
+    with patch("httpx.AsyncClient") as mock_client_class:
+        mock_client = AsyncMock()
+        mock_client.__aenter__.return_value = mock_client
+        mock_client.__aexit__.return_value = None
+        mock_client.get.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        # Should return None, not raise InstagramUserNotFoundError.
+        result = await client.get_profile_by_id("123")
+        assert result is None
+
+
+@pytest.mark.asyncio
 async def test_get_username_by_id_logs_error_on_expired_token() -> None:
     """Expired token (code 190) is logged as ERROR, not WARNING."""
     client = HttpInstagramGraphApiClient(

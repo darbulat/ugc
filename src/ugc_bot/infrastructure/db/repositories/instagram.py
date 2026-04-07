@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, cast
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -151,6 +151,34 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
         ) as db_session:
             model = _to_instagram_stats_model(stats)
             await db_session.merge(model)
+
+    async def touch_fetched_at(
+        self,
+        user_id: UUID,
+        fetched_at: datetime,
+        session: object | None = None,
+    ) -> None:
+        """Update only fetched_at; insert minimal row if absent."""
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            result = cast(
+                CursorResult,
+                await db_session.execute(
+                    update(InstagramStatsModel)
+                    .where(InstagramStatsModel.user_id == user_id)
+                    .values(fetched_at=fetched_at)
+                ),
+            )
+            if result.rowcount == 0:
+                db_session.add(
+                    InstagramStatsModel(
+                        user_id=user_id,
+                        raw_response={},
+                        fetched_at=fetched_at,
+                    )
+                )
+                await db_session.flush()
 
 
 def _to_verification_entity(

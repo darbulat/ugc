@@ -684,6 +684,19 @@ class InstagramStatsRepository(ABC):
     ) -> None:
         """Persist or update Instagram stats (upsert by user_id)."""
 
+    @abstractmethod
+    async def touch_fetched_at(
+        self,
+        user_id: UUID,
+        fetched_at: datetime,
+        session: object | None = None,
+    ) -> None:
+        """Update only fetched_at for the user (insert minimal row if absent).
+
+        Used by collector to mark a failed fetch attempt so the profile is
+        not retried until the next interval cycle.
+        """
+
 
 class RapidApiRateLimitError(Exception):
     """Raised when Rapid API returns 429 Too Many Requests."""
