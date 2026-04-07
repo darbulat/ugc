@@ -291,7 +291,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                     extra={
                         "instagram_user_id": instagram_user_id,
                         "status_code": exc.response.status_code,
-                        "response": exc.response.text[:200],
+                        "response": exc.response.text,
                     },
                 )
                 return None
@@ -397,7 +397,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
             extra={
                 "instagram_user_id": instagram_user_id,
                 "status_code": exc.response.status_code,
-                "response": exc.response.text[:200],
+                "response": exc.response.text,
             },
         )
         return (False, None)
