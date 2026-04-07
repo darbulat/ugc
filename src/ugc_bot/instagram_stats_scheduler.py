@@ -90,41 +90,41 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
     bot = Bot(token=config.bot.bot_token)
     telegram_messenger_client = TelegramMessengerClient(bot)
 
-    max_session: aiohttp.ClientSession | None = None
-    max_messenger_client: MaxMessengerClient | None = None
-    if config.max_bot is not None and config.max_bot.token:
-        max_session = aiohttp.ClientSession()
-        max_messenger_client = MaxMessengerClient(
-            token=config.max_bot.token, session=max_session
-        )
-    else:
+    if not (config.max_bot is not None and config.max_bot.token):
         logger.info(
             "MAX_BOT token not configured; "
             "Instagram-loss notifications via Max disabled"
         )
 
-    deps = container.build_instagram_stats_scheduler_deps(
-        telegram_messenger_client=telegram_messenger_client,
-        max_messenger_client=max_messenger_client,
-        bot_texts_service=bot_texts_service,
-    )
-    service = deps["instagram_stats_update_service"]
-    interval = deps["interval_seconds"]
-
-    try:
-        asyncio.run(
-            run_loop(
-                service,
-                interval_seconds=interval,
+    async def _run() -> None:
+        # aiohttp.ClientSession() must be created inside a running event loop.
+        max_session: aiohttp.ClientSession | None = None
+        max_messenger_client: MaxMessengerClient | None = None
+        if config.max_bot is not None and config.max_bot.token:
+            max_session = aiohttp.ClientSession()
+            max_messenger_client = MaxMessengerClient(
+                token=config.max_bot.token, session=max_session
             )
+
+        deps = container.build_instagram_stats_scheduler_deps(
+            telegram_messenger_client=telegram_messenger_client,
+            max_messenger_client=max_messenger_client,
+            bot_texts_service=bot_texts_service,
         )
-    finally:
-        session = getattr(bot, "session", None)
-        if session is not None:
-            asyncio.run(session.close())
-        if max_session is not None:
-            asyncio.run(max_session.close())
-        asyncio.run(container.dispose())
+        service = deps["instagram_stats_update_service"]
+        interval = deps["interval_seconds"]
+
+        try:
+            await run_loop(service, interval_seconds=interval)
+        finally:
+            tg_session = getattr(bot, "session", None)
+            if tg_session is not None:
+                await tg_session.close()
+            if max_session is not None:
+                await max_session.close()
+            await container.dispose()
+
+    asyncio.run(_run())
 
 
 if __name__ == "__main__":
