@@ -8,27 +8,23 @@ Revises: 0090
 """
 
 from alembic import op
-from sqlalchemy import text
 
 revision = "0091"
 down_revision = "0090"
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_users_telegram_lower",
-        "users",
-        [text("lower(telegram)")],
-        postgresql_where=text("telegram IS NOT NULL"),
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_users_telegram_lower "
+        "ON users (lower(telegram)) WHERE telegram IS NOT NULL"
     )
-    op.create_index(
-        "ix_blogger_profiles_ig_username_lower",
-        "blogger_profiles",
-        [text("lower(instagram_username)")],
-        postgresql_where=text("instagram_username IS NOT NULL"),
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_blogger_profiles_ig_username_lower "
+        "ON blogger_profiles (lower(instagram_username)) "
+        "WHERE instagram_username IS NOT NULL"
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_blogger_profiles_ig_username_lower", "blogger_profiles")
-    op.drop_index("ix_users_telegram_lower", "users")
+    op.execute("DROP INDEX IF EXISTS ix_blogger_profiles_ig_username_lower")
+    op.execute("DROP INDEX IF EXISTS ix_users_telegram_lower")

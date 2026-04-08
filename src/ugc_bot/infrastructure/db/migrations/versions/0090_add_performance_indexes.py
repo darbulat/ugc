@@ -11,23 +11,23 @@ down_revision = "0089"
 
 
 def upgrade() -> None:
-    op.create_index("ix_orders_status", "orders", ["status"])
-    op.create_index("ix_orders_advertiser_id", "orders", ["advertiser_id"])
-    op.create_index(
-        "ix_interactions_status_next_check_at",
-        "interactions",
-        ["status", "next_check_at"],
+    op.execute("CREATE INDEX IF NOT EXISTS ix_orders_status ON orders (status)")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_orders_advertiser_id "
+        "ON orders (advertiser_id)"
     )
-    op.create_index(
-        "ix_blogger_profiles_confirmed",
-        "blogger_profiles",
-        ["confirmed"],
-        postgresql_where="confirmed = true",
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_interactions_status_next_check_at "
+        "ON interactions (status, next_check_at)"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS ix_blogger_profiles_confirmed "
+        "ON blogger_profiles (confirmed) WHERE confirmed = true"
     )
 
 
 def downgrade() -> None:
-    op.drop_index("ix_blogger_profiles_confirmed", "blogger_profiles")
-    op.drop_index("ix_interactions_status_next_check_at", "interactions")
-    op.drop_index("ix_orders_advertiser_id", "orders")
-    op.drop_index("ix_orders_status", "orders")
+    op.execute("DROP INDEX IF EXISTS ix_blogger_profiles_confirmed")
+    op.execute("DROP INDEX IF EXISTS ix_interactions_status_next_check_at")
+    op.execute("DROP INDEX IF EXISTS ix_orders_advertiser_id")
+    op.execute("DROP INDEX IF EXISTS ix_orders_status")
