@@ -1829,6 +1829,88 @@ async def test_instagram_stats_repository_save() -> None:
 
 
 @pytest.mark.asyncio
+async def test_instagram_stats_touch_fetched_at_updates_existing() -> None:
+    """touch_fetched_at uses UPDATE when row exists (rowcount > 0)."""
+
+    class _TouchSession(FakeSession):
+        def __init__(self) -> None:
+            super().__init__(None)
+            self.added: list[object] = []
+            self.flushed = False
+
+        async def execute(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return FakeResult(None, rowcount=1)
+
+        def add(self, obj):  # type: ignore[no-untyped-def]
+            self.added.append(obj)
+
+        async def flush(self):  # type: ignore[no-untyped-def]
+            self.flushed = True
+
+    session = _TouchSession()
+
+    class _SessionMaker:
+        def __init__(self, sess):  # type: ignore[no-untyped-def]
+            self._session = sess
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyInstagramStatsRepository(
+        session_factory=_SessionMaker(session)
+    )
+    user_id = UUID("00000000-0000-0000-0000-000000000301")
+    now = datetime.now(timezone.utc)
+    await repo.touch_fetched_at(user_id, now, session=session)
+
+    assert session.added == []
+    assert session.flushed is False
+
+
+@pytest.mark.asyncio
+async def test_instagram_stats_touch_fetched_at_inserts_when_missing() -> None:
+    """touch_fetched_at falls back to INSERT when UPDATE affected zero rows."""
+
+    class _TouchSession(FakeSession):
+        def __init__(self) -> None:
+            super().__init__(None)
+            self.added: list[object] = []
+            self.flushed = False
+
+        async def execute(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return FakeResult(None, rowcount=0)
+
+        def add(self, obj):  # type: ignore[no-untyped-def]
+            self.added.append(obj)
+
+        async def flush(self):  # type: ignore[no-untyped-def]
+            self.flushed = True
+
+    session = _TouchSession()
+
+    class _SessionMaker:
+        def __init__(self, sess):  # type: ignore[no-untyped-def]
+            self._session = sess
+
+        def __call__(self):  # type: ignore[no-untyped-def]
+            return self._session
+
+    repo = SqlAlchemyInstagramStatsRepository(
+        session_factory=_SessionMaker(session)
+    )
+    user_id = UUID("00000000-0000-0000-0000-000000000302")
+    now = datetime.now(timezone.utc)
+    await repo.touch_fetched_at(user_id, now, session=session)
+
+    assert len(session.added) == 1
+    inserted = session.added[0]
+    assert getattr(inserted, "user_id", None) == user_id
+    assert getattr(inserted, "fetched_at", None) == now
+    assert getattr(inserted, "raw_response", None) == {}
+    assert session.flushed is True
+
+
+@pytest.mark.asyncio
 async def test_interaction_repository_list_by_order() -> None:
     """list_by_order returns interactions for order."""
     order_id = UUID("00000000-0000-0000-0000-000000000221")
