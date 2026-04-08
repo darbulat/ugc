@@ -169,7 +169,7 @@ def test_miniapp_open_inline_keyboard_with_url() -> None:
     assert keyboard.rows[0][0].text == MINIAPP_OPEN_BUTTON_TEXT
     assert (
         keyboard.rows[0][0].web_app_url
-        == "https://example.com/miniapp/app.html"
+        == "https://example.com/miniapp/role_select_v2.html"
     )
 
 
@@ -216,7 +216,7 @@ def test_miniapp_open_inline_keyboard_default_platform() -> None:
     """No query string when platform omitted."""
     kb = miniapp_open_inline_keyboard("https://bot.example.com")
     btn = kb.rows[0][0]
-    assert btn.web_app_url == "https://bot.example.com/miniapp/app.html"
+    assert btn.web_app_url == "https://bot.example.com/miniapp/role_select_v2.html"
 
 
 def test_keyboard_property_alias() -> None:

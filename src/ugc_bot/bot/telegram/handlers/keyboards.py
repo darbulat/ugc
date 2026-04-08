@@ -84,7 +84,7 @@ def miniapp_open_inline_keyboard(
     if platform == "max":
         url = miniapp_url.strip().rstrip("/") + "/miniapp/max_app.html"
     else:
-        url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
+        url = miniapp_url.strip().rstrip("/") + "/miniapp/role_select_v2.html"
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
