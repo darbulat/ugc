@@ -4263,3 +4263,222 @@ def test_miniapp_api_ensure_user_race_condition_retries_get(
         },
     )
     assert response.status_code == 200
+
+
+def _v2_payload(init_data: str) -> dict:
+    """Build a valid v2 onboarding payload."""
+    return {
+        "init_data": init_data,
+        "instagram_url": "https://instagram.com/v2_user",
+        "display_name": "V2 User",
+        "blogger_gender": "m",
+        "birth_date": "15.05.1995",
+        "country": "ru",
+        "city": "Moscow",
+        "tax_status": "self_employed",
+        "topics": ["tech"],
+        "price": 1000.0,
+        "price_with_publish": 2000.0,
+        "barter": False,
+        "telegram_channel_url": "https://t.me/x",
+        "vk_url": None,
+        "tiktok_url": None,
+        "youtube_url": None,
+        "likee_url": None,
+        "about": "Hi",
+        "profile_photo_url": "https://s3/p.png",
+        "gallery_photos": [],
+        "video_links": [],
+    }
+
+
+def test_miniapp_api_register_blogger_v2_success(client: TestClient) -> None:
+    """POST register/blogger/v2 with valid payload returns ok=True."""
+    init_data = _make_valid_init_data("test_token", 67001)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="67001",
+        messenger_type=MessengerType.TELEGRAM,
+        username="v2u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    profile = MagicMock()
+    profile.user_id = user_id
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.register_blogger_v2 = AsyncMock(return_value=profile)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger/v2", json=_v2_payload(init_data)
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    assert body["user_id"] == str(user_id)
+    mock_blogger_svc.register_blogger_v2.assert_awaited_once()
+
+
+def test_miniapp_api_register_blogger_v2_no_topics_400(
+    client: TestClient,
+) -> None:
+    """POST register/blogger/v2 without topics returns 400."""
+    init_data = _make_valid_init_data("test_token", 67002)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="67002",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = MagicMock()
+    payload = _v2_payload(init_data)
+    payload["topics"] = []
+    response = client.post("/miniapp/api/register/blogger/v2", json=payload)
+    assert response.status_code == 400
+    assert "topic" in response.json().get("detail", "").lower()
+
+
+def test_miniapp_api_register_blogger_v2_invalid_birth_date_400(
+    client: TestClient,
+) -> None:
+    """POST register/blogger/v2 with malformed birth_date returns 400."""
+    init_data = _make_valid_init_data("test_token", 67003)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="67003",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = MagicMock()
+    payload = _v2_payload(init_data)
+    payload["birth_date"] = "not-a-date"
+    response = client.post("/miniapp/api/register/blogger/v2", json=payload)
+    assert response.status_code == 400
+    assert "birth_date" in response.json().get("detail", "").lower()
+
+
+def test_miniapp_api_register_blogger_v2_registration_error_400(
+    client: TestClient,
+) -> None:
+    """POST register/blogger/v2 surfaces BloggerRegistrationError as 400."""
+    init_data = _make_valid_init_data("test_token", 67004)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="67004",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    mock_blogger_svc = MagicMock()
+    mock_blogger_svc.register_blogger_v2 = AsyncMock(
+        side_effect=BloggerRegistrationError("instagram already taken")
+    )
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    dispatcher["blogger_registration_service"] = mock_blogger_svc
+    response = client.post(
+        "/miniapp/api/register/blogger/v2", json=_v2_payload(init_data)
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_blogger_upload_photo_success(client: TestClient) -> None:
+    """POST /blogger/upload-photo uploads via S3 helper and returns the URL."""
+    init_data = _make_valid_init_data("test_token", 67010)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="67010",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    with patch(
+        "ugc_bot.infrastructure.s3_storage.upload_image_to_s3",
+        return_value="https://s3.example.com/bkt/media/blogger-photos/abc.png",
+    ) as mock_upload:
+        response = client.post(
+            "/miniapp/api/blogger/upload-photo",
+            data={"init_data": init_data, "platform": "telegram"},
+            files={"file": ("a.png", b"\x89PNG", "image/png")},
+        )
+    assert response.status_code == 200, response.text
+    assert response.json()["url"].endswith("abc.png")
+    mock_upload.assert_called_once()
+
+
+def test_miniapp_api_blogger_upload_photo_missing_file_400(
+    client: TestClient,
+) -> None:
+    """POST /blogger/upload-photo without ``file`` field returns 400."""
+    init_data = _make_valid_init_data("test_token", 67011)
+    response = client.post(
+        "/miniapp/api/blogger/upload-photo",
+        data={"init_data": init_data},
+    )
+    assert response.status_code == 400
+
+
+def test_miniapp_api_blogger_upload_photo_storage_error_400(
+    client: TestClient,
+) -> None:
+    """POST /blogger/upload-photo turns MediaStorageError into 400."""
+    from ugc_bot.infrastructure.s3_storage import MediaStorageError
+
+    init_data = _make_valid_init_data("test_token", 67012)
+    user_id = uuid4()
+    user = User(
+        user_id=user_id,
+        telegram_id="67012",
+        messenger_type=MessengerType.TELEGRAM,
+        username="u",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    mock_urs = MagicMock()
+    mock_urs.get_user = AsyncMock(return_value=user)
+    dispatcher = app.state.dispatcher
+    dispatcher["user_role_service"] = mock_urs
+    with patch(
+        "ugc_bot.infrastructure.s3_storage.upload_image_to_s3",
+        side_effect=MediaStorageError("too big"),
+    ):
+        response = client.post(
+            "/miniapp/api/blogger/upload-photo",
+            data={"init_data": init_data, "platform": "telegram"},
+            files={"file": ("a.png", b"\x00", "image/png")},
+        )
+    assert response.status_code == 400

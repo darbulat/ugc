@@ -264,6 +264,28 @@ class BloggerProfileModel(Base):
         DateTime(timezone=True), nullable=True
     )
     phone: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    # v2 onboarding fields
+    tax_status: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    price_with_publish: Mapped[Optional[float]] = mapped_column(
+        Numeric(10, 2), nullable=True
+    )
+    telegram_channel_url: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    vk_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    tiktok_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    youtube_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    likee_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    about: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    profile_photo_url: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    gallery_photos: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
+    video_links: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=text("'[]'::jsonb")
+    )
 
 
 class InstagramStatsModel(Base):

@@ -17,7 +17,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
-from wtforms import SelectField
+from wtforms import SelectField  # type: ignore[import-untyped]
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import (
@@ -1446,11 +1446,35 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
         BloggerProfileModel.audience_age_max,
         BloggerProfileModel.audience_geo,
         BloggerProfileModel.price,
+        BloggerProfileModel.price_with_publish,
         BloggerProfileModel.barter,
+        BloggerProfileModel.tax_status,
         BloggerProfileModel.work_format,
+        BloggerProfileModel.about,
+        BloggerProfileModel.profile_photo_url,
+        BloggerProfileModel.telegram_channel_url,
+        BloggerProfileModel.vk_url,
+        BloggerProfileModel.tiktok_url,
+        BloggerProfileModel.youtube_url,
+        BloggerProfileModel.likee_url,
+        BloggerProfileModel.gallery_photos,
+        BloggerProfileModel.video_links,
         BloggerProfileModel.updated_at,
     ]
-    column_sortable_list = list(column_list)
+    column_sortable_list = [
+        BloggerProfileModel.user_id,
+        BloggerProfileModel.instagram_url,
+        BloggerProfileModel.confirmed,
+        BloggerProfileModel.city,
+        BloggerProfileModel.phone,
+        BloggerProfileModel.country,
+        BloggerProfileModel.blogger_gender,
+        BloggerProfileModel.price,
+        BloggerProfileModel.price_with_publish,
+        BloggerProfileModel.barter,
+        BloggerProfileModel.tax_status,
+        BloggerProfileModel.updated_at,
+    ]
     column_default_sort = (BloggerProfileModel.updated_at, True)
     column_labels = {
         BloggerProfileModel.user_id: "ID пользователя",
@@ -1464,9 +1488,20 @@ class BloggerProfileAdmin(ModelView, model=BloggerProfileModel):
         BloggerProfileModel.audience_age_min: "Возраст мин.",
         BloggerProfileModel.audience_age_max: "Возраст макс.",
         BloggerProfileModel.audience_geo: "Гео аудитории",
-        BloggerProfileModel.price: "Цена",
+        BloggerProfileModel.price: "Цена без публикации",
+        BloggerProfileModel.price_with_publish: "Цена с публикацией",
         BloggerProfileModel.barter: "Бартер",
+        BloggerProfileModel.tax_status: "Юр. статус",
         BloggerProfileModel.work_format: "Формат работы",
+        BloggerProfileModel.about: "О себе",
+        BloggerProfileModel.profile_photo_url: "Фото профиля",
+        BloggerProfileModel.telegram_channel_url: "Telegram",
+        BloggerProfileModel.vk_url: "VK",
+        BloggerProfileModel.tiktok_url: "TikTok",
+        BloggerProfileModel.youtube_url: "YouTube",
+        BloggerProfileModel.likee_url: "Likee",
+        BloggerProfileModel.gallery_photos: "Галерея",
+        BloggerProfileModel.video_links: "Видео-примеры",
         BloggerProfileModel.updated_at: "Обновлён",
     }
 

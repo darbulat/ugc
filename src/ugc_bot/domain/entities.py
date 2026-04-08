@@ -125,6 +125,18 @@ class BloggerProfile:
     currency: str = "RUB"
     agreement_confirmed_at: Optional[datetime] = None
     phone: Optional[str] = None
+    # v2 onboarding fields
+    tax_status: Optional[str] = None  # "self_employed" | "ip" | "none"
+    price_with_publish: Optional[float] = None
+    telegram_channel_url: Optional[str] = None
+    vk_url: Optional[str] = None
+    tiktok_url: Optional[str] = None
+    youtube_url: Optional[str] = None
+    likee_url: Optional[str] = None
+    about: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    gallery_photos: tuple[str, ...] = ()
+    video_links: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -335,6 +335,21 @@ def _to_blogger_profile_entity(
         currency=model.currency,
         agreement_confirmed_at=model.agreement_confirmed_at,
         phone=model.phone,
+        tax_status=model.tax_status,
+        price_with_publish=(
+            float(model.price_with_publish)
+            if model.price_with_publish is not None
+            else None
+        ),
+        telegram_channel_url=model.telegram_channel_url,
+        vk_url=model.vk_url,
+        tiktok_url=model.tiktok_url,
+        youtube_url=model.youtube_url,
+        likee_url=model.likee_url,
+        about=model.about,
+        profile_photo_url=model.profile_photo_url,
+        gallery_photos=tuple(model.gallery_photos or ()),
+        video_links=tuple(model.video_links or ()),
     )
 
 
@@ -370,6 +385,17 @@ def _to_blogger_profile_model(
         currency=profile.currency,
         agreement_confirmed_at=profile.agreement_confirmed_at,
         phone=profile.phone,
+        tax_status=profile.tax_status,
+        price_with_publish=profile.price_with_publish,
+        telegram_channel_url=profile.telegram_channel_url,
+        vk_url=profile.vk_url,
+        tiktok_url=profile.tiktok_url,
+        youtube_url=profile.youtube_url,
+        likee_url=profile.likee_url,
+        about=profile.about,
+        profile_photo_url=profile.profile_photo_url,
+        gallery_photos=list(profile.gallery_photos),
+        video_links=list(profile.video_links),
     )
 
 

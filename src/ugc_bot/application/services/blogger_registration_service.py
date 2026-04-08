@@ -80,6 +80,28 @@ async def _resolve_location_and_geocoder_details(
     return (wkt, region_geo, country_geo)
 
 
+def _validate_v2_payload(
+    tax_status: str,
+    about: Optional[str],
+    gallery_photos: tuple[str, ...],
+    video_links: tuple[str, ...],
+    topics: dict[str, Any],
+) -> None:
+    """Validate v2 onboarding payload, raising BloggerRegistrationError."""
+    if tax_status not in {"self_employed", "ip", "none"}:
+        raise BloggerRegistrationError(
+            "tax_status must be one of: self_employed, ip, none."
+        )
+    if about is not None and len(about) > 500:
+        raise BloggerRegistrationError("about must be <= 500 chars.")
+    if len(gallery_photos) > 6:
+        raise BloggerRegistrationError("gallery_photos: max 6 items.")
+    if len(video_links) > 5:
+        raise BloggerRegistrationError("video_links: max 5 items.")
+    if not topics:
+        raise BloggerRegistrationError("At least one topic required.")
+
+
 @dataclass(slots=True)
 class UpdateBloggerProfileResult:
     """Result of update_blogger_profile.
@@ -266,6 +288,155 @@ class BloggerRegistrationService:
                 country=profile_country,
                 currency=profile_currency,
                 agreement_confirmed_at=now,
+            )
+            await self.blogger_repo.save(profile, session=session)
+
+            role_chosen_at = (
+                now if user.role_chosen_at is None else user.role_chosen_at
+            )
+            username = (
+                display_name.strip()
+                if display_name and display_name.strip()
+                else user.username
+            )
+            telegram = (
+                telegram_username
+                if telegram_username is not None
+                else user.telegram
+            )
+            updated_user = replace(
+                user,
+                username=username,
+                role_chosen_at=role_chosen_at,
+                telegram=telegram,
+            )
+            await self.user_repo.save(updated_user, session=session)
+
+            if self.referral_service:
+                await self.referral_service.create_binding_from_pending(
+                    creator_user_id=user_id,
+                    session=session,
+                )
+
+            if self.metrics_collector:
+                self.metrics_collector.record_blogger_registration(
+                    str(user.user_id)
+                )
+
+            return profile
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def register_blogger_v2(
+        self,
+        user_id: UUID,
+        instagram_url: str,
+        city: str,
+        country: str,
+        topics: dict[str, Any],
+        price: float,
+        barter: bool,
+        blogger_gender: BloggerGender,
+        birth_date: date,
+        tax_status: str,
+        price_with_publish: Optional[float] = None,
+        telegram_channel_url: Optional[str] = None,
+        vk_url: Optional[str] = None,
+        tiktok_url: Optional[str] = None,
+        youtube_url: Optional[str] = None,
+        likee_url: Optional[str] = None,
+        about: Optional[str] = None,
+        profile_photo_url: Optional[str] = None,
+        gallery_photos: tuple[str, ...] = (),
+        video_links: tuple[str, ...] = (),
+        display_name: Optional[str] = None,
+        telegram_username: Optional[str] = None,
+    ) -> BloggerProfile:
+        """Create a blogger profile from the v2 onboarding wizard.
+
+        Differs from register_blogger by accepting all v2 onboarding fields
+        (multiple price tiers, social links, photos, videos, about, tax
+        status). Audience fields default to permissive values since v2
+        onboarding does not collect them; they can be edited later.
+        """
+        _validate_v2_payload(
+            tax_status, about, gallery_photos, video_links, topics
+        )
+
+        async def _run(session: object | None) -> BloggerProfile:
+            user = await self.user_repo.get_by_id(user_id, session=session)
+            if user is None:
+                raise UserNotFoundError(
+                    "User not found for blogger registration."
+                )
+
+            instagram_url_clean, city_clean, _ = _validate_blogger_input(
+                instagram_url,
+                city,
+                "all",
+                1,
+                99,
+                price,
+            )
+
+            existing_profile = await self.blogger_repo.get_by_instagram_url(
+                instagram_url_clean, session=session
+            )
+            if existing_profile is not None:
+                raise BloggerRegistrationError(
+                    "Этот Instagram аккаунт уже зарегистрирован. "
+                    "Пожалуйста, используйте другой аккаунт."
+                )
+
+            (
+                location_geometry,
+                region_nom,
+                country_nom,
+            ) = await _resolve_location_and_geocoder_details(
+                self.geocoder, city_clean, region=None, country=country
+            )
+            profile_country = country_nom or country
+            profile_currency = "RUB"
+            if country and self.country_repo:
+                country_obj = await self.country_repo.get_by_code(
+                    country, session=session
+                )
+                if country_obj:
+                    profile_currency = country_obj.currency_code
+
+            now = datetime.now(timezone.utc)
+            profile = BloggerProfile(
+                user_id=user.user_id,
+                instagram_url=instagram_url_clean,
+                confirmed=False,
+                city=city_clean,
+                topics=topics,
+                audience_gender=AudienceGender.ALL,
+                audience_age_min=18,
+                audience_age_max=65,
+                audience_geo="",
+                price=price,
+                barter=barter,
+                work_format=WorkFormat.UGC_ONLY,
+                updated_at=now,
+                blogger_gender=blogger_gender,
+                birth_date=birth_date,
+                region=region_nom,
+                location_geometry=location_geometry,
+                country=profile_country,
+                currency=profile_currency,
+                agreement_confirmed_at=now,
+                tax_status=tax_status,
+                price_with_publish=price_with_publish,
+                telegram_channel_url=telegram_channel_url,
+                vk_url=vk_url,
+                tiktok_url=tiktok_url,
+                youtube_url=youtube_url,
+                likee_url=likee_url,
+                about=about,
+                profile_photo_url=profile_photo_url,
+                gallery_photos=tuple(gallery_photos),
+                video_links=tuple(video_links),
             )
             await self.blogger_repo.save(profile, session=session)
 

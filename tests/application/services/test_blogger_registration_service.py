@@ -996,6 +996,17 @@ _BLOGGER_PROFILE_OPTIONAL_FIELDS = (
     "location_geometry",
     "country",
     "phone",
+    "tax_status",
+    "price_with_publish",
+    "telegram_channel_url",
+    "vk_url",
+    "tiktok_url",
+    "youtube_url",
+    "likee_url",
+    "about",
+    "profile_photo_url",
+    "gallery_photos",
+    "video_links",
 )
 
 
@@ -1029,6 +1040,17 @@ def _blogger_profile_with_all_optional_fields(
         location_geometry="MULTIPOINT((37.6 55.75))",
         country="russia",
         phone="+79001234567",
+        tax_status="self_employed",
+        price_with_publish=4500.0,
+        telegram_channel_url="https://t.me/regression",
+        vk_url="https://vk.com/regression",
+        tiktok_url="https://tiktok.com/@regression",
+        youtube_url="https://youtube.com/@regression",
+        likee_url="regression_likee",
+        about="Опытный UGC-креатор",
+        profile_photo_url="https://example.com/avatar.jpg",
+        gallery_photos=("https://example.com/g1.jpg",),
+        video_links=("https://youtube.com/v1",),
     )
 
 
@@ -2256,3 +2278,257 @@ async def test_save_blogger_before_agreement_currency_from_country_repo() -> (
     )
 
     assert profile.currency == "KZT"
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_success() -> None:
+    """register_blogger_v2 persists all v2 fields and links display_name."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    profile = await service.register_blogger_v2(
+        user_id=user_id,
+        instagram_url="https://instagram.com/v2_user",
+        city="Moscow",
+        country="russia",
+        topics={"selected": ["beauty", "fashion"]},
+        price=500.0,
+        barter=True,
+        blogger_gender=BloggerGender.FEMALE,
+        birth_date=date(1998, 6, 1),
+        tax_status="self_employed",
+        price_with_publish=2000.0,
+        telegram_channel_url="https://t.me/v2_user",
+        vk_url="https://vk.com/v2_user",
+        tiktok_url="@v2_user",
+        youtube_url=None,
+        likee_url=None,
+        about="Опытный креатор UGC",
+        profile_photo_url="https://cdn.example/p.jpg",
+        gallery_photos=("https://cdn.example/g1.jpg",),
+        video_links=("https://youtube.com/v1",),
+        display_name="Анна",
+    )
+
+    assert profile.user_id == user_id
+    assert profile.tax_status == "self_employed"
+    assert profile.price == 500.0
+    assert profile.price_with_publish == 2000.0
+    assert profile.barter is True
+    assert profile.about == "Опытный креатор UGC"
+    assert profile.profile_photo_url == "https://cdn.example/p.jpg"
+    assert profile.gallery_photos == ("https://cdn.example/g1.jpg",)
+    assert profile.video_links == ("https://youtube.com/v1",)
+    assert profile.telegram_channel_url == "https://t.me/v2_user"
+    assert profile.vk_url == "https://vk.com/v2_user"
+    assert profile.tiktok_url == "@v2_user"
+    assert profile.blogger_gender == BloggerGender.FEMALE
+    assert profile.birth_date == date(1998, 6, 1)
+    saved_user = await user_repo.get_by_id(user_id)
+    assert saved_user is not None
+    assert saved_user.username == "Анна"
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_invalid_tax_status() -> None:
+    """register_blogger_v2 rejects unknown tax_status."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    with pytest.raises(BloggerRegistrationError, match="tax_status"):
+        await service.register_blogger_v2(
+            user_id=user_id,
+            instagram_url="https://instagram.com/u",
+            city="Moscow",
+            country="russia",
+            topics={"selected": ["beauty"]},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="invalid",
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_requires_topics() -> None:
+    """register_blogger_v2 requires non-empty topics."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    with pytest.raises(BloggerRegistrationError, match="topic"):
+        await service.register_blogger_v2(
+            user_id=user_id,
+            instagram_url="https://instagram.com/u",
+            city="Moscow",
+            country="russia",
+            topics={},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="none",
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_about_too_long() -> None:
+    """about must be <= 500 chars."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    with pytest.raises(BloggerRegistrationError, match="about"):
+        await service.register_blogger_v2(
+            user_id=user_id,
+            instagram_url="https://instagram.com/u",
+            city="Moscow",
+            country="russia",
+            topics={"selected": ["beauty"]},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="none",
+            about="x" * 501,
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_too_many_gallery_photos() -> None:
+    """gallery_photos: max 6."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    with pytest.raises(BloggerRegistrationError, match="gallery_photos"):
+        await service.register_blogger_v2(
+            user_id=user_id,
+            instagram_url="https://instagram.com/u",
+            city="Moscow",
+            country="russia",
+            topics={"selected": ["beauty"]},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="none",
+            gallery_photos=tuple(f"u{i}" for i in range(7)),
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_too_many_videos() -> None:
+    """video_links: max 5."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    with pytest.raises(BloggerRegistrationError, match="video_links"):
+        await service.register_blogger_v2(
+            user_id=user_id,
+            instagram_url="https://instagram.com/u",
+            city="Moscow",
+            country="russia",
+            topics={"selected": ["beauty"]},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="none",
+            video_links=tuple(f"v{i}" for i in range(6)),
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_duplicate_instagram_rejected() -> None:
+    """Cannot register a v2 profile with an already-taken Instagram URL."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    user_id = await _seed_user(user_repo)
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    await service.register_blogger_v2(
+        user_id=user_id,
+        instagram_url="https://instagram.com/dup",
+        city="Moscow",
+        country="russia",
+        topics={"selected": ["beauty"]},
+        price=500.0,
+        barter=False,
+        blogger_gender=BloggerGender.MALE,
+        birth_date=date(1995, 1, 1),
+        tax_status="none",
+    )
+
+    second_user = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000099"),
+        telegram_id="999",
+        messenger_type=MessengerType.TELEGRAM,
+        username="other",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(second_user)
+
+    with pytest.raises(BloggerRegistrationError, match="уже зарегистрирован"):
+        await service.register_blogger_v2(
+            user_id=second_user.user_id,
+            instagram_url="https://instagram.com/dup",
+            city="Moscow",
+            country="russia",
+            topics={"selected": ["beauty"]},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="none",
+        )
+
+
+@pytest.mark.asyncio
+async def test_register_blogger_v2_user_not_found() -> None:
+    """register_blogger_v2 raises UserNotFoundError when user missing."""
+    user_repo = InMemoryUserRepository()
+    blogger_repo = InMemoryBloggerProfileRepository()
+    service = BloggerRegistrationService(
+        user_repo=user_repo, blogger_repo=blogger_repo
+    )
+
+    with pytest.raises(UserNotFoundError):
+        await service.register_blogger_v2(
+            user_id=UUID("00000000-0000-0000-0000-000000000404"),
+            instagram_url="https://instagram.com/missing",
+            city="Moscow",
+            country="russia",
+            topics={"selected": ["beauty"]},
+            price=500.0,
+            barter=False,
+            blogger_gender=BloggerGender.MALE,
+            birth_date=date(1995, 1, 1),
+            tax_status="none",
+        )

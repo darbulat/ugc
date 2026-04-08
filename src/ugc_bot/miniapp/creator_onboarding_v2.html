@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>UGC — Регистрация креатора</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: #0b1f3a;
+      --bg-2: #112a4f;
+      --surface: #16335c;
+      --surface-2: #1d3b6e;
+      --mint: #5eead4;
+      --mint-strong: #2dd4bf;
+      --mint-soft: rgba(94, 234, 212, 0.12);
+      --text: #f1f5f9;
+      --text-soft: #cbd5e1;
+      --text-mute: #94a3b8;
+      --danger: #f87171;
+      --shadow: 0 10px 30px -10px rgba(0,0,0,0.6);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background:
+        radial-gradient(900px 400px at 50% -150px, #1d3b6e 0%, transparent 60%),
+        var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: 16px 18px 110px;
+      min-height: 100vh;
+    }
+    .topbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .back-btn {
+      width: 36px; height: 36px;
+      border-radius: 12px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      color: var(--text);
+      font-size: 20px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .back-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .step-title {
+      flex: 1;
+      font-size: 14px;
+      color: var(--text-soft);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .step-counter { font-size: 13px; color: var(--mint); font-weight: 700; }
+    .progress {
+      height: 6px;
+      background: var(--surface);
+      border-radius: 999px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--mint) 0%, #38bdf8 100%);
+      border-radius: 999px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+    .step { display: none; }
+    .step.active { display: block; animation: fadeIn 0.25s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+    .step h2 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+    .step .lead { color: var(--text-soft); font-size: 14px; margin: 0 0 22px; line-height: 1.5; }
+    label.field {
+      display: block;
+      font-size: 11px;
+      color: var(--text-mute);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin: 18px 0 8px;
+    }
+    label.field .req { color: var(--mint); margin-left: 2px; }
+    input[type="text"], input[type="number"], input[type="url"], textarea, select {
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 16px;
+      font-family: inherit;
+      border-radius: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: var(--surface);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-mute); }
+    input:focus, textarea:focus, select:focus { border-color: var(--mint); background: var(--surface-2); }
+    select {
+      appearance: none;
+      background-image:
+        linear-gradient(45deg, transparent 50%, var(--mint) 50%),
+        linear-gradient(135deg, var(--mint) 50%, transparent 50%);
+      background-position: calc(100% - 18px) calc(50% - 3px), calc(100% - 12px) calc(50% - 3px);
+      background-size: 6px 6px;
+      background-repeat: no-repeat;
+      padding-right: 36px;
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    .pills { display: grid; gap: 10px; }
+    .pills.cols-2 { grid-template-columns: 1fr 1fr; }
+    .pills.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .pill {
+      padding: 13px 12px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px;
+      color: var(--text-soft);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .pill:hover { border-color: rgba(94,234,212,0.3); }
+    .pill.selected {
+      background: linear-gradient(135deg, var(--mint) 0%, var(--mint-strong) 100%);
+      color: #0b1f3a;
+      border-color: var(--mint);
+      font-weight: 700;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 999px;
+      color: var(--text-soft);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .chip.selected {
+      background: var(--mint-soft);
+      border-color: var(--mint);
+      color: var(--mint);
+      font-weight: 600;
+    }
+    .photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+    .photo-slot {
+      aspect-ratio: 1;
+      background: var(--surface);
+      border: 1.5px dashed rgba(94,234,212,0.3);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      color: var(--text-mute);
+      font-size: 13px;
+      position: relative;
+      overflow: hidden;
+    }
+    .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
+    .photo-slot.has-image { border-style: solid; }
+    .photo-remove {
+      position: absolute;
+      top: 4px; right: 4px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      border: none;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .profile-photo {
+      width: 110px; height: 110px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 1.5px dashed rgba(94,234,212,0.3);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      margin: 8px auto 4px;
+      position: relative;
+      overflow: hidden;
+      color: var(--text-mute);
+    }
+    .profile-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-photo.has-image { border-style: solid; }
+    .video-row { display: flex; gap: 8px; margin-bottom: 8px; }
+    .video-row input { flex: 1; }
+    .icon-btn {
+      flex: 0 0 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--surface);
+      border: 1px solid rgba(255,255,255,0.08);
+      color: var(--mint);
+      font-size: 18px;
+      cursor: pointer;
+    }
+    .icon-btn.danger { color: var(--danger); }
+    .bottom-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      padding: 12px 18px 18px;
+      background: linear-gradient(180deg, transparent 0%, var(--bg) 35%);
+      pointer-events: none;
+    }
+    .bottom-bar .inner { max-width: 520px; margin: 0 auto; pointer-events: auto; }
+    .next-btn {
+      width: 100%;
+      padding: 16px 20px;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--mint) 0%, var(--mint-strong) 100%);
+      color: #0b1f3a;
+      cursor: pointer;
+      box-shadow: 0 8px 24px -8px rgba(45,212,191,0.6);
+      transition: transform 0.1s ease;
+      font-family: inherit;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .next-btn:active { transform: scale(0.98); }
+    .next-btn:disabled { background: var(--surface); color: var(--text-mute); box-shadow: none; cursor: not-allowed; }
+    .card-preview {
+      background: var(--surface);
+      border: 1px solid rgba(94,234,212,0.18);
+      border-radius: 18px;
+      padding: 18px;
+      margin-top: 12px;
+    }
+    .card-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+    .card-avatar {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: var(--surface-2);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 24px;
+      color: var(--mint);
+      overflow: hidden;
+    }
+    .card-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .card-name { font-size: 18px; font-weight: 700; margin: 0; }
+    .card-meta { font-size: 13px; color: var(--text-soft); margin: 4px 0 0; }
+    .card-row { display: flex; justify-content: space-between; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.06); font-size: 14px; }
+    .card-row .label { color: var(--text-mute); }
+    .card-row .value { color: var(--text); font-weight: 600; }
+    .card-topics { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .card-topics .chip { font-size: 12px; padding: 6px 10px; cursor: default; }
+    .agreement {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-top: 16px;
+      font-size: 13px;
+      color: var(--text-soft);
+      line-height: 1.5;
+    }
+    .agreement input { width: 18px; height: 18px; accent-color: var(--mint); margin-top: 2px; flex: 0 0 18px; }
+    .agreement a { color: var(--mint); text-decoration: none; }
+    .help { font-size: 12px; color: var(--text-mute); margin: 6px 0 0; line-height: 1.5; }
+    .counter { text-align: right; font-size: 11px; color: var(--text-mute); margin-top: 4px; }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(11,31,58,0.3);
+      border-top-color: #0b1f3a;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <button class="back-btn" id="back-btn" type="button">←</button>
+      <div class="step-title" id="step-title">Основное</div>
+      <div class="step-counter"><span id="step-percent">13</span>%</div>
+    </div>
+
+    <div class="progress"><div class="progress-fill" id="progress-fill"></div></div>
+
+    <section class="step active" data-step="1">
+      <h2>Расскажите о себе</h2>
+      <p class="lead">Базовые данные для вашей карточки креатора</p>
+
+      <label class="field">Имя <span class="req">*</span></label>
+      <input type="text" id="f-name" placeholder="Как вас зовут" autocomplete="off">
+
+      <label class="field">Пол <span class="req">*</span></label>
+      <div class="pills cols-2">
+        <button class="pill" type="button" data-gender="m">Мужской</button>
+        <button class="pill" type="button" data-gender="f">Женский</button>
+      </div>
+
+      <label class="field">Возраст <span class="req">*</span></label>
+      <input type="number" id="f-age" placeholder="25" min="14" max="80">
+
+      <label class="field">Страна <span class="req">*</span></label>
+      <select id="f-country">
+        <option value="">Выберите страну</option>
+      </select>
+
+      <label class="field">Город <span class="req">*</span></label>
+      <input type="text" id="f-city" placeholder="Москва" autocomplete="off">
+
+      <label class="field">Оформлена ли самозанятость или ИП? <span class="req">*</span></label>
+      <div class="pills cols-3">
+        <button class="pill" type="button" data-tax="self_employed">Самозанятость</button>
+        <button class="pill" type="button" data-tax="ip">ИП</button>
+        <button class="pill" type="button" data-tax="none">Нет</button>
+      </div>
+    </section>
+
+    <section class="step" data-step="2">
+      <h2>Тематики</h2>
+      <p class="lead">Выберите хотя бы одну категорию, в которой вы работаете</p>
+      <div class="chips" id="topics-chips"></div>
+    </section>
+
+    <section class="step" data-step="3">
+      <h2>Стоимость ваших услуг</h2>
+      <p class="lead">Укажите цены за UGC-видео в рублях</p>
+
+      <label class="field">Без публикации в своём аккаунте (₽) <span class="req">*</span></label>
+      <input type="number" id="f-price" placeholder="500" min="1">
+      <p class="help">Сколько вы хотите получить за создание видео без размещения у себя</p>
+
+      <label class="field">С публикацией в своём аккаунте (₽)</label>
+      <input type="number" id="f-price-pub" placeholder="2000" min="1">
+      <p class="help">Если готовы дополнительно опубликовать видео у себя</p>
+
+      <label class="field">Рассматриваете бартер?</label>
+      <div class="pills cols-2">
+        <button class="pill" type="button" data-barter="yes">Да</button>
+        <button class="pill" type="button" data-barter="no">Нет</button>
+      </div>
+    </section>
+
+    <section class="step" data-step="4">
+      <h2>Ссылки на соцсети</h2>
+      <p class="lead">Минимум — Instagram. Остальное опционально</p>
+
+      <label class="field">Instagram <span class="req">*</span></label>
+      <input type="text" id="f-instagram" placeholder="username или ссылка" autocomplete="off">
+
+      <label class="field">Telegram</label>
+      <input type="text" id="f-telegram" placeholder="ссылка на канал" autocomplete="off">
+
+      <label class="field">VK</label>
+      <input type="text" id="f-vk" placeholder="ссылка на профиль или группу" autocomplete="off">
+
+      <label class="field">TikTok</label>
+      <input type="text" id="f-tiktok" placeholder="@username" autocomplete="off">
+
+      <label class="field">YouTube</label>
+      <input type="text" id="f-youtube" placeholder="ссылка на канал" autocomplete="off">
+
+      <label class="field">Likee</label>
+      <input type="text" id="f-likee" placeholder="username" autocomplete="off">
+    </section>
+
+    <section class="step" data-step="5">
+      <h2>О себе</h2>
+      <p class="lead">Опционально. Расскажите о вашем опыте, стиле работы</p>
+      <textarea id="f-about" maxlength="500" placeholder="Расскажите о своём опыте создания UGC-контента..."></textarea>
+      <div class="counter"><span id="about-count">0</span>/500</div>
+    </section>
+
+    <section class="step" data-step="6">
+      <h2>Фото</h2>
+      <p class="lead">Главное фото — лицо вашей карточки</p>
+
+      <label class="field">Фото профиля</label>
+      <div class="profile-photo" id="profile-photo-slot">
+        <span id="profile-photo-placeholder">+ Загрузить</span>
+      </div>
+      <p class="help" style="text-align:center;">JPG, PNG или WebP, до 10 МБ</p>
+
+      <label class="field">Дополнительные фото (до 6)</label>
+      <div class="photo-grid" id="gallery-grid"></div>
+    </section>
+
+    <section class="step" data-step="7">
+      <h2>Видео-примеры</h2>
+      <p class="lead">Ссылки на YouTube, TikTok, Instagram или VK Video (до 5)</p>
+      <div id="video-list"></div>
+      <button type="button" class="pill" id="add-video-btn" style="margin-top:8px;">+ Добавить ссылку</button>
+    </section>
+
+    <section class="step" data-step="8">
+      <h2>Готово!</h2>
+      <p class="lead">Проверьте превью вашей карточки</p>
+      <div class="card-preview" id="preview"></div>
+      <label class="agreement">
+        <input type="checkbox" id="f-agree">
+        <span>Я соглашаюсь с <a href="#" id="privacy-link" target="_blank">Политикой обработки персональных данных</a></span>
+      </label>
+    </section>
+
+    <input type="file" id="hidden-file-input" accept="image/jpeg,image/png,image/webp" style="display:none;">
+  </div>
+
+  <div class="bottom-bar">
+    <div class="inner">
+      <button class="next-btn" id="next-btn" type="button" disabled>
+        <span id="next-spinner" style="display:none;" class="spinner"></span>
+        <span id="next-label">Далее</span>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const tg = window.Telegram && window.Telegram.WebApp;
+      if (tg) { tg.ready(); tg.expand(); }
+      const initData = (tg && tg.initData) || '';
+
+      const STEPS_TOTAL = 8;
+      const STEP_TITLES = ['', 'Основное', 'Тематики', 'Цены', 'Соцсети', 'О себе', 'Фото', 'Видео', 'Готово'];
+      const STEP_PROGRESS = [0, 13, 25, 38, 50, 63, 75, 88, 100];
+      const TOPICS_LIST = [
+        ['travel', '✈️ Путешествия'],
+        ['food', '🍔 Еда и напитки'],
+        ['sports', '🏋️ Спорт'],
+        ['home', '🏠 Дом'],
+        ['pets', '🐾 Питомцы'],
+        ['fashion', '👗 Одежда'],
+        ['kids', '👶 Дети'],
+        ['beauty', '💄 Косметика'],
+        ['health', '💊 БАДы и медицина'],
+        ['finance', '💳 Финансы'],
+        ['business', '💼 Бизнес'],
+        ['education', '📚 Образование'],
+        ['electronics', '📱 Электроника'],
+        ['apps', '📲 Мобильные приложения'],
+        ['adult', '🔞 18+'],
+        ['repair', '🔧 Ремонт'],
+        ['auto', '🚗 Авто'],
+        ['chemistry', '🧴 Бытовая химия'],
+        ['hygiene', '🧼 Гигиена'],
+        ['lingerie', '🩱 Нижнее бельё'],
+      ];
+      const TOPIC_BY_CODE = {};
+      TOPICS_LIST.forEach(function (t) { TOPIC_BY_CODE[t[0]] = t[1]; });
+
+      const state = {
+        step: 1,
+        name: '', gender: '', age: '', country: '', city: '', tax: '',
+        topics: new Set(),
+        price: '', priceWithPub: '', barter: false,
+        instagram: '', telegram: '', vk: '', tiktok: '', youtube: '', likee: '',
+        about: '',
+        profilePhoto: '',
+        gallery: [],
+        videos: [''],
+        agree: false,
+      };
+
+      function $(sel) { return document.querySelector(sel); }
+      function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
+      function clearChildren(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+
+      function updateProgress() {
+        $('#progress-fill').style.width = STEP_PROGRESS[state.step] + '%';
+        $('#step-percent').textContent = String(STEP_PROGRESS[state.step]);
+        $('#step-title').textContent = STEP_TITLES[state.step];
+        $('#back-btn').disabled = state.step === 1;
+        $('#next-label').textContent = state.step === STEPS_TOTAL ? 'Опубликовать' : 'Далее';
+      }
+
+      function showStep(n) {
+        state.step = n;
+        $$('.step').forEach(function (el) {
+          el.classList.toggle('active', Number(el.dataset.step) === n);
+        });
+        updateProgress();
+        validate();
+        if (n === 8) renderPreview();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+
+      $$('.pill[data-gender]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          state.gender = b.dataset.gender;
+          $$('.pill[data-gender]').forEach(function (x) { x.classList.toggle('selected', x === b); });
+          validate();
+        });
+      });
+      $$('.pill[data-tax]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          state.tax = b.dataset.tax;
+          $$('.pill[data-tax]').forEach(function (x) { x.classList.toggle('selected', x === b); });
+          validate();
+        });
+      });
+      $$('.pill[data-barter]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          state.barter = b.dataset.barter === 'yes';
+          $$('.pill[data-barter]').forEach(function (x) { x.classList.toggle('selected', x === b); });
+        });
+      });
+
+      ['name', 'age', 'city', 'price', 'about', 'instagram', 'telegram', 'vk', 'tiktok', 'youtube', 'likee'].forEach(function (key) {
+        const el = document.getElementById('f-' + key);
+        if (!el) return;
+        el.addEventListener('input', function () {
+          state[key] = el.value;
+          if (key === 'about') $('#about-count').textContent = String((el.value || '').length);
+          validate();
+        });
+      });
+      $('#f-price-pub').addEventListener('input', function (e) { state.priceWithPub = e.target.value; validate(); });
+      $('#f-country').addEventListener('change', function (e) { state.country = e.target.value; validate(); });
+      $('#f-agree').addEventListener('change', function (e) { state.agree = e.target.checked; validate(); });
+
+      const topicsHost = $('#topics-chips');
+      TOPICS_LIST.forEach(function (t) {
+        const c = document.createElement('div');
+        c.className = 'chip';
+        c.dataset.code = t[0];
+        c.textContent = t[1];
+        c.addEventListener('click', function () {
+          if (state.topics.has(t[0])) state.topics.delete(t[0]);
+          else state.topics.add(t[0]);
+          c.classList.toggle('selected');
+          validate();
+        });
+        topicsHost.appendChild(c);
+      });
+
+      const galleryHost = $('#gallery-grid');
+      function renderGallery() {
+        clearChildren(galleryHost);
+        for (let i = 0; i < 6; i++) {
+          const slot = document.createElement('div');
+          slot.className = 'photo-slot';
+          if (state.gallery[i]) {
+            slot.classList.add('has-image');
+            const img = document.createElement('img');
+            img.src = state.gallery[i];
+            img.alt = '';
+            slot.appendChild(img);
+            const rm = document.createElement('button');
+            rm.className = 'photo-remove';
+            rm.type = 'button';
+            rm.textContent = '×';
+            (function (idx) {
+              rm.addEventListener('click', function (e) {
+                e.stopPropagation();
+                state.gallery.splice(idx, 1);
+                renderGallery();
+              });
+            })(i);
+            slot.appendChild(rm);
+          } else {
+            slot.textContent = '+';
+            slot.addEventListener('click', function () { pickPhoto('gallery'); });
+          }
+          galleryHost.appendChild(slot);
+        }
+      }
+      renderGallery();
+
+      const profileSlot = $('#profile-photo-slot');
+      profileSlot.addEventListener('click', function () { pickPhoto('profile'); });
+
+      const videoHost = $('#video-list');
+      function renderVideos() {
+        clearChildren(videoHost);
+        state.videos.forEach(function (url, i) {
+          const row = document.createElement('div');
+          row.className = 'video-row';
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.placeholder = 'https://...';
+          inp.value = url;
+          inp.addEventListener('input', function (e) { state.videos[i] = e.target.value; });
+          row.appendChild(inp);
+          if (state.videos.length > 1) {
+            const rm = document.createElement('button');
+            rm.type = 'button';
+            rm.className = 'icon-btn danger';
+            rm.textContent = '×';
+            (function (idx) {
+              rm.addEventListener('click', function () {
+                state.videos.splice(idx, 1);
+                renderVideos();
+              });
+            })(i);
+            row.appendChild(rm);
+          }
+          videoHost.appendChild(row);
+        });
+      }
+      renderVideos();
+      $('#add-video-btn').addEventListener('click', function () {
+        if (state.videos.length >= 5) return;
+        state.videos.push('');
+        renderVideos();
+      });
+
+      let pickerTarget = null;
+      const fileInput = $('#hidden-file-input');
+      function pickPhoto(target) {
+        pickerTarget = target;
+        fileInput.value = '';
+        fileInput.click();
+      }
+      fileInput.addEventListener('change', function (e) {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('init_data', initData);
+        fd.append('platform', 'telegram');
+        fd.append('file', file);
+        fetch('/miniapp/api/blogger/upload-photo', { method: 'POST', body: fd })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+          .then(function (res) {
+            if (!res.ok) throw new Error(res.body.detail || 'upload failed');
+            if (pickerTarget === 'profile') {
+              state.profilePhoto = res.body.url;
+              clearChildren(profileSlot);
+              profileSlot.classList.add('has-image');
+              const img = document.createElement('img');
+              img.src = res.body.url;
+              img.alt = '';
+              profileSlot.appendChild(img);
+            } else if (pickerTarget === 'gallery') {
+              if (state.gallery.length < 6) state.gallery.push(res.body.url);
+              renderGallery();
+            }
+          })
+          .catch(function (err) { alert('Не удалось загрузить фото: ' + err.message); });
+      });
+
+      function validate() {
+        const next = $('#next-btn');
+        let ok = false;
+        if (state.step === 1) {
+          ok = !!state.name.trim() && !!state.gender
+            && Number(state.age) >= 14 && Number(state.age) <= 80
+            && !!state.country && !!state.city.trim() && !!state.tax;
+        } else if (state.step === 2) {
+          ok = state.topics.size > 0;
+        } else if (state.step === 3) {
+          ok = Number(state.price) > 0;
+        } else if (state.step === 4) {
+          ok = !!state.instagram.trim();
+        } else if (state.step === 5 || state.step === 6 || state.step === 7) {
+          ok = true;
+        } else if (state.step === 8) {
+          ok = state.agree;
+        }
+        next.disabled = !ok;
+      }
+
+      $('#back-btn').addEventListener('click', function () {
+        if (state.step === 1) { window.location.href = '/miniapp/role_select_v2.html'; return; }
+        showStep(state.step - 1);
+      });
+      $('#next-btn').addEventListener('click', function () {
+        if (state.step < STEPS_TOTAL) showStep(state.step + 1);
+        else submit();
+      });
+
+      function makeRow(label, value) {
+        const row = document.createElement('div');
+        row.className = 'card-row';
+        const l = document.createElement('span');
+        l.className = 'label';
+        l.textContent = label;
+        const v = document.createElement('span');
+        v.className = 'value';
+        v.textContent = value;
+        row.appendChild(l);
+        row.appendChild(v);
+        return row;
+      }
+
+      function renderPreview() {
+        const host = $('#preview');
+        clearChildren(host);
+
+        const head = document.createElement('div');
+        head.className = 'card-head';
+        const avatar = document.createElement('div');
+        avatar.className = 'card-avatar';
+        if (state.profilePhoto) {
+          const img = document.createElement('img');
+          img.src = state.profilePhoto;
+          img.alt = '';
+          avatar.appendChild(img);
+        } else {
+          avatar.textContent = (state.name || '?').trim().charAt(0).toUpperCase();
+        }
+        head.appendChild(avatar);
+        const heading = document.createElement('div');
+        const name = document.createElement('p');
+        name.className = 'card-name';
+        name.textContent = state.name || '';
+        heading.appendChild(name);
+        const meta = document.createElement('p');
+        meta.className = 'card-meta';
+        const metaParts = [state.city, state.country].filter(Boolean).join(', ');
+        meta.textContent = metaParts + ' · ' + state.age + ' лет';
+        heading.appendChild(meta);
+        head.appendChild(heading);
+        host.appendChild(head);
+
+        let priceLine = state.price + ' ₽ без публикации';
+        if (state.priceWithPub) priceLine += ' · ' + state.priceWithPub + ' ₽ с публикацией';
+        host.appendChild(makeRow('Цена', priceLine));
+        host.appendChild(makeRow('Бартер', state.barter ? 'да' : 'нет'));
+        const taxLabel = state.tax === 'self_employed' ? 'Самозанятость'
+          : state.tax === 'ip' ? 'ИП' : 'Нет';
+        host.appendChild(makeRow('Юр. статус', taxLabel));
+
+        const topicsBox = document.createElement('div');
+        topicsBox.className = 'card-topics';
+        Array.from(state.topics).forEach(function (code) {
+          const label = TOPIC_BY_CODE[code];
+          if (!label) return;
+          const chip = document.createElement('span');
+          chip.className = 'chip selected';
+          chip.textContent = label;
+          topicsBox.appendChild(chip);
+        });
+        host.appendChild(topicsBox);
+      }
+
+      function setSubmitting(submitting) {
+        const sp = $('#next-spinner');
+        const lab = $('#next-label');
+        sp.style.display = submitting ? 'inline-block' : 'none';
+        lab.textContent = submitting
+          ? 'Публикуем...'
+          : (state.step === STEPS_TOTAL ? 'Опубликовать' : 'Далее');
+      }
+
+      function submit() {
+        const btn = $('#next-btn');
+        btn.disabled = true;
+        setSubmitting(true);
+        const ageNum = Number(state.age);
+        const today = new Date();
+        const birthYear = today.getFullYear() - ageNum;
+        const birthDate = '01.01.' + birthYear;
+        const payload = {
+          init_data: initData,
+          platform: 'telegram',
+          instagram_url: state.instagram.trim(),
+          display_name: state.name.trim() || null,
+          blogger_gender: state.gender,
+          birth_date: birthDate,
+          country: state.country,
+          city: state.city.trim(),
+          tax_status: state.tax,
+          topics: Array.from(state.topics),
+          price: Number(state.price),
+          price_with_publish: state.priceWithPub ? Number(state.priceWithPub) : null,
+          barter: state.barter,
+          telegram_channel_url: state.telegram.trim() || null,
+          vk_url: state.vk.trim() || null,
+          tiktok_url: state.tiktok.trim() || null,
+          youtube_url: state.youtube.trim() || null,
+          likee_url: state.likee.trim() || null,
+          about: state.about.trim() || null,
+          profile_photo_url: state.profilePhoto || null,
+          gallery_photos: state.gallery,
+          video_links: state.videos.filter(function (v) { return v && v.trim(); }),
+        };
+        fetch('/miniapp/api/register/blogger/v2', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+          .then(function (res) {
+            if (!res.ok) throw new Error(res.body.detail || 'registration failed');
+            if (tg) tg.close();
+            else alert('Готово! Карточка опубликована.');
+          })
+          .catch(function (err) {
+            alert('Ошибка: ' + err.message);
+            setSubmitting(false);
+            validate();
+          });
+      }
+
+      fetch('/miniapp/api/config?platform=telegram')
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; })
+        .then(function (data) {
+          if (!data) return;
+          const sel = $('#f-country');
+          (data.countries || []).forEach(function (c) {
+            const opt = document.createElement('option');
+            opt.value = c.code || c.value || '';
+            opt.textContent = c.name || c.label || '';
+            sel.appendChild(opt);
+          });
+          if (data.docs_privacy_url) $('#privacy-link').href = data.docs_privacy_url;
+        });
+
+      fetch('/miniapp/api/me', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ init_data: initData, platform: 'telegram' }),
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; })
+        .then(function (data) {
+          if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            const u = tg.initDataUnsafe.user;
+            if (!state.name && u.first_name) {
+              state.name = u.first_name;
+              $('#f-name').value = u.first_name;
+            }
+          }
+          if (data && data.country) state.country = data.country;
+          validate();
+        });
+
+      updateProgress();
+      validate();
+    })();
+  </script>
+</body>
+</html>

@@ -455,6 +455,17 @@ async def test_blogger_profile_repository_get_with_string_blogger_gender() -> (
         currency="RUB",
         agreement_confirmed_at=None,
         phone=None,
+        tax_status=None,
+        price_with_publish=None,
+        telegram_channel_url=None,
+        vk_url=None,
+        tiktok_url=None,
+        youtube_url=None,
+        likee_url=None,
+        about=None,
+        profile_photo_url=None,
+        gallery_photos=[],
+        video_links=[],
     )
     repo = SqlAlchemyBloggerProfileRepository(
         session_factory=_session_factory(model)

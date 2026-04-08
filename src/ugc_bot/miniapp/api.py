@@ -162,6 +162,33 @@ class RegisterBloggerRequest(BaseModel):
     lon: float | None = None
 
 
+class RegisterBloggerV2Request(BaseModel):
+    """v2 onboarding payload (creator wizard)."""
+
+    init_data: str
+    platform: Platform = "telegram"
+    instagram_url: str
+    display_name: str | None = None
+    blogger_gender: str  # "m" | "f"
+    birth_date: str  # DD.MM.YYYY
+    country: str  # country code
+    city: str
+    tax_status: str  # "self_employed" | "ip" | "none"
+    topics: list[str] = Field(default_factory=list)
+    price: float = Field(..., gt=0)  # without publication
+    price_with_publish: float | None = Field(default=None, gt=0)
+    barter: bool = False
+    telegram_channel_url: str | None = None
+    vk_url: str | None = None
+    tiktok_url: str | None = None
+    youtube_url: str | None = None
+    likee_url: str | None = None
+    about: str | None = Field(default=None, max_length=500)
+    profile_photo_url: str | None = None
+    gallery_photos: list[str] = Field(default_factory=list, max_length=6)
+    video_links: list[str] = Field(default_factory=list, max_length=5)
+
+
 def _location_geometry_from_blogger_request(
     body: RegisterBloggerRequest,
 ) -> str | None:
@@ -1043,6 +1070,109 @@ async def register_blogger(
         raise HTTPException(status_code=404, detail=str(e)) from e
     except BloggerRegistrationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+def _parse_birth_date_v2(value: str) -> date:
+    """Parse DD.MM.YYYY into date or raise HTTP 400."""
+    try:
+        day, month, year = value.strip().split(".")
+        return date(int(year), int(month), int(day))
+    except (ValueError, AttributeError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail="birth_date must be DD.MM.YYYY",
+        ) from e
+
+
+@router.post("/register/blogger/v2")
+async def register_blogger_v2_endpoint(
+    request: Request, body: RegisterBloggerV2Request
+) -> dict:
+    """Register a blogger via the v2 onboarding wizard.
+
+    Validates payload, persists profile with all v2 fields, links the
+    Telegram username if missing on the user.
+    """
+    user_id = await _ensure_user_and_get_id(
+        request, body.init_data, platform=body.platform
+    )
+    instagram_url = normalize_instagram_url(body.instagram_url)
+    if not body.topics:
+        raise HTTPException(
+            status_code=400, detail="At least one topic is required."
+        )
+    blogger_gender = _parse_blogger_gender(body.blogger_gender)
+    birth_date_val = _parse_birth_date_v2(body.birth_date)
+    telegram_username = _get_username_from_init_data(
+        request, body.init_data, platform=body.platform
+    )
+    dispatcher = request.app.state.dispatcher
+    svc: BloggerRegistrationService = dispatcher["blogger_registration_service"]
+    try:
+        profile = await svc.register_blogger_v2(
+            user_id=user_id,
+            instagram_url=instagram_url,
+            city=body.city,
+            country=body.country,
+            topics={"selected": body.topics},
+            price=body.price,
+            barter=body.barter,
+            blogger_gender=blogger_gender,
+            birth_date=birth_date_val,
+            tax_status=body.tax_status,
+            price_with_publish=body.price_with_publish,
+            telegram_channel_url=body.telegram_channel_url,
+            vk_url=body.vk_url,
+            tiktok_url=body.tiktok_url,
+            youtube_url=body.youtube_url,
+            likee_url=body.likee_url,
+            about=body.about,
+            profile_photo_url=body.profile_photo_url,
+            gallery_photos=tuple(body.gallery_photos),
+            video_links=tuple(body.video_links),
+            display_name=body.display_name,
+            telegram_username=telegram_username,
+        )
+    except UserNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except BloggerRegistrationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "user_id": str(profile.user_id)}
+
+
+@router.post("/blogger/upload-photo")
+async def upload_blogger_photo_endpoint(request: Request) -> dict:
+    """Upload a single image to S3 and return its public URL.
+
+    Multipart form fields: ``init_data`` (auth), ``file`` (image file).
+    """
+    from starlette.datastructures import (  # noqa: PLC0415
+        UploadFile as StarletteUploadFile,
+    )
+
+    from ugc_bot.infrastructure.s3_storage import (  # noqa: PLC0415
+        MediaStorageError,
+        upload_image_to_s3,
+    )
+
+    form = await request.form()
+    init_data = str(form.get("init_data") or "")
+    platform_value = str(form.get("platform") or "telegram")
+    if platform_value not in ("telegram", "max"):
+        platform_value = "telegram"
+    file_obj = form.get("file")
+    if not isinstance(file_obj, StarletteUploadFile):
+        raise HTTPException(status_code=400, detail="file is required")
+    # Auth check
+    await _ensure_user_and_get_id(request, init_data, platform=platform_value)  # type: ignore[arg-type]
+    data = await file_obj.read()
+    try:
+        url = upload_image_to_s3(
+            data, file_obj.content_type or "application/octet-stream"
+        )
+    except MediaStorageError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"url": url}
 
 
 @router.post("/register/blogger/confirm-agreement")
