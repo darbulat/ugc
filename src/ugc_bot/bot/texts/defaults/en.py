@@ -544,9 +544,17 @@ EN: dict[str, str] = {
     "err_min_chars": "Enter at least {min} characters.",
     "err_max_chars": "Max {max} characters.",
     "err_phone_empty": "Phone number cannot be empty. Enter again:",
-    "err_phone_digits": "Enter a valid number (10–11 digits). Example: 89001110777",
-    "err_phone_too_many": "Too many digits. Example: 89001110777",
-    "err_phone_invalid": "Enter a valid number. Example: 89001110777",
+    "err_phone_digits": (
+        "Enter a valid number with country code. "
+        "Example: +79001110777 or +998901234567"
+    ),
+    "err_phone_too_many": (
+        "Too many digits. Example: +79001110777 or +998901234567"
+    ),
+    "err_phone_invalid": (
+        "Enter a valid number with country code. "
+        "Example: +79001110777 or +998901234567"
+    ),
     "err_birth_date_empty": (
         "Enter date of birth as DD.MM.YYYY (e.g. 15.05.1995)."
     ),

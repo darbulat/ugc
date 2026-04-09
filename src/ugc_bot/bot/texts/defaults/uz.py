@@ -577,10 +577,16 @@ UZ: dict[str, str] = {
     "err_max_chars": "Maksimal {max} belgi.",
     "err_phone_empty": "Telefon raqami bo'sh bo'lishi mumkin emas. Qaytadan kiriting:",
     "err_phone_digits": (
-        "To'g'ri raqam kiriting (10–11 ta raqam). Misol: 998901234567"
+        "Mamlakat kodi bilan to'g'ri raqam kiriting. "
+        "Misol: +998901234567 yoki +79001110777"
     ),
-    "err_phone_too_many": "Raqamlar juda ko'p. Misol: 998901234567",
-    "err_phone_invalid": "To'g'ri raqam kiriting. Misol: 998901234567",
+    "err_phone_too_many": (
+        "Raqamlar juda ko'p. Misol: +998901234567 yoki +79001110777"
+    ),
+    "err_phone_invalid": (
+        "Mamlakat kodi bilan to'g'ri raqam kiriting. "
+        "Misol: +998901234567 yoki +79001110777"
+    ),
     "err_birth_date_empty": (
         "Tug'ilgan sanani KK.OO.YYYY formatida kiriting (masalan 15.05.1995)."
     ),
