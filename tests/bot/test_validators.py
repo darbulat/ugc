@@ -268,8 +268,31 @@ class TestValidatePhone:
         assert validate_phone("+7 (900) 111-07-77") is None
         assert validate_phone("8-900-111-07-77") is None
 
+    def test_valid_uzbekistan_number_ok(self) -> None:
+        """Uzbekistan numbers (+998 prefix, 12 digits) must be accepted."""
+        assert validate_phone("+998901234567") is None
+        assert validate_phone("998901234567") is None
+        assert validate_phone("+998 90 123 45 67") is None
+
+    def test_valid_kazakhstan_number_ok(self) -> None:
+        """Kazakhstan numbers (+7 prefix) must be accepted."""
+        assert validate_phone("+77011234567") is None
+
+    def test_valid_us_number_ok(self) -> None:
+        """US numbers (+1 prefix, 11 digits) must be accepted."""
+        assert validate_phone("+12025551234") is None
+
+    def test_valid_uk_number_ok(self) -> None:
+        """UK numbers (+44 prefix) must be accepted."""
+        assert validate_phone("+442079460000") is None
+
     def test_too_many_digits_returns_error(self) -> None:
-        assert validate_phone("890011107771") is not None
+        # 16 digits exceeds E.164 maximum of 15
+        assert validate_phone("1234567890123456") is not None
+
+    def test_leading_zero_after_10_digits_returns_error(self) -> None:
+        """International numbers must not start with 0 (no country code 0)."""
+        assert validate_phone("09001110777") is not None
 
 
 class TestValidateBrand:
@@ -502,17 +525,19 @@ class TestValidateUrlUncoveredBranches:
 
 
 class TestValidatePhoneInvalidBranch:
-    """Tests for the invalid phone number branch (line 417)."""
+    """Tests for the invalid phone number branch."""
 
-    def test_11_digits_starting_with_6_returns_error(self) -> None:
-        """11-digit number starting with 6 is invalid (line 417)."""
-        err = validate_phone("69001110777")
+    def test_leading_zero_international_returns_error(self) -> None:
+        """International numbers cannot start with 0 (no country code 0)."""
+        err = validate_phone("01234567890")
         assert err is not None
         err_lower = (err or "").lower()
         assert (
             "valid" in err_lower
-            or "89001" in err_lower
-            or "пример" in err_lower
+            or "код" in err_lower
+            or "country" in err_lower
+            or "+7" in err_lower
+            or "+998" in err_lower
         )
 
 
