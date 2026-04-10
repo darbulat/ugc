@@ -17,6 +17,7 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
@@ -28,7 +29,6 @@ from ugc_bot.application.services.user_role_service import (
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.blogger_registration import (
     _get_location_from_incoming,
-    _handle_city_from_location,
 )
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     _format_verification_instruction,
@@ -169,6 +169,62 @@ async def _remove_inline_keyboard(
             message_id=incoming.message_id,
             keyboard=None,
         )
+
+
+async def _handle_city_from_location_for_max(
+    incoming: IncomingMessage,
+    state_store: StateStore,
+    location_lat: float,
+    location_lon: float,
+    blogger_registration_service: BloggerRegistrationService,
+    messenger_client: MessengerClient,
+    bot_texts_service: BotTextsService,
+    locale: str,
+) -> bool:
+    """Resolve city from location and advance Max FSM to birth date."""
+    from ugc_bot.application.geography import normalize_geo_token
+
+    result = await blogger_registration_service.resolve_city_from_location(
+        location_lat, location_lon
+    )
+    if result is None:
+        err_loc = await bot_texts_service.get("err_city_from_location", locale)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err_loc,
+            keyboard=flow_keyboard_remove(),
+        )
+        return True
+
+    city_from_geo, region_from_geo, country_from_geo = result
+    normalized = normalize_geo_token(city_from_geo)
+    if not normalized:
+        err_loc = await bot_texts_service.get("err_city_from_location", locale)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=err_loc,
+            keyboard=flow_keyboard_remove(),
+        )
+        return True
+
+    await state_store.update_data(
+        city=normalized,
+        region=region_from_geo or "",
+        country=(country_from_geo or "").strip(),
+        location_geometry=wkt_multipoint_from_lat_lon(
+            location_lat, location_lon
+        ),
+    )
+    step_birth_date = await bot_texts_service.get(
+        "msg_step_ask_birth_date", locale
+    )
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=step_birth_date,
+        keyboard=flow_keyboard_remove(),
+    )
+    await state_store.set_state(STATE_BLOG_BIRTH_DATE)
+    return True
 
 
 async def _save_blogger_and_show_agreements(
@@ -567,7 +623,7 @@ async def handle_city(incoming: IncomingMessage, deps: dict) -> None:
     location = _get_location_from_incoming(incoming)
     if location is not None:
         lat, lon = location
-        await _handle_city_from_location(
+        await _handle_city_from_location_for_max(
             incoming,
             state_store,
             lat,
