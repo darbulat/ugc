@@ -1007,6 +1007,17 @@ def test_miniapp_api_routes_mounted(max_app_client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_metrics_endpoint_returns_prometheus_format(
+    max_app_client: TestClient,
+) -> None:
+    """Metrics endpoint returns Prometheus payload for Max app."""
+    response = max_app_client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "text/plain" in response.headers.get("content-type", "")
+    assert b"python_" in response.content or b"process_" in response.content
+
+
 @pytest.mark.asyncio
 async def test_retry_instagram_callback_sets_state() -> None:
     """Retry instagram callback sets FSM to blog_instagram step."""
