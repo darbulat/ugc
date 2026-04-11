@@ -1018,8 +1018,10 @@ async def test_try_link_returns_none_when_link_fails() -> None:
     [
         # Exact code — unchanged behaviour
         ("ABC123XY", "ABC123XY"),
-        # Greeting before code (Cyrillic)
+        # Greeting before code (Cyrillic) with space
         ("ПРИВЕТ ABC123XY", "ABC123XY"),
+        # Greeting before code (Cyrillic) WITHOUT space
+        ("ПРИВЕТABC123XY", "ABC123XY"),
         # Extra words after code
         ("ABC123XY ПОДТВЕРДИТЕ", "ABC123XY"),
         # Mixed sentence with punctuation

@@ -34,7 +34,7 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 logger = logging.getLogger(__name__)
 
 
-_CODE_RE = re.compile(r"\b([A-Z0-9]{8})\b")
+_CODE_RE = re.compile(r"(?<![A-Z0-9])([A-Z0-9]{8})(?![A-Z0-9])")
 
 
 def _extract_code_from_text(text: str) -> str | None:
