@@ -1,6 +1,7 @@
 """Service for Instagram verification."""
 
 import logging
+import re
 import secrets
 import string
 from dataclasses import dataclass, replace
@@ -31,6 +32,19 @@ from ugc_bot.domain.entities import (
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
+
+
+_CODE_RE = re.compile(r"\b([A-Z0-9]{8})\b")
+
+
+def _extract_code_from_text(text: str) -> str | None:
+    """Extract an 8-char [A-Z0-9] verification code from arbitrary text.
+
+    Handles cases where a blogger sends the code mixed with greetings or
+    other words, e.g. "Привет ABC123XY" or "ABC123XY, подтвердите".
+    """
+    m = _CODE_RE.search(text)
+    return m.group(1) if m else None
 
 
 def _extract_username_from_instagram_url(instagram_url: str) -> str | None:
@@ -296,6 +310,9 @@ class InstagramVerificationService:
             do not match, None when code or profile not found.
         """
         code_upper = code.strip().upper()
+        extracted = _extract_code_from_text(code_upper)
+        if extracted:
+            code_upper = extracted
 
         async def _get_valid_code(session: object | None):
             return await self.verification_repo.get_valid_code_by_code(

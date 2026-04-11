@@ -16,6 +16,7 @@ from ugc_bot.application.services.instagram_verification_service import (
     VerificationLinkSuccess,
     VerificationMismatch,
     VerificationSuccess,
+    _extract_code_from_text,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import (
@@ -1005,3 +1006,93 @@ async def test_try_link_returns_none_when_link_fails() -> None:
     )
     result = await service.verify_code(user_id, verification.code)
     assert result is True
+
+
+# ---------------------------------------------------------------------------
+# _extract_code_from_text unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # Exact code — unchanged behaviour
+        ("ABC123XY", "ABC123XY"),
+        # Greeting before code (Cyrillic)
+        ("ПРИВЕТ ABC123XY", "ABC123XY"),
+        # Extra words after code
+        ("ABC123XY ПОДТВЕРДИТЕ", "ABC123XY"),
+        # Mixed sentence with punctuation
+        ("HERE IS MY CODE: ABC123XY!", "ABC123XY"),
+        # Code in the middle
+        ("HI ABC123XY THANKS", "ABC123XY"),
+        # Code at end after comma
+        ("PLEASE CONFIRM ABC123XY,", "ABC123XY"),
+        # Two candidate tokens — first one wins
+        ("ABCD1234 EFGH5678", "ABCD1234"),
+        # All lowercase — no match (caller uppercases before calling)
+        ("abc123xy", None),
+        # No code at all
+        ("HELLO WORLD", None),
+        # Too short (7 chars)
+        ("ABCD123", None),
+        # Too long (9 chars) — no exact-length match
+        ("ABCD12345", None),
+        # Empty string
+        ("", None),
+    ],
+)
+def test_extract_code_from_text(text: str, expected: str | None) -> None:
+    assert _extract_code_from_text(text) == expected
+
+
+@pytest.mark.asyncio
+async def test_verify_code_by_instagram_sender_greeting_before_code() -> None:
+    """Verification succeeds when blogger prepends a greeting to the code."""
+    user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_id = await _seed_user(user_repo)
+    await _seed_profile(profile_repo, user_id)
+
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+    )
+    verification = await service.generate_code(user_id)
+
+    message_with_greeting = f"Привет {verification.code}"
+    result = await service.verify_code_by_instagram_sender(
+        instagram_sender_id="999111",
+        code=message_with_greeting,
+        admin_instagram_username="admin",
+    )
+    assert isinstance(result, VerificationSuccess)
+
+
+@pytest.mark.asyncio
+async def test_verify_code_by_instagram_sender_code_with_trailing_words() -> (
+    None
+):
+    """Verification succeeds when blogger appends words after the code."""
+    user_repo = InMemoryUserRepository()
+    profile_repo = InMemoryBloggerProfileRepository()
+    verification_repo = InMemoryInstagramVerificationRepository()
+    user_id = await _seed_user(user_repo)
+    await _seed_profile(profile_repo, user_id)
+
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=profile_repo,
+        verification_repo=verification_repo,
+    )
+    verification = await service.generate_code(user_id)
+
+    message_with_suffix = f"{verification.code}, подтвердите пожалуйста"
+    result = await service.verify_code_by_instagram_sender(
+        instagram_sender_id="999111",
+        code=message_with_suffix,
+        admin_instagram_username="admin",
+    )
+    assert isinstance(result, VerificationSuccess)
