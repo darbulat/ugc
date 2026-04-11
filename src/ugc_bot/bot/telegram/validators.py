@@ -127,8 +127,11 @@ GEOGRAPHY_MAX = 500
 # Advertiser registration
 NAME_MIN = 2
 NAME_MAX = 100
+# Phone validation: accepts 10-digit RF numbers (without country code) as
+# a backward-compatible shortcut, and full international numbers from 11 to
+# 15 digits (E.164 allows up to 15 digits total).
 PHONE_DIGITS_MIN = 10
-PHONE_DIGITS_MAX = 11
+PHONE_DIGITS_MAX = 15
 BRAND_MIN = 2
 BRAND_MAX = 200
 CITY_MAX = 100
@@ -384,7 +387,16 @@ def validate_phone(
     value: str,
     texts: dict[str, str] | None = None,
 ) -> str | None:
-    """Validate Russian phone number (10-11 digits)."""
+    """Validate international phone number.
+
+    Accepts:
+    - 10 digits — Russian number without country code (e.g. 9001110777);
+    - 11-15 digits — international E.164 number, with or without leading '+'
+      (e.g. +79001110777, 89001110777, +998901234567).
+
+    Formatting characters (spaces, dashes, parentheses, dots) are stripped
+    before validation.
+    """
     v = (value or "").strip()
     if not v:
         return _msg(
@@ -397,27 +409,22 @@ def validate_phone(
         return _msg(
             texts,
             "err_phone_digits",
-            "Enter a valid number (10–11 digits). Example: 89001110777",
+            "Enter a valid number with country code. "
+            "Example: +79001110777 or +998901234567",
         )
     if len(digits) > PHONE_DIGITS_MAX:
         return _msg(
             texts,
             "err_phone_too_many",
-            "Too many digits. Example: 89001110777",
+            "Too many digits. Example: +79001110777 or +998901234567",
         )
-    if (
-        digits[0] == "8"
-        and len(digits) == 11
-        or digits[0] == "7"
-        and len(digits) == 11
-        or len(digits) == 10
-    ):
-        pass
-    else:
+    # Country code (first digit of international format) must not be 0.
+    if len(digits) > 10 and digits[0] == "0":
         return _msg(
             texts,
             "err_phone_invalid",
-            "Enter a valid number. Example: 89001110777",
+            "Enter a valid number with country code. "
+            "Example: +79001110777 or +998901234567",
         )
     return None
 

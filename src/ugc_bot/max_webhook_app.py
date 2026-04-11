@@ -12,8 +12,9 @@ from pathlib import Path
 import aiohttp
 from aiogram import Bot
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from redis.asyncio import Redis
 
 from ugc_bot.bot.max.handlers.advertiser_registration import (
@@ -157,7 +158,15 @@ if _miniapp_dir.is_dir():
 
 @app.get("/health")
 async def health() -> JSONResponse:
+    """Lightweight health check."""
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/metrics")
+async def metrics() -> Response:
+    """Prometheus metrics."""
+    body = generate_latest()
+    return Response(content=body, media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/webhook/max")

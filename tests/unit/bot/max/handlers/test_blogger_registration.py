@@ -1,6 +1,6 @@
 """Tests for Max blogger registration handlers."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -124,6 +124,9 @@ def _deps(user=None, *, state_data: dict | None = None):
     blogger_reg_svc = AsyncMock()
     blogger_reg_svc.get_profile_by_instagram_username = AsyncMock(
         return_value=None
+    )
+    blogger_reg_svc.resolve_city_from_location = AsyncMock(
+        return_value=("Moscow", "Moscow Oblast", "RU")
     )
     blogger_reg_svc.resolve_city_to_location = AsyncMock(
         return_value=(
@@ -422,7 +425,7 @@ async def test_handle_city_not_found_shows_error():
 
 @pytest.mark.asyncio
 async def test_handle_city_from_location():
-    """Location coordinates trigger _handle_city_from_location path."""
+    """Location coordinates advance to Max birth-date state."""
     deps = _deps()
     deps["state_store"].get_state = AsyncMock(return_value=STATE_BLOG_CITY)
 
@@ -438,12 +441,11 @@ async def test_handle_city_from_location():
         location_lat=55.7,
         location_lon=37.6,
     )
-    with patch(
-        "ugc_bot.bot.max.handlers.blogger_registration._handle_city_from_location",
-        new_callable=AsyncMock,
-    ) as mock_handle:
-        await router.route_message(msg, deps)
-        mock_handle.assert_called_once()
+    await router.route_message(msg, deps)
+    deps[
+        "blogger_registration_service"
+    ].resolve_city_from_location.assert_called_once_with(55.7, 37.6)
+    deps["state_store"].set_state.assert_called_once_with(STATE_BLOG_BIRTH_DATE)
 
 
 # ---- STATE_BLOG_BIRTH_DATE handler ----
