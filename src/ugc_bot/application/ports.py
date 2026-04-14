@@ -18,6 +18,7 @@ from uuid import UUID
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    BloggerRating,
     Complaint,
     ContactPricing,
     Country,
@@ -569,6 +570,45 @@ class NpsRepository(ABC):
         self, user_id: UUID, session: object | None = None
     ) -> bool:
         """Check if user already gave NPS."""
+
+
+class BloggerRatingRepository(ABC):
+    """Port for blogger rating persistence."""
+
+    @abstractmethod
+    async def save(
+        self, rating: BloggerRating, session: object | None = None
+    ) -> None:
+        """Persist a blogger rating (insert or update)."""
+
+    @abstractmethod
+    async def get_by_blogger_and_order(
+        self,
+        blogger_id: UUID,
+        order_id: UUID,
+        session: object | None = None,
+    ) -> Optional[BloggerRating]:
+        """Fetch rating for a specific blogger+order pair, or None."""
+
+    @abstractmethod
+    async def get_avg_rating(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> Optional[float]:
+        """Return average score for a blogger, or None if no ratings."""
+
+    @abstractmethod
+    async def list_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> List[BloggerRating]:
+        """Return all ratings for a blogger, newest first."""
+
+    @abstractmethod
+    async def get_avg_ratings_for_bloggers(
+        self,
+        blogger_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, float]:
+        """Return avg score keyed by blogger_id for bloggers with ratings."""
 
 
 class InstagramVerificationRepository(ABC):
