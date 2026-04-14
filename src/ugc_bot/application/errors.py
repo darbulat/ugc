@@ -69,3 +69,11 @@ class InstagramUserNotFoundError(RuntimeError):
     def __init__(self, instagram_user_id: str) -> None:
         self.instagram_user_id = instagram_user_id
         super().__init__(f"No matching Instagram user: {instagram_user_id}")
+
+
+class RatingAlreadyExistsError(ValueError):
+    """Raised when a rating already exists for this blogger+order pair."""
+
+
+class InvalidRatingScoreError(ValueError):
+    """Raised when score is outside the allowed range 1-5."""

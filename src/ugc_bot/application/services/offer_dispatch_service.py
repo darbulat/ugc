@@ -11,6 +11,7 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
+    BloggerRatingRepository,
     CountryRepository,
     InstagramStatsRepository,
     InteractionRepository,
@@ -47,6 +48,8 @@ class _DispatchCriteria:
     gender_enabled: bool
     filter_by_price: bool
     price_filter_delta: float | None
+    min_rating: float | None
+    min_rating_enabled: bool
     filter_by_placement: bool
     filter_by_barter: bool
     need_profile: bool
@@ -90,6 +93,9 @@ def _build_dispatch_criteria(
     )
     filter_by_placement = getattr(order, "filter_by_placement", False)
     filter_by_barter = getattr(order, "filter_by_barter", False)
+    min_rating_raw = getattr(order, "min_rating", None)
+    min_rating = float(min_rating_raw) if min_rating_raw is not None else None
+    min_rating_enabled = min_rating is not None
     need_profile = (
         min_followers_enabled
         or max_followers_enabled
@@ -118,6 +124,8 @@ def _build_dispatch_criteria(
         gender_enabled=gender_enabled,
         filter_by_price=filter_by_price,
         price_filter_delta=price_filter_delta,
+        min_rating=min_rating,
+        min_rating_enabled=min_rating_enabled,
         filter_by_placement=filter_by_placement,
         filter_by_barter=filter_by_barter,
         need_profile=need_profile,
@@ -283,6 +291,7 @@ class OfferDispatchService:
     offer_dispatch_repo: OfferDispatchRepository
     interaction_repo: InteractionRepository
     instagram_stats_repo: InstagramStatsRepository | None = None
+    blogger_rating_repo: BloggerRatingRepository | None = None
     country_repo: CountryRepository | None = None
     manager_order_repo: ManagerOrderRepository | None = None
     transaction_manager: TransactionManager | None = None
@@ -482,7 +491,54 @@ class OfferDispatchService:
                 seen_ids.add(uid)
                 users.append(users_map[uid])
 
-        return users
+        return await self._apply_rating_rules(users, criteria, session)
+
+    async def _apply_rating_rules(
+        self,
+        users: list[User],
+        criteria: _DispatchCriteria,
+        session: object | None,
+    ) -> list[User]:
+        """Apply rating filter and sort when rating repository is configured."""
+        if self.blogger_rating_repo is None:
+            return users
+        ratings_map = (
+            await self.blogger_rating_repo.get_avg_ratings_for_bloggers(
+                [user.user_id for user in users],
+                session=session,
+            )
+        )
+        return self._apply_rating_filter_and_sort(users, ratings_map, criteria)
+
+    def _apply_rating_filter_and_sort(
+        self,
+        users: list[User],
+        ratings_map: dict[UUID, float],
+        criteria: _DispatchCriteria,
+    ) -> list[User]:
+        """Filter by min rating and sort by avg rating descending."""
+        if not users:
+            return []
+
+        eligible_users: list[User] = []
+        for user in users:
+            avg_rating = ratings_map.get(user.user_id)
+            if (
+                criteria.min_rating_enabled
+                and avg_rating is not None
+                and criteria.min_rating is not None
+                and avg_rating < criteria.min_rating
+            ):
+                continue
+            eligible_users.append(user)
+
+        return sorted(
+            eligible_users,
+            key=lambda user: (
+                ratings_map.get(user.user_id) is None,
+                -(ratings_map.get(user.user_id) or 0.0),
+            ),
+        )
 
     async def _dispatch(
         self, order_id: UUID, session: object | None

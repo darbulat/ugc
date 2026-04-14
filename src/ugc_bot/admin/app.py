@@ -17,7 +17,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
-from wtforms import SelectField
+from wtforms import SelectField  # type: ignore[import-untyped]
 
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import (
@@ -56,6 +56,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
     BloggerProfileModel,
+    BloggerRatingModel,
     BotTextModel,
     ComplaintModel,
     ContactPricingModel,
@@ -1526,6 +1527,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.order_type,
         OrderModel.offer_text,
         OrderModel.price,
+        OrderModel.min_rating,
         OrderModel.bloggers_needed,
         OrderModel.status,
         OrderModel.geography,
@@ -1566,6 +1568,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.max_age: "Макс. возраст",
         OrderModel.min_publications: "Мин. публикаций",
         OrderModel.max_publications: "Макс. публикаций",
+        OrderModel.min_rating: "Мин. рейтинг",
         OrderModel.required_blogger_gender: "Пол",
         OrderModel.status: "Статус",
         OrderModel.created_at: "Дата создания",
@@ -1597,6 +1600,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.max_age,
         OrderModel.min_publications,
         OrderModel.max_publications,
+        OrderModel.min_rating,
         OrderModel.required_blogger_gender,
         OrderModel.product_photo_file_id,
         OrderModel.filter_by_price,
@@ -1710,6 +1714,45 @@ class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):
         OfferDispatchModel.in_offer: "В заказе",
         OfferDispatchModel.rejection_reason: "Причина отказа",
         OfferDispatchModel.desired_price: "Желаемая цена",
+    }
+
+
+class BloggerRatingAdmin(ModelView, model=BloggerRatingModel):
+    """Admin view for blogger ratings."""
+
+    can_delete = False
+    name = "Рейтинг креатора"
+    name_plural = "Рейтинги креаторов"
+    column_list = [
+        BloggerRatingModel.rating_id,
+        BloggerRatingModel.blogger_id,
+        BloggerRatingModel.order_id,
+        BloggerRatingModel.rater_id,
+        BloggerRatingModel.rater_role,
+        BloggerRatingModel.score,
+        BloggerRatingModel.comment,
+        BloggerRatingModel.created_at,
+    ]
+    column_sortable_list = list(column_list)
+    column_default_sort = (BloggerRatingModel.created_at, True)
+    column_searchable_list = [BloggerRatingModel.comment]
+    form_columns = [
+        BloggerRatingModel.blogger_id,
+        BloggerRatingModel.order_id,
+        BloggerRatingModel.rater_id,
+        BloggerRatingModel.rater_role,
+        BloggerRatingModel.score,
+        BloggerRatingModel.comment,
+    ]
+    column_labels = {
+        BloggerRatingModel.rating_id: "ID рейтинга",
+        BloggerRatingModel.blogger_id: "ID креатора",
+        BloggerRatingModel.order_id: "ID заказа",
+        BloggerRatingModel.rater_id: "Кто оценил",
+        BloggerRatingModel.rater_role: "Роль",
+        BloggerRatingModel.score: "Оценка",
+        BloggerRatingModel.comment: "Комментарий",
+        BloggerRatingModel.created_at: "Создан",
     }
 
 
@@ -2448,6 +2491,7 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(BloggerProfileAdmin)
     admin.add_view(AdvertiserProfileAdmin)
     admin.add_view(OrderAdmin)
+    admin.add_view(BloggerRatingAdmin)
     admin.add_view(OfferDispatchAdmin)
     admin.add_view(InteractionAdmin)
     admin.add_view(InstagramVerificationAdmin)

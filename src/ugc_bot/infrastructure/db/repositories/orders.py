@@ -276,6 +276,9 @@ def _to_order_entity(model: OrderModel) -> Order:
         max_age=model.max_age,
         min_publications=model.min_publications,
         max_publications=model.max_publications,
+        min_rating=(
+            float(model.min_rating) if model.min_rating is not None else None
+        ),
         required_blogger_gender=model.required_blogger_gender,
         filter_by_price=model.filter_by_price,
         price_filter_delta=(
@@ -317,6 +320,7 @@ def _to_order_model(order: Order) -> OrderModel:
         max_age=order.max_age,
         min_publications=order.min_publications,
         max_publications=order.max_publications,
+        min_rating=order.min_rating,
         required_blogger_gender=order.required_blogger_gender,
         filter_by_price=order.filter_by_price,
         price_filter_delta=order.price_filter_delta,
