@@ -15,15 +15,30 @@ def upgrade() -> None:
         sa.Column("min_rating", sa.Numeric(3, 2), nullable=True),
     )
 
-    rater_role_enum = sa.Enum(
-        "manager",
-        "advertiser",
-        "admin",
-        name="rater_role",
-    )
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
+        rater_role_enum = postgresql.ENUM(
+            "manager",
+            "advertiser",
+            "admin",
+            name="rater_role",
+            create_type=True,
+        )
         rater_role_enum.create(bind, checkfirst=True)
+        rater_role_column_type: sa.types.TypeEngine = postgresql.ENUM(
+            "manager",
+            "advertiser",
+            "admin",
+            name="rater_role",
+            create_type=False,
+        )
+    else:
+        rater_role_column_type = sa.Enum(
+            "manager",
+            "advertiser",
+            "admin",
+            name="rater_role",
+        )
 
     op.create_table(
         "blogger_ratings",
@@ -36,7 +51,7 @@ def upgrade() -> None:
         sa.Column("blogger_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("order_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("rater_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("rater_role", rater_role_enum, nullable=False),
+        sa.Column("rater_role", rater_role_column_type, nullable=False),
         sa.Column("score", sa.SmallInteger(), nullable=False),
         sa.Column("comment", sa.Text(), nullable=True),
         sa.Column(
@@ -96,4 +111,4 @@ def downgrade() -> None:
 
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        sa.Enum(name="rater_role").drop(bind, checkfirst=True)
+        op.execute(sa.text("DROP TYPE IF EXISTS rater_role"))
