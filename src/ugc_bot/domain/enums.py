@@ -124,6 +124,14 @@ class RejectionReason(StrEnum):
     ALREADY_WORKING_WITH_BRAND = "already_working"
 
 
+class RaterRole(StrEnum):
+    """Who left the blogger rating."""
+
+    MANAGER = "manager"
+    ADVERTISER = "advertiser"
+    ADMIN = "admin"
+
+
 class AuditAction(StrEnum):
     """Audit log action type."""
 

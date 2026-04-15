@@ -9,6 +9,7 @@ from uuid import UUID
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
+    BloggerRatingRepository,
     BotTextsRepository,
     ComplaintRepository,
     ContactPricingRepository,
@@ -36,6 +37,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
+    BloggerRating,
     Complaint,
     ContactPricing,
     Country,
@@ -1755,3 +1757,76 @@ class InMemorySupportMessageRepository(SupportMessageRepository):
         self, support_chat_message_id: int, session: object | None = None
     ) -> Optional[SupportMessage]:
         return self.messages.get(support_chat_message_id)
+
+
+@dataclass
+class InMemoryBloggerRatingRepository(BloggerRatingRepository):
+    """In-memory implementation of blogger rating repository."""
+
+    ratings: list[BloggerRating] = field(default_factory=list)
+
+    async def save(
+        self, rating: BloggerRating, session: object | None = None
+    ) -> None:
+        """Persist a rating, replacing existing for same blogger+order."""
+        self.ratings = [
+            r
+            for r in self.ratings
+            if not (
+                r.blogger_id == rating.blogger_id
+                and r.order_id == rating.order_id
+            )
+        ]
+        self.ratings.append(rating)
+
+    async def get_by_blogger_and_order(
+        self,
+        blogger_id: UUID,
+        order_id: UUID,
+        session: object | None = None,
+    ) -> Optional[BloggerRating]:
+        """Fetch rating for specific blogger+order pair."""
+        for rating in self.ratings:
+            if rating.blogger_id == blogger_id and rating.order_id == order_id:
+                return rating
+        return None
+
+    async def get_avg_rating(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> float | None:
+        """Return average score for blogger or None when absent."""
+        scores = [
+            rating.score
+            for rating in self.ratings
+            if rating.blogger_id == blogger_id
+        ]
+        if not scores:
+            return None
+        return sum(scores) / len(scores)
+
+    async def list_by_blogger(
+        self, blogger_id: UUID, session: object | None = None
+    ) -> list[BloggerRating]:
+        """Return ratings for blogger sorted by created_at desc."""
+        return sorted(
+            [
+                rating
+                for rating in self.ratings
+                if rating.blogger_id == blogger_id
+            ],
+            key=lambda rating: rating.created_at,
+            reverse=True,
+        )
+
+    async def get_avg_ratings_for_bloggers(
+        self,
+        blogger_ids: List[UUID],
+        session: object | None = None,
+    ) -> Dict[UUID, float]:
+        """Return average ratings for provided blogger ids."""
+        result: Dict[UUID, float] = {}
+        for blogger_id in blogger_ids:
+            avg = await self.get_avg_rating(blogger_id, session=session)
+            if avg is not None:
+                result[blogger_id] = avg
+        return result

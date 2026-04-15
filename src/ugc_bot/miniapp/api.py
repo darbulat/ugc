@@ -13,8 +13,10 @@ from pydantic import AnyHttpUrl, BaseModel, Field
 from ugc_bot.application.errors import (
     AdvertiserRegistrationError,
     BloggerRegistrationError,
+    InvalidRatingScoreError,
     OrderCreationError,
     OrderNotFoundError,
+    RatingAlreadyExistsError,
     UserNotFoundError,
 )
 from ugc_bot.application.geography import get_cities_list_for_miniapp
@@ -55,6 +57,7 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OrderType,
+    RaterRole,
     WorkFormat,
 )
 from ugc_bot.miniapp.auth import (
@@ -334,6 +337,37 @@ class ManagerFeedbackRequest(BaseModel):
     issue_description: str | None = Field(None, max_length=5000)
 
 
+class CreateRatingRequest(BaseModel):
+    """Create blogger rating payload."""
+
+    init_data: str
+    platform: Platform = "telegram"
+    blogger_id: UUID
+    order_id: UUID
+    score: int = Field(..., ge=1, le=5)
+    comment: str | None = Field(None, max_length=2000)
+
+
+class BloggerRatingItemResponse(BaseModel):
+    """Single rating item for API response."""
+
+    rating_id: str
+    blogger_id: str
+    order_id: str
+    rater_id: str
+    rater_role: str
+    score: int
+    comment: str | None
+    created_at: str
+
+
+class BloggerRatingResponse(BaseModel):
+    """Blogger rating aggregate response."""
+
+    avg_rating: float | None
+    ratings: list[BloggerRatingItemResponse]
+
+
 def _payment_link_for_order(order_id: str, bot_username: str) -> str:
     """Build t.me link to open bot with start=pay_ORDER_ID."""
     username = (bot_username or "").strip().lstrip("@")
@@ -505,6 +539,31 @@ async def _is_user_admin(dispatcher: Any, user_id: UUID) -> bool:
         return user is not None and getattr(user, "admin", False) is True
     except (TypeError, KeyError):
         return False
+
+
+async def _resolve_rater_role(
+    dispatcher: Any,
+    user_id: UUID,
+    order_id: UUID,
+) -> RaterRole:
+    """Resolve rater role from user/order context."""
+    if await _is_user_admin(dispatcher, user_id):
+        return RaterRole.ADMIN
+    order_repo = dispatcher["order_repo"]
+    order = await order_repo.get_by_id(order_id)
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.advertiser_id == user_id:
+        return RaterRole.ADVERTISER
+    manager_service = dispatcher.get("manager_service")
+    if manager_service and await manager_service.is_manager_for_order(
+        user_id, order_id
+    ):
+        return RaterRole.MANAGER
+    raise HTTPException(
+        status_code=403,
+        detail="Only order advertiser, assigned manager, or admin can rate",
+    )
 
 
 async def _notify_ugc_video_saved(
@@ -2165,3 +2224,66 @@ async def manager_feedback(
         interaction.interaction_id, feedback_text
     )
     return {"ok": True, "interaction_id": str(updated.interaction_id)}
+
+
+@router.post("/ratings")
+async def create_blogger_rating(
+    request: Request,
+    body: CreateRatingRequest,
+) -> dict[str, Any]:
+    """Create a blogger rating by advertiser, manager, or admin."""
+    user_id = await _ensure_user_and_get_id(
+        request, body.init_data, platform=body.platform
+    )
+    dispatcher = request.app.state.dispatcher
+    rater_role = await _resolve_rater_role(dispatcher, user_id, body.order_id)
+    rating_service = dispatcher["blogger_rating_service"]
+    try:
+        rating = await rating_service.rate_blogger(
+            blogger_id=body.blogger_id,
+            order_id=body.order_id,
+            rater_id=user_id,
+            rater_role=rater_role,
+            score=body.score,
+            comment=body.comment,
+        )
+    except RatingAlreadyExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except InvalidRatingScoreError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return {"ok": True, "rating_id": str(rating.rating_id)}
+
+
+@router.get(
+    "/bloggers/{blogger_id}/rating",
+    response_model=BloggerRatingResponse,
+)
+async def get_blogger_rating(
+    request: Request,
+    blogger_id: UUID,
+    init_data: str,
+    platform: Platform = "telegram",
+) -> BloggerRatingResponse:
+    """Return blogger average rating and all ratings."""
+    await _ensure_user_and_get_id(request, init_data, platform=platform)
+    dispatcher = request.app.state.dispatcher
+    rating_service = dispatcher["blogger_rating_service"]
+    avg = await rating_service.get_blogger_avg_rating(blogger_id)
+    ratings = await rating_service.get_blogger_ratings(blogger_id)
+    return BloggerRatingResponse(
+        avg_rating=avg,
+        ratings=[
+            BloggerRatingItemResponse(
+                rating_id=str(item.rating_id),
+                blogger_id=str(item.blogger_id),
+                order_id=str(item.order_id),
+                rater_id=str(item.rater_id),
+                rater_role=item.rater_role.value,
+                score=item.score,
+                comment=item.comment,
+                created_at=item.created_at.isoformat(),
+            )
+            for item in ratings
+        ],
+    )

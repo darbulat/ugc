@@ -42,6 +42,9 @@ from ugc_bot.infrastructure.db.repositories.profiles import (
     _to_blogger_profile_entity,  # noqa: F401
     _to_blogger_profile_model,  # noqa: F401
 )
+from ugc_bot.infrastructure.db.repositories.ratings import (
+    SqlAlchemyBloggerRatingRepository,
+)
 from ugc_bot.infrastructure.db.repositories.referrals import (
     SqlAlchemyPayoutRequestRepository,
     SqlAlchemyReferralIncomeEntryRepository,
@@ -66,6 +69,7 @@ __all__ = [
     "SqlAlchemyAdvertiserProfileRepository",
     "SqlAlchemyBloggerProfileRepository",
     "SqlAlchemyBotTextsRepository",
+    "SqlAlchemyBloggerRatingRepository",
     "SqlAlchemyComplaintRepository",
     "SqlAlchemyContactPricingRepository",
     "SqlAlchemyCountryRepository",

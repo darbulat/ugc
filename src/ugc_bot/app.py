@@ -19,6 +19,9 @@ from ugc_bot.bot.telegram.handlers.admin_moderation import (
 from ugc_bot.bot.telegram.handlers.advertiser_registration import (
     router as advertiser_router,
 )
+from ugc_bot.bot.telegram.handlers.blogger_rating import (
+    router as blogger_rating_router,
+)
 from ugc_bot.bot.telegram.handlers.blogger_registration import (
     router as blogger_router,
 )
@@ -126,6 +129,7 @@ def build_dispatcher(
         dispatcher.include_router(my_orders_router)
         dispatcher.include_router(order_router)
         dispatcher.include_router(feedback_router)
+        dispatcher.include_router(blogger_rating_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(complaints_router)
         dispatcher.include_router(survey_messenger_router)

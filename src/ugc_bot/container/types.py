@@ -6,6 +6,9 @@ from ugc_bot.application.ports import CountryRepository, LanguageRepository
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
+from ugc_bot.application.services.blogger_rating_service import (
+    BloggerRatingService,
+)
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
@@ -55,6 +58,7 @@ class BotServices(TypedDict):
     instagram_verification_service: InstagramVerificationService
     order_service: OrderService
     offer_dispatch_service: OfferDispatchService
+    blogger_rating_service: BloggerRatingService
     offer_response_service: OfferResponseService
     interaction_service: InteractionService
     payment_service: PaymentService

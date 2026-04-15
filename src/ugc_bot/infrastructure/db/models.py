@@ -41,6 +41,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    RaterRole,
     UserStatus,
     WorkFormat,
 )
@@ -104,6 +105,7 @@ _ENUM_NAME_MAP: dict[type[StrEnum], str] = {
     OutboxEventStatus: "outbox_event_status",
     PaymentStatus: "payment_status",
     PayoutRequestStatus: "payout_request_status",
+    RaterRole: "rater_role",
     WorkFormat: "work_format",
     AuditAction: "audit_action",
 }
@@ -423,6 +425,9 @@ class OrderModel(Base):
     max_publications: Mapped[Optional[int]] = mapped_column(
         Integer, nullable=True
     )
+    min_rating: Mapped[Optional[float]] = mapped_column(
+        Numeric(3, 2), nullable=True
+    )
     required_blogger_gender: Mapped[Optional[BloggerGender]] = mapped_column(
         _enum_column(BloggerGender), nullable=True
     )
@@ -564,6 +569,52 @@ class OfferDispatchModel(Base):
     )
     desired_price: Mapped[Optional[Decimal]] = mapped_column(
         Numeric(10, 2), nullable=True, default=None
+    )
+
+
+class BloggerRatingModel(Base):
+    """ORM model for blogger ratings."""
+
+    __tablename__ = "blogger_ratings"
+    __table_args__ = (
+        UniqueConstraint(
+            "blogger_id", "order_id", name="uq_blogger_order_rating"
+        ),
+    )
+
+    rating_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        server_default=text("uuid_generate_v4()"),
+    )
+    blogger_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("orders.order_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rater_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    rater_role: Mapped[RaterRole] = mapped_column(
+        _enum_column(RaterRole), nullable=False
+    )
+    score: Mapped[int] = mapped_column(sa.SmallInteger(), nullable=False)
+    comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

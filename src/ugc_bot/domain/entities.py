@@ -17,6 +17,7 @@ from ugc_bot.domain.enums import (
     OutboxEventStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    RaterRole,
     ReferralIncomeType,
     RejectionReason,
     UserStatus,
@@ -226,6 +227,7 @@ class Order:
     max_age: Optional[int] = None
     min_publications: Optional[int] = None
     max_publications: Optional[int] = None
+    min_rating: Optional[float] = None
     required_blogger_gender: Optional[BloggerGender] = None
     # Admin-only: filter creators by price / placement / barter when dispatching
     filter_by_price: bool = False
@@ -473,3 +475,25 @@ class SupportMessage:
     support_chat_message_id: int
     user_text: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass(frozen=True)
+class BloggerRating:
+    """Blogger rating left by manager, advertiser, or admin after an order.
+
+    When adding a new field:
+    1. Add it here (and to the ORM model + migration if persisted).
+    2. Find all usages: grep -r "BloggerRating(" src/
+    3. For updates use dataclasses.replace(rating, ...).
+    4. Update _to_blogger_rating_entity in db repository mapping.
+    """
+
+    rating_id: UUID
+    blogger_id: UUID
+    order_id: UUID
+    rater_id: UUID
+    rater_role: RaterRole
+    score: int
+    comment: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime] = None
