@@ -24,8 +24,6 @@
     document.head.appendChild(script);
   })();
   </script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -446,6 +444,28 @@
       }
 
       var base = window.location.origin;
+      var leafletLoadPromise = null;
+      function loadLeafletOnce() {
+        if (window.L) return Promise.resolve();
+        if (leafletLoadPromise) return leafletLoadPromise;
+        leafletLoadPromise = new Promise(function(resolve, reject) {
+          var link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+          link.crossOrigin = '';
+          document.head.appendChild(link);
+          var s = document.createElement('script');
+          s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+          s.crossOrigin = '';
+          s.onload = function() { resolve(); };
+          s.onerror = function() {
+            leafletLoadPromise = null;
+            reject(new Error('leaflet'));
+          };
+          document.head.appendChild(s);
+        });
+        return leafletLoadPromise;
+      }
       function getInitData() {
         var wa = _getWebApp();
         return (wa && wa.initData) ? wa.initData : '';
@@ -1663,43 +1683,57 @@
         if (block) block.style.display = 'none';
       });
 
-      var bloggerCityMapInited = false;
+      var bloggerCityMapCreating = false;
       var bloggerCityMapInstance = null;
       var bloggerCityMarker = null;
       var hintElCityMap = document.getElementById('blg-city-map-hint');
       function initBloggerCityMap() {
-        if (!window.L) return;
-        var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        }).addTo(map);
-        bloggerCityMapInstance = map;
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            function(pos) {
-              var lat = pos.coords.latitude;
-              var lon = pos.coords.longitude;
-              if (bloggerCityMapInstance) bloggerCityMapInstance.setView([lat, lon], 12);
-            },
-            function() { /* leave default center */ },
-            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
-          );
-        }
-        map.on('click', function(e) {
-          var lat = e.latlng.lat;
-          var lon = e.latlng.lng;
-          if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
-          else bloggerCityMarker = L.marker(e.latlng).addTo(map);
-          api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
-            document.getElementById('blg-city').value = data.city || '';
-            document.getElementById('blg-region').value = data.region || '';
-            document.getElementById('blg-country').value = data.country || '';
-            document.getElementById('blg-lat').value = String(lat);
-            document.getElementById('blg-lon').value = String(lon);
-            if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
-          }).catch(function() {
+        if (bloggerCityMapInstance) return;
+        if (bloggerCityMapCreating) return;
+        bloggerCityMapCreating = true;
+        loadLeafletOnce().then(function() {
+          try {
+            if (bloggerCityMapInstance) return;
+            if (!window.L) return;
+            var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            }).addTo(map);
+            bloggerCityMapInstance = map;
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(
+                function(pos) {
+                  var lat = pos.coords.latitude;
+                  var lon = pos.coords.longitude;
+                  if (bloggerCityMapInstance) bloggerCityMapInstance.setView([lat, lon], 12);
+                },
+                function() { /* leave default center */ },
+                { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+              );
+            }
+            map.on('click', function(e) {
+              var lat = e.latlng.lat;
+              var lon = e.latlng.lng;
+              if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
+              else bloggerCityMarker = L.marker(e.latlng).addTo(map);
+              api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+                document.getElementById('blg-city').value = data.city || '';
+                document.getElementById('blg-region').value = data.region || '';
+                document.getElementById('blg-country').value = data.country || '';
+                document.getElementById('blg-lat').value = String(lat);
+                document.getElementById('blg-lon').value = String(lon);
+                if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
+              }).catch(function() {
+                if (hintElCityMap) hintElCityMap.textContent = tx('city_error');
+              });
+            });
+          } catch (e) {
             if (hintElCityMap) hintElCityMap.textContent = tx('city_error');
-          });
+          }
+        }).catch(function() {
+          if (hintElCityMap) hintElCityMap.textContent = tx('city_error');
+        }).then(function() {
+          bloggerCityMapCreating = false;
         });
       }
       document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
@@ -1707,8 +1741,7 @@
         var mapEl = document.getElementById('blogger-city-map');
         if (!block || !mapEl) return;
         block.style.display = block.style.display === 'none' ? 'block' : 'none';
-        if (block.style.display === 'block' && !bloggerCityMapInited) {
-          bloggerCityMapInited = true;
+        if (block.style.display === 'block' && !bloggerCityMapInstance) {
           setTimeout(initBloggerCityMap, 100);
         }
       });
@@ -1720,8 +1753,7 @@
           return;
         }
         if (block) block.style.display = 'block';
-        if (!bloggerCityMapInited) {
-          bloggerCityMapInited = true;
+        if (!bloggerCityMapInstance) {
           setTimeout(initBloggerCityMap, 100);
         }
         api('/geocode/forward', { city: query }).then(function(data) {
@@ -1732,14 +1764,23 @@
           document.getElementById('blg-lon').value = String(data.lon);
           if (hintElCityMap) hintElCityMap.textContent = tx('city_selected') + (data.city || '');
           function applyOnMap() {
-            if (bloggerCityMapInstance) {
+            if (bloggerCityMapInstance && window.L) {
               bloggerCityMapInstance.setView([data.lat, data.lon], 12);
               if (bloggerCityMarker) bloggerCityMarker.setLatLng([data.lat, data.lon]);
               else bloggerCityMarker = L.marker([data.lat, data.lon]).addTo(bloggerCityMapInstance);
             }
           }
           if (bloggerCityMapInstance) applyOnMap();
-          else setTimeout(applyOnMap, 250);
+          else {
+            var n = 0;
+            var iv = setInterval(function() {
+              n++;
+              if (bloggerCityMapInstance) {
+                clearInterval(iv);
+                applyOnMap();
+              } else if (n >= 40) clearInterval(iv);
+            }, 125);
+          }
         }).catch(function() {
           if (hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
         });
