@@ -821,6 +821,13 @@
           mgr_no_creators: 'Креаторов нет',
           mgr_orders_error: 'Не удалось загрузить заказы',
           mgr_creators_error: 'Не удалось загрузить креаторов',
+          mgr_creator_rating_title: 'Оценка креатора',
+          mgr_creator_rating_comment_ph: 'Комментарий (необязательно)',
+          btn_submit_rating: 'Отправить оценку',
+          mgr_creator_rating_saved: 'Оценка сохранена',
+          mgr_creator_rating_pick: 'Выберите оценку от 1 до 5',
+          mgr_creator_rating_error: 'Не удалось сохранить оценку',
+          mgr_creator_rating_exists: 'По этому заказу оценка уже поставлена',
         },
         en: {
           loading: 'Loading…',
@@ -955,6 +962,13 @@
           mgr_no_creators: 'No creators',
           mgr_orders_error: 'Failed to load orders',
           mgr_creators_error: 'Failed to load creators',
+          mgr_creator_rating_title: 'Rate creator',
+          mgr_creator_rating_comment_ph: 'Comment (optional)',
+          btn_submit_rating: 'Submit rating',
+          mgr_creator_rating_saved: 'Rating saved',
+          mgr_creator_rating_pick: 'Pick a score from 1 to 5',
+          mgr_creator_rating_error: 'Could not save rating',
+          mgr_creator_rating_exists: 'This order is already rated',
         },
         kk: {
           loading: 'Жүктелуде…',
@@ -1085,6 +1099,13 @@
           mgr_no_creators: 'Креаторлар жоқ',
           mgr_orders_error: 'Тапсырыстарды жүктеу мүмкін болмады',
           mgr_creators_error: 'Креаторларды жүктеу мүмкін болмады',
+          mgr_creator_rating_title: 'Креаторды бағалау',
+          mgr_creator_rating_comment_ph: 'Пікір (міндетті емес)',
+          btn_submit_rating: 'Бағалауды жіберу',
+          mgr_creator_rating_saved: 'Баға сақталды',
+          mgr_creator_rating_pick: '1-ден 5-ке дейін баға таңдаңыз',
+          mgr_creator_rating_error: 'Бағаны сақтау мүмкін болмады',
+          mgr_creator_rating_exists: 'Бұл тапсырыс бойынша баға қойылған',
         },
         be: {
           loading: 'Загрузка…',
@@ -1215,6 +1236,13 @@
           mgr_no_creators: 'Крэатараў няма',
           mgr_orders_error: 'Не ўдалося загрузіць заказы',
           mgr_creators_error: 'Не ўдалося загрузіць крэатараў',
+          mgr_creator_rating_title: 'Ацэнка крэатара',
+          mgr_creator_rating_comment_ph: 'Каментар (неабавязкова)',
+          btn_submit_rating: 'Адправіць ацэнку',
+          mgr_creator_rating_saved: 'Ацэнка захавана',
+          mgr_creator_rating_pick: 'Абярыце адзнаку ад 1 да 5',
+          mgr_creator_rating_error: 'Не ўдалося захаваць ацэнку',
+          mgr_creator_rating_exists: 'Па гэтым заказе ацэнка ўжо пастаўлена',
         },
         uz: {
           loading: 'Yuklanmoqda…',
@@ -1345,6 +1373,13 @@
           mgr_no_creators: 'Kreatorlar yo\'q',
           mgr_orders_error: 'Buyurtmalarni yuklab bo\'lmadi',
           mgr_creators_error: 'Kreatorlarni yuklab bo\'lmadi',
+          mgr_creator_rating_title: 'Kreatorni baholash',
+          mgr_creator_rating_comment_ph: 'Izoh (ixtiyoriy)',
+          btn_submit_rating: 'Bahoni yuborish',
+          mgr_creator_rating_saved: 'Baho saqlandi',
+          mgr_creator_rating_pick: '1 dan 5 gacha baho tanlang',
+          mgr_creator_rating_error: 'Bahoni saqlab bo\'lmadi',
+          mgr_creator_rating_exists: 'Bu buyurtma bo\'yicha baho allaqachon qo\'yilgan',
         }
       };
 
@@ -2293,6 +2328,91 @@
         });
       }
 
+      function appendCreatorRatingSection(body, orderId, bloggerId) {
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'margin-top:20px;padding-top:16px;border-top:1.5px solid var(--tg-theme-hint-color,#e0e0e0)';
+        var h = document.createElement('p');
+        h.style.cssText = 'font-size:12px;font-weight:600;color:var(--tg-theme-hint-color,#888);text-transform:uppercase;margin:0 0 10px';
+        h.textContent = tx('mgr_creator_rating_title');
+        wrap.appendChild(h);
+
+        var starsRow = document.createElement('div');
+        starsRow.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px';
+        var selectedScore = 0;
+        var starBtns = [];
+        for (var si = 1; si <= 5; si++) {
+          (function(score) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('aria-label', String(score));
+            b.style.cssText = 'min-width:44px;padding:10px 12px;border-radius:8px;border:1.5px solid var(--tg-theme-hint-color,#ccc);background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000);font-size:15px;cursor:pointer';
+            b.textContent = score + ' \u2B50';
+            b.addEventListener('click', function() {
+              selectedScore = score;
+              for (var j = 0; j < starBtns.length; j++) {
+                var on = j < score;
+                starBtns[j].style.borderColor = on ? 'var(--tg-theme-button-color,#3390ec)' : 'var(--tg-theme-hint-color,#ccc)';
+                starBtns[j].style.fontWeight = (j === score - 1) ? '700' : '400';
+              }
+            });
+            starBtns.push(b);
+            starsRow.appendChild(b);
+          })(si);
+        }
+        wrap.appendChild(starsRow);
+
+        var ta = document.createElement('textarea');
+        ta.rows = 3;
+        ta.placeholder = tx('mgr_creator_rating_comment_ph');
+        ta.style.cssText = 'width:100%;box-sizing:border-box;padding:10px;border:1.5px solid var(--tg-theme-hint-color,#d0d0d0);border-radius:8px;font-size:14px;resize:vertical;background:var(--tg-theme-bg-color,#fff);color:var(--tg-theme-text-color,#000)';
+        wrap.appendChild(ta);
+
+        var submitBtn = document.createElement('button');
+        submitBtn.type = 'button';
+        submitBtn.className = 'btn';
+        submitBtn.style.cssText = 'width:100%;margin-top:12px';
+        submitBtn.textContent = tx('btn_submit_rating');
+        var statusEl = document.createElement('p');
+        statusEl.style.cssText = 'font-size:13px;margin-top:8px';
+        wrap.appendChild(submitBtn);
+        wrap.appendChild(statusEl);
+
+        submitBtn.addEventListener('click', function() {
+          if (selectedScore < 1) {
+            statusEl.textContent = tx('mgr_creator_rating_pick');
+            statusEl.style.color = '#c62828';
+            return;
+          }
+          submitBtn.disabled = true;
+          statusEl.textContent = '';
+          var payload = {
+            order_id: orderId,
+            blogger_id: bloggerId,
+            score: selectedScore
+          };
+          var c = ta.value.trim();
+          if (c) payload.comment = c;
+          api('/ratings', payload).then(function() {
+            statusEl.textContent = tx('mgr_creator_rating_saved');
+            statusEl.style.color = '#2e7d32';
+          }).catch(function(err) {
+            var raw = (err && err.message) ? err.message : '';
+            var msg = raw || tx('mgr_creator_rating_error');
+            var dup = raw.indexOf('already') !== -1 || raw.indexOf('409') !== -1;
+            if (dup) {
+              msg = tx('mgr_creator_rating_exists');
+              submitBtn.disabled = true;
+            } else {
+              submitBtn.disabled = false;
+            }
+            statusEl.textContent = msg;
+            statusEl.style.color = '#c62828';
+          });
+        });
+
+        body.appendChild(wrap);
+      }
+
       function openCreatorDetail(orderId, bloggerId) {
         window._mgrCurrentBloggerId = bloggerId;
         var body = document.getElementById('creator-detail-body');
@@ -2344,6 +2464,8 @@
               p2.appendChild(tgLink);
               body.appendChild(p2);
             }
+
+            appendCreatorRatingSection(body, orderId, bloggerId);
 
             if (data.in_offer) {
               var label = document.createElement('p');
