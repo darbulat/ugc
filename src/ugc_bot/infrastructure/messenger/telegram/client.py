@@ -138,15 +138,20 @@ class TelegramMessengerClient(MessengerClient):
         parse_mode: str | None = None,
     ) -> None:
         """Edit message text."""
-        await self._with_retry(
-            lambda: self._bot.edit_message_text(
-                chat_id=int(chat_id),
-                message_id=int(message_id),
-                text=text,
-                reply_markup=_build_markup(keyboard),
-                parse_mode=parse_mode,
+        try:
+            await self._with_retry(
+                lambda: self._bot.edit_message_text(
+                    chat_id=int(chat_id),
+                    message_id=int(message_id),
+                    text=text,
+                    reply_markup=_build_markup(keyboard),
+                    parse_mode=parse_mode,
+                )
             )
-        )
+        except TelegramBadRequest as exc:
+            msg = (getattr(exc, "message", None) or str(exc)).lower()
+            if "message is not modified" not in msg:
+                raise
 
     async def edit_reply_markup(
         self,
