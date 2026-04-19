@@ -1,14 +1,19 @@
 """Tests for the user role service."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.errors import UserNotFoundError
-from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.application.services.user_role_service import (
+    UserRoleService,
+    _rollback_async_session,
+)
 from ugc_bot.domain.entities import BloggerProfile, User
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -20,6 +25,92 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
     InMemoryUserRepository,
 )
+
+
+class _FakeTransactionManager:
+    """Minimal TransactionManager for tests."""
+
+    def __init__(self, session: object) -> None:
+        self._session = session
+
+    @asynccontextmanager
+    async def transaction(self):
+        yield self._session
+
+
+@pytest.mark.asyncio
+async def test_rollback_async_session_noop() -> None:
+    """No session or non-async rollback should not raise."""
+    await _rollback_async_session(None)
+
+    class _NoRollback:
+        pass
+
+    await _rollback_async_session(_NoRollback())
+
+    sync_sess = MagicMock()
+    sync_sess.rollback = MagicMock(return_value=None)
+    await _rollback_async_session(sync_sess)
+    sync_sess.rollback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_set_user_integrity_error_rolls_back_outer_session() -> None:
+    """Rollback the outer session before reloading the concurrent user row."""
+
+    sess = MagicMock()
+    sess.rollback = AsyncMock()
+    tm = _FakeTransactionManager(sess)
+
+    repo = MagicMock()
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    winner = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000088"),
+        telegram_id="race-sess",
+        messenger_type=MessengerType.TELEGRAM,
+        username="winner",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        referral_code="w1",
+    )
+    repo.get_by_external = AsyncMock(side_effect=[None, winner])
+    repo.save = AsyncMock(
+        side_effect=[IntegrityError("stmt", None, None), None],
+    )
+    service = UserRoleService(user_repo=repo, transaction_manager=tm)
+    result = await service.set_user(
+        external_id="race-sess",
+        messenger_type=MessengerType.TELEGRAM,
+        username="merged",
+    )
+
+    assert result.user_id == winner.user_id
+    assert result.username == "merged"
+    sess.rollback.assert_awaited_once()
+    assert repo.get_by_external.await_args_list[1].kwargs["session"] is sess
+
+
+@pytest.mark.asyncio
+async def test_set_user_integrity_error_referral_retry_succeeds() -> None:
+    """If insert fails only on referral_code, retry insert with a new code."""
+
+    repo = MagicMock()
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    repo.get_by_external = AsyncMock(side_effect=[None, None])
+    repo.save = AsyncMock(
+        side_effect=[IntegrityError("stmt", None, None), None],
+    )
+    service = UserRoleService(user_repo=repo, transaction_manager=None)
+    result = await service.set_user(
+        external_id="ref-race",
+        messenger_type=MessengerType.TELEGRAM,
+        username="x",
+    )
+
+    assert result.telegram_id == "ref-race"
+    assert result.username == "x"
+    assert repo.save.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -37,6 +128,42 @@ async def test_set_user_creates_new_user() -> None:
 
     assert user.telegram_id == "123"
     assert await repo.get_by_id(user.user_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_set_user_integrity_error_concurrent_insert_loads_existing() -> (
+    None
+):
+    """If insert races, recover by loading the row another request created."""
+
+    repo = MagicMock()
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    existing = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000099"),
+        telegram_id="race-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="winner",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        referral_code="existing1",
+    )
+    repo.get_by_external = AsyncMock(side_effect=[None, existing])
+    repo.save = AsyncMock(
+        side_effect=[IntegrityError("stmt", None, None), None],
+    )
+    service = UserRoleService(user_repo=repo, transaction_manager=None)
+    result = await service.set_user(
+        external_id="race-1",
+        messenger_type=MessengerType.TELEGRAM,
+        username="from-loser",
+        telegram_username="alias",
+    )
+
+    assert result.user_id == existing.user_id
+    assert result.username == "from-loser"
+    assert result.telegram == "alias"
+    assert repo.save.await_count == 2
 
 
 @pytest.mark.asyncio

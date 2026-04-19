@@ -1,5 +1,6 @@
 """Service for user creation and lookup."""
 
+import inspect
 import logging
 import re
 import secrets
@@ -7,6 +8,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
+
+from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.ports import (
@@ -33,6 +36,18 @@ def _extract_instagram_username(url: str) -> str | None:
     """Extract the Instagram username from a URL."""
     m = _IG_USERNAME_RE.search(url)
     return m.group(1).lower() if m else None
+
+
+async def _rollback_async_session(session: object | None) -> None:
+    """Reset a failed SQLAlchemy async session so further queries can run."""
+    if session is None:
+        return
+    rollback = getattr(session, "rollback", None)
+    if not callable(rollback):
+        return
+    result = rollback()
+    if inspect.isawaitable(result):
+        await result
 
 
 @dataclass(slots=True)
@@ -64,11 +79,10 @@ class UserRoleService:
         """
 
         async def _run(session: object | None) -> User:
-            existing = await self.user_repo.get_by_external(
-                external_id, messenger_type, session=session
-            )
             now = datetime.now(timezone.utc)
-            if existing:
+
+            async def _persist_existing_update(existing: User) -> User:
+                """Merge incoming profile fields into an existing user."""
                 status = existing.status
                 role_chosen_at = (
                     now
@@ -91,6 +105,12 @@ class UserRoleService:
                 updated = replace(existing, **update_kwargs)
                 await self.user_repo.save(updated, session=session)
                 return updated
+
+            existing = await self.user_repo.get_by_external(
+                external_id, messenger_type, session=session
+            )
+            if existing:
+                return await _persist_existing_update(existing)
 
             status = UserStatus.ACTIVE
             role_chosen_at = now if role_chosen else None
@@ -119,7 +139,27 @@ class UserRoleService:
                 admin=False,
                 referral_code=referral_code,
             )
-            await self.user_repo.save(new_user, session=session)
+            try:
+                await self.user_repo.save(new_user, session=session)
+            except IntegrityError:
+                # Concurrent signups: another request inserted the same
+                # telegram_id/max_id first. Roll back the poisoned session,
+                # load the winner row, and apply updates.
+                await _rollback_async_session(session)
+                concurrent = await self.user_repo.get_by_external(
+                    external_id, messenger_type, session=session
+                )
+                if concurrent is not None:
+                    return await _persist_existing_update(concurrent)
+                # Rare: unique referral_code race between two new signups.
+                retry_user = replace(
+                    new_user,
+                    referral_code=await self._generate_unique_referral_code(
+                        session
+                    ),
+                )
+                await self.user_repo.save(retry_user, session=session)
+                return retry_user
             return new_user
 
         return await with_optional_tx(self.transaction_manager, _run)
