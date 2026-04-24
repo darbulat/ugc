@@ -1,0 +1,101 @@
+{
+  "main": {
+    "id": "ugc-vault",
+    "type": "split",
+    "children": [
+      {
+        "id": "sidebar",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "file-explorer",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {}
+            }
+          },
+          {
+            "id": "search",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": ""
+              }
+            }
+          },
+          {
+            "id": "starred",
+            "type": "leaf",
+            "state": {
+              "type": "starred",
+              "state": {}
+            }
+          }
+        ]
+      },
+      {
+        "id": "main-editor",
+        "type": "leaf",
+        "state": {
+          "type": "markdown",
+          "state": {
+            "file": "INDEX.md"
+          }
+        }
+      },
+      {
+        "id": "right-sidebar",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "backlinks",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {}
+            }
+          },
+          {
+            "id": "outgoing-links",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {}
+            }
+          },
+          {
+            "id": "tag-pane",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {}
+            }
+          },
+          {
+            "id": "outline",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {}
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal"
+  },
+  "left": {
+    "id": "sidebar-left",
+    "collapsed": false
+  },
+  "right": {
+    "id": "sidebar-right",
+    "collapsed": false
+  },
+  "active": "main-editor",
+  "lastOpenFiles": [
+    "INDEX.md"
+  ]
+}
