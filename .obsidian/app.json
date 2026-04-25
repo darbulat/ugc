@@ -1,0 +1,19 @@
+{
+  "baseFontSize": 16,
+  "cssTheme": "default",
+  "foldHeading": true,
+  "foldIndent": true,
+  "showLineNumber": false,
+  "showFrontmatter": false,
+  "strictLineBreaks": false,
+  "tabSize": 2,
+  "useMarkdownLinks": true,
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "relative",
+  "newFileLocation": "root",
+  "newFileFolderPath": "docs",
+  "spellcheck": false,
+  "useTab": true,
+  "showUnsupportedFiles": true,
+  "showInlineBacklinks": true
+}
