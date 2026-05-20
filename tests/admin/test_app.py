@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from ugc_bot.admin.app import (
@@ -21,6 +21,7 @@ from ugc_bot.admin.app import (
     _get_order_moderation_deps,
     _get_services,
     _inject_order_eligible_bloggers_count,
+    _order_duplicate_insert_data,
     _update_blogger_profile_location_from_nominatim,
     _update_order_location_geometry_after_geography_change,
     create_admin_app,
@@ -34,6 +35,7 @@ from ugc_bot.domain.enums import (
     ComplaintStatus,
     InteractionStatus,
     OrderStatus,
+    OrderType,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.models import (
@@ -2104,6 +2106,208 @@ def test_order_admin_list_count_form_edit_query_exclude_deleted() -> None:
     assert list_stmt is not None
     assert count_stmt is not None
     assert form_edit_stmt is not None
+
+
+def test_order_duplicate_insert_data_resets_lifecycle_fields() -> None:
+    """_order_duplicate_insert_data copies brief; status NEW; RR index 0."""
+    oid = UUID("00000000-0000-0000-0000-000000000080")
+    aid = UUID("00000000-0000-4000-8000-000000000081")
+    now = datetime.now(timezone.utc)
+    source = OrderModel(
+        order_id=oid,
+        advertiser_id=aid,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/product",
+        offer_text="Offer copy",
+        barter_description=None,
+        price=150.50,
+        bloggers_needed=3,
+        status=OrderStatus.ACTIVE,
+        created_at=now,
+        updated_at=now,
+        content_usage=None,
+        deadlines=None,
+        geography="Москва",
+        product_photo_file_id=None,
+        min_followers=1000,
+        max_followers=50000,
+        min_age=18,
+        max_age=45,
+        min_publications=10,
+        max_publications=500,
+        min_rating=4.5,
+        required_blogger_gender=None,
+        filter_by_price=False,
+        price_filter_delta=None,
+        filter_by_placement=False,
+        filter_by_barter=False,
+        location_geometry=None,
+        currency="RUB",
+        last_round_robin_index=12,
+        brief_link="https://brief.example/b1",
+    )
+
+    data = _order_duplicate_insert_data(source)
+
+    assert "order_id" not in data
+    assert "created_at" not in data
+    assert data["status"] == OrderStatus.NEW
+    assert data["last_round_robin_index"] == 0
+    assert data["advertiser_id"] == aid
+    assert data["offer_text"] == "Offer copy"
+    assert data["geography"] == "Москва"
+    assert data["bloggers_needed"] == 3
+    assert data["currency"] == "RUB"
+
+
+@pytest.mark.asyncio
+async def test_order_admin_duplicate_order_action_redirects() -> None:
+    """duplicate_order_action inserts copy; redirect to new order edit."""
+    from starlette.datastructures import URL
+
+    order_id = UUID("00000000-0000-0000-0000-000000000090")
+    new_id = UUID("00000000-0000-0000-0000-000000000091")
+    aid = UUID("00000000-0000-4000-8000-000000000092")
+    now = datetime.now(timezone.utc)
+
+    source = OrderModel(
+        order_id=order_id,
+        advertiser_id=aid,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="t",
+        barter_description=None,
+        price=10.0,
+        bloggers_needed=1,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=now,
+        updated_at=now,
+        currency="RUB",
+        last_round_robin_index=0,
+    )
+    created = OrderModel(
+        order_id=new_id,
+        advertiser_id=aid,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="t",
+        barter_description=None,
+        price=10.0,
+        bloggers_needed=1,
+        status=OrderStatus.NEW,
+        created_at=now,
+        updated_at=now,
+        currency="RUB",
+        last_round_robin_index=0,
+    )
+
+    request = MagicMock()
+    request.query_params = MagicMock()
+    request.query_params.get = MagicMock(return_value=str(order_id))
+    request.url_for = MagicMock(
+        return_value=URL("http://test/admin/order-model/edit/%s" % new_id)
+    )
+
+    admin = OrderAdmin()
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            new_callable=AsyncMock,
+            return_value=source,
+        ),
+        patch.object(admin, "insert_model", new_callable=AsyncMock) as ins,
+    ):
+        ins.return_value = created
+        resp = await admin.duplicate_order_action.__wrapped__(admin, request)
+
+    assert resp.status_code == 302
+    assert str(new_id) in resp.headers["location"]
+    ins.assert_awaited_once()
+    assert ins.await_args is not None
+    dup_data = ins.await_args.args[1]
+    assert dup_data["status"] == OrderStatus.NEW
+    assert dup_data["last_round_robin_index"] == 0
+
+
+@pytest.mark.asyncio
+async def test_order_admin_duplicate_order_action_requires_single_pk() -> None:
+    """duplicate_order_action rejects zero or multiple selected orders."""
+    request = MagicMock()
+    request.query_params = MagicMock()
+    request.query_params.get = MagicMock(return_value="")
+
+    admin = OrderAdmin()
+    with pytest.raises(HTTPException) as exc_info:
+        await admin.duplicate_order_action.__wrapped__(admin, request)
+    assert exc_info.value.status_code == 400
+
+    request.query_params.get = MagicMock(
+        return_value="00000000-0000-0000-0000-000000000001,"
+        "00000000-0000-0000-0000-000000000002"
+    )
+    with pytest.raises(HTTPException) as exc_info2:
+        await admin.duplicate_order_action.__wrapped__(admin, request)
+    assert exc_info2.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_order_admin_duplicate_order_action_not_found() -> None:
+    """duplicate_order_action returns 404 when source order is missing."""
+    oid = UUID("00000000-0000-0000-0000-0000000000a0")
+    request = MagicMock()
+    request.query_params = MagicMock()
+    request.query_params.get = MagicMock(return_value=str(oid))
+
+    admin = OrderAdmin()
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await admin.duplicate_order_action.__wrapped__(admin, request)
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_order_admin_duplicate_order_action_skips_deleted() -> None:
+    """duplicate_order_action does not copy deleted orders."""
+    oid = UUID("00000000-0000-0000-0000-0000000000b0")
+    aid = UUID("00000000-0000-4000-8000-0000000000b1")
+    now = datetime.now(timezone.utc)
+    source = OrderModel(
+        order_id=oid,
+        advertiser_id=aid,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com/p",
+        offer_text="x",
+        barter_description=None,
+        price=1.0,
+        bloggers_needed=1,
+        status=OrderStatus.DELETED,
+        created_at=now,
+        updated_at=now,
+        currency="RUB",
+        last_round_robin_index=0,
+    )
+
+    request = MagicMock()
+    request.query_params = MagicMock()
+    request.query_params.get = MagicMock(return_value=str(oid))
+
+    admin = OrderAdmin()
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            new_callable=AsyncMock,
+            return_value=source,
+        ),
+        pytest.raises(HTTPException) as exc_info,
+    ):
+        await admin.duplicate_order_action.__wrapped__(admin, request)
+    assert exc_info.value.status_code == 404
 
 
 def test_interaction_admin_list_count_form_edit_query_exclude_deleted() -> None:

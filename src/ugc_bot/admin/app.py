@@ -9,8 +9,9 @@ from typing import Any, Optional, TypeVar, cast
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException
-from sqladmin import Admin, BaseView, ModelView, expose
+from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -1512,6 +1513,26 @@ def _truncate_50(value: str | None) -> str:
     return s[:50] + ("…" if len(s) > 50 else "")
 
 
+def _order_duplicate_insert_data(source: OrderModel) -> dict[str, Any]:
+    """Build insert payload: copy brief and filters, reset lifecycle fields."""
+    skip = frozenset(
+        {"order_id", "created_at", "updated_at", "completed_at"},
+    )
+    mapper = sa_inspect(OrderModel)
+    data: dict[str, Any] = {}
+    for col in mapper.columns:
+        key = col.key
+        if key in skip:
+            continue
+        if key == "status":
+            data[key] = OrderStatus.NEW
+        elif key == "last_round_robin_index":
+            data[key] = 0
+        else:
+            data[key] = getattr(source, key)
+    return data
+
+
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
@@ -1684,6 +1705,49 @@ class OrderAdmin(ModelView, model=OrderModel):
     def form_edit_query(self, request: Request):
         stmt = super().form_edit_query(request)
         return stmt.where(OrderModel.status != OrderStatus.DELETED)
+
+    @action(
+        name="duplicate_order",
+        label="Дублировать заказ",
+        add_in_list=True,
+        add_in_detail=True,
+    )
+    async def duplicate_order_action(
+        self, request: Request
+    ) -> RedirectResponse:
+        """Insert a copy of the selected order and redirect to its edit page."""
+        raw = (request.query_params.get("pks") or "").strip()
+        pks = [p.strip() for p in raw.split(",") if p.strip()]
+        if len(pks) != 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Выберите ровно один заказ для дублирования.",
+            )
+        try:
+            pk_uuid = UUID(pks[0])
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="Некорректный идентификатор заказа.",
+            ) from exc
+
+        source = await _get_obj_by_pk(self, OrderModel, pk_uuid)
+        if source is None or source.status == OrderStatus.DELETED:
+            raise HTTPException(status_code=404, detail="Заказ не найден.")
+
+        created = await self.insert_model(
+            request, _order_duplicate_insert_data(source)
+        )
+        return RedirectResponse(
+            str(
+                request.url_for(
+                    "admin:edit",
+                    identity=self.identity,
+                    pk=str(created.order_id),
+                )
+            ),
+            status_code=302,
+        )
 
 
 class OfferDispatchAdmin(ModelView, model=OfferDispatchModel):

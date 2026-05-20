@@ -35,6 +35,12 @@
             <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn">
               Cancel
             </a>
+            {% if model_view.can_create %}
+            <a class="btn btn-outline-secondary ms-1"
+               href="{{ model_view._url_for_action(request, 'duplicate-order') }}?pks={{ obj.order_id }}">
+              Дублировать заказ
+            </a>
+            {% endif %}
           </div>
           <div class="col-md-6">
             <div class="btn-group flex-wrap" data-toggle="buttons">
