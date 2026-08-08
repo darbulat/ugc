@@ -186,8 +186,9 @@ class DbConfig(BaseSettings):
     model_config = _ENV
 
     database_url: str = Field(default="", alias="DATABASE_URL")
-    pool_size: int = Field(default=5, alias="DB_POOL_SIZE")
-    max_overflow: int = Field(default=10, alias="DB_MAX_OVERFLOW")
+    # Keep per-service pools small when going through PgBouncer session pooling.
+    pool_size: int = Field(default=1, alias="DB_POOL_SIZE")
+    max_overflow: int = Field(default=0, alias="DB_MAX_OVERFLOW")
     pool_timeout: int = Field(default=30, alias="DB_POOL_TIMEOUT")
 
 

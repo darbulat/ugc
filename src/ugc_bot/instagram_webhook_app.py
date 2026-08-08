@@ -292,10 +292,9 @@ async def _notify_user_verification_success(
                 ),
             )
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             "Error sending verification notification to user",
             extra={"user_id": user_id},
-            exc_info=exc,
         )
 
 
@@ -355,10 +354,9 @@ async def _notify_user_verification_mismatch(
                 ),
             )
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             "Error sending verification mismatch notification to user",
             extra={"user_id": user_id},
-            exc_info=exc,
         )
 
 
@@ -394,10 +392,9 @@ async def _notify_user_verification_api_unavailable(
                 text=msg,
             )
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             "Error sending verification API unavailable notification",
             extra={"user_id": user_id},
-            exc_info=exc,
         )
 
 
@@ -455,10 +452,9 @@ async def _notify_max_user_mismatch(
                 keyboard=keyboard,
             )
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             "Error sending mismatch notification to Max user",
             extra={"chat_id": result.link_max_chat_id},
-            exc_info=exc,
         )
 
 
@@ -505,10 +501,9 @@ async def _notify_user_account_linked(
                     text=msg,
                 )
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             "Error sending account linked notification",
             extra={"user_id": user_id},
-            exc_info=exc,
         )
 
 
@@ -583,7 +578,6 @@ async def _process_single_messaging_event(
         logger.warning(
             "Error verifying code from Instagram webhook",
             extra={"sender_id": sender_id, "error": str(exc)},
-            exc_info=exc,
         )
     return True
 

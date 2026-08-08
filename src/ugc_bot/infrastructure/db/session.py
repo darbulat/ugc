@@ -18,8 +18,8 @@ from sqlalchemy.ext.asyncio import (
 def create_db_engine(
     database_url: str,
     *,
-    pool_size: int = 5,
-    max_overflow: int = 10,
+    pool_size: int = 1,
+    max_overflow: int = 0,
     pool_timeout: int = 30,
     pool_recycle: int = 3600,
 ) -> Engine:
@@ -53,8 +53,8 @@ def _ensure_async_url(url: URL) -> URL:
 def create_async_db_engine(
     database_url: str,
     *,
-    pool_size: int = 5,
-    max_overflow: int = 10,
+    pool_size: int = 1,
+    max_overflow: int = 0,
     pool_timeout: int = 30,
     pool_recycle: int = 3600,
 ) -> AsyncEngine:
@@ -76,8 +76,8 @@ def create_async_db_engine(
 def create_session_factory(
     database_url: str,
     *,
-    pool_size: int = 5,
-    max_overflow: int = 10,
+    pool_size: int = 1,
+    max_overflow: int = 0,
     pool_timeout: int = 30,
     pool_recycle: int = 3600,
 ) -> async_sessionmaker[AsyncSession]:

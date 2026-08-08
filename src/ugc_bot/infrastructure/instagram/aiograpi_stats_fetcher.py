@@ -77,44 +77,71 @@ class AiograpiStatsFetcher:
             if session_path
             else Path(".instagram_session.json")
         )
+        self._disabled_reason: str | None = None
 
     def is_configured(self) -> bool:
         """Return True if credentials are set."""
         return bool(self._instagram_username and self._instagram_password)
 
+    def _sessionid_from_client(self, cl) -> str | None:
+        """Extract sessionid from loaded settings if present."""
+        try:
+            authorization_data = cl.settings.get("authorization_data", {})
+            sessionid = authorization_data.get("sessionid")
+        except Exception:
+            return None
+        if isinstance(sessionid, str) and len(sessionid) > 30:
+            return sessionid
+        return None
+
     async def _create_and_login_client(self, ClientCls):
-        """Create Client, load session, login. Return client or None."""
+        """Create Client, load session, authenticate. Return client or None."""
+        if self._disabled_reason:
+            return None
+
         cl = ClientCls()
         if self._session_path.exists():
             try:
                 cl.load_settings(str(self._session_path))
             except Exception as e:
                 logger.debug("Could not load aiograpi session: %s", e)
+
+        sessionid = self._sessionid_from_client(cl)
+        if sessionid:
+            try:
+                await cl.login_by_sessionid(sessionid)
+                return cl
+            except Exception as e:
+                logger.warning("Aiograpi session auth failed: %s", e)
+                self._disabled_reason = "session auth failed"
+                return None
+
         try:
             await cl.login(self._instagram_username, self._instagram_password)
         except Exception as e:
             logger.warning("Aiograpi login failed: %s", e)
+            self._disabled_reason = "password login failed"
             return None
         return cl
 
     async def _fetch_user_with_retry(
         self, cl, username_clean: str, ClientCls, UserNotFound, LoginRequired
     ):
-        """Fetch user; on LoginRequired re-login and retry."""
+        """Fetch user; on LoginRequired re-authenticate once and retry."""
         try:
             return await cl.user_info_by_username_v1(username_clean)
         except UserNotFound:
             return None
         except LoginRequired:
-            logger.info("Aiograpi session expired, re-logging in...")
-            cl = ClientCls()
+            logger.info("Aiograpi session expired, re-authenticating...")
+            cl = await self._create_and_login_client(ClientCls)
+            if cl is None:
+                return None
             try:
-                await cl.login(
-                    self._instagram_username, self._instagram_password
-                )
                 return await cl.user_info_by_username_v1(username_clean)
             except Exception as inner_e:
-                logger.warning("Aiograpi re-login or fetch failed: %s", inner_e)
+                logger.warning("Aiograpi re-auth or fetch failed: %s", inner_e)
+                self._disabled_reason = "re-auth failed"
                 return None
 
     async def get_profile_stats_by_username(
@@ -124,7 +151,7 @@ class AiograpiStatsFetcher:
 
         Returns raw dict compatible with stats extraction, or None.
         """
-        if not self.is_configured():
+        if not self.is_configured() or self._disabled_reason:
             return None
 
         imp = _import_aiograpi()
@@ -148,7 +175,9 @@ class AiograpiStatsFetcher:
                     username,
                     e,
                 )
+                self._disabled_reason = "feedback required"
                 return None
+            self._disabled_reason = "unexpected fetch error"
             raise
 
         if user is None:
