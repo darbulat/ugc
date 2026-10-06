@@ -94,6 +94,7 @@ async def test_set_my_commands(client, mock_session):
     await client.set_my_commands(cmds)
     args, kwargs = mock_session.request.call_args
     assert args[0] == "PATCH"
+    assert args[1] == "https://platform-api2.max.ru/me/commands"
     assert kwargs["json"] == {"commands": cmds}
 
 

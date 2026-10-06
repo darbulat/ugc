@@ -71,6 +71,24 @@ max_router.include(feedback_router)
 max_router.include(ig_verify_router)
 
 
+async def _register_max_commands(messenger_client: MaxMessengerClient) -> None:
+    """Sync command suggestions without making them a startup dependency."""
+    commands = [
+        {"name": "creator", "description": "Меню блогера"},
+        {"name": "advertiser", "description": "Меню рекламодателя"},
+        {"name": "profile", "description": "Мой профиль"},
+        {"name": "support", "description": "Поддержка"},
+    ]
+    try:
+        await messenger_client.set_my_commands(commands)
+    except Exception as exc:
+        logger.warning(
+            "Failed to register Max bot commands", extra={"error": str(exc)}
+        )
+    else:
+        logger.info("Max bot commands registered")
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     config = load_config()
@@ -125,15 +143,7 @@ async def _lifespan(app: FastAPI):
                 f"Failed to register Max webhook (HTTP {resp.status}): {body}"
             )
 
-    await messenger_client.set_my_commands(
-        [
-            {"name": "creator", "description": "Меню блогера"},
-            {"name": "advertiser", "description": "Меню рекламодателя"},
-            {"name": "profile", "description": "Мой профиль"},
-            {"name": "support", "description": "Поддержка"},
-        ]
-    )
-    logger.info("Max bot commands registered")
+    await _register_max_commands(messenger_client)
 
     logger.info("Max webhook app started")
 

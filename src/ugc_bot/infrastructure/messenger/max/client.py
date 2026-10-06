@@ -16,7 +16,7 @@ from ugc_bot.application.messenger.ports import MessengerClient
 
 logger = logging.getLogger(__name__)
 
-MAX_API_BASE_URL = "https://platform-api.max.ru"
+MAX_API_BASE_URL = "https://platform-api2.max.ru"
 
 
 class MaxAPIError(Exception):
@@ -266,8 +266,8 @@ class MaxMessengerClient(MessengerClient):
         await self._post("/answers", body, params={"callback_id": callback_id})
 
     async def set_my_commands(self, commands: list[dict[str, str]]) -> None:
-        """Set bot command suggestions via PATCH /me."""
-        await self._patch("/me", {"commands": commands})
+        """Set bot command suggestions via PATCH /me/commands."""
+        await self._patch("/me/commands", {"commands": commands})
 
     async def send_invoice(self, *, chat_id: str, invoice: Invoice) -> None:
         raise NotImplementedError(

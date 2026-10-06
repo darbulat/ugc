@@ -17,6 +17,12 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends postgresql-client-16 && \
     rm -rf /var/lib/apt/lists/*
 
+# MAX API's current TLS chain is issued by the Russian Trusted Root CA.
+# Trust the official root for MAX API's platform-api2.max.ru endpoint.
+COPY certs/russian_trusted_root_ca.crt /usr/local/share/ca-certificates/russian-trusted-root-ca.crt
+RUN echo 'aa800ef345422d6158c6fafe1c06c429dbda21c3df4bb1ccb45a920ec1111399  /usr/local/share/ca-certificates/russian-trusted-root-ca.crt' | sha256sum -c - && \
+    update-ca-certificates
+
 # 1. Слой зависимостей — кэшируется при изменении только кода
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt

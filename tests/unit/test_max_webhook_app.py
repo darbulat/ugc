@@ -10,6 +10,7 @@ from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.max.adapter import MaxEventAdapter
+from ugc_bot.infrastructure.messenger.max.client import MaxAPIError
 from ugc_bot.max_webhook_app import handle_max_webhook, health
 
 # ---------------------------------------------------------------------------
@@ -1054,3 +1055,13 @@ async def test_retry_instagram_callback_sets_state() -> None:
     messenger_client.send_text.assert_called_once()
     assert messenger_client.send_text.call_args.kwargs["chat_id"] == "chat_42"
     state_store.set_state.assert_called_once_with(STATE_BLOG_INSTAGRAM)
+
+
+@pytest.mark.asyncio
+async def test_max_command_registration_failure_does_not_abort_startup(caplog):
+    from ugc_bot.max_webhook_app import _register_max_commands
+
+    client = AsyncMock()
+    client.set_my_commands.side_effect = MaxAPIError(404, "not found")
+    await _register_max_commands(client)
+    assert "Failed to register Max bot commands" in caplog.text
