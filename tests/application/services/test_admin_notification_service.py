@@ -732,6 +732,32 @@ async def test_notify_admins_about_order_created_header() -> None:
 
 
 @pytest.mark.asyncio
+async def test_notify_admins_about_order_created_includes_advertiser_contacts() -> None:
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(), telegram_id="12345",
+        messenger_type=MessengerType.TELEGRAM, username="admin",
+        status=UserStatus.ACTIVE, issue_count=0,
+        created_at=datetime.now(timezone.utc), admin=True,
+    )
+    advertiser = _make_advertiser_user(telegram="brand_tg")
+    await user_repo.save(admin)
+    await user_repo.save(advertiser)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+
+    await notify_admins_about_order_created(
+        _make_order(advertiser_id=advertiser.user_id), messenger_client,
+        user_service, ContentModerationService(),
+        advertiser_profile=_make_advertiser_profile(advertiser.user_id),
+    )
+
+    text = messenger_client.sent_text[0]["text"]
+    assert "<b>Телефон:</b> +790****4567" in text
+    assert "<b>Telegram:</b> @brand_tg" in text
+
+
+@pytest.mark.asyncio
 async def test_notify_admins_about_order_created_no_activate_button() -> None:
     """No 'Активировать' button in any keyboard row."""
     user_repo = InMemoryUserRepository()

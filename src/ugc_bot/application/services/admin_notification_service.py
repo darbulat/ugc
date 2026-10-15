@@ -208,6 +208,7 @@ async def notify_admins_about_order_created(
     admin_base_url: str = "",
     currency_symbol: str = "₽",
     country_repo: CountryRepository | None = None,
+    advertiser_profile: AdvertiserProfile | None = None,
 ) -> None:
     """Send new order notification to all Telegram admins (no Activate button).
 
@@ -237,6 +238,14 @@ async def notify_admins_about_order_created(
     advertiser_name = (
         advertiser.username if advertiser else str(order.advertiser_id)
     )
+    phone = advertiser_profile.phone if advertiser_profile else "—"
+    if advertiser and advertiser.telegram:
+        telegram = f"@{html.escape(advertiser.telegram)}"
+    elif advertiser and advertiser.telegram_id and advertiser.telegram_id.isdigit():
+        telegram_id = html.escape(advertiser.telegram_id)
+        telegram = f'<a href="tg://user?id={telegram_id}">tg://user?id={telegram_id}</a>'
+    else:
+        telegram = "—"
 
     banned_warning = ""
     if content_moderation.order_contains_banned_content(
@@ -251,7 +260,11 @@ async def notify_admins_about_order_created(
     body = _build_order_admin_text(
         order, advertiser_name, currency_symbol, banned_warning
     )
-    text = "📋 <b>Новый заказ</b>\n\n" + body
+    contact_details = (
+        f"<b>Телефон:</b> {html.escape(phone)}\n"
+        f"<b>Telegram:</b> {telegram}\n\n"
+    )
+    text = "📋 <b>Новый заказ</b>\n\n" + contact_details + body
 
     buttons: list[list[Button]] = []
     if admin_base_url and admin_base_url.rstrip("/"):

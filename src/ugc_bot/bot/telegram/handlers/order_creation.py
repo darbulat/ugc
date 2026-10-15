@@ -1451,6 +1451,7 @@ async def handle_geography(
         admin_base_url=config.admin.admin_base_url,
         currency_symbol=config.market.currency_symbol,
         country_repo=country_repo,
+        advertiser_profile=await profile_service.get_advertiser_profile(user_id),
     )
 
     support_chat_id = config.referral.referral_support_chat_id
