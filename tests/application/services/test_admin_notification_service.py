@@ -1061,6 +1061,38 @@ async def test_notify_support_chat_skips_empty_chat_id() -> None:
 
 
 @pytest.mark.asyncio
+async def test_notify_support_chat_skips_when_chat_is_already_admin() -> None:
+    """Do not send a second order alert to a chat that gets admin alerts."""
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        telegram_id="243341756",
+        messenger_type=MessengerType.TELEGRAM,
+        username="Камиль",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
+    )
+    await user_repo.save(admin)
+    user_service = UserRoleService(user_repo=user_repo)
+    messenger_client = FakeMessengerClient()
+    user = _make_advertiser_user()
+    order = _make_order(advertiser_id=user.user_id)
+
+    await notify_support_chat_about_new_order(
+        order=order,
+        advertiser_user=user,
+        advertiser_profile=None,
+        messenger_client=messenger_client,
+        support_chat_id="243341756",
+        user_role_service=user_service,
+    )
+
+    assert len(messenger_client.sent_text) == 0
+
+
+@pytest.mark.asyncio
 async def test_notify_support_chat_sends_order_details() -> None:
     """When support_chat_id set, send order details with phone and telegram."""
     messenger_client = FakeMessengerClient()

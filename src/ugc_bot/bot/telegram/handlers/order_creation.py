@@ -1470,6 +1470,7 @@ async def handle_geography(
                 admin_base_url=config.admin.admin_base_url,
                 currency_symbol=config.market.currency_symbol,
                 country_repo=country_repo,
+                user_role_service=user_role_service,
             )
 
     await state_store.clear()

@@ -407,13 +407,29 @@ async def notify_support_chat_about_new_order(
     admin_base_url: str = "",
     currency_symbol: str = "₽",
     country_repo: CountryRepository | None = None,
+    user_role_service: UserRoleService | None = None,
 ) -> None:
     """Send order notification to support chat (REFERRAL_SUPPORT_CHAT_ID).
 
     Includes advertiser phone, telegram username, order details, and admin link.
+    Skip the support copy when that chat is already reached as a Telegram admin.
     """
-    if not support_chat_id.strip():
+    normalized_support_chat_id = support_chat_id.strip()
+    if not normalized_support_chat_id:
         return
+    if user_role_service is not None:
+        admins = await user_role_service.list_admins(
+            messenger_type=MessengerType.TELEGRAM
+        )
+        if any(
+            (admin.telegram_id or "").strip() == normalized_support_chat_id
+            for admin in admins
+        ):
+            logger.info(
+                "Skipping duplicate support order notification to admin chat",
+                extra={"support_chat_id": normalized_support_chat_id},
+            )
+            return
 
     if country_repo is not None:
         country = await country_repo.get_by_currency_code(order.currency)
