@@ -732,13 +732,19 @@ async def test_notify_admins_about_order_created_header() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_order_created_includes_advertiser_contacts() -> None:
+async def test_notify_admins_about_order_created_includes_advertiser_contacts() -> (
+    None
+):
     user_repo = InMemoryUserRepository()
     admin = User(
-        user_id=uuid4(), telegram_id="12345",
-        messenger_type=MessengerType.TELEGRAM, username="admin",
-        status=UserStatus.ACTIVE, issue_count=0,
-        created_at=datetime.now(timezone.utc), admin=True,
+        user_id=uuid4(),
+        telegram_id="12345",
+        messenger_type=MessengerType.TELEGRAM,
+        username="admin",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        admin=True,
     )
     advertiser = _make_advertiser_user(telegram="brand_tg")
     await user_repo.save(admin)
@@ -747,8 +753,10 @@ async def test_notify_admins_about_order_created_includes_advertiser_contacts() 
     messenger_client = FakeMessengerClient()
 
     await notify_admins_about_order_created(
-        _make_order(advertiser_id=advertiser.user_id), messenger_client,
-        user_service, ContentModerationService(),
+        _make_order(advertiser_id=advertiser.user_id),
+        messenger_client,
+        user_service,
+        ContentModerationService(),
         advertiser_profile=_make_advertiser_profile(advertiser.user_id),
     )
 

@@ -241,7 +241,11 @@ async def notify_admins_about_order_created(
     phone = advertiser_profile.phone if advertiser_profile else "—"
     if advertiser and advertiser.telegram:
         telegram = f"@{html.escape(advertiser.telegram)}"
-    elif advertiser and advertiser.telegram_id and advertiser.telegram_id.isdigit():
+    elif (
+        advertiser
+        and advertiser.telegram_id
+        and advertiser.telegram_id.isdigit()
+    ):
         telegram_id = html.escape(advertiser.telegram_id)
         telegram = f'<a href="tg://user?id={telegram_id}">tg://user?id={telegram_id}</a>'
     else:
@@ -261,8 +265,7 @@ async def notify_admins_about_order_created(
         order, advertiser_name, currency_symbol, banned_warning
     )
     contact_details = (
-        f"<b>Телефон:</b> {html.escape(phone)}\n"
-        f"<b>Telegram:</b> {telegram}\n\n"
+        f"<b>Телефон:</b> {html.escape(phone)}\n<b>Telegram:</b> {telegram}\n\n"
     )
     text = "📋 <b>Новый заказ</b>\n\n" + contact_details + body
 
