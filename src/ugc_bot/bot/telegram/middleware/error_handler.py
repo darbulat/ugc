@@ -14,7 +14,7 @@ from contextlib import suppress
 from typing import Any, Awaitable, Callable, cast
 
 from aiogram import BaseMiddleware
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 from aiogram.types import (
     CallbackQuery,
     Message,
@@ -269,6 +269,33 @@ class ErrorHandlerMiddleware(BaseMiddleware):
                 resolved_adapter,
                 payment_provider,
             )
+            return None
+
+        except TelegramForbiddenError as exc:
+            # This expected delivery failure cannot be sent to the blocked user.
+            # Log it without a traceback to avoid a critical alert.
+            user_id = _get_user_id(event)
+            error_type = type(exc).__name__
+            error_message = str(exc)
+
+            logger.warning(
+                "Telegram bot blocked by user",
+                extra={
+                    "error_type": error_type,
+                    "error_message": error_message,
+                    "user_id": user_id,
+                    "event_type": type(event).__name__,
+                },
+            )
+
+            if self.metrics_collector and hasattr(
+                self.metrics_collector, "record_error"
+            ):
+                self.metrics_collector.record_error(
+                    error_type=error_type,
+                    error_message=error_message,
+                    user_id=user_id or "unknown",
+                )
             return None
 
         except TelegramNetworkError as exc:

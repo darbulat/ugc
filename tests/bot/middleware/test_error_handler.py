@@ -5,7 +5,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aiogram.exceptions import TelegramNetworkError
+from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
 from aiogram.methods import SendMessage
 from aiogram.types import CallbackQuery, Chat, Message, PreCheckoutQuery, User
 
@@ -118,6 +118,35 @@ async def test_middleware_handles_unexpected_error() -> None:
 
     assert len(message.answers) == 1
     assert "неожиданная ошибка" in _answer_text(message.answers).lower()
+
+
+@pytest.mark.asyncio
+async def test_middleware_handles_telegram_forbidden_error(caplog) -> None:
+    """A user blocking the bot is logged without an exception traceback."""
+    caplog.set_level(
+        logging.WARNING, logger="ugc_bot.bot.telegram.middleware.error_handler"
+    )
+    middleware = ErrorHandlerMiddleware(metrics_collector=None)
+    message = FakeMessage(user=FakeUser(123))
+
+    async def handler(event, data):
+        raise TelegramForbiddenError(
+            SendMessage(chat_id=0, text=""),
+            "Forbidden: bot was blocked by the user",
+        )
+
+    await middleware(handler, message, {})
+
+    assert not message.answers
+    warnings = [
+        record
+        for record in caplog.records
+        if record.name == "ugc_bot.bot.telegram.middleware.error_handler"
+        and record.levelno == logging.WARNING
+    ]
+    assert len(warnings) == 1
+    assert warnings[0].message == "Telegram bot blocked by user"
+    assert warnings[0].exc_info is None
 
 
 @pytest.mark.asyncio
