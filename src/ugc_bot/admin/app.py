@@ -1554,7 +1554,7 @@ async def _handle_order_photo_upload(
             ),
             caption="Изображение для шаблона заказа (сообщение будет удалено)",
         )
-        file_id = sent.photo[-1].file_id
+        photo_sizes = sent.photo
         try:
             await bot.delete_message(
                 chat_id=sent.chat.id, message_id=sent.message_id
@@ -1563,6 +1563,15 @@ async def _handle_order_photo_upload(
             logger.warning(
                 "Could not remove temporary order photo from support chat"
             )
+        if not photo_sizes:
+            logger.error(
+                "Telegram returned no photo sizes for uploaded order photo"
+            )
+            return JSONResponse(
+                {"error": "Telegram не вернул данные фотографии"},
+                status_code=502,
+            )
+        file_id = photo_sizes[-1].file_id
         return JSONResponse({"file_id": file_id})
     except Exception:
         logger.exception("Failed to upload order photo to Telegram")
