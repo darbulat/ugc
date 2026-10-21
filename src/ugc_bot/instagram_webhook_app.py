@@ -291,7 +291,7 @@ async def _notify_user_verification_success(
                     texts, confirmed=confirmed, verification_started=False
                 ),
             )
-    except Exception as exc:
+    except Exception:
         logger.warning(
             "Error sending verification notification to user",
             extra={"user_id": user_id},
@@ -353,7 +353,7 @@ async def _notify_user_verification_mismatch(
                     texts, confirmed=False
                 ),
             )
-    except Exception as exc:
+    except Exception:
         logger.warning(
             "Error sending verification mismatch notification to user",
             extra={"user_id": user_id},
@@ -391,7 +391,7 @@ async def _notify_user_verification_api_unavailable(
                 chat_id=chat_id,
                 text=msg,
             )
-    except Exception as exc:
+    except Exception:
         logger.warning(
             "Error sending verification API unavailable notification",
             extra={"user_id": user_id},
@@ -451,7 +451,7 @@ async def _notify_max_user_mismatch(
                 text=msg,
                 keyboard=keyboard,
             )
-    except Exception as exc:
+    except Exception:
         logger.warning(
             "Error sending mismatch notification to Max user",
             extra={"chat_id": result.link_max_chat_id},
@@ -500,7 +500,7 @@ async def _notify_user_account_linked(
                     chat_id=max_chat_id,
                     text=msg,
                 )
-    except Exception as exc:
+    except Exception:
         logger.warning(
             "Error sending account linked notification",
             extra={"user_id": user_id},

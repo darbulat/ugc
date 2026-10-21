@@ -200,6 +200,23 @@ def _build_order_admin_text(
     )
 
 
+def _mask_phone_number(phone: str) -> str:
+    if len(phone) <= 8 or "*" in phone:
+        return phone
+    return f"{phone[:4]}{'*' * (len(phone) - 8)}{phone[-4:]}"
+
+
+async def _resolve_order_currency_symbol(
+    order: Order,
+    country_repo: CountryRepository | None,
+    fallback: str,
+) -> str:
+    if country_repo is None:
+        return fallback
+    country = await country_repo.get_by_currency_code(order.currency)
+    return country.currency_symbol if country is not None else fallback
+
+
 async def notify_admins_about_order_created(
     order: Order,
     messenger_client: MessengerClient,
@@ -228,17 +245,19 @@ async def notify_admins_about_order_created(
         logger.debug("No Telegram admins to notify about order created")
         return
 
-    # Resolve currency symbol from order, not from global config
-    if country_repo is not None:
-        country = await country_repo.get_by_currency_code(order.currency)
-        if country is not None:
-            currency_symbol = country.currency_symbol
+    currency_symbol = await _resolve_order_currency_symbol(
+        order, country_repo, currency_symbol
+    )
 
     advertiser = await user_role_service.get_user_by_id(order.advertiser_id)
     advertiser_name = (
         advertiser.username if advertiser else str(order.advertiser_id)
     )
-    phone = advertiser_profile.phone if advertiser_profile else "—"
+    phone = (
+        _mask_phone_number(advertiser_profile.phone)
+        if advertiser_profile
+        else "—"
+    )
     if advertiser and advertiser.telegram:
         telegram = f"@{html.escape(advertiser.telegram)}"
     elif (

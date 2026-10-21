@@ -732,9 +732,7 @@ async def test_notify_admins_about_order_created_header() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_order_created_includes_advertiser_contacts() -> (
-    None
-):
+async def test_order_notification_shows_advertiser_contacts() -> None:
     user_repo = InMemoryUserRepository()
     admin = User(
         user_id=uuid4(),
