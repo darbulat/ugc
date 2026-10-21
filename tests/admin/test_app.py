@@ -95,6 +95,26 @@ def test_create_admin_app(monkeypatch: pytest.MonkeyPatch) -> None:
     assert startup_called.get("service_name") == "admin"
 
 
+def test_order_photo_upload_requires_admin_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Image upload endpoint must reject unauthenticated requests."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    app = create_admin_app()
+    response = TestClient(app).post(
+        "/admin/order-photo-upload",
+        files={"photo": ("image.png", b"not-an-image", "image/png")},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "Требуется вход в админку"
+
+
 def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     """Health endpoint returns ok status."""
 
