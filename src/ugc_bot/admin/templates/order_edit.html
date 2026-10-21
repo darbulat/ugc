@@ -24,6 +24,15 @@
         <fieldset class="form-fieldset">
           {{ render_form_fields(form, form_opts=form_opts) }}
           <div class="mb-3">
+            <label for="order-photo-upload" class="form-label">Загрузить картинку товара (PNG/JPG)</label>
+            <div class="d-flex gap-2">
+              <input type="file" class="form-control" id="order-photo-upload" accept="image/png,image/jpeg">
+              <button type="button" class="btn btn-outline-primary" id="order-photo-upload-button">Загрузить</button>
+            </div>
+            <small class="form-hint">До 10 МБ. Telegram file_id заполнится автоматически; сохраните заказ.</small>
+            <div id="order-photo-upload-status" class="mt-1" role="status"></div>
+          </div>
+          <div class="mb-3">
             <label for="managers" class="form-label">Менеджеры (через запятую @username)</label>
             <input type="text" class="form-control" id="managers" name="managers"
                    value="{{ managers_value|default('', true) }}"
@@ -60,4 +69,24 @@
     </div>
   </div>
 </div>
+<script>
+  document.getElementById('order-photo-upload-button')?.addEventListener('click', async () => {
+    const picker = document.getElementById('order-photo-upload');
+    const status = document.getElementById('order-photo-upload-status');
+    const button = document.getElementById('order-photo-upload-button');
+    if (!picker.files.length) { status.textContent = 'Сначала выберите изображение.'; return; }
+    const data = new FormData(); data.append('photo', picker.files[0]);
+    button.disabled = true; status.textContent = 'Загружаю в Telegram…';
+    try {
+      const response = await fetch('/admin/order-photo-upload', {method: 'POST', body: data, credentials: 'same-origin'});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Не удалось загрузить фото');
+      const field = document.querySelector('[name="product_photo_file_id"]');
+      if (!field) throw new Error('Не найдено поле Telegram file_id');
+      field.value = result.file_id;
+      status.textContent = 'Готово. Сохраните заказ, чтобы применить картинку.';
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+</script>
 {% endblock %}

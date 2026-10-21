@@ -8,14 +8,17 @@ from pathlib import Path
 from typing import Any, Optional, TypeVar, cast
 from uuid import UUID
 
+from aiogram import Bot
+from aiogram.types import BufferedInputFile
 from fastapi import Depends, FastAPI, HTTPException
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
+from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from wtforms import SelectField  # type: ignore[import-untyped]
@@ -1513,6 +1516,69 @@ def _truncate_50(value: str | None) -> str:
     return s[:50] + ("…" if len(s) > 50 else "")
 
 
+async def _handle_order_photo_upload(
+    request: Request, auth: AdminAuth, config: AppConfig
+) -> JSONResponse:
+    """Validate an image and ask Telegram for a reusable photo file_id."""
+    if not await auth.authenticate(request):
+        return JSONResponse(
+            {"error": "Требуется вход в админку"}, status_code=401
+        )
+    form = await request.form()
+    upload = form.get("photo")
+    if not isinstance(upload, StarletteUploadFile):
+        return JSONResponse({"error": "Выберите PNG или JPG"}, status_code=400)
+    content_type = (upload.content_type or "").lower()
+    if content_type not in {"image/png", "image/jpeg"}:
+        return JSONResponse(
+            {"error": "Допустимы только PNG и JPG"}, status_code=400
+        )
+    image = await upload.read(10 * 1024 * 1024 + 1)
+    if len(image) > 10 * 1024 * 1024:
+        return JSONResponse(
+            {"error": "Максимальный размер — 10 МБ"}, status_code=400
+        )
+    if not image.startswith(b"\x89PNG\r\n\x1a\n") and not image.startswith(
+        b"\xff\xd8\xff"
+    ):
+        return JSONResponse(
+            {"error": "Файл не похож на PNG или JPG"}, status_code=400
+        )
+
+    bot = Bot(token=config.bot.bot_token)
+    try:
+        sent = await bot.send_photo(
+            chat_id=int(config.market.support_chat_id),
+            photo=BufferedInputFile(
+                image, filename=upload.filename or "order-image"
+            ),
+            caption="Изображение для шаблона заказа (сообщение будет удалено)",
+        )
+        file_id = sent.photo[-1].file_id
+        try:
+            await bot.delete_message(
+                chat_id=sent.chat.id, message_id=sent.message_id
+            )
+        except Exception:
+            logger.warning(
+                "Could not remove temporary order photo from support chat"
+            )
+        return JSONResponse({"file_id": file_id})
+    except Exception:
+        logger.exception("Failed to upload order photo to Telegram")
+        return JSONResponse(
+            {
+                "error": (
+                    "Telegram не принял фото. Проверьте права бота "
+                    "в чате поддержки."
+                )
+            },
+            status_code=502,
+        )
+    finally:
+        await bot.session.close()
+
+
 def _order_duplicate_insert_data(source: OrderModel) -> dict[str, Any]:
     """Build insert payload: copy brief and filters, reset lifecycle fields."""
     skip = frozenset(
@@ -2610,6 +2676,12 @@ def create_admin_app() -> FastAPI:
     _register_dashboard_routes(
         app, auth, dashboard_service, templates, cache=admin_cache
     )
+
+    @app.post("/admin/order-photo-upload")
+    async def upload_order_photo(request: Request) -> JSONResponse:
+        """Upload an order image and return its Telegram file_id."""
+        return await _handle_order_photo_upload(request, auth, config)
+
     admin = EnumAwareAdmin(
         app,
         engine,
