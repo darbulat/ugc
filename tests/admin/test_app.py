@@ -397,7 +397,7 @@ async def test_user_admin_update_model_sync_session() -> None:
 
 @pytest.mark.asyncio
 async def test_interaction_admin_update_model_resolve_issue() -> None:
-    """Test InteractionAdmin.update_model resolves ISSUE to OK."""
+    """Test InteractionAdmin.update_model refuses unaudited ISSUE to OK."""
 
     interaction_id = UUID("00000000-0000-0000-0000-000000000002")
     old_interaction = InteractionModel(
@@ -456,17 +456,17 @@ async def test_interaction_admin_update_model_resolve_issue() -> None:
         patch("ugc_bot.admin.app._get_services") as mock_get_services,
     ):
         mock_get_services.return_value = (None, None, mock_interaction_service)
-        await admin.update_model(request, str(interaction_id), data)
+        with pytest.raises(PermissionError, match="audited"):
+            await admin.update_model(request, str(interaction_id), data)
 
-    assert mock_session.get.call_count == 2
-    mock_interaction_service.manually_resolve_issue.assert_called_once_with(
-        interaction_id, InteractionStatus.OK
-    )
+    mock_session.get.assert_not_awaited()
+    mock_interaction_service.manually_resolve_issue.assert_not_awaited()
+    assert old_interaction.status == InteractionStatus.ISSUE
 
 
 @pytest.mark.asyncio
 async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
-    """Test InteractionAdmin.update_model resolves ISSUE to NO_DEAL."""
+    """Test InteractionAdmin.update_model refuses unaudited ISSUE to NO_DEAL."""
 
     interaction_id = UUID("00000000-0000-0000-0000-000000000012")
     old_interaction = InteractionModel(
@@ -525,12 +525,12 @@ async def test_interaction_admin_update_model_resolve_issue_no_deal() -> None:
         patch("ugc_bot.admin.app._get_services") as mock_get_services,
     ):
         mock_get_services.return_value = (None, None, mock_interaction_service)
-        await admin.update_model(request, str(interaction_id), data)
+        with pytest.raises(PermissionError, match="audited"):
+            await admin.update_model(request, str(interaction_id), data)
 
-    assert mock_session.get.call_count == 2
-    mock_interaction_service.manually_resolve_issue.assert_called_once_with(
-        interaction_id, InteractionStatus.NO_DEAL
-    )
+    mock_session.get.assert_not_awaited()
+    mock_interaction_service.manually_resolve_issue.assert_not_awaited()
+    assert old_interaction.status == InteractionStatus.ISSUE
 
 
 @pytest.mark.asyncio
@@ -667,7 +667,7 @@ async def test_complaint_admin_update_model_dismissed() -> None:
 
 @pytest.mark.asyncio
 async def test_interaction_admin_update_model_no_engine() -> None:
-    """Test InteractionAdmin.update_model handles missing engine gracefully."""
+    """Raw financial edits fail closed even without an engine."""
 
     interaction_id = UUID("00000000-0000-0000-0000-000000000016")
     old_interaction = InteractionModel(
@@ -708,13 +708,17 @@ async def test_interaction_admin_update_model_no_engine() -> None:
     request = MagicMock()
     data = {"status": InteractionStatus.OK}
 
-    with patch.object(
-        InteractionAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+    with (
+        patch.object(
+            InteractionAdmin.__bases__[0],
+            "update_model",
+            new_callable=AsyncMock,
+        ),
+        pytest.raises(PermissionError, match="audited"),
     ):
-        # Should not raise exception even without engine
         await admin.update_model(request, str(interaction_id), data)
 
-    assert mock_session.get.call_count == 2
+    mock_session.get.assert_not_awaited()
 
 
 @pytest.mark.asyncio

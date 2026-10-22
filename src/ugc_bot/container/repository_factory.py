@@ -30,6 +30,9 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
     SqlReferralOrderIncomeLoader,
 )
+from ugc_bot.infrastructure.db.repositories.legacy_financial_cases import (
+    SqlAlchemyLegacyFinancialCaseRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,9 @@ def build_repos(
         Dict of repository name to repository instance.
     """
     return {
+        "legacy_financial_case_repo": SqlAlchemyLegacyFinancialCaseRepository(
+            session_factory
+        ),
         "user_repo": SqlAlchemyUserRepository(session_factory=session_factory),
         "blogger_repo": SqlAlchemyBloggerProfileRepository(
             session_factory=session_factory

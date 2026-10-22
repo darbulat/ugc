@@ -45,6 +45,9 @@ from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
 )
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.legacy_financial_case_service import (
+    LegacyFinancialCaseService,
+)
 from ugc_bot.application.services.manager_service import ManagerService
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.offer_dispatch_service import (
@@ -504,6 +507,11 @@ def build_bot_services(
             user_referral_binding_repo=repos["user_referral_binding_repo"],
             transaction_manager=transaction_manager,
         ),
+        "legacy_financial_case_service": LegacyFinancialCaseService(
+            repos["legacy_financial_case_repo"]
+        )
+        if repos.get("legacy_financial_case_repo") is not None
+        else None,
         "referral_income_service": referral_income_service,
         "issue_lock_manager": issue_lock_manager,
         "offer_response_rate_limiter": offer_response_rate_limiter,

@@ -1,0 +1,71 @@
+# Standalone ONLY; never combine with main/dev compose or a production .env.
+# docker compose -p ugc-financial-test --env-file /dev/null \
+#   -f docker-compose.financial-test.yml config --quiet
+# ... build test migrate_test; ... up -d --wait db_test
+# ... run --rm migrate_test; ... run --rm test
+# No published ports, bind mounts, external networks, or live app/bot services.
+name: ugc-financial-test
+
+x-test-environment: &test-environment
+  DATABASE_URL: "sqlite:///:memory:"
+  FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+  BOT_TOKEN: test-token
+  ADMIN_USERNAME: test_admin
+  ADMIN_PASSWORD: test_pass
+  ADMIN_SECRET: test_secret
+  KAFKA_ENABLED: "false"
+  FEEDBACK_ENABLED: "false"
+  USE_REDIS_STORAGE: "false"
+  PYTHONPATH: /app/src:/app
+
+x-test-build: &test-build
+  context: .
+  dockerfile: Dockerfile.e2e
+
+services:
+  db_test:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ugc_test
+      POSTGRES_USER: ugc
+      POSTGRES_PASSWORD: ugc
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ugc -d ugc_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  migrate_test:
+    build: *test-build
+    environment: *test-environment
+    depends_on:
+      db_test:
+        condition: service_healthy
+    # Guarded migrations in a fresh schema, removed after the smoke check.
+    command: ["python", "-m", "tests.helpers.financial_environment"]
+    restart: "no"
+
+  test:
+    build: *test-build
+    environment: *test-environment
+    depends_on:
+      db_test:
+        condition: service_healthy
+      migrate_test:
+        condition: service_completed_successfully
+    command:
+      - python
+      - -m
+      - pytest
+      - tests/postgres_financial
+      - -v
+      - --no-cov
+      - --require-financial-postgres
+      - --timeout=60
+    restart: "no"
+
+networks:
+  default:
+    internal: true

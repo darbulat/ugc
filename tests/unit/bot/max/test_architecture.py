@@ -1,6 +1,7 @@
 """Architecture guards for Max handlers."""
 
 import ast
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -24,8 +25,9 @@ def _telegram_module_path(module_name: str) -> Path:
     return _src_root() / Path(*module_name.split(".")).with_suffix(".py")
 
 
+@lru_cache(maxsize=128)
 def _read_ast(path: Path) -> ast.AST:
-    """Parse a Python file into AST."""
+    """Parse each unchanged source file once, not once per imported helper."""
     return ast.parse(path.read_text(encoding="utf-8"))
 
 

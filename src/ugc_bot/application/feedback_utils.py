@@ -11,6 +11,8 @@ def needs_feedback_reminder(feedback_text: str | None) -> bool:
     """
     if feedback_text is None:
         return True
+    if feedback_text.lstrip().startswith(("✅", "❌", "⚠")):
+        return False
     lower = feedback_text.lower()
     return (
         "ещё не связался" in lower

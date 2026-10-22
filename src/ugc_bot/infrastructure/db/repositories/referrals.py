@@ -43,6 +43,9 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralPendingModel,
 )
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
+from ugc_bot.infrastructure.db.repositories.legacy_financial_guards import (
+    SqlAlchemyLegacyFinancialGuardRepository,
+)
 
 
 @dataclass(slots=True)
@@ -266,6 +269,15 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
+            if request.status in (
+                PayoutRequestStatus.PENDING,
+                PayoutRequestStatus.PAID,
+            ):
+                await SqlAlchemyLegacyFinancialGuardRepository(
+                    self.session_factory
+                ).assert_payout_allowed(
+                    request.user_id, request.currency, session=db_session
+                )
             model = _to_payout_request_model(request)
             db_session.add(model)
 
@@ -294,9 +306,25 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
+            conditions = [PayoutRequestModel.request_id == request_id]
+            if status == PayoutRequestStatus.PAID:
+                request = await db_session.get(PayoutRequestModel, request_id)
+                if (
+                    request is None
+                    or request.status != PayoutRequestStatus.PENDING
+                ):
+                    return False
+                await SqlAlchemyLegacyFinancialGuardRepository(
+                    self.session_factory
+                ).assert_payout_allowed(
+                    request.user_id, request.currency, session=db_session
+                )
+                conditions.append(
+                    PayoutRequestModel.status == PayoutRequestStatus.PENDING
+                )
             result = await db_session.execute(
                 update(PayoutRequestModel)
-                .where(PayoutRequestModel.request_id == request_id)
+                .where(*conditions)
                 .values(status=status)
             )
             return result.rowcount > 0  # type: ignore[attr-defined]
@@ -607,6 +635,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                         == OrderModel.order_id,
                         ReferralIncomeEntryModel.referrer_user_id
                         == UserReferralBindingModel.referrer_user_id,
+                        ReferralIncomeEntryModel.referred_user_id
+                        == UserReferralBindingModel.referred_user_id,
                         ReferralIncomeEntryModel.income_type == "creator",
                     ),
                 )
@@ -664,6 +694,8 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                         == OrderModel.order_id,
                         ReferralIncomeEntryModel.referrer_user_id
                         == UserReferralBindingModel.referrer_user_id,
+                        ReferralIncomeEntryModel.referred_user_id
+                        == UserReferralBindingModel.referred_user_id,
                         ReferralIncomeEntryModel.income_type == "advertiser",
                     ),
                 )

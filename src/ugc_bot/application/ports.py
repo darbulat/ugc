@@ -219,7 +219,11 @@ class OrderRepository(ABC):
 
     @abstractmethod
     async def get_by_id(
-        self, order_id: UUID, session: object | None = None
+        self,
+        order_id: UUID,
+        session: object | None = None,
+        *,
+        for_update: bool = False,
     ) -> Optional[Order]:
         """Fetch order by ID."""
 
@@ -409,6 +413,8 @@ class OfferDispatchRepository(ABC):
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        for_update: bool = False,
     ) -> Optional["OfferDispatch"]:
         """Fetch a single dispatch by order and blogger composite key."""
 
@@ -493,8 +499,30 @@ class ManagerOrderRepository(ABC):
         """Check if manager has any order assignments."""
 
 
+class LegacyFinancialGuardRepository(ABC):
+    """Persist dispute blocks atomically and serialize legacy payout writers."""
+
+    @abstractmethod
+    async def block_for_interaction(
+        self, interaction: Interaction, session: object | None = None
+    ) -> None:
+        """Freeze affected recipient/currency pairs without editing income."""
+
+    @abstractmethod
+    async def assert_payout_allowed(
+        self, user_id: UUID, currency: str, session: object | None = None
+    ) -> None:
+        """Lock the recipient; reject unresolved financial review."""
+
+
 class InteractionRepository(ABC):
     """Port for interaction persistence."""
+
+    async def get_by_id_for_update(
+        self, interaction_id: UUID, session: object | None = None
+    ) -> Interaction | None:
+        """Return a locked row in caller transaction (in-memory fallback)."""
+        return await self.get_by_id(interaction_id, session=session)
 
     @abstractmethod
     async def get_by_id(

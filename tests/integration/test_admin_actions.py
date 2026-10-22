@@ -262,9 +262,10 @@ async def test_admin_update_model_logic(
             ]
         )
     )
-    await interaction_admin.update_model(
-        object(), pk, {"status": InteractionStatus.OK}
-    )
+    with pytest.raises(PermissionError, match="audited"):
+        await interaction_admin.update_model(
+            object(), pk, {"status": InteractionStatus.OK}
+        )
 
     reported_id = UUID("00000000-0000-0000-0000-000000000002")
     complaint_admin = ComplaintAdmin()

@@ -293,20 +293,34 @@ class PaymentService:
             ):
                 raise OrderCreationError("Advertiser profile is not set.")
 
-            order = await self.order_repo.get_by_id(order_id, session=session)
+            order = await self.order_repo.get_by_id_for_update(
+                order_id, session=session
+            )
             if order is None:
                 raise OrderCreationError("Order not found.")
             if order.advertiser_id != user_id:
                 raise OrderCreationError("Order does not belong to advertiser.")
 
-            if order.status != OrderStatus.NEW:
-                raise OrderCreationError("Order is not in NEW status.")
-
             existing = await self.payment_repo.get_by_order(
                 order_id, session=session
             )
             if existing and existing.status == PaymentStatus.PAID:
+                # A captured payment owns its provider identity. Changing the
+                # user's country later must not reinterpret an old receipt.
+                if (
+                    existing.order_id != order_id
+                    or existing.external_id != provider_payment_charge_id
+                    or existing.currency != currency
+                    or existing.provider not in {PROVIDER_RU, PROVIDER_INTL}
+                    or Decimal(str(existing.amount)) * 100 != total_amount
+                ):
+                    raise OrderCreationError(
+                        "Payment replay identity mismatch."
+                    )
                 return existing
+
+            if order.status != OrderStatus.NEW:
+                raise OrderCreationError("Order is not in NEW status.")
 
             await self._validate_payment_amount(
                 user, order, total_amount, session

@@ -2,6 +2,9 @@
 
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import date
 from typing import Any, Literal
 from urllib.parse import parse_qsl
@@ -29,6 +32,10 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
+from ugc_bot.application.services.manager_service import (
+    ManagerService,
+    manager_creator_mutation,
+)
 from ugc_bot.bot.telegram.handlers.utils import send_with_retry
 from ugc_bot.bot.telegram.validators import (
     VALIDATOR_ERR_KEYS,
@@ -50,6 +57,7 @@ from ugc_bot.bot.telegram.validators import (
     validate_site_link,
     validate_topics,
 )
+from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.entities import User as UserEntity
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -1865,6 +1873,67 @@ async def manager_creators(
     return ManagerCreatorsResponse(creators=creators, total=total)
 
 
+async def _authorize_manager_creator(
+    dispatcher: Any,
+    user_id: UUID,
+    order_id: UUID,
+    blogger_id: UUID,
+    dispatch: OfferDispatch,
+    *,
+    allow_reserve: bool = False,
+) -> None:
+    """Keep contact reads and operational writes behind pair authorization."""
+    if await _is_user_admin(dispatcher, user_id):
+        logger.info(
+            "Admin manager-pair access",
+            extra={
+                "event": "admin_manager_pair_access",
+                "user_id": str(user_id),
+                "order_id": str(order_id),
+                "blogger_id": str(blogger_id),
+            },
+        )
+        return
+    if not ManagerService.is_assigned_to_creator(
+        user_id, order_id, blogger_id, dispatch, allow_reserve=allow_reserve
+    ):
+        raise HTTPException(
+            status_code=403, detail="Not assigned to this creator"
+        )
+
+
+@asynccontextmanager
+async def _locked_manager_creator(
+    dispatcher: Any,
+    user_id: UUID,
+    order_id: UUID,
+    blogger_id: UUID,
+    *,
+    allow_reserve: bool = False,
+) -> AsyncIterator[tuple[Order, OfferDispatch, object | None]]:
+    """HTTP error translation; authorization/locking is a service boundary."""
+    manager_service = dispatcher["manager_service"]
+    try:
+        async with manager_creator_mutation(
+            manager_service,
+            dispatcher["order_repo"],
+            dispatcher["offer_dispatch_repo"],
+            manager_service.transaction_manager,
+            order_id,
+            blogger_id,
+            user_id,
+            is_admin=await _is_user_admin(dispatcher, user_id),
+            allow_reserve=allow_reserve,
+        ) as locked:
+            yield locked
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/manager/orders/{order_id}/creators/{blogger_id}")
 async def manager_creator_detail(
     request: Request,
@@ -1895,6 +1964,9 @@ async def manager_creator_detail(
             status_code=404, detail="Creator not found in this order"
         )
 
+    await _authorize_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, dispatch
+    )
     profile_service = dispatcher["profile_service"]
     user_repo = dispatcher["user_repo"]
     user = await user_repo.get_by_id(blogger_id)
@@ -1945,9 +2017,21 @@ async def manager_set_ugc_video(
             status_code=404, detail="Creator not found in this order"
         )
 
-    previous_url = dispatch.ugc_video_url
+    await _authorize_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, dispatch
+    )
     url_str = str(body.url)
-    await dispatch_repo.set_ugc_video_url(order_id, blogger_id, url_str)
+    interaction_service = dispatcher["interaction_service"]
+    async with _locked_manager_creator(
+        dispatcher, user_id, order_id, blogger_id
+    ) as (order, dispatch, session):
+        previous_url = dispatch.ugc_video_url
+        await dispatch_repo.set_ugc_video_url(
+            order_id, blogger_id, url_str, session=session
+        )
+        interaction = await interaction_service.get_or_create(
+            order_id, blogger_id, order.advertiser_id, session=session
+        )
 
     if previous_url is None:
         user_repo = dispatcher["user_repo"]
@@ -1962,11 +2046,6 @@ async def manager_set_ugc_video(
             messenger_client=messenger_client,
             bot_texts_service=bot_texts_service,
         )
-
-    interaction_service = dispatcher["interaction_service"]
-    interaction = await interaction_service.get_or_create(
-        order_id, blogger_id, order.advertiser_id
-    )
 
     return {
         "ok": True,
@@ -2008,22 +2087,33 @@ async def manager_remove_creator(
         raise HTTPException(
             status_code=404, detail="Creator not found in this order"
         )
+    await _authorize_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, dispatch, allow_reserve=True
+    )
     if not dispatch.in_offer:
         raise HTTPException(
             status_code=409, detail="Creator is already in reserve"
         )
 
-    await dispatch_repo.set_in_offer(order_id, blogger_id, False)
-
     interaction_service = dispatcher["interaction_service"]
-    interaction = await interaction_service.get_or_create(
-        order_id, blogger_id, order.advertiser_id
-    )
-    # Set default NO_DEAL status; frontend may overwrite with
-    # a more specific reason via the /feedback endpoint afterward.
-    await interaction_service.record_advertiser_feedback(
-        interaction.interaction_id, "❌ Не договорились"
-    )
+    async with _locked_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, allow_reserve=True
+    ) as (order, dispatch, session):
+        if not dispatch.in_offer:
+            raise HTTPException(
+                status_code=409, detail="Creator is already in reserve"
+            )
+        await dispatch_repo.set_in_offer(
+            order_id, blogger_id, False, session=session
+        )
+        interaction = await interaction_service.get_or_create(
+            order_id, blogger_id, order.advertiser_id, session=session
+        )
+        updated = await interaction_service.record_advertiser_feedback(
+            interaction.interaction_id, "❌ Не договорились", session=session
+        )
+    if session is not None:
+        await interaction_service.after_feedback_commit(updated)
 
     user_repo = dispatcher["user_repo"]
     creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
@@ -2089,6 +2179,9 @@ async def manager_add_creator(
         raise HTTPException(
             status_code=404, detail="Creator not found in this order"
         )
+    await _authorize_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, dispatch, allow_reserve=True
+    )
     if dispatch.in_offer:
         raise HTTPException(
             status_code=409, detail="Creator is already in the order"
@@ -2100,13 +2193,33 @@ async def manager_add_creator(
             status_code=409, detail="No free slots in this order"
         )
 
-    await dispatch_repo.set_in_offer(order_id, blogger_id, True)
-    await dispatch_repo.set_manager(order_id, blogger_id, user_id)
-
     interaction_service = dispatcher["interaction_service"]
-    await interaction_service.reactivate_or_create_for_contacts_sent(
-        order_id, blogger_id, order.advertiser_id
-    )
+    async with _locked_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, allow_reserve=True
+    ) as (order, dispatch, session):
+        if dispatch.in_offer:
+            raise HTTPException(
+                status_code=409, detail="Creator is already in the order"
+            )
+        if (
+            await dispatch_repo.count_accepted_by_order(
+                order_id, session=session
+            )
+            >= order.bloggers_needed
+        ):
+            raise HTTPException(
+                status_code=409, detail="No free slots in this order"
+            )
+        await dispatch_repo.set_in_offer(
+            order_id, blogger_id, True, session=session
+        )
+        await dispatch_repo.set_manager(
+            order_id, blogger_id, user_id, session=session
+        )
+        dispatch = replace(dispatch, in_offer=True, manager_id=user_id)
+        await interaction_service.reactivate_or_create_for_contacts_sent(
+            order_id, blogger_id, order.advertiser_id, session=session
+        )
 
     user_repo = dispatcher["user_repo"]
     creator: UserEntity | None = await user_repo.get_by_id(blogger_id)
@@ -2148,6 +2261,23 @@ async def manager_add_creator(
     return {"ok": True}
 
 
+def _manager_feedback_text(body: ManagerFeedbackRequest) -> str:
+    """Format operational feedback, not a v1 financial confirmation."""
+    if body.status == "ok":
+        return "✅ Всё прошло хорошо"
+    if body.status == "no_deal":
+        reason = body.no_deal_reason.strip() if body.no_deal_reason else ""
+        return (
+            f"❌ Не договорились: {reason}" if reason else "❌ Не договорились"
+        )
+    if not body.issue_description or not body.issue_description.strip():
+        raise HTTPException(
+            status_code=422,
+            detail="issue_description is required for issue status",
+        )
+    return "⚠️ Проблема/мошенничество: " + body.issue_description.strip()
+
+
 @router.post("/manager/orders/{order_id}/creators/{blogger_id}/feedback")
 async def manager_feedback(
     request: Request,
@@ -2174,35 +2304,48 @@ async def manager_feedback(
     if order is None:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    interaction_service = dispatcher["interaction_service"]
-    interaction = await interaction_service.get_or_create(
-        order_id, blogger_id, order.advertiser_id
+    dispatch = await dispatcher["offer_dispatch_repo"].get_by_order_and_blogger(
+        order_id, blogger_id
+    )
+    if dispatch is None:
+        raise HTTPException(
+            status_code=404, detail="Creator not found in this order"
+        )
+    await _authorize_manager_creator(
+        dispatcher, user_id, order_id, blogger_id, dispatch
     )
 
-    if body.status == "ok":
-        feedback_text = "✅ Всё прошло хорошо"
-    elif body.status == "no_deal":
-        reason = body.no_deal_reason.strip() if body.no_deal_reason else ""
-        feedback_text = (
-            f"❌ Не договорились: {reason}" if reason else "❌ Не договорились"
+    interaction_service = dispatcher["interaction_service"]
+    feedback_text = _manager_feedback_text(body)
+
+    complaint = None
+    complaint_created = False
+    async with _locked_manager_creator(
+        dispatcher, user_id, order_id, blogger_id
+    ) as (order, dispatch, session):
+        interaction = await interaction_service.get_or_create(
+            order_id, blogger_id, order.advertiser_id, session=session
         )
-    else:
-        # status == "issue"
-        if not body.issue_description or not body.issue_description.strip():
-            raise HTTPException(
-                status_code=422,
-                detail="issue_description is required for issue status",
+        if body.status == "issue":
+            complaint_service = dispatcher["complaint_service"]
+            (
+                complaint,
+                complaint_created,
+            ) = await complaint_service.get_or_create_for_interaction(
+                reporter_id=user_id,
+                reported_id=blogger_id,
+                order_id=order_id,
+                reason=(body.issue_description or "").strip(),
+                session=session,
             )
-        feedback_text = "⚠️ Проблема/мошенничество"
-
-        complaint_service = dispatcher["complaint_service"]
-        complaint = await complaint_service.create_complaint(
-            reporter_id=user_id,
-            reported_id=blogger_id,
-            order_id=order_id,
-            reason=body.issue_description.strip(),
+        updated = await interaction_service.record_advertiser_feedback(
+            interaction.interaction_id, feedback_text, session=session
         )
-
+    if session is not None:
+        await interaction_service.after_feedback_commit(updated)
+    if complaint is not None and complaint_created:
+        if session is not None:
+            dispatcher["complaint_service"].after_complaint_commit(complaint)
         user_role_service = dispatcher["user_role_service"]
         messenger_client = dispatcher["messenger_client"]
         try:
@@ -2220,9 +2363,6 @@ async def manager_feedback(
                 },
             )
 
-    updated = await interaction_service.record_advertiser_feedback(
-        interaction.interaction_id, feedback_text
-    )
     return {"ok": True, "interaction_id": str(updated.interaction_id)}
 
 
@@ -2287,3 +2427,83 @@ async def get_blogger_rating(
             for item in ratings
         ],
     )
+
+
+class LegacyCaseListRequest(InitDataBody):
+    """Read-only finance visibility; auth identity is server-resolved."""
+
+    model_config = {"extra": "forbid"}
+    interaction_id: UUID | None = None
+    after: UUID | None = None
+    limit: int = Field(default=200, ge=1, le=200)
+    released: bool | None = None
+
+
+class LegacyCaseReviewRequest(InitDataBody):
+    """No actor/admin override accepted from the request body."""
+
+    model_config = {"extra": "forbid"}
+    expected_version: int = Field(ge=1)
+    command_id: UUID
+    decision: Literal["release_no_adjustment", "keep_blocked"]
+    reason: str = Field(min_length=1, max_length=4000)
+    confirmed_result: bool = False
+
+
+async def _financial_operator(request: Request, body: InitDataBody) -> UUID:
+    actor_id = await _ensure_user_and_get_id(
+        request, body.init_data, platform=body.platform
+    )
+    if not await _is_user_admin(request.app.state.dispatcher, actor_id):
+        raise HTTPException(
+            status_code=403, detail="Financial review requires an admin"
+        )
+    return actor_id
+
+
+@router.post("/finance/legacy-cases")
+async def legacy_financial_cases(
+    request: Request, body: LegacyCaseListRequest
+) -> list[dict[str, Any]]:
+    actor_id = await _financial_operator(request, body)
+    service = request.app.state.dispatcher.get("legacy_financial_case_service")
+    if service is None:
+        raise HTTPException(
+            status_code=503, detail="Legacy financial review unavailable"
+        )
+    try:
+        return await service.list_cases(
+            actor_id,
+            body.interaction_id,
+            after=body.after,
+            limit=body.limit,
+            released=body.released,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post("/finance/legacy-cases/{interaction_id}/review")
+async def review_legacy_financial_case(
+    request: Request, interaction_id: UUID, body: LegacyCaseReviewRequest
+) -> dict[str, Any]:
+    actor_id = await _financial_operator(request, body)
+    service = request.app.state.dispatcher.get("legacy_financial_case_service")
+    if service is None:
+        raise HTTPException(
+            status_code=503, detail="Legacy financial review unavailable"
+        )
+    try:
+        return await service.review(
+            interaction_id,
+            actor_id=actor_id,
+            expected_version=body.expected_version,
+            command_id=body.command_id,
+            decision=body.decision,
+            reason=body.reason,
+            confirmed_result=body.confirmed_result,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc

@@ -158,8 +158,9 @@ async def _send_advertiser_feedback(
         "Выберите подходящий вариант:",
     )
     text = template.format(creator_link=creator_link)
+    sent = False
     for chat_id, client in targets:
-        await send_with_retry(
+        accepted = await send_with_retry(
             client,
             chat_id=chat_id,
             text=text,
@@ -175,14 +176,14 @@ async def _send_advertiser_feedback(
                 advertiser, user_role_service
             ),
         )
+        sent = bool(accepted) or sent
     logger.info(
-        "Sent interaction feedback request to advertiser",
-        extra={
-            "interaction_id": str(interaction.interaction_id),
-            "advertiser_id": str(advertiser.user_id),
-        },
+        "Feedback request accepted"
+        if sent
+        else "Feedback request delivery failed",
+        extra={"interaction_id": str(interaction.interaction_id)},
     )
-    return True
+    return sent
 
 
 async def _send_blogger_feedback(
@@ -209,8 +210,9 @@ async def _send_blogger_feedback(
         "Удалось ли вам связаться с заказчиком {order_link_part}",
     )
     text = template.format(order_link_part=order_link_part)
+    sent = False
     for chat_id, client in targets:
-        await send_with_retry(
+        accepted = await send_with_retry(
             client,
             chat_id=chat_id,
             text=text,
@@ -226,14 +228,14 @@ async def _send_blogger_feedback(
                 blogger, user_role_service
             ),
         )
+        sent = bool(accepted) or sent
     logger.info(
-        "Sent interaction feedback request to blogger",
-        extra={
-            "interaction_id": str(interaction.interaction_id),
-            "blogger_id": str(interaction.blogger_id),
-        },
+        "Feedback request accepted"
+        if sent
+        else "Feedback request delivery failed",
+        extra={"interaction_id": str(interaction.interaction_id)},
     )
-    return True
+    return sent
 
 
 def _feedback_texts_for_locale(locale: str) -> dict[str, str]:

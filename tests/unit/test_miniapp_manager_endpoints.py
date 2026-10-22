@@ -1,5 +1,6 @@
 """Tests for miniapp manager endpoints."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,14 +13,17 @@ from ugc_bot.domain.entities import AdvertiserProfile, OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType, RejectionReason
 from ugc_bot.miniapp.api import (
     CreatorDetailRequest,
+    InitDataBody,
     ManagerCreatorsRequest,
     ManagerFeedbackRequest,
     ManagerOrdersRequest,
     UgcVideoRequest,
+    manager_add_creator,
     manager_creator_detail,
     manager_creators,
     manager_feedback,
     manager_orders,
+    manager_remove_creator,
     manager_set_ugc_video,
 )
 
@@ -52,6 +56,378 @@ def _make_dispatch() -> OfferDispatch:
         in_offer=True,
         manager_id=MANAGER_ID,
     )
+
+
+@pytest.mark.asyncio
+async def test_other_manager_cannot_read_creator() -> None:
+    from dataclasses import replace
+
+    dispatch = replace(_make_dispatch(), manager_id=uuid4())
+    request, dispatcher = TestManagerCreatorDetailEndpoint()._make_deps(
+        dispatch=dispatch
+    )
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ),
+        pytest.raises(HTTPException) as exc,
+    ):
+        await manager_creator_detail(
+            request, ORDER_ID, BLOGGER_ID, CreatorDetailRequest(init_data="x")
+        )
+    assert exc.value.status_code == 403
+    dispatcher["user_repo"].get_by_id.assert_not_awaited()
+    dispatcher["profile_service"].get_blogger_profile.assert_not_awaited()
+    assert "phone" not in exc.value.detail
+
+
+def _pair_request(dispatch: OfferDispatch | None) -> tuple[MagicMock, dict]:
+    interaction = MagicMock(interaction_id=uuid4())
+    deps = {
+        "manager_service": MagicMock(
+            is_manager_for_order=AsyncMock(return_value=True)
+        ),
+        "order_repo": MagicMock(
+            get_by_id=AsyncMock(return_value=_make_order())
+        ),
+        "offer_dispatch_repo": MagicMock(
+            get_by_order_and_blogger=AsyncMock(return_value=dispatch),
+            set_ugc_video_url=AsyncMock(),
+            set_in_offer=AsyncMock(),
+            set_manager=AsyncMock(),
+            count_accepted_by_order=AsyncMock(return_value=0),
+        ),
+        "interaction_service": MagicMock(
+            after_feedback_commit=AsyncMock(),
+            get_or_create=AsyncMock(return_value=interaction),
+            reactivate_or_create_for_contacts_sent=AsyncMock(),
+            record_advertiser_feedback=AsyncMock(return_value=interaction),
+        ),
+        "user_repo": MagicMock(get_by_id=AsyncMock(return_value=None)),
+        "messenger_client": MagicMock(send_text=AsyncMock()),
+        "bot_texts_service": MagicMock(
+            get=AsyncMock(return_value="{manager_telegram}")
+        ),
+    }
+    request = MagicMock()
+    request.app.state.dispatcher = deps
+    return request, deps
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["video", "remove", "feedback", "add"])
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "foreign",
+        "missing",
+        "unassigned",
+        "other_order",
+        "other_creator",
+        "invalid_identity",
+    ],
+)
+async def test_other_manager_cannot_mutate_creator(
+    operation: str, assignment: str
+) -> None:
+    dispatch = replace(
+        _make_dispatch(), manager_id=uuid4(), in_offer=operation != "add"
+    )
+    actor_id = MANAGER_ID
+    if assignment == "missing":
+        dispatch = None
+    elif assignment == "unassigned":
+        dispatch = replace(dispatch, manager_id=None)
+    elif assignment == "other_order":
+        dispatch = replace(dispatch, order_id=uuid4())
+    elif assignment == "other_creator":
+        dispatch = replace(dispatch, blogger_id=uuid4())
+    elif assignment == "invalid_identity":
+        actor_id = None
+    request, deps = _pair_request(dispatch)
+    endpoint, body = {
+        "video": (
+            manager_set_ugc_video,
+            UgcVideoRequest(init_data="x", url="https://example.com/v"),
+        ),
+        "remove": (manager_remove_creator, InitDataBody(init_data="x")),
+        "feedback": (
+            manager_feedback,
+            ManagerFeedbackRequest(init_data="x", status="ok"),
+        ),
+        "add": (manager_add_creator, InitDataBody(init_data="x")),
+    }[operation]
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=actor_id),
+        ),
+        patch("ugc_bot.miniapp.api.send_with_retry", new=AsyncMock()) as send,
+        pytest.raises(HTTPException) as exc,
+    ):
+        await endpoint(request, ORDER_ID, BLOGGER_ID, body)
+    assert exc.value.status_code == (404 if assignment == "missing" else 403)
+    for name in ["set_ugc_video_url", "set_in_offer", "set_manager"]:
+        getattr(deps["offer_dispatch_repo"], name).assert_not_awaited()
+    deps["interaction_service"].get_or_create.assert_not_awaited()
+    deps[
+        "interaction_service"
+    ].reactivate_or_create_for_contacts_sent.assert_not_awaited()
+    deps["interaction_service"].record_advertiser_feedback.assert_not_awaited()
+    assert all(
+        call.args[0] != BLOGGER_ID
+        for call in deps["user_repo"].get_by_id.await_args_list
+    )
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reserve_return_uses_current_manager() -> None:
+    from contextlib import asynccontextmanager
+
+    from ugc_bot.application.services.manager_service import ManagerService
+
+    session = object()
+    events = []
+
+    @asynccontextmanager
+    async def transaction():
+        yield session
+        events.append("commit")
+
+    old_manager = uuid4()
+    dispatch = replace(_make_dispatch(), in_offer=False, manager_id=old_manager)
+    request, deps = _pair_request(dispatch)
+    creator = MagicMock(telegram_id=123, language="ru")
+    current = MagicMock(telegram="current_manager")
+    stale = MagicMock(telegram="stale_manager")
+    deps["user_repo"].get_by_id.side_effect = lambda uid, **kw: {
+        BLOGGER_ID: creator,
+        MANAGER_ID: current,
+        old_manager: stale,
+    }.get(uid)
+    deps["manager_service"] = ManagerService(
+        manager_order_repo=MagicMock(),
+        user_repo=deps["user_repo"],
+        order_repo=deps["order_repo"],
+        offer_dispatch_repo=deps["offer_dispatch_repo"],
+        transaction_manager=MagicMock(transaction=transaction),
+    )
+
+    async def send_after_commit(*args, **kwargs):
+        assert events == ["commit"]
+
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ),
+        patch(
+            "ugc_bot.miniapp.api._is_user_admin",
+            new=AsyncMock(return_value=True),
+        ),
+        patch(
+            "ugc_bot.miniapp.api.send_with_retry",
+            new=AsyncMock(side_effect=send_after_commit),
+        ) as send,
+    ):
+        result = await manager_add_creator(
+            request, ORDER_ID, BLOGGER_ID, InitDataBody(init_data="x")
+        )
+        deps[
+            "offer_dispatch_repo"
+        ].get_by_order_and_blogger.return_value = replace(
+            dispatch, in_offer=True, manager_id=MANAGER_ID
+        )
+        with pytest.raises(HTTPException) as repeated:
+            await manager_add_creator(
+                request, ORDER_ID, BLOGGER_ID, InitDataBody(init_data="x")
+            )
+        assert repeated.value.status_code == 409
+    send.assert_awaited_once()
+    for method in ["set_in_offer", "set_manager"]:
+        write = getattr(deps["offer_dispatch_repo"], method)
+        write.assert_awaited_once()
+        assert write.await_args.kwargs["session"] is session
+    assert result == {"ok": True}
+    assert send.await_args.kwargs["text"] == "@current_manager"
+    assert all(
+        call.args[0] != old_manager
+        for call in deps["user_repo"].get_by_id.await_args_list
+    )
+    assert deps["offer_dispatch_repo"].set_manager.await_args.args == (
+        ORDER_ID,
+        BLOGGER_ID,
+        MANAGER_ID,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["detail", "video", "feedback"])
+async def test_reserve_assignment_cannot_disclose_contacts_or_mutate(
+    operation: str,
+) -> None:
+    request, deps = _pair_request(replace(_make_dispatch(), in_offer=False))
+    deps["profile_service"] = MagicMock(
+        get_blogger_profile=AsyncMock(return_value=None)
+    )
+    endpoint, body = {
+        "detail": (manager_creator_detail, CreatorDetailRequest(init_data="x")),
+        "video": (
+            manager_set_ugc_video,
+            UgcVideoRequest(init_data="x", url="https://example.com/v"),
+        ),
+        "feedback": (
+            manager_feedback,
+            ManagerFeedbackRequest(init_data="x", status="ok"),
+        ),
+    }[operation]
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ),
+        pytest.raises(HTTPException) as exc,
+    ):
+        await endpoint(request, ORDER_ID, BLOGGER_ID, body)
+    assert exc.value.status_code == 403
+    deps["interaction_service"].get_or_create.assert_not_awaited()
+    deps["offer_dispatch_repo"].set_ugc_video_url.assert_not_awaited()
+    deps["profile_service"].get_blogger_profile.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stale_reserve_assignment_denied_before_write() -> None:
+    from ugc_bot.application.services.manager_service import ManagerService
+
+    own = replace(_make_dispatch(), in_offer=False)
+    stale = replace(own, manager_id=uuid4())
+    request, deps = _pair_request(own)
+    deps["offer_dispatch_repo"].get_by_order_and_blogger.side_effect = [
+        own,
+        stale,
+    ]
+    deps["manager_service"] = ManagerService(
+        manager_order_repo=MagicMock(
+            list_by_order=AsyncMock(
+                return_value=[MagicMock(user_id=MANAGER_ID)]
+            )
+        ),
+        user_repo=deps["user_repo"],
+        order_repo=deps["order_repo"],
+        offer_dispatch_repo=deps["offer_dispatch_repo"],
+    )
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ),
+        patch("ugc_bot.miniapp.api.send_with_retry", new=AsyncMock()) as send,
+        pytest.raises(HTTPException) as exc,
+    ):
+        await manager_add_creator(
+            request, ORDER_ID, BLOGGER_ID, InitDataBody(init_data="x")
+        )
+    assert exc.value.status_code == 403
+    deps["offer_dispatch_repo"].set_manager.assert_not_awaited()
+    deps["offer_dispatch_repo"].set_in_offer.assert_not_awaited()
+    deps[
+        "interaction_service"
+    ].reactivate_or_create_for_contacts_sent.assert_not_awaited()
+    send.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_role_admin_can_read_foreign_pair_with_audit(caplog) -> None:
+    request, deps = _pair_request(replace(_make_dispatch(), manager_id=uuid4()))
+    deps["profile_service"] = MagicMock(
+        get_blogger_profile=AsyncMock(return_value=None)
+    )
+    admin = MagicMock(admin=True, telegram="admin_contact")
+    creator = MagicMock(telegram="creator_contact")
+    deps["user_repo"].get_by_id.side_effect = lambda uid: (
+        admin if uid == MANAGER_ID else creator
+    )
+    deps["manager_service"].is_manager_for_order.return_value = False
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ),
+        caplog.at_level("INFO"),
+    ):
+        result = await manager_creator_detail(
+            request, ORDER_ID, BLOGGER_ID, CreatorDetailRequest(init_data="x")
+        )
+    assert result.telegram == "creator_contact"
+    deps["manager_service"].is_manager_for_order.assert_not_awaited()
+    assert any(
+        getattr(record, "event", None) == "admin_manager_pair_access"
+        for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_own_creator_remove_keeps_legacy_response() -> None:
+    request, deps = _pair_request(_make_dispatch())
+    with patch(
+        "ugc_bot.miniapp.api._ensure_user_and_get_id",
+        new=AsyncMock(return_value=MANAGER_ID),
+    ):
+        result = await manager_remove_creator(
+            request, ORDER_ID, BLOGGER_ID, InitDataBody(init_data="x")
+        )
+    assert result["ok"] is True
+    deps["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
+        ORDER_ID,
+        BLOGGER_ID,
+        False,
+        session=deps["offer_dispatch_repo"].set_in_offer.await_args.kwargs[
+            "session"
+        ],
+    )
+    deps["interaction_service"].record_advertiser_feedback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reserve_return_rechecks_already_active_before_writes() -> None:
+    from ugc_bot.application.services.manager_service import ManagerService
+
+    reserve = replace(_make_dispatch(), in_offer=False)
+    request, deps = _pair_request(reserve)
+    deps["offer_dispatch_repo"].get_by_order_and_blogger.side_effect = [
+        reserve,
+        _make_dispatch(),
+    ]
+    deps["manager_service"] = ManagerService(
+        manager_order_repo=MagicMock(),
+        user_repo=deps["user_repo"],
+        order_repo=deps["order_repo"],
+        offer_dispatch_repo=deps["offer_dispatch_repo"],
+    )
+    with (
+        patch(
+            "ugc_bot.miniapp.api._ensure_user_and_get_id",
+            new=AsyncMock(return_value=MANAGER_ID),
+        ),
+        patch(
+            "ugc_bot.miniapp.api._is_user_admin",
+            new=AsyncMock(return_value=True),
+        ),
+        patch("ugc_bot.miniapp.api.send_with_retry", new=AsyncMock()) as send,
+        pytest.raises(HTTPException) as exc,
+    ):
+        await manager_add_creator(
+            request, ORDER_ID, BLOGGER_ID, InitDataBody(init_data="x")
+        )
+    assert exc.value.status_code == 409
+    deps["offer_dispatch_repo"].set_manager.assert_not_awaited()
+    deps["offer_dispatch_repo"].set_in_offer.assert_not_awaited()
+    deps[
+        "interaction_service"
+    ].reactivate_or_create_for_contacts_sent.assert_not_awaited()
+    send.assert_not_awaited()
 
 
 class TestManagerOrdersEndpoint:
@@ -541,7 +917,7 @@ class TestManagerSetUgcVideoEndpoint:
 
         interaction = MagicMock()
         interaction.interaction_id = uuid4()
-        interaction_service = MagicMock()
+        interaction_service = MagicMock(after_feedback_commit=AsyncMock())
         interaction_service.get_or_create = AsyncMock(return_value=interaction)
 
         deps = {
@@ -715,7 +1091,7 @@ class TestManagerFeedbackEndpoint:
         interaction = MagicMock()
         interaction.interaction_id = INTERACTION_ID
 
-        interaction_service = MagicMock()
+        interaction_service = MagicMock(after_feedback_commit=AsyncMock())
         interaction_service.get_or_create = AsyncMock(return_value=interaction)
 
         updated_interaction = MagicMock()
@@ -727,6 +1103,11 @@ class TestManagerFeedbackEndpoint:
         deps = {
             "manager_service": manager_service,
             "order_repo": order_repo,
+            "offer_dispatch_repo": MagicMock(
+                get_by_order_and_blogger=AsyncMock(
+                    return_value=_make_dispatch()
+                )
+            ),
             "interaction_service": interaction_service,
         }
 
@@ -749,10 +1130,19 @@ class TestManagerFeedbackEndpoint:
 
         assert result == {"ok": True, "interaction_id": str(INTERACTION_ID)}
         interaction_service.get_or_create.assert_awaited_once_with(
-            ORDER_ID, BLOGGER_ID, order.advertiser_id
+            ORDER_ID,
+            BLOGGER_ID,
+            order.advertiser_id,
+            session=interaction_service.get_or_create.await_args.kwargs[
+                "session"
+            ],
         )
         interaction_service.record_advertiser_feedback.assert_awaited_once_with(
-            INTERACTION_ID, "✅ Всё прошло хорошо"
+            INTERACTION_ID,
+            "✅ Всё прошло хорошо",
+            session=interaction_service.get_or_create.await_args.kwargs[
+                "session"
+            ],
         )
 
     @pytest.mark.asyncio
@@ -764,7 +1154,7 @@ class TestManagerFeedbackEndpoint:
         updated = MagicMock()
         updated.interaction_id = INTERACTION_ID
 
-        interaction_service = MagicMock()
+        interaction_service = MagicMock(after_feedback_commit=AsyncMock())
         interaction_service.get_or_create = AsyncMock(return_value=interaction)
         interaction_service.record_advertiser_feedback = AsyncMock(
             return_value=updated
@@ -775,6 +1165,11 @@ class TestManagerFeedbackEndpoint:
                 is_manager_for_order=AsyncMock(return_value=True)
             ),
             "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "offer_dispatch_repo": MagicMock(
+                get_by_order_and_blogger=AsyncMock(
+                    return_value=_make_dispatch()
+                )
+            ),
             "interaction_service": interaction_service,
         }
 
@@ -805,7 +1200,7 @@ class TestManagerFeedbackEndpoint:
         updated = MagicMock()
         updated.interaction_id = INTERACTION_ID
 
-        interaction_service = MagicMock()
+        interaction_service = MagicMock(after_feedback_commit=AsyncMock())
         interaction_service.get_or_create = AsyncMock(return_value=interaction)
         interaction_service.record_advertiser_feedback = AsyncMock(
             return_value=updated
@@ -813,13 +1208,20 @@ class TestManagerFeedbackEndpoint:
 
         complaint = MagicMock()
         complaint_service = MagicMock()
-        complaint_service.create_complaint = AsyncMock(return_value=complaint)
+        complaint_service.get_or_create_for_interaction = AsyncMock(
+            return_value=(complaint, True)
+        )
 
         deps = {
             "manager_service": MagicMock(
                 is_manager_for_order=AsyncMock(return_value=True)
             ),
             "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "offer_dispatch_repo": MagicMock(
+                get_by_order_and_blogger=AsyncMock(
+                    return_value=_make_dispatch()
+                )
+            ),
             "interaction_service": interaction_service,
             "complaint_service": complaint_service,
             "user_role_service": MagicMock(),
@@ -849,8 +1251,10 @@ class TestManagerFeedbackEndpoint:
             result = await manager_feedback(request, ORDER_ID, BLOGGER_ID, body)
 
         assert result["ok"] is True
-        complaint_service.create_complaint.assert_awaited_once()
-        call_kwargs = complaint_service.create_complaint.call_args.kwargs
+        complaint_service.get_or_create_for_interaction.assert_awaited_once()
+        call_kwargs = (
+            complaint_service.get_or_create_for_interaction.call_args.kwargs
+        )
         assert call_kwargs["reporter_id"] == MANAGER_ID
         assert call_kwargs["reported_id"] == BLOGGER_ID
         assert "Обман" in call_kwargs["reason"]
@@ -866,6 +1270,11 @@ class TestManagerFeedbackEndpoint:
                 is_manager_for_order=AsyncMock(return_value=True)
             ),
             "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "offer_dispatch_repo": MagicMock(
+                get_by_order_and_blogger=AsyncMock(
+                    return_value=_make_dispatch()
+                )
+            ),
             "interaction_service": MagicMock(
                 get_or_create=AsyncMock(return_value=interaction)
             ),
@@ -958,6 +1367,11 @@ class TestManagerFeedbackEndpoint:
                 is_manager_for_order=AsyncMock(return_value=True)
             ),
             "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "offer_dispatch_repo": MagicMock(
+                get_by_order_and_blogger=AsyncMock(
+                    return_value=_make_dispatch()
+                )
+            ),
             "interaction_service": MagicMock(
                 get_or_create=AsyncMock(return_value=interaction)
             ),
@@ -993,7 +1407,7 @@ class TestManagerFeedbackEndpoint:
         updated = MagicMock()
         updated.interaction_id = INTERACTION_ID
 
-        interaction_service = MagicMock()
+        interaction_service = MagicMock(after_feedback_commit=AsyncMock())
         interaction_service.get_or_create = AsyncMock(return_value=interaction)
         interaction_service.record_advertiser_feedback = AsyncMock(
             return_value=updated
@@ -1001,7 +1415,9 @@ class TestManagerFeedbackEndpoint:
 
         complaint = MagicMock()
         complaint_service = MagicMock()
-        complaint_service.create_complaint = AsyncMock(return_value=complaint)
+        complaint_service.get_or_create_for_interaction = AsyncMock(
+            return_value=(complaint, True)
+        )
 
         user_role_service = MagicMock()
         messenger_client = MagicMock()
@@ -1011,6 +1427,11 @@ class TestManagerFeedbackEndpoint:
                 is_manager_for_order=AsyncMock(return_value=True)
             ),
             "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
+            "offer_dispatch_repo": MagicMock(
+                get_by_order_and_blogger=AsyncMock(
+                    return_value=_make_dispatch()
+                )
+            ),
             "interaction_service": interaction_service,
             "complaint_service": complaint_service,
             "user_role_service": user_role_service,

@@ -449,12 +449,6 @@ async def handle_feedback(
         )
         return
 
-    if status_raw == "issue":
-        await _handle_feedback_issue(
-            incoming, kind, interaction_id, messenger_client, state_store, texts
-        )
-        return
-
     feedback_text_val = _feedback_text_map(texts).get(status_raw)
     if feedback_text_val is None:
         await messenger_client.answer_callback(
@@ -478,6 +472,11 @@ async def handle_feedback(
         )
         return
 
+    if status_raw == "issue":
+        await _handle_feedback_issue(
+            incoming, kind, interaction_id, messenger_client, state_store, texts
+        )
+        return
     await _send_feedback_response(
         incoming,
         kind,

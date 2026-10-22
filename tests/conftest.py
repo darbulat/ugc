@@ -50,6 +50,29 @@ from ugc_bot.infrastructure.messenger.telegram.adapter import (  # noqa: E402
 from ugc_bot.logging_setup import suppress_noisy_loggers  # noqa: E402
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--require-financial-postgres",
+        action="store_true",
+        help="Require isolated financial PostgreSQL (fail instead of skip)",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    from tests.helpers.financial_environment import (
+        require_synthetic_e2e,
+        require_test_database,
+    )
+
+    try:
+        require_synthetic_e2e(os.environ)
+        url = os.environ.get("FINANCIAL_TEST_DATABASE_URL")
+        if url or config.getoption("--require-financial-postgres"):
+            require_test_database(url)
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from None
+
+
 def fake_transaction_manager():
     """Return a fake transaction manager that yields a dummy session.
 

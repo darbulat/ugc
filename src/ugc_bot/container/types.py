@@ -50,6 +50,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 class BotServices(TypedDict):
     """Typed structure for bot dispatcher services and dependencies."""
 
+    legacy_financial_case_service: Any
     metrics_collector: Any
     content_moderation_service: ContentModerationService
     user_role_service: UserRoleService

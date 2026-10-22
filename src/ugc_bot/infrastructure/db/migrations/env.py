@@ -60,6 +60,9 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            # PostgreSQL enum labels added by an earlier revision must be
+            # committed before a later revision uses them in an index.
+            transaction_per_migration=True,
             version_table_schema=schema,
         )
 

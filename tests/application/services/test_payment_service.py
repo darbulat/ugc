@@ -267,7 +267,7 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
         )
     )
     order_repo = Mock()
-    order_repo.get_by_id = AsyncMock(return_value=order)
+    order_repo.get_by_id_for_update = AsyncMock(return_value=order)
     order_repo.save = AsyncMock()
 
     pricing_repo = Mock()
@@ -307,6 +307,9 @@ async def test_confirm_payment_uses_transaction_manager() -> None:
         currency="RUB",
     )
 
+    order_repo.get_by_id_for_update.assert_awaited_once_with(
+        order_id, session=session_marker
+    )
     payment_repo.save.assert_called_once()
     call_kwargs = payment_repo.save.call_args.kwargs
     assert "session" in call_kwargs
