@@ -26,6 +26,9 @@ from ugc_bot.application.services.content_moderation_service import (
 from ugc_bot.application.services.exchange_rate_service import (
     ExchangeRateService,
 )
+from ugc_bot.application.services.financial_policy_service import (
+    FinancialPolicyService,
+)
 from ugc_bot.application.services.geocoder import NominatimGeocoder
 from ugc_bot.application.services.geocoder_cache import CachingGeocoder
 from ugc_bot.application.services.geocoder_dadata import DadataGeocoder
@@ -58,6 +61,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+from ugc_bot.application.services.paid_item_service import PaidItemService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_income_recorder import (
@@ -428,6 +432,14 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             advertiser_repo=repos["advertiser_repo"],
             order_repo=repos["order_repo"],
+            paid_item_service=PaidItemService(
+                repository=repos["financial_item_repo"],
+                policy_service=FinancialPolicyService(
+                    config.financial,
+                    reader=repos["financial_policy_repo"],
+                    transaction_manager=transaction_manager,
+                ),
+            ),
             allowed_blogger_counts=config.order.get_allowed_blogger_counts_set(),
             max_order_price=config.order.max_order_price,
             metrics_collector=metrics_collector,

@@ -47,6 +47,7 @@ from ugc_bot.domain.enums import (
     WorkFormat,
 )
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.financial_schema import TRIGGER_SQL
 
 
 class _GeometryOrText(TypeDecorator):
@@ -54,9 +55,11 @@ class _GeometryOrText(TypeDecorator):
 
     impl = Text
     cache_ok = True
+    spatial_index = True
+    use_N_D_index = False
 
     def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
+        if dialect is None or dialect.name == "postgresql":
             return Geometry(geometry_type=self.geometry_type, srid=self.srid)
         return Text()
 
@@ -369,6 +372,10 @@ class OrderModel(Base):
     """Order ORM model."""
 
     __tablename__ = "orders"
+
+    financial_version: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
 
     order_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -784,6 +791,25 @@ class PaymentModel(Base):
 
     __tablename__ = "payments"
 
+    financial_version: Mapped[Optional[str]] = mapped_column(
+        String, nullable=True
+    )
+    captured_minor: Mapped[Optional[int]] = mapped_column(
+        BigInteger, nullable=True
+    )
+    __table_args__ = (
+        UniqueConstraint(
+            "payment_id",
+            "order_id",
+            "currency",
+            name="uq_payment_allocation_scope",
+        ),
+        sa.CheckConstraint(
+            "captured_minor IS NULL OR captured_minor >= 0",
+            name="ck_payment_captured_nonnegative",
+        ),
+    )
+
     payment_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         primary_key=True,
@@ -1164,3 +1190,198 @@ class AuditLogModel(Base):
             "changed_at",
         ),
     )
+
+
+class FinancialPolicyVersionModel(Base):
+    __tablename__ = "financial_policy_versions"
+
+    version: Mapped[str] = mapped_column(String, primary_key=True)
+    approved_by: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False
+    )
+    approved_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    effective_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    refund_window_seconds: Mapped[int] = mapped_column(
+        BigInteger, nullable=False
+    )
+    rules: Mapped[dict] = mapped_column(_JsonbOrJson(), nullable=False)
+    __table_args__ = (
+        sa.CheckConstraint(
+            "refund_window_seconds > 0", name="ck_policy_refund_window_positive"
+        ),
+    )
+
+
+class OrderItemModel(Base):
+    __tablename__ = "order_items"
+
+    paid_item_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("orders.order_id"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    selection_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    accompaniment_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    policy_version: Mapped[str] = mapped_column(
+        String, ForeignKey("financial_policy_versions.version"), nullable=False
+    )
+    selection_due_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    selection_state: Mapped[str] = mapped_column(
+        String, nullable=False, server_default=text("'created'")
+    )
+    captured_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    quote_key: Mapped[str] = mapped_column(String, nullable=False)
+    quote_payload: Mapped[dict] = mapped_column(_JsonbOrJson(), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("order_id", "ordinal", name="uq_item_order_ordinal"),
+        UniqueConstraint(
+            "paid_item_id",
+            "order_id",
+            "currency",
+            name="uq_item_allocation_scope",
+        ),
+        sa.CheckConstraint("ordinal > 0", name="ck_item_ordinal_positive"),
+        sa.CheckConstraint(
+            "selection_minor > 0 AND accompaniment_minor >= 0",
+            name="ck_item_components_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "currency = 'RUB'", name="ck_item_published_currency"
+        ),
+    )
+
+
+class ItemAssignmentModel(Base):
+    __tablename__ = "item_assignments"
+
+    assignment_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    paid_item_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("order_items.paid_item_id"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    creator_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False
+    )
+    manager_id: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=True
+    )
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    valid_to: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=False
+    )
+    __table_args__ = (
+        UniqueConstraint(
+            "assignment_id", "paid_item_id", name="uq_assignment_id_item"
+        ),
+        UniqueConstraint(
+            "paid_item_id", "version", name="uq_assignment_item_version"
+        ),
+        sa.CheckConstraint(
+            "version > 0 AND (valid_to IS NULL OR valid_to >= valid_from)",
+            name="ck_assignment_validity",
+        ),
+        sa.Index(
+            "uq_assignment_current_item",
+            "paid_item_id",
+            unique=True,
+            postgresql_where=text("valid_to IS NULL"),
+            sqlite_where=text("valid_to IS NULL"),
+        ),
+    )
+
+
+class PaymentItemAllocationModel(Base):
+    __tablename__ = "payment_item_allocations"
+
+    allocation_key: Mapped[str] = mapped_column(String, primary_key=True)
+    payment_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False
+    )
+    paid_item_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), nullable=False
+    )
+    component: Mapped[str] = mapped_column(String, nullable=False)
+    amount_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    __table_args__ = (
+        sa.ForeignKeyConstraint(
+            ["payment_id", "order_id", "currency"],
+            ["payments.payment_id", "payments.order_id", "payments.currency"],
+            name="fk_allocation_payment_scope",
+        ),
+        sa.ForeignKeyConstraint(
+            ["paid_item_id", "order_id", "currency"],
+            [
+                "order_items.paid_item_id",
+                "order_items.order_id",
+                "order_items.currency",
+            ],
+            name="fk_allocation_item_scope",
+        ),
+        UniqueConstraint(
+            "paid_item_id", "component", name="uq_item_component_allocation"
+        ),
+        sa.CheckConstraint("amount_minor > 0", name="ck_allocation_positive"),
+        sa.CheckConstraint(
+            "component IN ('selection', 'accompaniment')",
+            name="ck_allocation_component",
+        ),
+    )
+
+
+from ugc_bot.infrastructure.db.ledger_schema import ledger_tables  # noqa: E402
+
+_LEDGER_TABLES = ledger_tables(Base.metadata)
+
+
+class FinancialWalletModel(Base):
+    __table__ = _LEDGER_TABLES["financial_wallets"]
+
+
+class RateSnapshotModel(Base):
+    __table__ = _LEDGER_TABLES["rate_snapshots"]
+
+
+class FinancialObligationModel(Base):
+    __table__ = _LEDGER_TABLES["financial_obligations"]
+
+
+class FinancialMovementModel(Base):
+    __table__ = _LEDGER_TABLES["financial_movements"]
+
+
+class FinancialAuditEventModel(Base):
+    __table__ = _LEDGER_TABLES["financial_audit_events"]
+
+
+# The same PostgreSQL guards apply to full metadata.create_all and migrations.
+
+sa.event.listen(
+    PaymentItemAllocationModel.__table__,
+    "after_create",
+    sa.DDL(TRIGGER_SQL).execute_if(dialect="postgresql"),
+)

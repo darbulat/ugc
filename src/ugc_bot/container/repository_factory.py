@@ -30,6 +30,12 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
     SqlReferralOrderIncomeLoader,
 )
+from ugc_bot.infrastructure.db.repositories.financial_items import (
+    SqlAlchemyFinancialItemRepository,
+)
+from ugc_bot.infrastructure.db.repositories.financial_policy import (
+    SqlAlchemyFinancialPolicyRepository,
+)
 from ugc_bot.infrastructure.db.repositories.legacy_financial_cases import (
     SqlAlchemyLegacyFinancialCaseRepository,
 )
@@ -73,6 +79,8 @@ def build_repos(
         Dict of repository name to repository instance.
     """
     return {
+        "financial_item_repo": SqlAlchemyFinancialItemRepository(),
+        "financial_policy_repo": SqlAlchemyFinancialPolicyRepository(),
         "legacy_financial_case_repo": SqlAlchemyLegacyFinancialCaseRepository(
             session_factory
         ),

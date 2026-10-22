@@ -113,6 +113,11 @@ _FLAT_KEYS = {
         "MAX_ORDER_PRICE",
         "ORDER_RADIUS_KM",
     ],
+    "financial": [
+        "FINANCIAL_CORE_ENABLED",
+        "FINANCIAL_NEW_ORDERS_ENABLED",
+        "FINANCIAL_PAYOUTS_ENABLED",
+    ],
     "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
     "max_bot": [
         "MAX_BOT_TOKEN",
@@ -621,6 +626,19 @@ class MaxBotConfig(BaseSettings):
 # --- Composite ---
 
 
+class FinancialConfig(BaseSettings):
+    """Independent emergency gates; policy/order parameters have no defaults."""
+
+    model_config = _ENV
+    core_enabled: bool = Field(default=False, alias="FINANCIAL_CORE_ENABLED")
+    new_orders_enabled: bool = Field(
+        default=False, alias="FINANCIAL_NEW_ORDERS_ENABLED"
+    )
+    payouts_enabled: bool = Field(
+        default=False, alias="FINANCIAL_PAYOUTS_ENABLED"
+    )
+
+
 class AppConfig(BaseModel):
     """Application configuration."""
 
@@ -642,6 +660,7 @@ class AppConfig(BaseModel):
     order: OrderConfig
     market: MarketConfig
     referral: ReferralConfig
+    financial: FinancialConfig = Field(default_factory=FinancialConfig)
     max_bot: MaxBotConfig | None = None
 
     @model_validator(mode="before")
@@ -669,6 +688,7 @@ class AppConfig(BaseModel):
             "order": OrderConfig.model_validate(nested["order"]),
             "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
+            "financial": FinancialConfig.model_validate(nested["financial"]),
             "max_bot": (
                 max_cfg
                 if (
