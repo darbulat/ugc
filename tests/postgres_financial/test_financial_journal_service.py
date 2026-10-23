@@ -73,6 +73,36 @@ def basis(seed):
 
 
 @pytest.mark.asyncio
+async def test_client_grade_not_applicable_round_trips_without_zero(
+    financial_pg_engine, seed
+):
+    repo = SqlAlchemyFinancialLedgerRepository()
+    service = FinancialLedgerService(repo)
+    engine = create_async_engine(financial_pg_engine.url)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    cmd = replace(basis(seed), verified_count=None)
+    try:
+        async with factory.begin() as session:
+            original = await service.issue(
+                cmd, recorded_at=seed["now"], session=session
+            )
+        async with factory.begin() as session:
+            saved = await repo.get_issue(cmd.business_key, session=session)
+            assert saved == original
+            assert saved is not None
+            assert saved.basis.verified_count is None
+            again = await service.issue(
+                cmd, recorded_at=seed["now"], session=session
+            )
+            assert again == original
+            assert (
+                await repo.read_projection(seed["user"], "RUB", session=session)
+            )["pending"] == 5000
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
 async def test_issue_concurrent_retry_original_records_and_rollback(
     financial_pg_engine, seed
 ):

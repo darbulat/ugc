@@ -13,7 +13,7 @@ import json
 import logging
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
-from urllib.parse import SplitResult, urlsplit, urlunsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from ugc_bot.logging_setup import JSONFormatter
 
@@ -30,7 +30,15 @@ SENSITIVE_KEYS = {
     "telegram_provider_token",
     "webhook_secret",
 }
-SENSITIVE_KEYWORDS = ("password", "secret", "token")
+SENSITIVE_KEYWORDS = (
+    "password",
+    "secret",
+    "token",
+    "apikey",
+    "authorization",
+    "credential",
+    "signature",
+)
 
 
 def get_service_version() -> str:
@@ -45,27 +53,35 @@ def get_service_version() -> str:
 
 
 def _mask_url_credentials(value: str) -> str:
-    """Mask credentials in URLs like scheme://user:pass@host."""
+    """Mask URL passwords, bearer userinfo and sensitive query parameters."""
 
     try:
-        parts: SplitResult = urlsplit(value)
-    except Exception:
+        parts = urlsplit(value)
+    except ValueError:
+        # The parser may normalize controls before rejecting a malformed URL.
+        # Fail closed instead of reclassifying its unnormalized input.
+        return MASK
+
+    if not parts.netloc:
         return value
 
-    if not parts.scheme or not parts.netloc:
-        return value
+    netloc = parts.netloc
+    if "@" in netloc:
+        _, hostinfo = netloc.rsplit("@", 1)
+        netloc = f"{MASK}@{hostinfo}"
 
-    if "@" not in parts.netloc:
-        return value
+    query = _mask_url_parameters(parts.query)
+    fragment = _mask_url_parameters(parts.fragment)
+    return urlunsplit((parts.scheme, netloc, parts.path, query, fragment))
 
-    userinfo, hostinfo = parts.netloc.rsplit("@", 1)
-    if ":" not in userinfo:
-        return value
 
-    username = userinfo.split(":", 1)[0]
-    masked_netloc = f"{username}:{MASK}@{hostinfo}"
-    return urlunsplit(
-        (parts.scheme, masked_netloc, parts.path, parts.query, parts.fragment)
+def _mask_url_parameters(value: str) -> str:
+    """Mask labelled credentials in query strings or OAuth-style fragments."""
+    pairs = parse_qsl(value, keep_blank_values=True)
+    if not any(_is_sensitive_key(key) for key, _ in pairs):
+        return value
+    return urlencode(
+        [(key, MASK if _is_sensitive_key(key) else val) for key, val in pairs]
     )
 
 
@@ -75,7 +91,8 @@ def _is_sensitive_key(key: str) -> bool:
     lowered = key.lower()
     if lowered in SENSITIVE_KEYS:
         return True
-    return any(marker in lowered for marker in SENSITIVE_KEYWORDS)
+    normalized = "".join(char for char in lowered if char.isalnum())
+    return any(marker in normalized for marker in SENSITIVE_KEYWORDS)
 
 
 def _sanitize_for_logging(obj: Any, *, key: str | None = None) -> Any:
@@ -89,13 +106,17 @@ def _sanitize_for_logging(obj: Any, *, key: str | None = None) -> Any:
             str(k): _sanitize_for_logging(v, key=str(k)) for k, v in obj.items()
         }
 
-    if isinstance(obj, list):
+    if isinstance(obj, (list, tuple)):
         return [_sanitize_for_logging(v) for v in obj]
 
     if isinstance(obj, str):
         return _mask_url_credentials(obj)
 
-    return obj
+    if obj is None or isinstance(obj, (bool, int, float)):
+        return obj
+
+    # Never stringify opaque providers or credential objects via JSON fallback.
+    return MASK
 
 
 def safe_config_for_logging(config: Any) -> dict[str, Any]:

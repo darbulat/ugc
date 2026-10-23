@@ -184,10 +184,16 @@ class FinancialLocks(Protocol):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class IssueBasis:
-    """Already assessed referral basis; verified caller owns authorization."""
+    """Already assessed referral or fixed-fee basis; caller authorizes it.
+
+    For management, base_minor is the assessed manager reward (not the
+    customer's accompaniment price), referred_user_id identifies its creator
+    subject, and registration/rate/grade are N/A.
+    This DTO does not establish paid funding or manager entitlement itself.
+    """
 
     business_key: str
-    kind: Literal["client_referral", "creator_referral"]
+    kind: Literal["client_referral", "creator_referral", "management"]
     recipient_id: UUID | None
     paid_item_id: UUID
     order_id: UUID
@@ -199,8 +205,9 @@ class IssueBasis:
     rate_bps: int | None
     policy_version: str | None
     snapshot_at: datetime
-    registered_at: datetime
-    verified_count: int
+    registered_at: datetime | None
+    # None is an explicit not-applicable grade for CLIENT, never a measured 0.
+    verified_count: int | None
     event_id: str
     reason: str
     actor_id: UUID
@@ -208,6 +215,12 @@ class IssueBasis:
 
     def __post_init__(self) -> None:
         for name in ("snapshot_at", "registered_at"):
+            if (
+                name == "registered_at"
+                and self.kind == "management"
+                and self.registered_at is None
+            ):
+                continue
             object.__setattr__(self, name, utc(getattr(self, name)))
         if self.available_at is not None:
             object.__setattr__(self, "available_at", utc(self.available_at))
@@ -223,10 +236,25 @@ class IssueBasis:
         self._validate_values()
 
     def _validate_values(self) -> None:
-        if self.kind not in ("client_referral", "creator_referral"):
+        if self.kind == "management" and any(
+            value is not None
+            for value in (
+                self.registered_at,
+                self.verified_count,
+                self.rate_bps,
+            )
+        ):
+            raise ValueError("management_referral_fields_not_applicable")
+        if self.kind not in (
+            "client_referral",
+            "creator_referral",
+            "management",
+        ):
             raise ValueError("invalid_referral_kind")
         if self.kind == "creator_referral" and self.assignment_id is None:
             raise ValueError("creator_assignment_required")
+        if self.kind == "management" and self.assignment_id is None:
+            raise ValueError("management_assignment_required")
         if self.currency != "RUB":
             raise ValueError("unpublished_currency")
         if (
@@ -234,7 +262,10 @@ class IssueBasis:
             or not 0 < self.base_minor <= MAX_MINOR
         ):
             raise ValueError("positive_base_required")
-        if type(self.verified_count) is not int or self.verified_count < 0:
+        if not (
+            self.kind in ("client_referral", "management")
+            and self.verified_count is None
+        ) and (type(self.verified_count) is not int or self.verified_count < 0):
             raise ValueError("invalid_verified_count")
         if self.policy_version is not None and not self.policy_version.strip():
             raise ValueError("invalid_policy_version")

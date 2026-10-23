@@ -163,6 +163,17 @@ class SqlAlchemyFinancialLedgerRepository:
         )
         return IssuedObligation(row["id"], rate["id"], basis, movement)
 
+    @staticmethod
+    def _snapshot_age_rule(basis: IssueBasis) -> str:
+        if basis.kind == "management":
+            return "management"
+        assert basis.registered_at is not None
+        return (
+            "first_year"
+            if basis.snapshot_at < first_anniversary(basis.registered_at)
+            else "after_anniversary"
+        )
+
     async def save_issue(
         self, record: IssuedObligation, *, session: object
     ) -> IssuedObligation:
@@ -181,12 +192,14 @@ class SqlAlchemyFinancialLedgerRepository:
                 id=record.snapshot_id,
                 referred_user_id=basis.referred_user_id,
                 payment_id=basis.payment_id,
-                side="client" if basis.kind == "client_referral" else "creator",
+                side={
+                    "client_referral": "client",
+                    "creator_referral": "creator",
+                    "management": "management",
+                }[basis.kind],
                 effective_at=basis.snapshot_at,
                 registered_at=basis.registered_at,
-                age_rule="first_year"
-                if basis.snapshot_at < first_anniversary(basis.registered_at)
-                else "after_anniversary",
+                age_rule=self._snapshot_age_rule(basis),
                 verified_count=basis.verified_count,
                 rate_bps=basis.rate_bps,
             ),

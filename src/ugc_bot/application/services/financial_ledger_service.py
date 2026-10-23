@@ -14,7 +14,12 @@ from ugc_bot.application.services.financial_reconciliation_service import (
     FinancialReconciliationService,
     replay_journal,
 )
-from ugc_bot.domain.financial import commission_minor, rate_bps, utc
+from ugc_bot.domain.financial import (
+    MANAGEMENT_REWARD_MINOR,
+    commission_minor,
+    rate_bps,
+    utc,
+)
 
 
 class PayloadConflict(ValueError):
@@ -38,7 +43,7 @@ class FinancialLedgerService:
         if (
             basis.recipient_id is None
             or basis.policy_version is None
-            or basis.rate_bps is None
+            or (basis.rate_bps is None and basis.kind != "management")
         ):
             reason = (
                 "recipient_unresolved_or_absent"
@@ -65,17 +70,7 @@ class FinancialLedgerService:
             if existing.basis != basis:
                 raise PayloadConflict(basis.business_key)
             return existing
-        expected = rate_bps(
-            basis.registered_at,
-            basis.snapshot_at,
-            side="client" if basis.kind == "client_referral" else "creator",
-            verified_count=basis.verified_count,
-        )
-        if basis.rate_bps != expected:
-            raise ValueError("unapproved_referral_rate")
-        amount = commission_minor(
-            basis.base_minor, basis.rate_bps, basis.currency
-        )
+        amount = self._assessed_amount(basis)
         if amount == 0:
             raise ValueError("zero_monetary_obligation_unsupported")
         obligation = uuid4()
@@ -99,6 +94,25 @@ class FinancialLedgerService:
         await repo.append(result.movement, session=session)
         await repo.apply_projection(result.movement, session=session)
         return result
+
+    @staticmethod
+    def _assessed_amount(basis: IssueBasis) -> int:
+        if basis.kind == "management":
+            if basis.base_minor != MANAGEMENT_REWARD_MINOR:
+                raise ValueError("unapproved_management_reward")
+            return basis.base_minor
+        assert basis.registered_at is not None and basis.rate_bps is not None
+        expected = rate_bps(
+            basis.registered_at,
+            basis.snapshot_at,
+            side="client" if basis.kind == "client_referral" else "creator",
+            verified_count=basis.verified_count,
+        )
+        if basis.rate_bps != expected:
+            raise ValueError("unapproved_referral_rate")
+        return commission_minor(
+            basis.base_minor, basis.rate_bps, basis.currency
+        )
 
     async def transfer(
         self,

@@ -1355,9 +1355,21 @@ class PaymentItemAllocationModel(Base):
 
 
 from ugc_bot.infrastructure.db.ledger_schema import ledger_tables  # noqa: E402
+from ugc_bot.infrastructure.db.management_basis_schema import (  # noqa: E402
+    add_management_basis_applicability,
+)
+from ugc_bot.infrastructure.db.management_reward_schema import (  # noqa: E402
+    add_management_reward_standard,
+)
+from ugc_bot.infrastructure.db.snapshot_grade_schema import (  # noqa: E402
+    add_client_grade_applicability,
+)
 
 _LEDGER_TABLES = ledger_tables(Base.metadata)
 add_journal_order(_LEDGER_TABLES["financial_movements"])
+add_client_grade_applicability(_LEDGER_TABLES["rate_snapshots"])
+add_management_basis_applicability(_LEDGER_TABLES["rate_snapshots"])
+add_management_reward_standard(_LEDGER_TABLES["financial_obligations"])
 
 
 class FinancialWalletModel(Base):
