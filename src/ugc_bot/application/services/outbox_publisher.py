@@ -13,6 +13,9 @@ from ugc_bot.application.ports import (
     OutboxRepository,
     TransactionManager,
 )
+from ugc_bot.application.services.financial_event_router import (
+    FinancialEventRouter,
+)
 from ugc_bot.domain.entities import Order, OutboxEvent
 from ugc_bot.domain.enums import OrderStatus, OutboxEventStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -38,6 +41,8 @@ class OutboxPublisher:
     outbox_repo: OutboxRepository
     order_repo: OrderRepository
     transaction_manager: Optional[TransactionManager] = None
+    financial_delivery: "OutboxPublisher | None" = None
+    financial_router: FinancialEventRouter | None = None
 
     async def publish_order_activation(
         self, order: Order, session: object | None = None
@@ -152,6 +157,10 @@ class OutboxPublisher:
                         )
 
         await asyncio.gather(*[_handle(ev) for ev in claimed_events])
+        if self.financial_delivery is not None:
+            await self.financial_delivery.process_pending_events(
+                kafka_publisher, max_retries, batch_limit, concurrency
+            )
 
     async def _mark_failed(
         self, event_id: UUID, error: str, retry_count: int
@@ -189,6 +198,8 @@ class OutboxPublisher:
             await self.outbox_repo.mark_as_processing(
                 event.event_id, session=session
             )
+            if self.financial_router is not None:
+                self.financial_router.route(event)
             if event.event_type == "order.activated":
                 await self._process_order_activation(
                     event, kafka_publisher, session=session

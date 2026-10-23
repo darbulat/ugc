@@ -1373,6 +1373,9 @@ class InMemoryOutboxRepository(OutboxRepository):
     events: Dict[UUID, OutboxEvent] = field(default_factory=dict)
     _claimed_at: Dict[UUID, datetime] = field(default_factory=dict)
 
+    def _owns_event(self, event: OutboxEvent) -> bool:
+        return not event.event_type.startswith("financial.")
+
     async def save(
         self, event: OutboxEvent, session: object | None = None
     ) -> None:
@@ -1398,13 +1401,7 @@ class InMemoryOutboxRepository(OutboxRepository):
     ) -> List[OutboxEvent]:
         """Claim pending events (set to PROCESSING) and return them."""
 
-        pending = [
-            event
-            for event in self.events.values()
-            if event.status == OutboxEventStatus.PENDING
-            and not event.event_type.startswith("financial.")
-        ]
-        to_claim = sorted(pending, key=lambda e: e.created_at)[:limit]
+        to_claim = await self.get_pending_events(limit, session=session)
         now = datetime.now(timezone.utc)
         for event in to_claim:
             self.events[event.event_id] = replace(
@@ -1531,7 +1528,7 @@ class InMemoryOutboxRepository(OutboxRepository):
         )
         reset_count = 0
         for event_id, event in list(self.events.items()):
-            if event.event_type.startswith("financial."):
+            if not self._owns_event(event):
                 continue
             if event.status != OutboxEventStatus.PROCESSING:
                 continue
@@ -1543,6 +1540,37 @@ class InMemoryOutboxRepository(OutboxRepository):
                 self._claimed_at.pop(event_id, None)
                 reset_count += 1
         return reset_count
+
+
+@dataclass
+class InMemoryFinancialDeliveryRepository(InMemoryOutboxRepository):
+    """Delivery view over shared outbox storage, excluding invoice control."""
+
+    def _owns_event(self, event: OutboxEvent) -> bool:
+        return (
+            event.event_type.startswith("financial.")
+            and event.event_type != "financial.capture_intent"
+        )
+
+    async def delete_processed_events(
+        self,
+        retention_days: int,
+        batch_size: int,
+        session: object | None = None,
+    ) -> int:
+        """Delivery retention must not erase durable financial identities."""
+        return 0
+
+    async def get_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> List[OutboxEvent]:
+        pending = [
+            event
+            for event in self.events.values()
+            if event.status == OutboxEventStatus.PENDING
+            and self._owns_event(event)
+        ]
+        return sorted(pending, key=lambda event: event.created_at)[:limit]
 
 
 @dataclass

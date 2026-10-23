@@ -38,6 +38,8 @@ class ReferralIncomeRecorder:
         session: object | None = None,
     ) -> None:
         """Record referral income for a creator's referrer (if any)."""
+        if order.financial_version is not None:
+            return
         binding = await self.user_referral_binding_repo.get_by_referred_user(
             creator_id, session=session
         )
@@ -124,6 +126,8 @@ class ReferralIncomeRecorder:
         session: object | None = None,
     ) -> None:
         """Record referral income for an advertiser's referrer."""
+        if order.financial_version is not None:
+            return
         binding = await self.user_referral_binding_repo.get_by_referred_user(
             advertiser_id, session=session
         )

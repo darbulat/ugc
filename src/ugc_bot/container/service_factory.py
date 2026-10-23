@@ -26,6 +26,9 @@ from ugc_bot.application.services.content_moderation_service import (
 from ugc_bot.application.services.exchange_rate_service import (
     ExchangeRateService,
 )
+from ugc_bot.application.services.financial_event_router import (
+    FinancialEventRouter,
+)
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
@@ -86,6 +89,10 @@ from ugc_bot.infrastructure.geocoder_cache_redis import (
     GeocoderCacheRedis,
 )
 from ugc_bot.infrastructure.kafka.publisher import KafkaOrderActivationPublisher
+from ugc_bot.infrastructure.memory_repositories import (
+    InMemoryFinancialDeliveryRepository,
+    InMemoryOutboxRepository,
+)
 
 
 def build_geocoder(config: AppConfig) -> GeocoderPort:
@@ -197,6 +204,20 @@ def build_outbox_deps(config: AppConfig, repos, transaction_manager):
         transaction_manager=transaction_manager,
     )
     kafka_publisher = None
+    financial_repo = repos.get("financial_delivery_repo")
+    if financial_repo is None and isinstance(
+        repos["outbox_repo"], InMemoryOutboxRepository
+    ):
+        financial_repo = InMemoryFinancialDeliveryRepository(
+            repos["outbox_repo"].events, repos["outbox_repo"]._claimed_at
+        )
+    if financial_repo is not None:
+        outbox_publisher.financial_delivery = OutboxPublisher(
+            financial_repo,
+            repos["order_repo"],
+            transaction_manager,
+            financial_router=FinancialEventRouter(),
+        )
     if config.kafka.kafka_enabled:
         kafka_publisher = KafkaOrderActivationPublisher(
             bootstrap_servers=config.kafka.kafka_bootstrap_servers,
