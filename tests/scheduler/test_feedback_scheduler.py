@@ -901,7 +901,7 @@ def test_safe_config_for_logging_masks_sensitive_fields(
     assert safe["redis"]["redis_url"] == "***"
     assert (
         safe["instagram"]["instagram_api_base_url"]
-        == "https://user:***@example.com/api"
+        == "https://***@example.com/api"
     )
 
 

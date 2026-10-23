@@ -25,7 +25,7 @@ def test_mask_url_credentials_masks_userinfo() -> None:
 
     assert (
         sl._mask_url_credentials("postgresql://user:pass@localhost:5432/db")
-        == "postgresql://user:***@localhost:5432/db"
+        == "postgresql://***@localhost:5432/db"
     )
     assert (
         sl._mask_url_credentials("redis://localhost:6379/0")
@@ -33,11 +33,11 @@ def test_mask_url_credentials_masks_userinfo() -> None:
     )
 
 
-def test_mask_url_credentials_unchanged_when_no_colon_in_userinfo() -> None:
-    """Return value when netloc has @ but userinfo has no ':'."""
+def test_mask_url_credentials_masks_bearer_userinfo() -> None:
+    """Userinfo without ':' can itself be a bearer credential."""
     assert (
         sl._mask_url_credentials("http://user@host/path")
-        == "http://user@host/path"
+        == "http://***@host/path"
     )
 
 
@@ -57,7 +57,7 @@ def test_safe_config_for_logging_accepts_iterable_config() -> None:
 def test_sanitize_for_logging_handles_list() -> None:
     """_sanitize_for_logging recurses into lists."""
     got = sl._sanitize_for_logging([1, "http://u:p@h/path"])
-    assert got == [1, "http://u:***@h/path"]
+    assert got == [1, "http://***@h/path"]
 
 
 def test_mask_url_credentials_handles_parser_error(
@@ -94,7 +94,7 @@ def test_safe_config_masks_sensitive_and_url_credentials() -> None:
     assert safe["redis"]["redis_url"] == "***"
     assert (
         safe["instagram"]["instagram_api_base_url"]
-        == "https://user:***@example.com/api"
+        == "https://***@example.com/api"
     )
 
 

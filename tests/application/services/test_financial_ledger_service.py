@@ -42,6 +42,19 @@ def command():
     )
 
 
+@pytest.mark.asyncio
+async def test_client_issue_does_not_fabricate_a_creator_grade():
+    basis = replace(command(), verified_count=None)
+    result = (
+        await api()
+        .FinancialLedgerService(MemoryLedger())
+        .issue(basis, recorded_at=basis.snapshot_at, session=object())
+    )
+    assert isinstance(result, ports.IssuedObligation)
+    assert result.basis.verified_count is None
+    assert result.movement.amount_minor == 5000
+
+
 class MemoryLedger:
     def __init__(self):
         self.potentials = {}
@@ -92,7 +105,9 @@ class MemoryLedger:
             record.obligation_id,
             record.basis.recipient_id,
             record.basis.currency,
-            commission_minor(
+            record.basis.base_minor
+            if record.basis.kind == "management"
+            else commission_minor(
                 record.basis.base_minor,
                 record.basis.rate_bps,
                 record.basis.currency,

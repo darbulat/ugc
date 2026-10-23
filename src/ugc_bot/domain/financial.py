@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from typing import Literal
 
 MAX_MINOR = 2**63 - 1
+# Accepted v1 B-03/T-01: RUB manager reward, not the paid service price.
+MANAGEMENT_REWARD_MINOR = 60_000
 
 
 def utc(value: datetime) -> datetime:
@@ -39,19 +41,22 @@ def rate_bps(
     snapshot_at: datetime,
     *,
     side: Literal["client", "creator"],
-    verified_count: int = 0,
+    verified_count: int | None = 0,
 ) -> int:
     registered, snapshot = utc(referred_registered_at), utc(snapshot_at)
     if snapshot < registered:
         raise ValueError("snapshot_before_registration")
     if side not in ("client", "creator"):
         raise ValueError("invalid_referral_side")
-    if type(verified_count) is not int or verified_count < 0:
+    if not (side == "client" and verified_count is None) and (
+        type(verified_count) is not int or verified_count < 0
+    ):
         raise ValueError("invalid_verified_count")
     if snapshot >= first_anniversary(registered):
         return 300
     if side == "client":
         return 1000
+    assert verified_count is not None  # Creator validation above is mandatory.
     return next(
         rate
         for threshold, rate in (
