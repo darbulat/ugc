@@ -215,6 +215,10 @@ async def test_downgrade_refuses_released_case_history_in_private_schema(
     async with cases_factory() as db:
         schema = await db.scalar(text("SELECT current_schema()"))
         assert schema.startswith("financial_test_")
+        before_revision = await db.scalar(
+            text("SELECT version_num FROM alembic_version")
+        )
+        assert before_revision
         before = (
             await db.execute(
                 text(
@@ -253,5 +257,5 @@ async def test_downgrade_refuses_released_case_history_in_private_schema(
         )
         assert (
             await db.scalar(text("SELECT version_num FROM alembic_version"))
-            == "legacy_financial_guard"
+            == before_revision
         )

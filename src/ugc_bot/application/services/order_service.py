@@ -23,6 +23,13 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.financial_policy_service import (
+    FinancialPolicy,
+)
+from ugc_bot.application.services.paid_item_service import (
+    FinancialQuote,
+    PaidItemService,
+)
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -77,6 +84,7 @@ class OrderService:
     transaction_manager: TransactionManager | None = None
     geocoder: Optional[GeocoderPort] = None
     country_repo: Optional[CountryRepository] = None
+    paid_item_service: PaidItemService | None = None
 
     async def _resolve_currency(
         self, country_code: Optional[str], session: object | None
@@ -137,6 +145,39 @@ class OrderService:
         geography: Optional[str] = None,
         product_photo_file_id: Optional[str] = None,
     ) -> Order:
+        """Legacy entry point; never implicitly opts into financial v1."""
+        return await self._create_order(
+            advertiser_id,
+            order_type,
+            product_link,
+            offer_text,
+            barter_description,
+            price,
+            bloggers_needed,
+            content_usage,
+            deadlines,
+            geography,
+            product_photo_file_id,
+        )
+
+    async def _create_order(
+        self,
+        advertiser_id: UUID,
+        order_type: OrderType,
+        product_link: str,
+        offer_text: str,
+        barter_description: Optional[str],
+        price: float,
+        bloggers_needed: int,
+        content_usage: Optional[str] = None,
+        deadlines: Optional[str] = None,
+        geography: Optional[str] = None,
+        product_photo_file_id: Optional[str] = None,
+        *,
+        _session: object | None = None,
+        _financial_order_id: UUID | None = None,
+        _created_at: datetime | None = None,
+    ) -> Order:
         """Create an order after validating input."""
 
         async def _run(session: object | None) -> Order:
@@ -164,7 +205,8 @@ class OrderService:
                     price,
                     barter_description,
                     bloggers_needed,
-                    self.allowed_blogger_counts,
+                    self.allowed_blogger_counts
+                    | ({30} if _financial_order_id else set()),
                     self.max_order_price,
                 )
             )
@@ -185,7 +227,7 @@ class OrderService:
                             )
                         )
             order = Order(
-                order_id=uuid4(),
+                order_id=_financial_order_id or uuid4(),
                 advertiser_id=advertiser_id,
                 order_type=order_type,
                 product_link=product_link_clean,
@@ -194,7 +236,7 @@ class OrderService:
                 price=price,
                 bloggers_needed=bloggers_needed,
                 status=OrderStatus.NEW,
-                created_at=datetime.now(timezone.utc),
+                created_at=_created_at or datetime.now(timezone.utc),
                 completed_at=None,
                 content_usage=(content_usage or "").strip() or None,
                 deadlines=(deadlines or "").strip() or None,
@@ -229,7 +271,7 @@ class OrderService:
                 },
             )
 
-            if self.metrics_collector:
+            if self.metrics_collector and _financial_order_id is None:
                 self.metrics_collector.record_order_created(
                     order_id=str(order.order_id),
                     advertiser_id=str(order.advertiser_id),
@@ -239,7 +281,119 @@ class OrderService:
 
             return order
 
-        return await with_optional_tx(self.transaction_manager, _run)
+        return (
+            await _run(_session)
+            if _session is not None
+            else await with_optional_tx(self.transaction_manager, _run)
+        )
+
+    async def create_financial_order(
+        self,
+        *,
+        order_id: UUID,
+        advertiser_id: UUID,
+        order_type: OrderType,
+        product_link: str,
+        offer_text: str,
+        barter_description: str | None,
+        price: float,
+        policy: FinancialPolicy | None,
+        order_created_at: datetime,
+        now: datetime,
+        selection_due_at: datetime | None,
+        currency: str,
+        accompaniment_ordinals: frozenset[int],
+        client_contact_reference: str,
+        idempotency_key: str,
+    ) -> tuple[Order, FinancialQuote]:
+        """Explicit opt-in: validate first, commit order and quote together.
+
+        The order UUID is the caller's stable command identity. No notification,
+        referral income or management lead is emitted for an unpaid quote.
+        """
+        if self.paid_item_service is None or self.transaction_manager is None:
+            raise ValueError("financial_service_and_transaction_required")
+        paid = self.paid_item_service
+        quote = paid.prepare_quote(
+            policy=policy,
+            client_id=advertiser_id,
+            order_created_at=order_created_at,
+            selection_due_at=selection_due_at,
+            currency=currency,
+            now=now,
+            order_id=order_id,
+            accompaniment_ordinals=accompaniment_ordinals,
+            client_contact_reference=client_contact_reference,
+            idempotency_key=idempotency_key,
+        )
+        clean_link, clean_offer, clean_barter = _validate_order_input(
+            product_link,
+            offer_text,
+            price,
+            barter_description,
+            30,
+            self.allowed_blogger_counts | {30},
+            self.max_order_price,
+        )
+        async with self.transaction_manager.transaction() as session:
+            await paid.repository.lock_order(order_id, session=session)
+            existing = await self.order_repo.get_by_id(
+                order_id, session=session
+            )
+            if existing is not None:
+                if (
+                    existing.advertiser_id,
+                    existing.order_type,
+                    existing.product_link,
+                    existing.offer_text,
+                    existing.barter_description,
+                    existing.price,
+                    existing.bloggers_needed,
+                    existing.currency,
+                    existing.created_at,
+                ) != (
+                    advertiser_id,
+                    order_type,
+                    clean_link,
+                    clean_offer,
+                    clean_barter,
+                    price,
+                    30,
+                    currency,
+                    order_created_at,
+                ):
+                    raise ValueError("idempotency_payload_conflict")
+                # Repository refuses legacy orders; never auto-activate them.
+                saved = await paid.repository.save_quote(quote, session=session)
+                return existing, saved
+            user = await self.user_repo.get_by_id(
+                advertiser_id, session=session
+            )
+            if user is None:
+                raise UserNotFoundError("Advertiser not found.")
+            if await self._resolve_currency(user.country, session) != currency:
+                raise ValueError("unpublished_currency")
+            await self._create_order(
+                advertiser_id=advertiser_id,
+                order_type=order_type,
+                product_link=clean_link,
+                offer_text=clean_offer,
+                barter_description=clean_barter,
+                price=price,
+                bloggers_needed=30,
+                _session=session,
+                _financial_order_id=order_id,
+                _created_at=order_created_at,
+            )
+            await paid.repository.activate_new_order(
+                order_id, quote.policy_version, session=session
+            )
+            saved = await paid.repository.save_quote(quote, session=session)
+            persisted = await self.order_repo.get_by_id(
+                order_id, session=session
+            )
+            assert persisted is not None
+        return persisted, saved
 
     _EDITABLE_ORDER_STATUSES = frozenset(
         {OrderStatus.NEW, OrderStatus.PENDING_MODERATION}
