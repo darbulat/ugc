@@ -33,6 +33,14 @@ class TelegramEventAdapter:
                 ),
                 total_amount=message.successful_payment.total_amount,
                 currency=message.successful_payment.currency,
+                protocol_message_at=getattr(message, "date", None),
+                telegram_payment_charge_id=(
+                    getattr(
+                        message.successful_payment,
+                        "telegram_payment_charge_id",
+                        None,
+                    )
+                ),
             )
         contact_phone = None
         contact = getattr(message, "contact", None)

@@ -300,6 +300,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         currency=model.currency,
         last_round_robin_index=model.last_round_robin_index,
         brief_link=model.brief_link,
+        financial_version=model.financial_version,
     )
 
 
@@ -338,6 +339,7 @@ def _to_order_model(order: Order) -> OrderModel:
         currency=order.currency,
         last_round_robin_index=order.last_round_robin_index,
         brief_link=order.brief_link,
+        financial_version=order.financial_version,
     )
 
 

@@ -10,7 +10,9 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
 
+from ugc_bot.application.capture_ports import FinancialCaptureRepository
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
+from ugc_bot.application.messenger.dto import PaymentSuccess
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     ContactPricingRepository,
@@ -36,7 +38,7 @@ PROVIDER_INTL = "telegram_payments"
 
 
 def build_receipt_provider_data(
-    total_amount: float,
+    total_amount: float | Decimal,
     currency: str,
     receipt_description: str,
 ) -> str:
@@ -106,6 +108,8 @@ class PaymentService:
     country_repo: CountryRepository | None = None
     metrics_collector: Optional[Any] = None
     transaction_manager: TransactionManager | None = None
+    capture_repository: FinancialCaptureRepository | None = None
+    capture_account: str = ""
 
     async def confirm_telegram_payment(
         self,
@@ -114,6 +118,7 @@ class PaymentService:
         provider_payment_charge_id: str,
         total_amount: int,
         currency: str,
+        receipt: PaymentSuccess | None = None,
     ) -> Payment:
         """Confirm a Telegram payment and activate order."""
 
@@ -128,6 +133,7 @@ class PaymentService:
             provider_payment_charge_id,
             total_amount,
             currency,
+            receipt,
         )
 
     async def get_order(self, order_id: UUID) -> Order | None:
@@ -145,6 +151,32 @@ class PaymentService:
         config: AppConfig,
     ) -> InvoiceData | None:
         """Build invoice data for an order. Returns None if pricing missing."""
+        if order.financial_version is not None:
+            if (
+                self.capture_repository is None
+                or self.transaction_manager is None
+            ):
+                raise OrderCreationError("v1_invoice_not_configured")
+            async with self.transaction_manager.transaction() as session:
+                total, currency = await self.capture_repository.issue(
+                    order.order_id,
+                    order.advertiser_id,
+                    self.capture_account,
+                    session=session,
+                )
+            return InvoiceData(
+                total,
+                currency,
+                config.market.currency_symbol,
+                config.bot.telegram_provider_token,
+                build_receipt_provider_data(
+                    total,
+                    currency,
+                    config.market.receipt_service_description,
+                ),
+                True,
+                True,
+            )
         country_code = (user_country or "ru").lower()
         is_ru = country_code == "ru"
 
@@ -270,6 +302,48 @@ class PaymentService:
                 "Payment amount does not match order price."
             )
 
+    async def _capture_v1(
+        self,
+        order: Order,
+        user_id: UUID,
+        external_id: str,
+        amount: int,
+        currency: str,
+        receipt: PaymentSuccess | None,
+        session: object,
+    ) -> Payment:
+        if self.capture_repository is None or receipt is None:
+            raise OrderCreationError("trusted_v1_capture_required")
+        if (
+            receipt.provider_payment_charge_id != external_id
+            or receipt.total_amount != amount
+            or receipt.currency != currency
+            or receipt.invoice_payload != str(order.order_id)
+        ):
+            raise OrderCreationError("capture_receipt_mismatch")
+        return await self.capture_repository.capture(
+            order.order_id,
+            user_id,
+            self.capture_account,
+            receipt,
+            session=session,
+        )
+
+    async def _locked_payment_order(
+        self, order_id: UUID, user_id: UUID, session: object
+    ) -> Order:
+        # Quote lock order: advisory identity, then order FOR UPDATE.
+        if self.capture_repository is not None:
+            await self.capture_repository.lock_order(order_id, session=session)
+        order = await self.order_repo.get_by_id_for_update(
+            order_id, session=session
+        )
+        if order is None:
+            raise OrderCreationError("Order not found.")
+        if order.advertiser_id != user_id:
+            raise OrderCreationError("Order does not belong to advertiser.")
+        return order
+
     async def _confirm_telegram_payment_impl(
         self,
         user_id: UUID,
@@ -277,6 +351,7 @@ class PaymentService:
         provider_payment_charge_id: str,
         total_amount: int,
         currency: str,
+        receipt: PaymentSuccess | None = None,
     ) -> Payment:
         """Confirm payment (assumes transaction_manager is set)."""
 
@@ -293,13 +368,18 @@ class PaymentService:
             ):
                 raise OrderCreationError("Advertiser profile is not set.")
 
-            order = await self.order_repo.get_by_id_for_update(
-                order_id, session=session
-            )
-            if order is None:
-                raise OrderCreationError("Order not found.")
-            if order.advertiser_id != user_id:
-                raise OrderCreationError("Order does not belong to advertiser.")
+            order = await self._locked_payment_order(order_id, user_id, session)
+
+            if order.financial_version is not None:
+                return await self._capture_v1(
+                    order,
+                    user_id,
+                    provider_payment_charge_id,
+                    total_amount,
+                    currency,
+                    receipt,
+                    session,
+                )
 
             existing = await self.payment_repo.get_by_order(
                 order_id, session=session

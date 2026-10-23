@@ -48,6 +48,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.financial_schema import TRIGGER_SQL
+from ugc_bot.infrastructure.db.journal_order_schema import add_journal_order
 
 
 class _GeometryOrText(TypeDecorator):
@@ -1356,6 +1357,7 @@ class PaymentItemAllocationModel(Base):
 from ugc_bot.infrastructure.db.ledger_schema import ledger_tables  # noqa: E402
 
 _LEDGER_TABLES = ledger_tables(Base.metadata)
+add_journal_order(_LEDGER_TABLES["financial_movements"])
 
 
 class FinancialWalletModel(Base):

@@ -91,7 +91,8 @@ def put(conn, table, payload):
     conn.execute(
         text(
             (
-                f"INSERT INTO {table} SELECT * FROM "
+                # Ignore generated identity fields: PG assigns append order.
+                f"INSERT INTO {table} OVERRIDING USER VALUE SELECT * FROM "
                 f"jsonb_populate_record(NULL::{table}, CAST(:data AS "
                 f"jsonb))"
             )

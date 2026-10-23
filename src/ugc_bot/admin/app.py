@@ -2312,6 +2312,65 @@ class ReferralIncomeEntryAdmin(ModelView, model=ReferralIncomeEntryModel):
 class PaymentAdmin(ModelView, model=PaymentModel):
     """Admin view for payments."""
 
+    @staticmethod
+    def _v1_order_ids(data: dict, existing: PaymentModel | None) -> list[UUID]:
+        from ugc_bot.application.errors import OrderCreationError
+
+        if (
+            data.get("financial_version") is not None
+            or data.get("captured_minor") is not None
+            or (
+                existing is not None
+                and (
+                    existing.financial_version is not None
+                    or existing.captured_minor is not None
+                )
+            )
+        ):
+            raise OrderCreationError("v1_payment_admin_forbidden")
+        targets = [data.get("order_id"), data.get("order")]
+        if existing is not None:
+            targets.append(existing.order_id)
+        return [
+            t.order_id if isinstance(t, OrderModel) else UUID(str(t))
+            for t in targets
+            if t
+        ]
+
+    @staticmethod
+    def _reject_v1_order(order: OrderModel | None) -> None:
+        from ugc_bot.application.errors import OrderCreationError
+
+        if order is not None and order.financial_version is not None:
+            raise OrderCreationError("v1_payment_admin_forbidden")
+
+    def _guard_v1_write_sync(self, data: dict, pk: str | None) -> None:
+        with self.session_maker() as session:
+            existing = session.get(PaymentModel, UUID(str(pk))) if pk else None
+            for order_id in self._v1_order_ids(data, existing):
+                self._reject_v1_order(session.get(OrderModel, order_id))
+
+    async def _guard_v1_write(self, data: dict, pk: str | None = None) -> None:
+        if not self.is_async:
+            from starlette.concurrency import run_in_threadpool
+
+            await run_in_threadpool(self._guard_v1_write_sync, data, pk)
+            return
+        async with self.session_maker() as session:
+            existing = (
+                await session.get(PaymentModel, UUID(str(pk))) if pk else None
+            )
+            for order_id in self._v1_order_ids(data, existing):
+                self._reject_v1_order(await session.get(OrderModel, order_id))
+
+    async def insert_model(self, request: Request, data: dict) -> Any:
+        await self._guard_v1_write(data)
+        return await super().insert_model(request, data)
+
+    async def update_model(self, request: Request, pk: str, data: dict) -> Any:
+        await self._guard_v1_write(data, pk)
+        return await super().update_model(request, pk, data)
+
     name = "Платёж"
     name_plural = "Платежи"
     can_create = True

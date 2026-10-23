@@ -12,8 +12,14 @@ from sqlalchemy import RowMapping, Table, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ugc_bot.application.financial_ports import JournalMovement
-from ugc_bot.domain.financial import utc
+from ugc_bot.application.financial_ports import (
+    IssueBasis,
+    IssuedObligation,
+    JournalMovement,
+    ObligationBasis,
+    PotentialBasis,
+)
+from ugc_bot.domain.financial import first_anniversary, utc
 from ugc_bot.infrastructure.db import models as _models  # noqa: F401
 from ugc_bot.infrastructure.db.base import Base
 
@@ -53,6 +59,234 @@ def payload_hash(payload: Mapping[str, Any]) -> str:
 
 
 class SqlAlchemyFinancialLedgerRepository:
+    async def save_potential(
+        self,
+        basis: IssueBasis,
+        reason: str,
+        *,
+        recorded_at: datetime,
+        session: object,
+    ) -> PotentialBasis:
+        row = await self.add_audit_event(
+            dict(
+                id=uuid4(),
+                operation_key="potential:" + basis.business_key,
+                action="potential_basis",
+                scope="paid_item:" + str(basis.paid_item_id),
+                reason=reason,
+                actor_id=basis.actor_id,
+                actor_kind="user",
+                system_actor=None,
+                obligation_id=None,
+                movement_id=None,
+                effective_at=basis.snapshot_at,
+                recorded_at=recorded_at,
+                details=_canonical(asdict(basis)),
+            ),
+            session=session,
+        )
+        return PotentialBasis(basis, reason, row["recorded_at"], row["id"])
+
+    async def lock_item(self, item_id: UUID, *, session: object) -> None:
+        item = Base.metadata.tables["order_items"]
+        row = await _session(session).scalar(
+            select(item.c.paid_item_id)
+            .where(item.c.paid_item_id == item_id)
+            .with_for_update()
+        )
+        if row is None:
+            raise ValueError("paid_item_not_found")
+
+    async def get_issue(
+        self, key: str, *, session: object
+    ) -> IssuedObligation | None:
+        db = _session(session)
+        obligations = Base.metadata.tables["financial_obligations"]
+        snapshots = Base.metadata.tables["rate_snapshots"]
+        movements = Base.metadata.tables["financial_movements"]
+        row = (
+            (
+                await db.execute(
+                    select(obligations).where(obligations.c.business_key == key)
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            return None
+        rate = (
+            (
+                await db.execute(
+                    select(snapshots).where(
+                        snapshots.c.id == row["snapshot_id"]
+                    )
+                )
+            )
+            .mappings()
+            .one()
+        )
+        journal = (
+            (
+                await db.execute(
+                    select(movements).where(
+                        movements.c.operation_key == "issue:" + key
+                    )
+                )
+            )
+            .mappings()
+            .one()
+        )
+        movement = self._movement(journal)
+        if movement.actor_id is None:
+            raise ValueError("unsupported_system_issuance")
+        basis = IssueBasis(
+            business_key=key,
+            kind=row["kind"],
+            recipient_id=row["recipient_id"],
+            paid_item_id=row["paid_item_id"],
+            order_id=row["order_id"],
+            assignment_id=row["assignment_id"],
+            referred_user_id=rate["referred_user_id"],
+            payment_id=rate["payment_id"],
+            currency=row["currency"],
+            base_minor=row["base_minor"],
+            rate_bps=rate["rate_bps"],
+            policy_version=row["policy_version"],
+            snapshot_at=rate["effective_at"],
+            registered_at=rate["registered_at"],
+            verified_count=rate["verified_count"],
+            event_id=movement.event_id,
+            reason=movement.reason,
+            actor_id=movement.actor_id,
+            available_at=row["available_at"],
+        )
+        return IssuedObligation(row["id"], rate["id"], basis, movement)
+
+    async def save_issue(
+        self, record: IssuedObligation, *, session: object
+    ) -> IssuedObligation:
+        basis = record.basis
+        scope = dict(
+            recipient_id=basis.recipient_id,
+            paid_item_id=basis.paid_item_id,
+            order_id=basis.order_id,
+            assignment_id=basis.assignment_id,
+            currency=basis.currency,
+            policy_version=basis.policy_version,
+        )
+        await self.add_rate_snapshot(
+            dict(
+                scope,
+                id=record.snapshot_id,
+                referred_user_id=basis.referred_user_id,
+                payment_id=basis.payment_id,
+                side="client" if basis.kind == "client_referral" else "creator",
+                effective_at=basis.snapshot_at,
+                registered_at=basis.registered_at,
+                age_rule="first_year"
+                if basis.snapshot_at < first_anniversary(basis.registered_at)
+                else "after_anniversary",
+                verified_count=basis.verified_count,
+                rate_bps=basis.rate_bps,
+            ),
+            session=session,
+        )
+        await self.add_obligation(
+            dict(
+                scope,
+                id=record.obligation_id,
+                business_key=basis.business_key,
+                kind=basis.kind,
+                base_minor=basis.base_minor,
+                amount_minor=record.movement.amount_minor,
+                snapshot_id=record.snapshot_id,
+                hold_until=basis.available_at,
+                available_at=basis.available_at,
+                recorded_at=record.movement.recorded_at,
+            ),
+            session=session,
+        )
+        return record
+
+    async def apply_projection(
+        self, movement: JournalMovement, *, session: object
+    ) -> None:
+        from sqlalchemy import update
+
+        wallet = Base.metadata.tables["financial_wallets"]
+        obligations = Base.metadata.tables["financial_obligations"]
+        recipient = await _session(session).scalar(
+            select(obligations.c.recipient_id).where(
+                obligations.c.id == movement.obligation_id
+            )
+        )
+        values: dict[str, Any] = {"version": wallet.c.version + 1}
+        if movement.bucket_from:
+            name = movement.bucket_from + "_minor"
+            values[name] = wallet.c[name] - movement.amount_minor
+        if movement.bucket_to:
+            name = movement.bucket_to + "_minor"
+            values[name] = wallet.c[name] + movement.amount_minor
+        await _session(session).execute(
+            update(wallet)
+            .where(
+                wallet.c.recipient_id == recipient,
+                wallet.c.currency == movement.currency,
+            )
+            .values(**values)
+        )
+
+    async def list_obligation_bases(
+        self, recipient_id: UUID, currency: str, *, session: object
+    ) -> tuple[ObligationBasis, ...]:
+        table = Base.metadata.tables["financial_obligations"]
+        rows = (
+            await _session(session).execute(
+                select(table).where(
+                    table.c.recipient_id == recipient_id,
+                    table.c.currency == currency,
+                )
+            )
+        ).mappings()
+        return tuple(
+            ObligationBasis(
+                row["id"],
+                row["recipient_id"],
+                row["currency"],
+                row["amount_minor"],
+            )
+            for row in rows
+        )
+
+    async def read_projection(
+        self, recipient_id: UUID, currency: str, *, session: object
+    ) -> dict[str, int]:
+        wallet = Base.metadata.tables["financial_wallets"]
+        row = (
+            (
+                await _session(session).execute(
+                    select(wallet).where(
+                        wallet.c.recipient_id == recipient_id,
+                        wallet.c.currency == currency,
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        buckets = (
+            "pending",
+            "hold",
+            "available",
+            "reserved",
+            "paid",
+            "cancelled",
+            "blocked",
+            "debt",
+        )
+        return {b: int(row[b + "_minor"]) if row else 0 for b in buckets}
+
     async def _insert(
         self,
         table: Table,
@@ -86,6 +320,19 @@ class SqlAlchemyFinancialLedgerRepository:
         self, movement: JournalMovement, *, session: object
     ) -> JournalMovement:
         table = Base.metadata.tables["financial_movements"]
+        basis = Base.metadata.tables["financial_obligations"]
+        recipient = await _session(session).scalar(
+            select(basis.c.recipient_id).where(
+                basis.c.id == movement.obligation_id
+            )
+        )
+        if recipient is None:
+            raise ValueError("obligation_not_found")
+        # Allocate the durable sequence only after the shared writer barrier.
+        # Sequence gaps (rollback/retry) are valid; caller clocks are not order.
+        await self.lock_wallets(
+            ((recipient, movement.currency),), session=session
+        )
         row = await self._insert(
             table, "operation_key", asdict(movement), session=session
         )
@@ -112,7 +359,7 @@ class SqlAlchemyFinancialLedgerRepository:
                     basis.c.recipient_id == recipient_id,
                     movement.c.currency == currency,
                 )
-                .order_by(movement.c.recorded_at, movement.c.id)
+                .order_by(movement.c.append_order)
             )
         ).mappings()
         return tuple(self._movement(row) for row in rows)
