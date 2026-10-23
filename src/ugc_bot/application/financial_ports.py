@@ -180,3 +180,135 @@ class FinancialLocks(Protocol):
     async def lock_wallets(
         self, keys: tuple[tuple[UUID, str], ...], *, session: object
     ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class IssueBasis:
+    """Already assessed referral basis; verified caller owns authorization."""
+
+    business_key: str
+    kind: Literal["client_referral", "creator_referral"]
+    recipient_id: UUID | None
+    paid_item_id: UUID
+    order_id: UUID
+    assignment_id: UUID | None
+    referred_user_id: UUID
+    payment_id: UUID
+    currency: str
+    base_minor: int
+    rate_bps: int | None
+    policy_version: str | None
+    snapshot_at: datetime
+    registered_at: datetime
+    verified_count: int
+    event_id: str
+    reason: str
+    actor_id: UUID
+    available_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("snapshot_at", "registered_at"):
+            object.__setattr__(self, name, utc(getattr(self, name)))
+        if self.available_at is not None:
+            object.__setattr__(self, "available_at", utc(self.available_at))
+            if self.available_at < self.snapshot_at:
+                raise ValueError("availability_before_snapshot")
+        if (
+            not self.business_key.strip()
+            or not self.event_id.strip()
+            or not self.reason.strip()
+        ):
+            raise ValueError("basis_provenance_required")
+        self._validate_scope()
+        self._validate_values()
+
+    def _validate_values(self) -> None:
+        if self.kind not in ("client_referral", "creator_referral"):
+            raise ValueError("invalid_referral_kind")
+        if self.kind == "creator_referral" and self.assignment_id is None:
+            raise ValueError("creator_assignment_required")
+        if self.currency != "RUB":
+            raise ValueError("unpublished_currency")
+        if (
+            type(self.base_minor) is not int
+            or not 0 < self.base_minor <= MAX_MINOR
+        ):
+            raise ValueError("positive_base_required")
+        if type(self.verified_count) is not int or self.verified_count < 0:
+            raise ValueError("invalid_verified_count")
+        if self.policy_version is not None and not self.policy_version.strip():
+            raise ValueError("invalid_policy_version")
+
+    def _validate_scope(self) -> None:
+        for ref in (
+            self.recipient_id,
+            self.paid_item_id,
+            self.order_id,
+            self.assignment_id,
+            self.referred_user_id,
+            self.payment_id,
+            self.actor_id,
+        ):
+            if ref is not None and (not isinstance(ref, UUID) or ref.int == 0):
+                raise ValueError("invalid_basis_reference")
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedObligation:
+    obligation_id: UUID
+    snapshot_id: UUID
+    basis: IssueBasis
+    movement: JournalMovement
+
+
+@dataclass(frozen=True, slots=True)
+class PotentialBasis:
+    """Durable non-monetary assessment, stored as an immutable audit event."""
+
+    basis: IssueBasis
+    reason: str
+    recorded_at: datetime
+    assessment_id: UUID
+
+
+@dataclass(frozen=True, slots=True)
+class ObligationBasis:
+    """Persisted monetary basis, independent of journal coverage."""
+
+    obligation_id: UUID
+    recipient_id: UUID
+    currency: str
+    amount_minor: int
+
+
+class LedgerRepository(JournalRepository, FinancialLocks, Protocol):
+    async def list_obligation_bases(
+        self, recipient_id: UUID, currency: str, *, session: object
+    ) -> tuple[ObligationBasis, ...]: ...
+
+    async def save_potential(
+        self,
+        basis: IssueBasis,
+        reason: str,
+        *,
+        recorded_at: datetime,
+        session: object,
+    ) -> PotentialBasis: ...
+
+    async def lock_item(self, item_id: UUID, *, session: object) -> None: ...
+
+    async def get_issue(
+        self, key: str, *, session: object
+    ) -> IssuedObligation | None: ...
+
+    async def save_issue(
+        self, record: IssuedObligation, *, session: object
+    ) -> IssuedObligation: ...
+
+    async def apply_projection(
+        self, movement: JournalMovement, *, session: object
+    ) -> None: ...
+
+    async def read_projection(
+        self, recipient_id: UUID, currency: str, *, session: object
+    ) -> dict[str, int]: ...

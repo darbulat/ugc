@@ -1389,6 +1389,7 @@ class InMemoryOutboxRepository(OutboxRepository):
             event
             for event in self.events.values()
             if event.status == OutboxEventStatus.PENDING
+            and not event.event_type.startswith("financial.")
         ]
         return sorted(pending_events, key=lambda e: e.created_at)[:limit]
 
@@ -1401,6 +1402,7 @@ class InMemoryOutboxRepository(OutboxRepository):
             event
             for event in self.events.values()
             if event.status == OutboxEventStatus.PENDING
+            and not event.event_type.startswith("financial.")
         ]
         to_claim = sorted(pending, key=lambda e: e.created_at)[:limit]
         now = datetime.now(timezone.utc)
@@ -1496,6 +1498,8 @@ class InMemoryOutboxRepository(OutboxRepository):
         to_delete: List[UUID] = []
 
         for event_id, event in self.events.items():
+            if event.event_type.startswith("financial."):
+                continue
             if len(to_delete) >= batch_size:
                 break
             is_published_old = (
@@ -1527,6 +1531,8 @@ class InMemoryOutboxRepository(OutboxRepository):
         )
         reset_count = 0
         for event_id, event in list(self.events.items()):
+            if event.event_type.startswith("financial."):
+                continue
             if event.status != OutboxEventStatus.PROCESSING:
                 continue
             claimed = self._claimed_at.get(event_id)

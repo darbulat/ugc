@@ -240,6 +240,7 @@ class Order:
     currency: str = "RUB"
     last_round_robin_index: int = 0
     brief_link: Optional[str] = None
+    financial_version: Optional[str] = None
 
 
 @dataclass(frozen=True)

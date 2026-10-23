@@ -75,6 +75,9 @@ from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.container.types import BotServices
+from ugc_bot.infrastructure.db.repositories.financial_capture import (
+    SqlAlchemyFinancialCaptureRepository,
+)
 from ugc_bot.infrastructure.geocoder_cache_memory import GeocoderCacheMemory
 from ugc_bot.infrastructure.geocoder_cache_redis import (
     DEFAULT_PREFIX as GEOCODER_CACHE_KEY_PREFIX,
@@ -491,6 +494,14 @@ def build_bot_services(
             payment_repo=repos["payment_repo"],
             pricing_repo=repos["pricing_repo"],
             country_repo=repos.get("country_repo"),
+            capture_repository=(
+                SqlAlchemyFinancialCaptureRepository(
+                    FinancialPolicyService(config.financial)
+                )
+                if config.bot.telegram_payment_account_id
+                else None
+            ),
+            capture_account=config.bot.telegram_payment_account_id,
             metrics_collector=metrics_collector,
             transaction_manager=transaction_manager,
         ),

@@ -452,6 +452,7 @@ async def successful_payment_handler(
             ),
             total_amount=incoming.successful_payment.total_amount,
             currency=incoming.successful_payment.currency,
+            receipt=incoming.successful_payment,
         )
     except (OrderCreationError, UserNotFoundError) as exc:
         # Record failed payment metric (middleware logs and shows user message)

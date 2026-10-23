@@ -1,6 +1,7 @@
 """DTO models for messenger-neutral interactions."""
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -68,6 +69,9 @@ class PaymentSuccess:
     provider_payment_charge_id: str
     total_amount: int
     currency: str
+    # Authenticated Telegram message time, NOT bank settlement time.
+    protocol_message_at: datetime | None = None
+    telegram_payment_charge_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

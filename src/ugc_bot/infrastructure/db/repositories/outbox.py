@@ -39,7 +39,10 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         ) as db_session:
             result = await db_session.execute(
                 select(OutboxEventModel)
-                .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
+                .where(
+                    OutboxEventModel.status == OutboxEventStatus.PENDING,
+                    OutboxEventModel.event_type.not_like("financial.%"),
+                )
                 .order_by(OutboxEventModel.created_at)
                 .limit(limit)
             )
@@ -55,7 +58,10 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
         ) as db_session:
             result = await db_session.execute(
                 select(OutboxEventModel)
-                .where(OutboxEventModel.status == OutboxEventStatus.PENDING)
+                .where(
+                    OutboxEventModel.status == OutboxEventStatus.PENDING,
+                    OutboxEventModel.event_type.not_like("financial.%"),
+                )
                 .order_by(OutboxEventModel.created_at)
                 .limit(limit)
                 .with_for_update(skip_locked=True)
@@ -179,6 +185,9 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
             subq = (
                 select(OutboxEventModel.event_id)
                 .where(
+                    # These records are also immutable capture/intent identity;
+                    # delivery retention must not erase financial idempotency.
+                    OutboxEventModel.event_type.not_like("financial.%"),
                     or_(
                         and_(
                             OutboxEventModel.status
@@ -189,7 +198,7 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
                             OutboxEventModel.status == OutboxEventStatus.FAILED,
                             OutboxEventModel.created_at < cutoff,
                         ),
-                    )
+                    ),
                 )
                 .limit(batch_size)
             )
@@ -217,6 +226,7 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
                 update(OutboxEventModel)
                 .where(
                     OutboxEventModel.status == OutboxEventStatus.PROCESSING,
+                    OutboxEventModel.event_type.not_like("financial.%"),
                     OutboxEventModel.claimed_at < cutoff,
                 )
                 .values(status=OutboxEventStatus.PENDING)
