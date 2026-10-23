@@ -234,6 +234,78 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
             return getattr(result, "rowcount", None) or 0
 
 
+class SqlAlchemyFinancialDeliveryRepository(SqlAlchemyOutboxRepository):
+    """Separate delivery owner; invoice control is never work."""
+
+    async def reset_stale_processing_events(
+        self, stale_after_minutes: int = 15, session: object | None = None
+    ) -> int:
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            minutes=stale_after_minutes
+        )
+        async with _resolve_session(self.session_factory, session) as db:
+            result = await db.execute(
+                update(OutboxEventModel)
+                .where(
+                    OutboxEventModel.status == OutboxEventStatus.PROCESSING,
+                    OutboxEventModel.event_type.like("financial.%"),
+                    OutboxEventModel.event_type != "financial.capture_intent",
+                    OutboxEventModel.claimed_at < cutoff,
+                )
+                .values(status=OutboxEventStatus.PENDING)
+            )
+            return getattr(result, "rowcount", None) or 0
+
+    async def delete_processed_events(
+        self,
+        retention_days: int,
+        batch_size: int,
+        session: object | None = None,
+    ) -> int:
+        """Financial rows are durable identity, not disposable delivery logs."""
+        return 0
+
+    async def get_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> List[OutboxEvent]:
+        async with _resolve_session(self.session_factory, session) as db:
+            rows = await db.scalars(
+                select(OutboxEventModel)
+                .where(
+                    OutboxEventModel.status == OutboxEventStatus.PENDING,
+                    OutboxEventModel.event_type.like("financial.%"),
+                    OutboxEventModel.event_type != "financial.capture_intent",
+                )
+                .order_by(OutboxEventModel.created_at)
+                .limit(limit)
+            )
+            return [_to_outbox_event_entity(row) for row in rows]
+
+    async def claim_pending_events(
+        self, limit: int = 100, session: object | None = None
+    ) -> List[OutboxEvent]:
+        async with _resolve_session(self.session_factory, session) as db:
+            rows = list(
+                await db.scalars(
+                    select(OutboxEventModel)
+                    .where(
+                        OutboxEventModel.status == OutboxEventStatus.PENDING,
+                        OutboxEventModel.event_type.like("financial.%"),
+                        OutboxEventModel.event_type
+                        != "financial.capture_intent",
+                    )
+                    .order_by(OutboxEventModel.created_at)
+                    .limit(limit)
+                    .with_for_update(skip_locked=True)
+                )
+            )
+            events = [_to_outbox_event_entity(row) for row in rows]
+            for row in rows:
+                row.status = OutboxEventStatus.PROCESSING
+                row.claimed_at = datetime.now(timezone.utc)
+            return events
+
+
 def _to_outbox_event_entity(model: OutboxEventModel) -> OutboxEvent:
     """Map outbox event ORM model to entity."""
     return OutboxEvent(

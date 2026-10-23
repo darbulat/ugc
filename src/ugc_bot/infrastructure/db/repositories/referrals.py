@@ -643,6 +643,7 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 .where(
                     OrderModel.status == OrderStatus.CLOSED,
                     PaymentModel.status == PaymentStatus.PAID,
+                    OrderModel.financial_version.is_(None),
                     InteractionModel.status == InteractionStatus.OK,
                     OrderModel.bloggers_needed > 0,
                     ReferralIncomeEntryModel.entry_id.is_(None),
@@ -701,6 +702,7 @@ class SqlAlchemyReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
                 )
                 .where(
                     OrderModel.status == OrderStatus.CLOSED,
+                    OrderModel.financial_version.is_(None),
                     PaymentModel.status == PaymentStatus.PAID,
                     ReferralIncomeEntryModel.entry_id.is_(None),
                 )

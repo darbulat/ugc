@@ -39,6 +39,9 @@ from ugc_bot.infrastructure.db.repositories.financial_policy import (
 from ugc_bot.infrastructure.db.repositories.legacy_financial_cases import (
     SqlAlchemyLegacyFinancialCaseRepository,
 )
+from ugc_bot.infrastructure.db.repositories.outbox import (
+    SqlAlchemyFinancialDeliveryRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +83,9 @@ def build_repos(
     """
     return {
         "financial_item_repo": SqlAlchemyFinancialItemRepository(),
+        "financial_delivery_repo": SqlAlchemyFinancialDeliveryRepository(
+            session_factory
+        ),
         "financial_policy_repo": SqlAlchemyFinancialPolicyRepository(),
         "legacy_financial_case_repo": SqlAlchemyLegacyFinancialCaseRepository(
             session_factory
