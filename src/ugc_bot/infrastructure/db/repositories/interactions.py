@@ -23,6 +23,9 @@ from ugc_bot.infrastructure.db.models import (
     OrderModel,
 )
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
+from ugc_bot.infrastructure.db.repositories.legacy_financial_guards import (
+    SqlAlchemyLegacyFinancialGuardRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -359,15 +362,24 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        for_update: bool = False,
     ) -> OfferDispatch | None:
-        """Fetch a single dispatch by order and blogger."""
-        async with _resolve_session(self.session_factory, session) as s:
-            result = await s.execute(
-                select(OfferDispatchModel).where(
-                    OfferDispatchModel.order_id == order_id,
-                    OfferDispatchModel.blogger_id == blogger_id,
-                )
+        """Fetch a dispatch, optionally locking it until caller commit."""
+        if for_update and not isinstance(session, AsyncSession):
+            raise ValueError("A row lock requires an explicit transaction")
+        stmt = (
+            select(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.blogger_id == blogger_id,
             )
+            .execution_options(populate_existing=True)
+        )
+        if for_update:
+            stmt = stmt.with_for_update()
+        async with _resolve_session(self.session_factory, session) as s:
+            result = await s.execute(stmt)
             row = result.scalar_one_or_none()
             return _to_offer_dispatch_entity(row) if row else None
 
@@ -440,6 +452,20 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
     """SQLAlchemy-backed interaction repository."""
 
     session_factory: async_sessionmaker[AsyncSession]
+
+    async def get_by_id_for_update(
+        self, interaction_id: UUID, session: object | None = None
+    ) -> Interaction | None:
+        if not isinstance(session, AsyncSession):
+            raise ValueError(
+                "Persisted feedback requires an explicit transaction"
+            )
+        model = await session.scalar(
+            select(InteractionModel)
+            .where(InteractionModel.interaction_id == interaction_id)
+            .with_for_update()
+        )
+        return _to_interaction_entity(model) if model is not None else None
 
     async def get_by_id(
         self, interaction_id: UUID, session: object | None = None
@@ -546,8 +572,37 @@ class SqlAlchemyInteractionRepository(InteractionRepository):
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
+            previous = await db_session.scalar(
+                select(InteractionModel)
+                .where(
+                    InteractionModel.interaction_id
+                    == interaction.interaction_id
+                )
+                .with_for_update()
+            )
+            guards = SqlAlchemyLegacyFinancialGuardRepository(
+                self.session_factory
+            )
+            # Capture pre-migration ISSUE before an ordinary edit can erase it.
+            reopen = previous is not None and (
+                previous.status != InteractionStatus.ISSUE
+                or previous.from_blogger != interaction.from_blogger
+                or previous.from_advertiser != interaction.from_advertiser
+            )
+            if (
+                previous is not None
+                and previous.status == InteractionStatus.ISSUE
+            ):
+                await guards.block_for_interaction(
+                    _to_interaction_entity(previous), session=db_session
+                )
             model = _to_interaction_model(interaction)
             await db_session.merge(model)
+            if interaction.status == InteractionStatus.ISSUE:
+                await db_session.flush()
+                await guards.block_for_interaction(
+                    interaction, session=db_session, reopen=reopen
+                )
 
     async def update_next_check_at(
         self,

@@ -407,6 +407,7 @@ async def test_handle_feedback_issue_status():
 
     await router.route_callback(incoming, deps)
 
+    deps["interaction_service"].record_advertiser_feedback.assert_awaited_once()
     deps["state_store"].set_state.assert_called_once_with(
         STATE_FEEDBACK_ISSUE_TEXT
     )

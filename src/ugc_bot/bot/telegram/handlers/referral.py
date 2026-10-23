@@ -11,8 +11,8 @@ from uuid import UUID, uuid4
 from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
-from sqlalchemy.exc import IntegrityError
 
+from ugc_bot.application.errors import LegacyPayoutBlockedError
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
@@ -30,11 +30,16 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.exchange_rate_service import (
     ExchangeRateService,
 )
+from ugc_bot.application.services.legacy_payout_service import (
+    LegacyPayoutResult,
+    create_legacy_payout_request,
+)
 from ugc_bot.application.services.referral_income_service import (
     MultiCurrencyReferralStats,
     ReferralIncomeService,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.payout_messages import LEGACY_PAYOUT_BLOCKED_TEXT
 from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
@@ -43,7 +48,6 @@ from ugc_bot.bot.telegram.handlers.utils import (
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import PayoutRequest, User
 from ugc_bot.domain.enums import PayoutRequestStatus
-from ugc_bot.infrastructure.db.session import with_optional_tx
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -452,27 +456,31 @@ async def payout_button_callback(
         currency=currency,
     )
 
-    async def _run(session: object | None) -> None:
-        await payout_request_repo.save(request, session=session)
-
-    try:
-        await with_optional_tx(transaction_manager, _run)
-    except (IntegrityError, ValueError):
+    outcome = await create_legacy_payout_request(
+        request, payout_request_repo, transaction_manager
+    )
+    if outcome != LegacyPayoutResult.CREATED:
         logger.info(
-            "Duplicate payout request (expected race condition)",
+            "Legacy payout request not created",
             extra={
                 "user_id": str(user.user_id),
                 "currency": currency,
+                "outcome": outcome.value,
             },
         )
-        msg = payout_msgs.get(
+        duplicate_msg = payout_msgs.get(
             "msg_referral_payout_today_currency",
             payout_msgs.get("msg_referral_payout_today", ""),
         )
-        msg = _safe_format(msg, currency=currency)
+        errors = {
+            LegacyPayoutResult.DUPLICATE: _safe_format(
+                duplicate_msg, currency=currency
+            ),
+            LegacyPayoutResult.DISPUTED: LEGACY_PAYOUT_BLOCKED_TEXT,
+        }
         await messenger_client.answer_callback(
             callback_id=incoming.callback_id,
-            text=msg,
+            text=errors[outcome],
             show_alert=True,
         )
         return
@@ -492,7 +500,9 @@ async def payout_button_callback(
         admin_base = (config.admin.admin_base_url or "").strip()
         if admin_base:
             base = admin_base.rstrip("/")
-            edit_url = f"{base}/payout-request-model/edit/{request.request_id}"
+            edit_url = (
+                f"{base}/payout-request-model/details/{request.request_id}"
+            )
             support_text += f"\n\nОткрыть в админке: {edit_url}"
         payout_paid_keyboard = Keyboard(
             kind=KeyboardKind.INLINE,
@@ -596,27 +606,36 @@ async def payout_paid_callback(
         )
         return
     updated = False
-    async with transaction_manager.transaction() as session:
-        request = await payout_request_repo.get_by_id(
-            request_id, session=session
-        )
-        if request is None:
-            await messenger_client.answer_callback(
-                callback_id=incoming.callback_id,
-                text="Заявка не найдена.",
-                show_alert=True,
+    try:
+        async with transaction_manager.transaction() as session:
+            request = await payout_request_repo.get_by_id(
+                request_id, session=session
             )
-            return
-        if request.status != PayoutRequestStatus.PENDING:
-            await messenger_client.answer_callback(
-                callback_id=incoming.callback_id,
-                text="Заявка уже обработана.",
-                show_alert=True,
+            if request is None:
+                await messenger_client.answer_callback(
+                    callback_id=incoming.callback_id,
+                    text="Заявка не найдена.",
+                    show_alert=True,
+                )
+                return
+            if request.status != PayoutRequestStatus.PENDING:
+                await messenger_client.answer_callback(
+                    callback_id=incoming.callback_id,
+                    text="Заявка уже обработана.",
+                    show_alert=True,
+                )
+                return
+            updated = await payout_request_repo.update_status(
+                request_id, PayoutRequestStatus.PAID, session=session
             )
-            return
-        updated = await payout_request_repo.update_status(
-            request_id, PayoutRequestStatus.PAID, session=session
+    except LegacyPayoutBlockedError:
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=LEGACY_PAYOUT_BLOCKED_TEXT,
+            show_alert=True,
         )
+        return
+
     if updated and incoming.message_id:
         with contextlib.suppress(Exception):
             await messenger_client.edit_reply_markup(

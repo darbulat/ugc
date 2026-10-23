@@ -452,7 +452,7 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
     user_repo: InMemoryUserRepository,
     bot_texts_service,
 ) -> None:
-    """When admin_base_url is set, support message contains admin edit link."""
+    """Support notifications link to the read-only admin details page."""
     from tests.helpers.fakes import FakeMessengerClient
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
@@ -504,7 +504,7 @@ async def test_payout_callback_includes_admin_link_when_base_url_set(
     assert len(client.sent_text) == 1
     assert client.sent_text[0]["chat_id"] == "support_chat"
     assert "Открыть в админке" in client.sent_text[0]["text"]
-    assert "payout-request-model/edit/" in client.sent_text[0]["text"]
+    assert "payout-request-model/details/" in client.sent_text[0]["text"]
     assert client.sent_text[0].get("keyboard") is not None
     keyboard = client.sent_text[0]["keyboard"]
     assert keyboard is not None
@@ -2399,3 +2399,137 @@ async def test_resolve_target_admin_no_arg() -> None:
         chat_id="456",
     )
     assert result is user
+
+
+@pytest.mark.asyncio
+async def test_payout_button_callback_dispute_is_not_a_success(
+    user_repo: InMemoryUserRepository,
+    bot_texts_service,
+) -> None:
+    """payout_button_callback creates PayoutRequest and answers callback."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    await user_repo.save(
+        __user(external_id="456", username="bob"),
+    )
+    user_role_service = UserRoleService(user_repo=user_repo)
+    mock_income = MagicMock(spec=ReferralIncomeService)
+    mock_income.get_multicurrency_stats = AsyncMock(
+        return_value=_mc_stats(
+            available_by_currency={"RUB": Decimal("300.50")},
+        )
+    )
+    mock_payout_repo = MagicMock()
+    from ugc_bot.application.errors import LegacyPayoutBlockedError
+
+    mock_payout_repo.save = AsyncMock(
+        side_effect=LegacyPayoutBlockedError("dispute")
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    callback = FakeCallback(
+        data=f"{REFERRAL_PAYOUT_CALLBACK}:RUB",
+        user=FakeUser(456, "u", "bob"),
+        callback_id="cb1",
+    )
+
+    await payout_button_callback(
+        callback,
+        user_role_service=user_role_service,
+        referral_income_service=mock_income,
+        payout_request_repo=mock_payout_repo,
+        transaction_manager=mock_tm,
+        config=MagicMock(
+            spec=AppConfig,
+            referral=MagicMock(
+                referral_support_chat_id="support_chat",
+                referral_stats_limit=10_000,
+            ),
+            admin=MagicMock(admin_base_url=""),
+            market=MagicMock(currency_symbol="₽", default_locale="ru"),
+        ),
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    mock_payout_repo.save.assert_awaited_once()
+    assert len(client.sent_text) == 0
+    assert any(
+        "спор" in answer.get("text", "").lower()
+        for answer in client.answered_callbacks
+    )
+    assert not any(
+        "отправлен" in answer.get("text", "").lower()
+        for answer in client.answered_callbacks
+    )
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_callback_dispute_preserves_pending_request(
+    user_repo: InMemoryUserRepository,
+    monkeypatch,
+) -> None:
+    """Admin clicks 'Выплачено'; payout request status becomes PAID."""
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.infrastructure.messenger.telegram.adapter import (
+        TelegramEventAdapter,
+    )
+
+    request_id = uuid4()
+    admin_user = __user(
+        external_id="1", username="admin", admin=True, telegram="admin"
+    )
+    await user_repo.save(admin_user)
+    payout_repo = InMemoryPayoutRequestRepository()
+    await payout_repo.save(
+        PayoutRequest(
+            request_id=request_id,
+            user_id=admin_user.user_id,
+            requested_at=datetime.now(timezone.utc),
+            status=PayoutRequestStatus.PENDING,
+            amount=Decimal("100.50"),
+        )
+    )
+    mock_tm = MagicMock()
+    mock_tm.transaction = lambda: __fake_tx()
+
+    client = FakeMessengerClient()
+    adapter = TelegramEventAdapter()
+    message = FakeMessage(
+        text="", user=FakeUser(1, "admin", "admin"), message_id=42
+    )
+    callback = FakeCallback(
+        data=f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}",
+        user=FakeUser(1, "admin", "admin"),
+        message=message,
+        callback_id="cb_paid",
+    )
+
+    from ugc_bot.application.errors import LegacyPayoutBlockedError
+
+    monkeypatch.setattr(
+        InMemoryPayoutRequestRepository,
+        "update_status",
+        AsyncMock(side_effect=LegacyPayoutBlockedError("dispute")),
+    )
+    await payout_paid_callback(
+        callback,
+        user_role_service=UserRoleService(user_repo=user_repo),
+        payout_request_repo=payout_repo,
+        transaction_manager=mock_tm,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+
+    assert len(client.answered_callbacks) == 1
+    assert "спор" in client.answered_callbacks[0]["text"].lower()
+    updated = await payout_repo.get_by_id(request_id)
+    assert updated is not None
+    assert updated.status == PayoutRequestStatus.PENDING

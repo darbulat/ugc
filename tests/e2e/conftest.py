@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine
 
+from tests.helpers.financial_environment import require_synthetic_e2e
 from ugc_bot.infrastructure.db.base import Base
 
 _MINIAPP_CLASS_ORDER = {
@@ -64,7 +65,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
-    """Clean DB users before E2E tests when E2E_DATABASE_URL is set."""
+    """Reject unsafe targets before any connection, script, or DELETE."""
+    try:
+        require_synthetic_e2e(os.environ)
+    except ValueError as exc:
+        raise pytest.UsageError(str(exc)) from None
     db_url = os.environ.get("E2E_DATABASE_URL")
     if not db_url:
         return
@@ -129,6 +134,7 @@ def project_root() -> Path:
 
 def _use_external_server() -> bool:
     """True when E2E_BASE_URL is set (Docker Compose mode)."""
+    require_synthetic_e2e(os.environ)
     return bool(os.environ.get("E2E_BASE_URL"))
 
 
@@ -217,6 +223,7 @@ def admin_server(test_database: str, project_root: Path):
 @pytest.fixture(scope="session")
 def base_url() -> str:
     """Base URL for admin app (local or Docker)."""
+    require_synthetic_e2e(os.environ)
     env_url = os.environ.get("E2E_BASE_URL", "").strip()
     return env_url if env_url else BASE_URL
 
@@ -227,6 +234,7 @@ from tests.e2e.miniapp_helpers import MINIAPP_TEST_USER_IDS  # noqa: E402
 
 
 def _miniapp_base_url() -> str | None:
+    require_synthetic_e2e(os.environ)
     return os.environ.get("E2E_MINIAPP_URL", "").strip() or None
 
 

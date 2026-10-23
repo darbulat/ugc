@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ugc_bot.application.services.interaction_service import InteractionService
+from ugc_bot.application.services.manager_service import ManagerService
 from ugc_bot.domain.entities import OfferDispatch, Order, User
 from ugc_bot.domain.enums import (
     InteractionStatus,
@@ -145,7 +146,7 @@ def _make_dispatch(
     order_id: UUID,
     blogger_id: UUID,
     in_offer: bool = True,
-    manager_id: UUID | None = None,
+    manager_id: UUID | None = MGR_ID,
 ) -> OfferDispatch:
     return OfferDispatch(
         order_id=order_id,
@@ -181,18 +182,32 @@ def _build_dispatcher(
     order: Order | None = None,
     in_offer_count: int = 1,
 ) -> dict:
+    from types import SimpleNamespace
+
+    orders = MagicMock(get_by_id=AsyncMock(return_value=order))
+    users = MagicMock(get_by_id=AsyncMock(return_value=None))
+    dispatches = MagicMock(
+        get_by_order_and_blogger=AsyncMock(return_value=dispatch),
+        set_in_offer=AsyncMock(),
+        set_manager=AsyncMock(),
+        count_accepted_by_order=AsyncMock(return_value=in_offer_count),
+    )
+    managers = MagicMock(
+        list_by_order=AsyncMock(
+            return_value=[SimpleNamespace(user_id=MGR_ID)] if is_manager else []
+        )
+    )
+    service = ManagerService(
+        manager_order_repo=managers,
+        user_repo=users,
+        order_repo=orders,
+        offer_dispatch_repo=dispatches,
+    )
     return {
-        "manager_service": MagicMock(
-            is_manager_for_order=AsyncMock(return_value=is_manager)
-        ),
-        "offer_dispatch_repo": MagicMock(
-            get_by_order_and_blogger=AsyncMock(return_value=dispatch),
-            set_in_offer=AsyncMock(),
-            set_manager=AsyncMock(),
-            count_accepted_by_order=AsyncMock(return_value=in_offer_count),
-        ),
-        "order_repo": MagicMock(get_by_id=AsyncMock(return_value=order)),
-        "user_repo": MagicMock(get_by_id=AsyncMock(return_value=None)),
+        "manager_service": service,
+        "offer_dispatch_repo": dispatches,
+        "order_repo": orders,
+        "user_repo": users,
         "interaction_service": MagicMock(
             cancel_interaction=AsyncMock(),
             reactivate_or_create_for_contacts_sent=AsyncMock(),
@@ -202,6 +217,7 @@ def _build_dispatcher(
             record_advertiser_feedback=AsyncMock(
                 return_value=MagicMock(interaction_id=uuid4())
             ),
+            after_feedback_commit=AsyncMock(),
         ),
         "messenger_client": MagicMock(),
         "bot_texts_service": MagicMock(
@@ -237,7 +253,7 @@ class TestManagerRemoveCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -250,7 +266,7 @@ class TestManagerRemoveCreatorEndpoint:
         assert data["ok"] is True
         assert "interaction_id" in data
         dispatcher["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
-            self._ORDER_ID, self._BLOGGER_ID, False
+            self._ORDER_ID, self._BLOGGER_ID, False, session=None
         )
         dispatcher[
             "interaction_service"
@@ -266,7 +282,7 @@ class TestManagerRemoveCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -283,7 +299,7 @@ class TestManagerRemoveCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -316,7 +332,7 @@ class TestManagerAddCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -327,10 +343,10 @@ class TestManagerAddCreatorEndpoint:
         assert resp.status_code == 200
         assert resp.json() == {"ok": True}
         dispatcher["offer_dispatch_repo"].set_in_offer.assert_awaited_once_with(
-            self._ORDER_ID, self._BLOGGER_ID, True
+            self._ORDER_ID, self._BLOGGER_ID, True, session=None
         )
         dispatcher["offer_dispatch_repo"].set_manager.assert_awaited_once_with(
-            self._ORDER_ID, self._BLOGGER_ID, self._ORDER_ID
+            self._ORDER_ID, self._BLOGGER_ID, MGR_ID, session=None
         )
         dispatcher[
             "interaction_service"
@@ -348,7 +364,7 @@ class TestManagerAddCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -370,7 +386,7 @@ class TestManagerAddCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -409,7 +425,7 @@ class TestManagerAddCreatorEndpoint:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             patch("ugc_bot.miniapp.api.send_with_retry", new=AsyncMock()),
             TestClient(_app(dispatcher)) as client,
@@ -446,7 +462,7 @@ class TestManagerRemoveNotification:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             patch("ugc_bot.miniapp.api.send_with_retry", new=AsyncMock()),
             TestClient(_app(dispatcher)) as client,
@@ -463,7 +479,7 @@ class TestManagerRemoveNotification:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -479,7 +495,7 @@ class TestManagerRemoveNotification:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -495,7 +511,7 @@ class TestManagerRemoveNotification:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -511,7 +527,7 @@ class TestManagerRemoveNotification:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):
@@ -528,7 +544,7 @@ class TestManagerRemoveNotification:
         with (
             patch(
                 "ugc_bot.miniapp.api._ensure_user_and_get_id",
-                AsyncMock(return_value=self._ORDER_ID),
+                AsyncMock(return_value=MGR_ID),
             ),
             TestClient(_app(dispatcher)) as client,
         ):

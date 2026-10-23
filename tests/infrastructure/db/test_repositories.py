@@ -135,6 +135,8 @@ class FakeSession:
         self.merged = None
         self.committed = False
         self.deleted = None
+        self.added = None
+        self.statements = []
 
     async def __aenter__(self):  # type: ignore[no-untyped-def]
         return self
@@ -142,8 +144,12 @@ class FakeSession:
     async def __aexit__(self, exc_type, exc, tb):  # type: ignore[no-untyped-def]
         return False
 
-    async def execute(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+    async def execute(self, statement, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+        self.statements.append(statement)
         return FakeResult(self._result)
+
+    async def scalar(self, statement, *_args, **_kwargs):
+        return (await self.execute(statement, *_args, **_kwargs)).scalar()
 
     async def get(self, _model, _key):  # type: ignore[no-untyped-def]
         return self._result
@@ -170,8 +176,8 @@ class FakeSession:
         return MockQuery(self._result)
 
     def add(self, obj):  # type: ignore[no-untyped-def]
-        """Mock add method."""
-        pass
+        """Capture the mapped model; this does not exercise a real DB."""
+        self.added = obj
 
     async def commit(self):  # type: ignore[no-untyped-def]
         """Mock commit method."""
@@ -2514,7 +2520,15 @@ async def test_payout_request_repository_save() -> None:
     repo = SqlAlchemyPayoutRequestRepository(
         session_factory=_session_factory(None)
     )
-    await repo.save(request, session=_repo_session(repo))
+    session = _repo_session(repo)
+    await repo.save(request, session=session)
+    assert session.added.request_id == request_id
+    assert session.added.user_id == user_id
+    assert session.added.status == PayoutRequestStatus.PENDING
+    assert any(
+        getattr(query, "_for_update_arg", None) is not None
+        for query in session.statements
+    )
 
 
 @pytest.mark.asyncio
@@ -2607,10 +2621,24 @@ async def test_payout_request_repository_update_status() -> None:
     request_id = UUID("00000000-0000-0000-0000-000000000609")
 
     class FakeSessionWithRowcount(FakeSession):
-        async def execute(self, *_args, **_kwargs):
-            return FakeResult(None, rowcount=1)
+        async def execute(self, statement, *_args, **_kwargs):
+            self.statements.append(statement)
+            return FakeResult(self._result, rowcount=1)
 
-    session = FakeSessionWithRowcount(None)
+        async def scalar(self, *_args, **_kwargs):
+            # This mapping-only unit test has no active disputes. Real safety
+            # and serialization are asserted separately in PostgreSQL tests.
+            return None
+
+    pending = PayoutRequestModel(
+        request_id=request_id,
+        user_id=UUID("00000000-0000-0000-0000-000000000610"),
+        requested_at=datetime.now(timezone.utc),
+        status=PayoutRequestStatus.PENDING,
+        amount=Decimal("35"),
+        currency="RUB",
+    )
+    session = FakeSessionWithRowcount(pending)
 
     class FakeAsyncSessionMaker:
         def __init__(self, sess):

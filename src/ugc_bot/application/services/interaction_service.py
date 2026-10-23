@@ -43,13 +43,18 @@ class InteractionService:
     user_repo: UserRepository | None = None
     referral_income_service: Optional[Any] = None
 
-    async def _save(self, interaction: Interaction) -> None:
+    async def _save(
+        self, interaction: Interaction, *, session: object | None = None
+    ) -> None:
         """Persist interaction using an optional transaction boundary."""
 
         async def _run(session: object | None):
             await self.interaction_repo.save(interaction, session=session)
 
-        await with_optional_tx(self.transaction_manager, _run)
+        if session is not None:
+            await _run(session)
+        else:
+            await with_optional_tx(self.transaction_manager, _run)
 
     async def get_interaction(self, interaction_id: UUID) -> Interaction | None:
         """Fetch interaction by id within a transaction boundary."""
@@ -67,7 +72,12 @@ class InteractionService:
         return await with_optional_tx(self.transaction_manager, _run)
 
     async def _get_by_participants(
-        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        advertiser_id: UUID,
+        *,
+        session: object | None = None,
     ) -> Interaction | None:
         """Fetch interaction by participants (optional transaction boundary)."""
 
@@ -79,6 +89,8 @@ class InteractionService:
                 session=session,
             )
 
+        if session is not None:
+            return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
 
     async def list_interactions_by_order(
@@ -96,7 +108,12 @@ class InteractionService:
         return await with_optional_tx(self.transaction_manager, _run)
 
     async def create_for_contacts_sent(
-        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        advertiser_id: UUID,
+        *,
+        session: object | None = None,
     ) -> Interaction:
         """Create interaction when contacts sent, with initial next_check_at."""
 
@@ -116,58 +133,95 @@ class InteractionService:
             created_at=now,
             updated_at=now,
         )
-        await self._save(interaction)
+        await self._save(interaction, session=session)
         return interaction
 
     async def reactivate_or_create_for_contacts_sent(
-        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
-    ) -> "Interaction":
-        """Reactivate existing interaction or create a new one.
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        advertiser_id: UUID,
+        *,
+        session: object | None = None,
+    ) -> Interaction:
+        """Reactivate contacts, retaining unresolved disputes and replies."""
 
-        Used when a creator is re-added to an order after being removed.
-        Prevents duplicate rows for the same (order, blogger, advertiser).
-        """
-        now = datetime.now(timezone.utc)
-        next_check = now + timedelta(minutes=self.postpone_delay_minutes)
-
-        existing = await self._get_by_participants(
-            order_id, blogger_id, advertiser_id
-        )
-        if existing is not None:
-            reactivated = replace(
-                existing,
-                status=InteractionStatus.PENDING,
-                from_advertiser=None,
-                from_blogger=None,
-                postpone_count=0,
-                next_check_at=next_check,
-                updated_at=now,
+        async def _run(session: object | None) -> Interaction:
+            existing = await self.interaction_repo.get_by_participants(
+                order_id, blogger_id, advertiser_id, session=session
             )
-            await self._save(reactivated)
-            return reactivated
+            if existing is not None:
+                current = await self.interaction_repo.get_by_id_for_update(
+                    existing.interaction_id, session=session
+                )
+                if current is None:
+                    raise InteractionNotFoundError("Interaction not found.")
+                if current.status == InteractionStatus.ISSUE:
+                    return current
+                now = datetime.now(timezone.utc)
+                updated = replace(
+                    current,
+                    status=InteractionStatus.PENDING,
+                    from_advertiser=None,
+                    from_blogger=None,
+                    postpone_count=0,
+                    next_check_at=now
+                    + timedelta(minutes=self.postpone_delay_minutes),
+                    updated_at=now,
+                )
+            else:
+                now = datetime.now(timezone.utc)
+                updated = Interaction(
+                    interaction_id=uuid4(),
+                    order_id=order_id,
+                    blogger_id=blogger_id,
+                    advertiser_id=advertiser_id,
+                    status=InteractionStatus.PENDING,
+                    from_advertiser=None,
+                    from_blogger=None,
+                    postpone_count=0,
+                    next_check_at=now
+                    + timedelta(minutes=self.postpone_delay_minutes),
+                    created_at=now,
+                    updated_at=now,
+                )
+            await self.interaction_repo.save(updated, session=session)
+            return updated
 
-        return await self.create_for_contacts_sent(
-            order_id, blogger_id, advertiser_id
-        )
+        if session is not None:
+            return await _run(session)
+        return await with_optional_tx(self.transaction_manager, _run)
 
     async def schedule_next_reminder(
         self, interaction_id: UUID, next_check_at: datetime
     ) -> None:
-        """Set next_check_at (e.g. next 10:00 after feedback request)."""
+        """Schedule pending work without overwriting concurrent feedback."""
 
-        interaction = await self._get_by_id(interaction_id)
-        if interaction is None:
-            return
-        now = datetime.now(timezone.utc)
-        updated = replace(
-            interaction,
-            next_check_at=next_check_at,
-            updated_at=now,
-        )
-        await self._save(updated)
+        async def _run(session: object | None) -> None:
+            interaction = await self.interaction_repo.get_by_id_for_update(
+                interaction_id, session=session
+            )
+            if (
+                interaction is None
+                or interaction.status != InteractionStatus.PENDING
+            ):
+                return
+            updated = replace(
+                interaction,
+                next_check_at=next_check_at,
+                updated_at=datetime.now(timezone.utc),
+            )
+            await self.interaction_repo.save(updated, session=session)
+
+        await with_optional_tx(self.transaction_manager, _run)
 
     async def get_or_create(
-        self, order_id: UUID, blogger_id: UUID, advertiser_id: UUID
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        advertiser_id: UUID,
+        *,
+        session: object | None = None,
     ) -> Interaction:
         """Fetch existing interaction or create a new one."""
 
@@ -175,6 +229,7 @@ class InteractionService:
             order_id=order_id,
             blogger_id=blogger_id,
             advertiser_id=advertiser_id,
+            session=session,
         )
         if existing is not None:
             return existing
@@ -193,141 +248,117 @@ class InteractionService:
             created_at=now,
             updated_at=now,
         )
-        await self._save(interaction)
+        await self._save(interaction, session=session)
         return interaction
 
     async def record_advertiser_feedback(
-        self, interaction_id: UUID, feedback_text: str
+        self,
+        interaction_id: UUID,
+        feedback_text: str,
+        *,
+        session: object | None = None,
     ) -> Interaction:
-        """Record advertiser feedback and update status."""
-
-        interaction = await self._require(interaction_id)
-        outcome = self._parse_feedback(feedback_text)
-
-        # Handle postpone case
-        if outcome == InteractionStatus.PENDING:
-            return await self._postpone_interaction(
-                interaction, "advertiser", feedback_text
-            )
-
-        # Check if we need to auto-resolve after max postpones
-        if interaction.postpone_count >= self.max_postpone_count:
-            outcome = InteractionStatus.NO_DEAL
-
-        final_status = self._aggregate(feedback_text, interaction.from_blogger)
-        other_needs_reminder = needs_feedback_reminder(interaction.from_blogger)
-        if other_needs_reminder:
-            effective_status = InteractionStatus.PENDING
-            next_check = (
-                next_reminder_datetime(
-                    self.feedback_reminder_timezone,
-                    self.feedback_reminder_hour,
-                    self.feedback_reminder_minute,
-                )
-                if self.feedback_reminder_timezone
-                else datetime.now(timezone.utc)
-                + timedelta(minutes=self.postpone_delay_minutes)
-            )
-        else:
-            effective_status = final_status
-            next_check = None
-
-        now = datetime.now(timezone.utc)
-        updated = replace(
-            interaction,
-            status=effective_status,
-            from_advertiser=feedback_text,
-            next_check_at=next_check,
-            updated_at=now,
+        """Record advertiser feedback under the interaction row lock."""
+        return await self._record_feedback(
+            interaction_id, feedback_text, "advertiser", session=session
         )
-        await self._save(updated)
-
-        if (
-            updated.status == InteractionStatus.OK
-            and self.referral_income_service
-        ):
-            await self._try_record_creator_referral_income(updated)
-
-        # Record ISSUE metric
-        if final_status == InteractionStatus.ISSUE and self.metrics_collector:
-            self.metrics_collector.record_interaction_issue(
-                interaction_id=str(interaction.interaction_id),
-                order_id=str(interaction.order_id),
-                blogger_id=str(interaction.blogger_id),
-                advertiser_id=str(interaction.advertiser_id),
-            )
-
-        return updated
 
     async def record_blogger_feedback(
         self, interaction_id: UUID, feedback_text: str
     ) -> Interaction:
-        """Record blogger feedback and update status."""
+        """Record blogger feedback under the same interaction row lock."""
+        return await self._record_feedback(
+            interaction_id, feedback_text, "blogger"
+        )
 
-        interaction = await self._require(interaction_id)
-        outcome = self._parse_feedback(feedback_text)
-
-        # Handle postpone case
-        if outcome == InteractionStatus.PENDING:
-            return await self._postpone_interaction(
-                interaction, "blogger", feedback_text
+    async def _record_feedback(
+        self,
+        interaction_id: UUID,
+        feedback_text: str,
+        side: str,
+        *,
+        session: object | None = None,
+    ) -> Interaction:
+        async def _op(session: object | None) -> Interaction:
+            interaction = await self.interaction_repo.get_by_id_for_update(
+                interaction_id, session=session
             )
-
-        # Check if we need to auto-resolve after max postpones
-        if interaction.postpone_count >= self.max_postpone_count:
-            outcome = InteractionStatus.NO_DEAL
-
-        final_status = self._aggregate(
-            interaction.from_advertiser, feedback_text
-        )
-        other_needs_reminder = needs_feedback_reminder(
-            interaction.from_advertiser
-        )
-        if other_needs_reminder:
-            effective_status = InteractionStatus.PENDING
-            next_check = (
-                next_reminder_datetime(
-                    self.feedback_reminder_timezone,
-                    self.feedback_reminder_hour,
-                    self.feedback_reminder_minute,
+            if interaction is None:
+                raise InteractionError("Interaction not found")
+            outcome = self._parse_feedback(feedback_text)
+            if outcome == InteractionStatus.PENDING:
+                if interaction.status == InteractionStatus.ISSUE:
+                    return interaction
+                return await self._postpone_interaction(
+                    interaction, side, feedback_text, session=session
                 )
-                if self.feedback_reminder_timezone
-                else datetime.now(timezone.utc)
-                + timedelta(minutes=self.postpone_delay_minutes)
+            adv = (
+                feedback_text
+                if side == "advertiser"
+                else interaction.from_advertiser
             )
-        else:
-            effective_status = final_status
-            next_check = None
+            blog = (
+                feedback_text if side == "blogger" else interaction.from_blogger
+            )
+            final_status = self._aggregate(adv, blog)
+            if interaction.status == InteractionStatus.ISSUE:
+                final_status = InteractionStatus.ISSUE
+            other_missing = needs_feedback_reminder(
+                blog if side == "advertiser" else adv
+            )
+            now = datetime.now(timezone.utc)
+            if other_missing and final_status != InteractionStatus.ISSUE:
+                effective_status = InteractionStatus.PENDING
+                next_check = (
+                    next_reminder_datetime(
+                        self.feedback_reminder_timezone,
+                        self.feedback_reminder_hour,
+                        self.feedback_reminder_minute,
+                    )
+                    if self.feedback_reminder_timezone is not None
+                    else now + timedelta(hours=24)
+                )
+            else:
+                effective_status = final_status
+                next_check = None
+            updated = replace(
+                interaction,
+                from_advertiser=adv,
+                from_blogger=blog,
+                status=effective_status,
+                next_check_at=next_check,
+                updated_at=now,
+            )
+            await self.interaction_repo.save(updated, session=session)
+            return updated
 
-        now = datetime.now(timezone.utc)
-        updated = replace(
-            interaction,
-            status=effective_status,
-            from_blogger=feedback_text,
-            next_check_at=next_check,
-            updated_at=now,
-        )
-        await self._save(updated)
+        if session is not None:
+            return await _op(session)
+        updated = await with_optional_tx(self.transaction_manager, _op)
+        await self.after_feedback_commit(updated)
+        return updated
 
+    async def after_feedback_commit(self, updated: Interaction) -> None:
+        """Run metrics/referral effects only after the caller committed."""
+        if updated.status == InteractionStatus.ISSUE and self.metrics_collector:
+            self.metrics_collector.record_interaction_issue(
+                interaction_id=str(updated.interaction_id),
+                order_id=str(updated.order_id),
+                blogger_id=str(updated.blogger_id),
+                advertiser_id=str(updated.advertiser_id),
+            )
         if (
             updated.status == InteractionStatus.OK
             and self.referral_income_service
         ):
             await self._try_record_creator_referral_income(updated)
 
-        # Record ISSUE metric
-        if final_status == InteractionStatus.ISSUE and self.metrics_collector:
-            self.metrics_collector.record_interaction_issue(
-                interaction_id=str(interaction.interaction_id),
-                order_id=str(interaction.order_id),
-                blogger_id=str(interaction.blogger_id),
-                advertiser_id=str(interaction.advertiser_id),
-            )
-
-        return updated
-
     async def _postpone_interaction(
-        self, interaction: Interaction, side: str, feedback_text: str
+        self,
+        interaction: Interaction,
+        side: str,
+        feedback_text: str,
+        session: object | None = None,
     ) -> Interaction:
         """Postpone check by configured delay (postpone_delay_minutes).
 
@@ -376,7 +407,7 @@ class InteractionService:
             next_check_at=next_check,
             updated_at=now,
         )
-        await self._save(updated)
+        await self.interaction_repo.save(updated, session=session)
 
         # Record postponement metric
         if self.metrics_collector:
@@ -421,6 +452,15 @@ class InteractionService:
     def _parse_feedback(feedback_text: str) -> InteractionStatus:
         """Parse feedback text to InteractionStatus."""
 
+        canonical = feedback_text.lstrip()
+        for prefix, outcome in (
+            ("⚠", InteractionStatus.ISSUE),
+            ("⏳", InteractionStatus.PENDING),
+            ("✅", InteractionStatus.OK),
+            ("❌", InteractionStatus.NO_DEAL),
+        ):
+            if canonical.startswith(prefix):
+                return outcome
         feedback_lower = feedback_text.lower()
         if (
             "еще не связался" in feedback_lower
@@ -464,6 +504,10 @@ class InteractionService:
 
         # ISSUE from either side => ISSUE (even if other hasn't responded)
         if adv == InteractionStatus.ISSUE or blog == InteractionStatus.ISSUE:
+            return InteractionStatus.ISSUE
+
+        # A success report contradicted by the other party is a dispute.
+        if {adv, blog} == {InteractionStatus.OK, InteractionStatus.NO_DEAL}:
             return InteractionStatus.ISSUE
 
         # OK from either side => OK (even if other hasn't responded)
@@ -541,35 +585,48 @@ class InteractionService:
         order_id: UUID,
         blogger_id: UUID,
         advertiser_id: UUID,
+        *,
+        session: object | None = None,
     ) -> None:
-        """Set interaction to DELETED when creator is removed from order.
+        """Cancel pending work without erasing disputes or final results."""
 
-        No-op if interaction does not exist or is already in a terminal
-        state (OK, NO_DEAL, or DELETED).
-        """
-        interaction = await self._get_by_participants(
-            order_id, blogger_id, advertiser_id
+        async def _run(session: object | None) -> bool:
+            existing = await self.interaction_repo.get_by_participants(
+                order_id, blogger_id, advertiser_id, session=session
+            )
+            if existing is None:
+                return False
+            current = await self.interaction_repo.get_by_id_for_update(
+                existing.interaction_id, session=session
+            )
+            if current is None or current.status in (
+                InteractionStatus.OK,
+                InteractionStatus.NO_DEAL,
+                InteractionStatus.DELETED,
+                InteractionStatus.ISSUE,
+            ):
+                return False
+            await self.interaction_repo.save(
+                replace(
+                    current,
+                    status=InteractionStatus.DELETED,
+                    next_check_at=None,
+                    updated_at=datetime.now(timezone.utc),
+                ),
+                session=session,
+            )
+            return True
+
+        cancelled = (
+            await _run(session)
+            if session is not None
+            else await with_optional_tx(self.transaction_manager, _run)
         )
-        if interaction is None:
-            return
-        if interaction.status in (
-            InteractionStatus.OK,
-            InteractionStatus.NO_DEAL,
-            InteractionStatus.DELETED,
-        ):
-            return
-        now = datetime.now(timezone.utc)
-        resolved = replace(
-            interaction,
-            status=InteractionStatus.DELETED,
-            next_check_at=None,
-            updated_at=now,
-        )
-        await self._save(resolved)
-        logger.info(
-            "Interaction cancelled (creator removed from order)",
-            extra={
-                "order_id": str(order_id),
-                "blogger_id": str(blogger_id),
-            },
-        )
+        if cancelled and session is None:
+            logger.info(
+                "Interaction cancelled (creator removed from order)",
+                extra={
+                    "order_id": str(order_id),
+                    "blogger_id": str(blogger_id),
+                },
+            )

@@ -1306,11 +1306,6 @@ async def _handle_feedback_ok_postpone_issue(
     texts: dict[str, str],
 ) -> None:
     """Handle ok/postpone/issue: record or transition to issue flow."""
-    if status_raw == "issue":
-        await _handle_feedback_issue(
-            callback, state, kind, interaction_id, texts
-        )
-        return
     if kind == "adv":
         updated = await interaction_service.record_advertiser_feedback(
             interaction_id, feedback_text
@@ -1319,6 +1314,11 @@ async def _handle_feedback_ok_postpone_issue(
         updated = await interaction_service.record_blogger_feedback(
             interaction_id, feedback_text
         )
+    if status_raw == "issue":
+        await _handle_feedback_issue(
+            callback, state, kind, interaction_id, texts
+        )
+        return
     await _handle_feedback_reply(
         callback,
         kind,

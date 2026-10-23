@@ -780,7 +780,11 @@ class InMemoryOrderRepository(OrderRepository):
     orders: Dict[UUID, Order] = field(default_factory=dict)
 
     async def get_by_id(
-        self, order_id: UUID, session: object | None = None
+        self,
+        order_id: UUID,
+        session: object | None = None,
+        *,
+        for_update: bool = False,
     ) -> Optional[Order]:
         """Fetch order by id."""
 
@@ -1109,6 +1113,8 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        for_update: bool = False,
     ) -> OfferDispatch | None:
         """Return dispatch by composite key or None."""
         return self._dispatches.get((order_id, blogger_id))

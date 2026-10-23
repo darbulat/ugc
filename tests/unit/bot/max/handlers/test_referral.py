@@ -665,3 +665,28 @@ async def test_referral_command_multi_currency_stats_sent():
     await router.route_message(_incoming_msg(), deps)
     # Should produce stats text
     assert len(deps["messenger_client"].sent_text) == 1
+
+
+@pytest.mark.asyncio
+async def test_payout_paid_dispute_is_not_reported_as_paid():
+    from ugc_bot.application.errors import LegacyPayoutBlockedError
+
+    request_id = uuid4()
+    deps = _deps(user=_make_user(admin=True))
+    client = AsyncMock()
+    deps["messenger_client"] = client
+    request = MagicMock(
+        status=PayoutRequestStatus.PENDING, request_id=request_id
+    )
+    deps["payout_request_repo"].get_by_id.return_value = request
+    deps[
+        "payout_request_repo"
+    ].update_status.side_effect = LegacyPayoutBlockedError("dispute")
+    from ugc_bot.bot.max.handlers.referral import payout_paid_callback
+
+    await payout_paid_callback(
+        _incoming_cb(f"{PAYOUT_PAID_CALLBACK_PREFIX}{request_id}"), deps
+    )
+    client.edit_reply_markup.assert_not_awaited()
+    assert "спор" in client.answer_callback.call_args.kwargs["text"]
+    assert client.answer_callback.call_args.kwargs["show_alert"] is True

@@ -14,6 +14,27 @@ permissions:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: "sqlite:///:memory:"
+      BOT_TOKEN: test-token
+      ADMIN_USERNAME: test_admin
+      ADMIN_PASSWORD: test_pass
+      ADMIN_SECRET: test_secret
+      KAFKA_ENABLED: "false"
+      FEEDBACK_ENABLED: "false"
+      USE_REDIS_STORAGE: "false"
+    services:
+      db_test:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: ugc_test
+          POSTGRES_USER: ugc
+          POSTGRES_PASSWORD: ugc
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U ugc -d ugc_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     
     strategy:
       matrix:
@@ -23,9 +44,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
-      - name: Copy env.example to .env
-        run: cp config/env.example .env || echo "config/env.example not found, skipping"
       
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -41,7 +59,15 @@ jobs:
       - name: Run linters (format check, lint, typecheck)
         run: make format-check lint typecheck
 
-      - name: Run tests with coverage
+      - name: Verify isolated PostgreSQL migrations
+        env:
+          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
+        run: uv run python -m tests.helpers.financial_environment
+
+      - name: Run tests with coverage (PostgreSQL required)
+        env:
+          PYTEST_ADDOPTS: --require-financial-postgres
+          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
         run: make coverage
       
       - name: Upload coverage reports

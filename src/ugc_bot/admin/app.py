@@ -1896,8 +1896,10 @@ class BloggerRatingAdmin(ModelView, model=BloggerRatingModel):
 
 
 class InteractionAdmin(ModelView, model=InteractionModel):
-    """Admin view for interactions."""
+    """Read-only interactions; use protected financial review commands."""
 
+    can_create = False
+    can_edit = False
     can_delete = False
     name = "Взаимодействие"
     name_plural = "Взаимодействия"
@@ -1930,39 +1932,8 @@ class InteractionAdmin(ModelView, model=InteractionModel):
     ]
 
     async def update_model(self, request: Request, pk: str, data: dict):
-        """Update interaction model with manual issue resolution."""
-
-        pk_uuid = UUID(pk)
-        obj = await _get_obj_by_pk(self, InteractionModel, pk_uuid)
-        old_status = obj.status if obj else None
-
-        result = await super().update_model(request, pk, data)
-
-        obj = await _get_obj_by_pk(self, InteractionModel, pk_uuid)
-        new_status = obj.status if obj else None
-
-        # If manually resolving ISSUE to OK or NO_DEAL
-        if old_status == InteractionStatus.ISSUE and new_status in (
-            InteractionStatus.OK,
-            InteractionStatus.NO_DEAL,
-        ):
-            try:
-                container = _get_admin_container()
-                if container:
-                    _, _, interaction_service = _get_services(container)
-                    await interaction_service.manually_resolve_issue(
-                        UUID(pk), new_status
-                    )
-            except Exception:
-                logger.exception(
-                    "manually_resolve_issue failed after admin status change",
-                    extra={
-                        "interaction_id": pk,
-                        "new_status": str(new_status),
-                    },
-                )
-
-        return result
+        """Reject raw status edits; use audited financial review."""
+        raise PermissionError("Use an audited financial case review command")
 
     def list_query(self, request: Request):
         stmt = super().list_query(request)
@@ -2248,16 +2219,17 @@ class NpsResponseAdmin(ModelView, model=NpsResponseModel):
 
 
 class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
-    """Admin view for payout requests (referral).
+    """Read-only legacy payout requests.
 
-    Process: user requests payout in bot -> PENDING created -> support pays
-    -> set status to PAID here. Changing amount here affects user's paid_total
-    in referral stats. See docs/REFERRAL_PAYOUTS.md.
+    Creation and mark-paid use guarded commands, never generic recipient,
+    amount or status forms. Disputed wallets require audited financial review.
     """
 
     name = "Заявка на вывод"
     name_plural = "Заявки на вывод"
     can_create = False
+    # Generic amount/recipient/status editing bypasses the payout safety-stop.
+    can_edit = False
     can_delete = False
     column_list = [
         PayoutRequestModel.request_id,

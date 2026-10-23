@@ -22,6 +22,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -899,6 +900,11 @@ class UserReferralBindingModel(Base):
     """Referrer-to-referred user binding ORM model."""
 
     __tablename__ = "user_referral_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "referred_user_id", name="uq_user_referral_bindings_referred_user"
+        ),
+    )
 
     referrer_user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -936,6 +942,79 @@ class UserReferralPendingModel(Base):
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+
+
+class LegacyFinancialCaseModel(Base):
+    """One legacy source case; money is never copied or adjusted here."""
+
+    __tablename__ = "legacy_financial_cases"
+    interaction_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("interactions.interaction_id"),
+        primary_key=True,
+    )
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    cause: Mapped[str] = mapped_column(String(80), nullable=False)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("1")
+    )
+    released: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class LegacyFinancialCaseEventModel(Base):
+    """Append-only operational history, including every review/reopen."""
+
+    __tablename__ = "legacy_financial_case_events"
+    event_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True
+    )
+    interaction_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("legacy_financial_cases.interaction_id"),
+        nullable=False,
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_id: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.user_id"), nullable=True
+    )
+    decision: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    command_id: Mapped[Optional[UUID]] = mapped_column(
+        PG_UUID(as_uuid=True), unique=True, nullable=True
+    )
+    details: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class LegacyFinancialGuardModel(Base):
+    """Durable safety-stop, not a second balance or a mutable income row.
+
+    More than one dispute can block a wallet. No ordinary feedback or
+    status edit releases a block; release requires a separate financial review.
+    User row locks coordinate issue commits and every legacy payout writer.
+    """
+
+    __tablename__ = "legacy_financial_guards"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("users.user_id"), primary_key=True
+    )
+    currency: Mapped[str] = mapped_column(String(3), primary_key=True)
+    interaction_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("interactions.interaction_id"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
 
@@ -1036,8 +1115,9 @@ class ReferralIncomeEntryModel(Base):
         UniqueConstraint(
             "order_id",
             "referrer_user_id",
+            "referred_user_id",
             "income_type",
-            name="uq_referral_income_order_referrer_type",
+            name="uq_referral_income_order_referrer_referred_type",
         ),
     )
 

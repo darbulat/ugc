@@ -336,9 +336,9 @@ async def test_feedback_mixed_responses_aggregation(
         dispatcher, interaction2.interaction_id
     )
 
-    # Оба должны быть OK (advertiser OK + blogger OK/NO_DEAL)
+    # Agreement succeeds; contradictory reports open a financial dispute.
     assert final_interaction1.status == InteractionStatus.OK
-    assert final_interaction2.status == InteractionStatus.OK
+    assert final_interaction2.status == InteractionStatus.ISSUE
 
     print("✅ Feedback mixed responses aggregation test passed!")
 
@@ -410,12 +410,11 @@ async def test_feedback_issue_status_blocks_user(
         interaction.interaction_id, "⚠️"
     )
 
-    # Interaction stays PENDING (other side has not responded yet)
-    # и next_check_at установлен для повторного запроса
+    # An issue stops ordinary reminders immediately; it never waits for consent.
     updated_interaction = await _get_interaction(
         dispatcher, interaction.interaction_id
     )
-    assert updated_interaction.status == InteractionStatus.PENDING
-    assert updated_interaction.next_check_at is not None
+    assert updated_interaction.status == InteractionStatus.ISSUE
+    assert updated_interaction.next_check_at is None
 
     print("✅ Feedback ISSUE status test passed!")

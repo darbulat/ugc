@@ -1497,7 +1497,8 @@ async def test_feedback_handler_issue_sets_state_and_sends_prompt(
     assert state.state is not None
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
-    assert updated.from_advertiser is None
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.from_advertiser is not None
 
 
 @pytest.mark.asyncio
@@ -2743,8 +2744,8 @@ async def test_handle_issue_description_creates_complaint_and_records(
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_advertiser == "⚠️ Проблема / подозрение на мошенничество"
-    assert updated.status == InteractionStatus.PENDING
-    assert updated.next_check_at is not None
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.next_check_at is None
 
 
 @pytest.mark.asyncio
@@ -2837,8 +2838,8 @@ async def test_handle_issue_description_blogger_creates_complaint(
     updated = await interaction_repo.get_by_id(interaction.interaction_id)
     assert updated is not None
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
-    assert updated.status == InteractionStatus.PENDING
-    assert updated.next_check_at is not None
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.next_check_at is None
     complaints = list(complaint_repo.complaints.values())
     assert len(complaints) == 1
     assert complaints[0].reported_id == advertiser.user_id

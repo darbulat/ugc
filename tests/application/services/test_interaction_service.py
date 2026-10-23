@@ -108,8 +108,8 @@ async def test_record_blogger_feedback_issue() -> None:
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
-    assert updated.status == InteractionStatus.PENDING
-    assert updated.next_check_at is not None
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.next_check_at is None
 
 
 @pytest.mark.asyncio
@@ -558,8 +558,8 @@ async def test_record_feedback_issue_with_metrics() -> None:
     updated = await service.record_advertiser_feedback(
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
-    assert updated.status == InteractionStatus.PENDING
-    assert updated.next_check_at is not None
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.next_check_at is None
     assert updated.from_advertiser == "⚠️ Проблема / подозрение на мошенничество"
 
 
@@ -583,8 +583,8 @@ async def test_record_blogger_feedback_issue_with_metrics() -> None:
     updated = await service.record_blogger_feedback(
         interaction.interaction_id, "⚠️ Проблема / подозрение на мошенничество"
     )
-    assert updated.status == InteractionStatus.PENDING
-    assert updated.next_check_at is not None
+    assert updated.status == InteractionStatus.ISSUE
+    assert updated.next_check_at is None
     assert updated.from_blogger == "⚠️ Проблема / подозрение на мошенничество"
 
 

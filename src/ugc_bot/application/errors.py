@@ -1,6 +1,10 @@
 """Application-specific exceptions."""
 
 
+class LegacyPayoutBlockedError(ValueError):
+    """An unresolved legacy dispute forbids reserving or marking money paid."""
+
+
 class UserNotFoundError(RuntimeError):
     """Raised when a user cannot be found."""
 

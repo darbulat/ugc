@@ -35,9 +35,17 @@ class SqlAlchemyOrderRepository(OrderRepository):
     session_factory: async_sessionmaker[AsyncSession]
 
     async def get_by_id(
-        self, order_id: UUID, session: object | None = None
+        self,
+        order_id: UUID,
+        session: object | None = None,
+        *,
+        for_update: bool = False,
     ) -> Optional[Order]:
-        """Fetch order by ID."""
+        """Fetch order, optionally locking in the caller's write transaction."""
+        if for_update:
+            if not isinstance(session, AsyncSession):
+                raise ValueError("A row lock requires an explicit transaction")
+            return await self.get_by_id_for_update(order_id, session=session)
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
