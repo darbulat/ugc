@@ -60,16 +60,16 @@ def test_sanitize_for_logging_handles_list() -> None:
     assert got == [1, "http://***@h/path"]
 
 
-def test_mask_url_credentials_handles_parser_error(
+def test_mask_url_credentials_fails_closed_on_parser_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Return input when URL parsing raises."""
+    """A parser failure cannot safely classify input as nonsensitive."""
 
     def _boom(_value: str):  # type: ignore[no-untyped-def]
         raise ValueError("boom")
 
     monkeypatch.setattr(sl, "urlsplit", _boom)
-    assert sl._mask_url_credentials("not-a-url") == "not-a-url"
+    assert sl._mask_url_credentials("not-a-url") == "***"
 
 
 def test_safe_config_masks_sensitive_and_url_credentials() -> None:

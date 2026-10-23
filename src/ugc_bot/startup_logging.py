@@ -58,8 +58,9 @@ def _mask_url_credentials(value: str) -> str:
     try:
         parts = urlsplit(value)
     except ValueError:
-        # A malformed URL must not bypass credential redaction.
-        return MASK if "://" in value or value.startswith("//") else value
+        # The parser may normalize controls before rejecting a malformed URL.
+        # Fail closed instead of reclassifying its unnormalized input.
+        return MASK
 
     if not parts.netloc:
         return value
