@@ -61,6 +61,15 @@ async def finish_tasks(*tasks):
     )
 
 
+async def wait_for_signal(signal, producer):
+    """Wait for readiness or producer failure within the test's deadline."""
+    await asyncio.wait((signal, producer), return_when=asyncio.FIRST_COMPLETED)
+    if producer.done():
+        await producer
+        raise AssertionError("confirmation_task_finished_before_boundary")
+    return signal.result()
+
+
 def user_fact(*, user_id=None, max_id=None, telegram_id=None):
     now = datetime.now(timezone.utc)
     uid = user_id or uuid4()

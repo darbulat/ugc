@@ -85,7 +85,7 @@ class CollaborationNoticeDelivery:
         )
 
     async def _current(self, origin, session):
-        """Item lock only; current contact/role reads must never lock users."""
+        """Order/item locks; current contact/role reads never lock users."""
         repo = self.lifecycle.repository
         notice, source = origin.notice, origin.source
         try:

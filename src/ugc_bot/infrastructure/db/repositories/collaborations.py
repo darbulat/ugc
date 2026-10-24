@@ -171,11 +171,14 @@ class SqlAlchemyCollaborationRepository:
         assignment = ItemAssignmentModel.__table__
         item = OrderItemModel.__table__
         order = OrderModel.__table__
-        item_id = await db.scalar(
-            select(assignment.c.paid_item_id).where(
-                assignment.c.assignment_id == assignment_id
+        source = (
+            await db.execute(
+                select(assignment.c.paid_item_id, item.c.order_id)
+                .join(item, item.c.paid_item_id == assignment.c.paid_item_id)
+                .where(assignment.c.assignment_id == assignment_id)
             )
-        )
+        ).one_or_none()
+        item_id = source.paid_item_id if source is not None else None
         if item_id is None:
             raise ValueError(
                 "collaboration_scope_changed"
@@ -187,6 +190,13 @@ class SqlAlchemyCollaborationRepository:
             and item_id != expected_scope.paid_item_id
         ):
             raise ValueError("collaboration_scope_changed")
+        # Manager-list replacement takes Order FOR UPDATE before DELETE.
+        # Retain that decision through commit, in order-before-item order.
+        await db.execute(
+            select(order.c.order_id)
+            .where(order.c.order_id == source.order_id)
+            .with_for_update(read=True, key_share=True)
+        )
         await db.execute(
             select(item.c.paid_item_id)
             .where(item.c.paid_item_id == item_id)
@@ -221,6 +231,11 @@ class SqlAlchemyCollaborationRepository:
                 if expected_scope
                 else "assignment_not_found"
             )
+        if (row["paid_item_id"], row["order_id"]) != (
+            item_id,
+            source.order_id,
+        ):
+            raise ValueError("collaboration_scope_changed")
         if expected_scope is not None and expected_scope.source_identity != (
             row["assignment_id"],
             row["paid_item_id"],

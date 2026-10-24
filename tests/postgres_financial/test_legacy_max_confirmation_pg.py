@@ -27,6 +27,7 @@ from tests.postgres_financial.legacy_confirmation_support import (
     profile_fact,
     user_fact,
     wait_for_blocker,
+    wait_for_signal,
 )
 from ugc_bot.application.services.instagram_verification_service import (
     VerificationApiUnavailable,
@@ -400,7 +401,7 @@ async def test_mapping_commit_before_user_barrier_is_fresh_and_never_detached(
         await change_user(writer, owner.user_id, field, value)
         task = asyncio.create_task(case.confirm(mode, code))
         try:
-            reader_pid = await asyncio.wait_for(started, 2)
+            reader_pid = await wait_for_signal(started, task)
             assert reader_pid != writer_pid
             await wait_for_blocker(writer, reader_pid, writer_pid)
             assert not task.done()
@@ -474,9 +475,9 @@ async def test_confirmation_user_barriers_hold_later_mapping_until_commit(
     async with observe_confirmation_sql(case) as records:
         confirmation = asyncio.create_task(case.confirm(mode, code))
         try:
-            reader_pid = await asyncio.wait_for(completed, 2)
+            reader_pid = await wait_for_signal(completed, confirmation)
             writer = asyncio.create_task(mapping_writer())
-            writer_pid = await asyncio.wait_for(writer_started, 2)
+            writer_pid = await wait_for_signal(writer_started, writer)
             assert reader_pid != writer_pid
             async with case.factory.begin() as observer:
                 await wait_for_blocker(observer, writer_pid, reader_pid)
@@ -560,7 +561,7 @@ async def change_before_user_barrier(case, code, mode, change):
         await writer.execute(changed_fact_statement(case, code, change, other))
         task = asyncio.create_task(case.confirm(mode, code))
         try:
-            reader_pid = await asyncio.wait_for(started, 2)
+            reader_pid = await wait_for_signal(started, task)
             assert reader_pid != writer_pid
             await wait_for_blocker(writer, reader_pid, writer_pid)
             assert not task.done()
@@ -755,7 +756,7 @@ async def test_code_expiring_while_current_profile_waits_is_not_consumed(
         )
         task = asyncio.create_task(case.confirm(mode, code))
         try:
-            reader_pid = await asyncio.wait_for(started, 2)
+            reader_pid = await wait_for_signal(started, task)
             await wait_for_blocker(writer, reader_pid, writer_pid)
             assert [row["kind"] for row in records][-3:] == [
                 "code",
@@ -840,7 +841,7 @@ async def test_direct_wrapper_keeps_frozen_target_after_handle_transfer(
             )
         )
         try:
-            reader_pid = await asyncio.wait_for(started, 2)
+            reader_pid = await wait_for_signal(started, task)
             await wait_for_blocker(writer, reader_pid, writer_pid)
             await writer.commit()
             result = await asyncio.wait_for(task, 3)
