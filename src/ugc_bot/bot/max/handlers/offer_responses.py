@@ -4,7 +4,10 @@ import logging
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
-from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.errors import (
+    OrderCreationError,
+    PaidSelectionResponseError,
+)
 from ugc_bot.application.messenger.dto import (
     Button,
     IncomingCallback,
@@ -22,6 +25,7 @@ from ugc_bot.application.services.offer_response_service import (
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.bot.telegram.handlers.offer_responses import (
     _REJECTION_REASON_BUTTONS,
     _SEND_CONTACT_TEXTS_KEYS,
@@ -504,13 +508,10 @@ async def handle_offer_confirm(incoming: IncomingCallback, deps: dict) -> None:
     """Confirm offer response after creator reviewed the brief."""
     messenger_client = deps["messenger_client"]
     user_role_service: UserRoleService = deps["user_role_service"]
-    profile_service: ProfileService = deps["profile_service"]
     offer_response_service: OfferResponseService = deps[
         "offer_response_service"
     ]
-    interaction_service = deps["interaction_service"]
     bot_texts_service = deps["bot_texts_service"]
-    config = deps["config"]
     locale: str = deps.get("locale", "ru")
 
     if not await _check_offer_response_eligibility(incoming, deps, locale):
@@ -538,11 +539,37 @@ async def handle_offer_confirm(incoming: IncomingCallback, deps: dict) -> None:
         result = await offer_response_service.respond_and_finalize(
             order_id, user.user_id
         )
+    except PaidSelectionResponseError as exc:
+        text = await bot_texts_service.get(
+            selection_response_message_key(exc.reason), locale
+        )
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=text,
+        )
+        return
     except OrderCreationError:
         await _send_order_closed_and_remove_keyboard(
             incoming, messenger_client, bot_texts_service, locale
         )
         return
+
+    await _reply_confirmed_offer(incoming, result, user.user_id, deps, locale)
+
+
+async def _reply_confirmed_offer(
+    incoming: IncomingCallback,
+    result,
+    blogger_id: UUID,
+    deps: dict,
+    locale: str,
+) -> None:
+    messenger_client = deps["messenger_client"]
+    user_role_service = deps["user_role_service"]
+    profile_service = deps["profile_service"]
+    interaction_service = deps["interaction_service"]
+    bot_texts_service = deps["bot_texts_service"]
+    config = deps["config"]
 
     if result.accepted:
         text = await bot_texts_service.get("msg_offer_accepted", locale)
@@ -574,11 +601,17 @@ async def handle_offer_confirm(incoming: IncomingCallback, deps: dict) -> None:
             chat_id=incoming.chat_id, text=result.order.product_link
         )
     msg_what_next = await bot_texts_service.get(
-        "msg_blogger_after_response_what_next", locale
+        "msg_blogger_selection_interest_saved"
+        if result.delivery_queued is True
+        else "msg_blogger_after_response_what_next",
+        locale,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id, text=msg_what_next
     )
+
+    if result.delivery_queued is True:
+        return
 
     contact_texts = await bot_texts_service.get_many(
         list(_SEND_CONTACT_TEXTS_KEYS), locale
@@ -591,7 +624,7 @@ async def handle_offer_confirm(incoming: IncomingCallback, deps: dict) -> None:
     telegram_messenger_client = deps.get("telegram_messenger_client")
     await _send_contact_immediately(
         order=result.order,
-        blogger_id=user.user_id,
+        blogger_id=blogger_id,
         blogger_chat_id=incoming.chat_id,
         response_count=result.response_count,
         user_role_service=user_role_service,

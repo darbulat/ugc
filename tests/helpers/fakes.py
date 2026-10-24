@@ -193,7 +193,7 @@ class FakeBot:
         """Initialize fake bot."""
         self.invoices: list[dict] = []
         self.pre_checkout_answers: list[dict] = []
-        self.messages: list[tuple[int, str]] = []
+        self.messages: list[tuple[int, str, object]] = []
 
     async def send_invoice(self, **kwargs: object) -> None:  # type: ignore[no-untyped-def]
         """Capture invoice calls."""

@@ -19,12 +19,20 @@ from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from ugc_bot.app import build_dispatcher, create_storage
+from ugc_bot.application.services.checkout_paid_receipts import native_receipt
+from ugc_bot.checkout_runtime import (
+    start_checkout_runtime,
+    stop_checkout_runtime,
+)
 from ugc_bot.config import load_config
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
+)
+from ugc_bot.infrastructure.messenger.telegram.messenger_linking import (
+    intercept_reserved_link,
 )
 from ugc_bot.infrastructure.messenger.telegram.payments import (
     TelegramPaymentProvider,
@@ -95,6 +103,8 @@ async def _lifespan(app: FastAPI):
 
     storage = None
     bot = None
+    dispatcher = None
+    max_http_session = None
     try:
         storage = await create_storage(config)
         dispatcher = build_dispatcher(config, storage=storage)
@@ -136,8 +146,11 @@ async def _lifespan(app: FastAPI):
             _MAX_CONCURRENT_WEBHOOK_UPDATES
         )
 
+        start_checkout_runtime(dispatcher, bot, config)
         yield
     finally:
+        if dispatcher is not None:
+            await stop_checkout_runtime(dispatcher)
         if max_http_session is not None:
             with suppress(Exception):
                 await max_http_session.close()
@@ -145,7 +158,9 @@ async def _lifespan(app: FastAPI):
             with suppress(Exception):
                 await bot.delete_webhook()
             await bot.session.close()
-        exchange_svc = dispatcher.get("exchange_rate_service")
+        exchange_svc = (
+            dispatcher.get("exchange_rate_service") if dispatcher else None
+        )
         if exchange_svc is not None:
             with suppress(Exception):
                 await exchange_svc.close()
@@ -228,6 +243,30 @@ async def metrics() -> Response:
     return Response(content=body, media_type=CONTENT_TYPE_LATEST)
 
 
+async def _persist_checkout_payment(update, dispatcher):
+    processor = dispatcher.get("checkout_paid_processor")
+    if (
+        processor is None
+        or update.message is None
+        or update.message.successful_payment is None
+    ):
+        return False
+    try:
+        receipt = native_receipt(
+            TelegramEventAdapter().from_message(update.message)
+        )
+    except ValueError:
+        # Non-UUID legacy payloads retain the existing legacy handler.
+        return False
+    try:
+        return await processor.accept(receipt)
+    except Exception as exc:
+        logger.error("Authenticated paid receipt was not durably saved")
+        raise HTTPException(
+            status_code=503, detail="paid_receipt_not_saved"
+        ) from exc
+
+
 @app.post("/webhook/telegram")
 async def handle_webhook(
     request: Request,
@@ -247,17 +286,17 @@ async def handle_webhook(
 
     try:
         data = await request.json()
-    except Exception as exc:
-        logger.warning("Invalid JSON in webhook request", exc_info=exc)
+    except Exception:
+        logger.warning("Invalid JSON in webhook request")
         record_telegram_webhook_invalid()
-        raise HTTPException(status_code=400, detail="Invalid JSON") from exc
+        raise HTTPException(status_code=400, detail="Invalid JSON") from None
 
     try:
         update = Update.model_validate(data, context={"bot": bot})
-    except Exception as exc:
-        logger.warning("Invalid Update payload", exc_info=exc)
+    except Exception:
+        logger.warning("Invalid Update payload")
         record_telegram_webhook_invalid()
-        raise HTTPException(status_code=400, detail="Invalid update") from exc
+        raise HTTPException(status_code=400, detail="Invalid update") from None
 
     record_telegram_webhook_received()
 
@@ -265,6 +304,14 @@ async def handle_webhook(
     if semaphore is None:
         logger.error("webhook_semaphore not initialised, rejecting update")
         raise HTTPException(status_code=503, detail="Server not ready")
+
+    if await _persist_checkout_payment(update, dispatcher):
+        return {"status": "ok"}
+
+    if await intercept_reserved_link(
+        update, bot, dispatcher.get("messenger_linking_service")
+    ):
+        return {"status": "ok"}
 
     async def _process_update_safely() -> None:
         """Process webhook update with bounded concurrency and error logging."""

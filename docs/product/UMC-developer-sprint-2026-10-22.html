@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>UMC — Product Sprint / ТЗ для разработчика</title>
+  <style>
+    :root{--ink:#142334;--muted:#647489;--bg:#f5f7f7;--paper:#fff;--line:#e4eaeb;--lime:#d4fa78;--deep:#102c31;--green:#126844;--orange:#b77016;--blue:#2d5ba8;--shadow:0 12px 32px rgba(18,43,50,.055)}
+    *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.57 -apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif}a{color:inherit;text-decoration:none}button,input{font:inherit}button{cursor:pointer}
+    .shell{display:grid;grid-template-columns:246px minmax(0,1fr);min-height:100vh}.sidebar{background:#11272c;color:#e6f2ef;padding:29px 22px;position:sticky;top:0;height:100vh;overflow:auto}.mark{display:flex;align-items:center;gap:10px;font-size:21px;font-weight:850;letter-spacing:-.04em}.mark span:first-child{display:grid;place-items:center;width:38px;height:38px;background:var(--lime);color:#12282e;border-radius:12px;font-weight:950}.side-label{font-size:10px;letter-spacing:.16em;color:#91abae;text-transform:uppercase;margin:35px 11px 12px}.side-nav a{display:block;padding:10px 12px;border-radius:11px;font-size:13px;color:#b9cccb;transition:.15s}.side-nav a:hover,.side-nav a:focus{background:#204047;color:#fff}.side-foot{margin-top:40px;padding:16px;background:#19373d;border:1px solid #355257;border-radius:15px;font-size:12px;color:#c3d6d4}.side-foot strong{display:block;color:var(--lime);font-size:15px;margin-bottom:6px}
+    main{min-width:0;max-width:1510px;width:100%;padding:34px clamp(20px,4vw,70px) 100px;margin:auto}.topline{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:22px}.crumb{font-size:11px;letter-spacing:.14em;color:#638078;text-transform:uppercase;font-weight:800}.actions{display:flex;flex-wrap:wrap;gap:8px}.btn{border-radius:10px;padding:10px 13px;border:1px solid #d3dfe0;background:#fff;color:#1a3439;font-size:12px;font-weight:750;display:inline-flex;align-items:center;gap:7px;box-shadow:0 2px 2px rgba(0,0,0,.02)}.btn:hover{background:#eef6f4}.btn.dark{background:#18383d;color:white;border-color:#18383d}.btn.dark:hover{background:#295057}.hero{background:linear-gradient(125deg,#15383a 0%,#0f282d 75%);color:white;border-radius:24px;padding:clamp(26px,4.3vw,54px);position:relative;overflow:hidden;box-shadow:var(--shadow)}.hero::after{content:"";width:390px;height:390px;border:1px solid rgba(212,250,120,.16);position:absolute;border-radius:50%;right:-120px;top:-130px;box-shadow:0 0 0 58px rgba(212,250,120,.045),0 0 0 125px rgba(212,250,120,.025);pointer-events:none}.eyebrow{font-size:11px;text-transform:uppercase;font-weight:800;letter-spacing:.16em;color:#aed0bf}.hero h1{font-size:clamp(32px,4.5vw,56px);line-height:1.09;letter-spacing:-.055em;margin:17px 0 16px;max-width:800px}.hero h1 em{color:var(--lime);font-style:normal}.hero p{font-size:16px;line-height:1.65;color:#c2d8d4;max-width:735px;margin:0}.hero-badges{display:flex;flex-wrap:wrap;gap:9px;margin-top:28px}.hero-badges span{border:1px solid #54706a;border-radius:100px;padding:7px 12px;font-size:12px;color:#dde7e1;background:rgba(255,255,255,.035)}.hero-badges .bright{background:var(--lime);border-color:var(--lime);color:#143630;font-weight:800}
+    .stat-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:19px 0 54px}.stat{background:white;border:1px solid var(--line);border-radius:16px;padding:22px 20px;box-shadow:var(--shadow)}.stat b{font-size:28px;letter-spacing:-.045em;display:block;line-height:1.15;margin-bottom:6px}.stat small{color:var(--muted);font-size:12px;display:block}
+    section{scroll-margin-top:22px;margin:0 0 56px}.section-head{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;margin-bottom:18px}.overline{display:block;color:#5a8b7f;text-transform:uppercase;font-size:11px;font-weight:850;letter-spacing:.15em;margin-bottom:7px}h2{font-size:clamp(25px,2.75vw,34px);letter-spacing:-.04em;line-height:1.15;margin:0}h3{font-size:17px;letter-spacing:-.02em;margin:0 0 8px}p{margin:0 0 12px}.muted{color:var(--muted)}.hint{max-width:570px;color:var(--muted);font-size:13px}.panel{background:white;border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}.callout{background:#eaf5e0;border:1px solid #c7e0ad;padding:20px 23px;border-radius:16px;color:#264a37}.callout strong{display:block;font-size:15px;margin-bottom:5px}.warning{background:#fff3e6;border-color:#f1d5b6;color:#6d4a21}.dark-callout{background:#142e33;border-color:#142e33;color:white}.dark-callout p{color:#c8dad6}
+    .product-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.product{padding:22px;background:#fff;border:1px solid var(--line);border-radius:17px}.product .num{font-size:12px;color:#829594;font-weight:850}.product h3{margin-top:20px}.product p{font-size:12px;color:var(--muted);margin-bottom:0}.status{display:inline-flex;border-radius:100px;padding:5px 9px;font-size:11px;font-weight:800;white-space:nowrap}.s-now{background:#e0f3e7;color:#176741}.s-test{background:#fff0d7;color:#935c15}.s-later{background:#eef2f8;color:#58677d}
+    .toolbar{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:15px}.search{flex:1;min-width:220px;background:white;border:1px solid #d7e1e1;border-radius:11px;padding:11px 13px;outline:none}.search:focus{border-color:#527e75}.chip{border:1px solid #d4e0de;background:#fff;border-radius:11px;padding:10px 12px;font-size:12px;font-weight:800;color:#586a69}.chip.active{background:#153b39;border-color:#153b39;color:#fff}.count{color:var(--muted);font-size:12px;margin-left:auto}.task-list{display:grid;gap:11px}.task{background:white;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}.task-head{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:14px;align-items:start;padding:19px 21px;cursor:pointer;list-style:none}.task-head::-webkit-details-marker{display:none}.task-head:hover{background:#fbfdfc}.badge{font-size:10px;letter-spacing:.08em;padding:6px 8px;border-radius:7px;font-weight:900}.p0{background:#fcebe5;color:#a34028}.p1{background:#fff1d5;color:#9f6711}.p2{background:#e7edf5;color:#566b8f}.task-title{font-size:16px;font-weight:850;line-height:1.3}.task-summary{font-size:12px;color:var(--muted);margin-top:5px}.task-meta{display:flex;gap:6px;justify-content:end;align-items:center;flex-wrap:wrap}.task-meta span{font-size:11px;background:#f2f6f5;border-radius:7px;padding:5px 7px;color:#627575;white-space:nowrap}.expand{font-size:22px;color:#7e9995;margin-left:3px;line-height:1}.task[open] .expand{transform:rotate(45deg)}.task-body{padding:0 23px 22px 62px;border-top:1px solid #edf1f0}.task-body p{font-size:13px;margin-top:15px}.task-body h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#4f7c6b;margin:16px 0 8px}.task-body ul{margin:0;padding-left:19px;font-size:13px}.task-body li{margin:5px 0}.task-foot{display:flex;gap:10px;flex-wrap:wrap;margin-top:15px}.tag{font-size:10px;border:1px solid #e0e7e6;border-radius:6px;padding:5px 8px;color:#5c7472}
+    .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:11px;margin-top:17px}.step{position:relative;background:#f5f8f6;border:1px solid #e1e8e5;padding:17px;border-radius:13px;min-height:123px}.step b{font-size:12px;display:block;line-height:1.35;margin-bottom:9px}.step p{font-size:11px;color:#658077;margin:0}.step:not(:last-child):after{content:"→";position:absolute;right:-16px;top:37%;z-index:1;font-size:22px;color:#40856c;font-weight:900}.good{border-left:4px solid #57a97c}.avoid{border-left:4px solid #e5a15c}.cols{display:grid;grid-template-columns:1fr 1fr;gap:15px}.metric-table{width:100%;border-collapse:collapse;font-size:13px}.metric-table th,.metric-table td{text-align:left;border-bottom:1px solid #ebefed;padding:11px 9px;vertical-align:top}.metric-table th{font-size:11px;text-transform:uppercase;color:#7d918b;letter-spacing:.08em}.metric-table tr:last-child td{border-bottom:none}.estimate{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:800}.emph{color:#176741;font-weight:800}.tiny{font-size:11px;color:#758885}
+    .timeline{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}.day{background:white;border:1px solid var(--line);border-radius:15px;padding:16px;box-shadow:var(--shadow)}.day label{font-size:11px;color:#548474;font-weight:850}.day h3{font-size:14px;margin:15px 0 8px}.day p{font-size:11px;color:#627a76;line-height:1.55}.day:last-child{background:#dbf4c5;border-color:#bcdda3}.day:last-child label{color:#226a44}
+    .money-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.field{background:#f6f8f7;border:1px solid #e5ebea;border-radius:12px;padding:13px}.field label{display:block;color:#647d77;font-size:11px;margin-bottom:6px}.field strong{font-size:20px;letter-spacing:-.03em}.field input{width:100%;margin-top:10px;accent-color:#1b7d55}.money-results{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-top:16px}.money-results>div{padding:17px;border-radius:13px;background:#f0f5f2}.money-results>div:last-child{background:#193d39;color:white}.money-results b{font-size:23px;letter-spacing:-.04em;display:block;margin:7px 0}.money-results small{font-size:11px;color:#719085}.money-results>div:last-child small{color:#bbd5c9}
+    .check{display:grid;grid-template-columns:auto 1fr;align-items:start;gap:10px;padding:12px 0;border-bottom:1px solid #eef2f1;font-size:13px}.check:last-child{border-bottom:0}.check input{accent-color:#217855;width:18px;height:18px;margin:1px 0 0}.check input:checked+span{text-decoration:line-through;color:#9dadab}.progress{width:100%;height:9px;background:#e6eeeb;border-radius:100px;overflow:hidden;margin:12px 0 6px}.progress div{height:100%;width:0;background:#47a97a;transition:.2s}.question{padding:17px 0;border-bottom:1px solid #edf1ef;display:grid;grid-template-columns:1fr 1.2fr;gap:20px}.question:last-child{border-bottom:0}.question b{font-size:13px}.question p{font-size:12px;color:#5a736b;margin:0}.links a{font-size:12px;color:#176846;text-decoration:underline;text-underline-offset:3px;margin-right:15px}.footer{text-align:center;color:#7c9290;font-size:11px;padding-top:40px;border-top:1px solid var(--line)}
+    @media(max-width:1160px){.product-grid{grid-template-columns:repeat(2,1fr)}.timeline{grid-template-columns:repeat(4,1fr)}.stat-row{grid-template-columns:repeat(2,1fr)}}
+    @media(max-width:850px){.shell{display:block}.sidebar{position:relative;height:auto;padding:16px 20px}.side-nav,.side-label,.side-foot{display:none}.sidebar .mark{font-size:17px}.mark span:first-child{width:31px;height:31px}.hero{border-radius:17px}.cols{grid-template-columns:1fr}.flow{grid-template-columns:repeat(2,1fr)}.flow .step:nth-child(2):after{display:none}.timeline{grid-template-columns:repeat(2,1fr)}main{padding:21px 15px 55px}.task-body{padding-left:20px}.task-head{grid-template-columns:auto minmax(0,1fr);gap:10px}.task-meta{grid-column:2;justify-content:start}}
+    @media(max-width:550px){.stat-row,.product-grid,.money-controls,.money-results,.flow{grid-template-columns:1fr}.step:after{display:none!important}.topline{align-items:start;flex-direction:column}.section-head{display:block}.section-head .hint{margin-top:9px}.question{grid-template-columns:1fr;gap:6px}.timeline{grid-template-columns:1fr 1fr}.hero h1{font-size:33px}.task-title{font-size:15px}}
+    @media print{body{background:#fff;color:#111}.shell{display:block}.sidebar,.actions,.toolbar{display:none!important}main{max-width:none;padding:0}.hero{background:#e8f0e8;color:#172d2b;box-shadow:none;border:1px solid #bbb}.hero p,.eyebrow{color:#345}.hero h1 em{color:#1b6651}.hero-badges span{color:#314;border-color:#aaa}.hero-badges .bright{background:#d4fa78}.stat,.panel,.task,.product,.day{box-shadow:none;break-inside:avoid}.task-body{display:block}.task:not([open]) .task-body{display:block!important}.timeline{grid-template-columns:repeat(4,1fr)}section{margin-bottom:26px}h2{font-size:26px}.task-head{padding-bottom:12px}.footer{padding:10px}}
+  </style>
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="mark"><span>U</span><span>UMC / BUILD</span></div>
+    <div class="side-label">Навигация</div>
+    <nav class="side-nav">
+      <a href="#strategy">01 · Контекст и цель</a>
+      <a href="#backlog">02 · Полный backlog</a>
+      <a href="#logic">03 · Реферальная логика</a>
+      <a href="#financial-v1">04 · Финансовые правила v1</a>
+      <a href="#economics">05 · Деньги и апсейл</a>
+      <a href="#operations">06 · Состояния / события</a>
+      <a href="#roles">07 · Кабинеты и админка</a>
+      <a href="#miniapp">08 · Mini App и соцсети</a>
+      <a href="#sprint">09 · Спринт 7 дней</a>
+      <a href="#testing">10 · Приёмка</a>
+      <a href="#decisions">11 · Решения / риски</a>
+      <a href="#metrics">12 · KPI</a>
+    </nav>
+    <div class="side-foot"><strong>Приоритет — выручка</strong>Сначала закрываем финансовые события, допродажи и реферальную мотивацию. Затем — интерфейсы, подписки и автоматизация.</div>
+  </aside>
+  <main>
+    <div class="topline">
+      <span class="crumb">Product scope / 22 октября 2026 / версия 2.0 · financial v1</span>
+      <div class="actions">
+        <button class="btn" onclick="copySpec()">▤ &nbsp;Скопировать ТЗ</button>
+        <button class="btn dark" onclick="printSpec()">↗ &nbsp;Печать / PDF</button>
+      </div>
+    </div>
+    <header class="hero">
+      <span class="eyebrow">Для Камиля и Булата · Dev kickoff</span>
+      <h1>Не просто доработать бот.<br><em>Усилить экономику UMC.</em></h1>
+      <p>Приоритизированное ТЗ по итогам созвона: реферальные начисления, менеджеры, продуктовые апсейлы, новые соцсети, грейды и Mini App. С разделением на недельный релиз и следующие этапы.</p>
+      <div class="hero-badges"><span class="bright">Release 01 — деньги и рефералы</span><span>1 разработчик · оценка предварительная</span><span>Не обещаем всё за 7 дней</span></div>
+    </header>
+    <div class="stat-row">
+      <div class="stat"><b>20</b><small>15 исходных + 5 новых задач</small></div>
+      <div class="stat"><b>9 / 6 / 5</b><small>P0 / P1 / P2 по срочности</small></div>
+      <div class="stat"><b>7 дней</b><small>пилот по готовности финансового ядра, не весь backlog</small></div>
+      <div class="stat"><b>14 дней</b><small>окно проверки коммерческого эффекта</small></div>
+    </div>
+
+    <section id="strategy">
+      <div class="section-head"><div><span class="overline">01 / Продуктовая рамка</span><h2>Четыре механики, но один денежный фокус</h2></div></div>
+      <div class="product-grid">
+        <div class="product"><span class="num">01 / CASH ENGINE</span><h3>Подбор блогеров</h3><span class="status s-now">Уже покупают</span><p>500 ₽ за подтверждённый отклик. Основа, которую нельзя сломать.</p></div>
+        <div class="product"><span class="num">02 / UPSELL</span><h3>Сопровождение</h3><span class="status s-now">Цена согласована</span><p>+1 200 ₽/автор к подбору: сопровождение заказа без проведения оплаты блогеру через UMC. Менеджеру — 600 ₽ за успешно завершённого автора.</p></div>
+        <div class="product"><span class="num">03 / DISTRIBUTION</span><h3>Партнёрская сеть</h3><span class="status s-now">Главный спринт</span><p>Менеджеры и авторы приводят участников и видят подтверждённый доход.</p></div>
+        <div class="product"><span class="num">04 / OPTIONALITY</span><h3>Подписка / CPV / CPA</h3><span class="status s-later">Только тест спроса</span><p>Новый доход возможен, но пока нет доказанной повторяемой модели.</p></div>
+      </div>
+      <div class="callout" style="margin-top:15px"><strong>North Star Metric: активные коммерчески пригодные авторы</strong>Не просто регистрации, а авторы с актуальными контактами, условиями сотрудничества, подтверждённым откликом и историей оплаченных заказов. База сама по себе — не денежный результат.</div>
+    </section>
+
+    <section id="backlog">
+      <div class="section-head"><div><span class="overline">02 / Реестр задач</span><h2>Backlog для разработки</h2></div><p class="hint">Раскройте карточку, чтобы увидеть пользовательский сценарий и критерии готовности. Часы — грубая оценка до аудита кода.</p></div>
+      <div class="toolbar"><input id="taskSearch" class="search" placeholder="Поиск по задачам, например «менеджер» или «выплата»" oninput="renderTasks()"><button class="chip active" data-filter="all" onclick="setFilter('all')">Все</button><button class="chip" data-filter="P0" onclick="setFilter('P0')">P0</button><button class="chip" data-filter="P1" onclick="setFilter('P1')">P1</button><button class="chip" data-filter="P2" onclick="setFilter('P2')">P2</button><span class="count" id="taskCount"></span></div>
+      <div id="taskList" class="task-list"></div>
+    </section>
+
+    <section id="logic">
+      <div class="section-head"><div><span class="overline">03 / Ключевая бизнес-логика</span><h2>Разделить оплату UMC и факт публикации</h2></div></div>
+      <div class="panel">
+        <p>Разделяем два объекта: выполнение оплаченного подбора клиенту и подтверждённое сотрудничество с конкретным автором. Комиссию за приглашённого клиента считаем по фактически оказанному подбору, за приглашённого автора — только по успешному сотрудничеству. Оба вида проходят ожидание и 14-дневный hold.</p>
+        <div class="flow">
+          <div class="step good"><b>1. Клиент оплатил</b><p>Создать снимок ставок и ожидающее обязательство. Оплата ≠ выполненная услуга.</p></div>
+          <div class="step good"><b>2. Выполнено</b><p>Отдельно фиксировать переданный подбор и успех конкретного автора.</p></div>
+          <div class="step good"><b>3. Подтверждение / hold</b><p>72 часа на возражение, затем 14 дней удержания и проверка возвратов.</p></div>
+          <div class="step good"><b>4. Выплата</b><p>Доступный баланс → резерв заявки → ручная выплата ≤72 часов.</p></div>
+        </div>
+        <div class="cols" style="margin-top:17px">
+          <div class="callout"><strong>За что UMC отвечает</strong>Получить оплату, предоставить подтверждённые отклики и корректно рассчитать комиссию реферала.</div>
+          <div class="callout warning"><strong>Чего нельзя подразумевать</strong>Если клиент не отметил статус, нельзя автоматически считать, что ролик опубликован и кампания успешна.</div>
+        </div>
+        <h3 style="margin-top:23px">Обязательные состояния</h3>
+        <table class="metric-table"><thead><tr><th>Сущность</th><th>Состояния</th><th>Важно</th></tr></thead><tbody>
+          <tr><td><strong>Оплаченный подбор</strong></td><td>Создан → оплачен → отклики переданы → закрыт</td><td>Отмена/возврат хранятся отдельно</td></tr>
+          <tr><td><strong>Работа автора</strong></td><td>Отклик → переговоры → ТЗ → публикация / отказ</td><td>Не влияет автоматически на плату за подбор</td></tr>
+          <tr><td><strong>Комиссия реферала</strong></td><td>Ожидает → удержание → доступно → резерв → выплачено / корректировка</td><td>Идемпотентность; отдельный неизменяемый ledger</td></tr>
+        </tbody></table>
+      </div>
+    </section>
+
+    <section id="financial-v1">
+      <div class="section-head"><div><span class="overline">04 / Approved business rules</span><h2>Финансовые правила v1</h2></div><p class="hint">Бизнес-решения Камиля от 22.10.2026. Отдельные вопросы налогов и срока действия выплат требуют юридического утверждения — ниже явно помечены.</p></div>
+      <div class="panel">
+        <h3>1. Товарная единица и распределение денег</h3>
+        <table class="metric-table"><thead><tr><th>Правило</th><th>Значение для реализации</th><th>Условия</th></tr></thead><tbody>
+          <tr><td><strong>Подбор</strong></td><td>500 ₽ за 1 подтверждённый уникальный отклик в конкретном оплаченном заказе</td><td>Автор подтвердил интерес; bot API принял доставку клиенту. Хранить событие, идентификаторы и ошибку доставки. API-доставка не означает прочтение.</td></tr>
+          <tr><td><strong>Сопровождение</strong></td><td>Дополнительно 1 200 ₽/автор клиенту; из них 600 ₽ менеджеру только за успех, 600 ₽ остаётся UMC до прочих затрат</td><td>UMC продаёт услугу сопровождения, но <strong>не принимает и не переводит гонорары блогерам</strong>; с ними клиент рассчитывается напрямую.</td></tr>
+          <tr><td><strong>Реферал клиента</strong></td><td>10% от окончательной оплаченной невозвращённой цены подбора в первый год; далее 3%</td><td>Создать «ожидает» после оплаты; перевести после фактического закрытия подбора, срока возвратов и hold. Не начислять с невыполненных позиций или сопровождения.</td></tr>
+          <tr><td><strong>Реферал автора</strong></td><td>10 / 12 / 15 / 20% от цены <em>одной</em> оплаченной позиции подбора в первый год; далее 3%</td><td>Только за успешно подтверждённое сотрудничество этого автора; не за сам отклик, регистрацию или замещённого автора.</td></tr>
+          <tr><td><strong>Двойная сторона</strong></td><td>Реферал клиента + реферал автора разрешены одновременно, даже когда получатель один</td><td>Это два разных финансовых основания; максимум по стандартным ставкам первого года 10% + 20% = 30% стоимости подбора. Для override лимиты проверить отдельно.</td></tr>
+          <tr><td><strong>Ставка</strong></td><td>Снимок на дату/время оплаты заказа, включая персональный override</td><td>Ставка из уже оплаченного заказа задним числом не изменяется при новом грейде; хранить source, version, reason, effective dates.</td></tr>
+          <tr><td><strong>Срок партнёрства</strong></td><td>Первый год от регистрации каждого приглашённого пользователя; затем 3% бессрочно при новых заказах</td><td>Первый/последующий год определять для каждой стороны независимо, не от даты регистрации реферала.</td></tr>
+        </tbody></table>
+        <h3 style="margin-top:23px">2. Грейды и закрепление реферала</h3>
+        <table class="metric-table"><thead><tr><th>Уровень</th><th>Уникальные авторы</th><th>Ставка за автора, год 1</th><th>За клиента, год 1</th></tr></thead><tbody>
+          <tr><td>Старт</td><td>0–99</td><td>10%</td><td>10%</td></tr><tr><td>2</td><td>100–199</td><td>12%</td><td>10%</td></tr><tr><td>3</td><td>200–399</td><td>15%</td><td>10%</td></tr><tr><td>4</td><td>400+</td><td>20%</td><td>10%</td></tr>
+        </tbody></table>
+        <p class="tiny">Грейд зависит <strong>только</strong> от числа уникальных зарегистрированных авторов с заполненным и проверенным Instagram-профилем; требований к количеству выполненных ими заказов нет. На одного человека — один creator_id/Telegram user_id, независимо от числа соцсетей. Первая подтверждённая регистрация по реферальной ссылке закрепляет пользователя навсегда; саморефералы запрещены. Суперадмин может технически исправить привязку только с причиной и неизменяемым журналом.</p>
+        <p>Индивидуальные ставки: суперадмин задаёт <strong>override по стороне сделки</strong> (клиентская/авторская), получателю, периоду и основанию договорённости; возможен персональный 20% с первого заказа, в том числе по аккаунту бренда. Снимок на дату оплаты приоритетнее будущего грейда. Истечение override не пересчитывает прошлые заказы.</p>
+        <h3 style="margin-top:23px">3. Передача, резерв, частичное выполнение и возвраты</h3>
+        <ul>
+          <li>В заказе на 30 авторов — максимум 30 оплаченных позиций; за пять непереданных после согласованного срока позиций выбрать <strong>продление по согласию клиента</strong> или возврат 5 × 500 ₽. Комиссия клиентского реферала на эти пять позиций не становится доступной.</li>
+          <li>Резерв на замены — до <strong>20% заказанного пула</strong> (для 30 авторов — максимум 6 замен, если иное явно не согласовано). Замена только по подтверждённым основаниям: отказ, потеря связи, объективное несоответствие утверждённому ТЗ; через запрос в боте с причиной и решением администратора. После выполнения работы замена запрещена.</li>
+          <li>Одна оплаченная позиция — одна активная авторская комиссия; замена создаёт основание на нового автора, а старое ожидающее начисление отменяется связанной корректировкой. Повторные вручную выданные контакты не создают платных позиций.</li>
+          <li>У сопровождения сначала продление либо объективно обоснованная замена; если услуга не оказана — возврат части 1 200 ₽ за невыполненный объём по зафиксированным условиям. Менеджеру 600 ₽ платится только за успешно завершённого им автора.</li>
+          <li>Возвраты — отдельные неизменяемые отрицательные операции со ссылкой на source item; pending уменьшается, available корректируется, резерв вывода блокируется до сверки, после выплаты создаётся спорная задолженность. Будущий зачёт менеджера возможен только на условиях принятого соглашения и после проверки суперадмином.</li>
+        </ul>
+        <div class="callout warning" style="margin-top:20px"><strong>Правовой / налоговый стоп-фактор — не включать автоматически в релиз</strong>
+          <p><strong>«Минус 6% УСН с начислений»:</strong> УСН — обязательство ИП перед бюджетом, а не автоматически удерживаемый налог с вознаграждения партнёра. Хранить gross/actual lawful tax or fee/net и статус получателя (ИП / самозанятый / физлицо) до решения бухгалтера. Не выдавать «× 0,94» за налоговый расчёт.</p>
+          <p><strong>Сгорание через 365 дней:</strong> пользователь предложил индивидуальное истечение начисленных денежных «баллов» через год. В БД можно предусмотреть <code>expires_at</code>, предупреждения и dry-run, но <strong>аннулирование обязательства выключено до юридического заключения и утверждения оферты</strong>. Название «бонус» не устраняет правовые требования.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="economics">
+      <div class="section-head"><div><span class="overline">05 / Бизнес-модель</span><h2>Калькулятор заказа</h2></div><p class="hint">Согласованные цены: 500 ₽ подбор + 1 200 ₽ сопровождение, менеджеру 600 ₽ за выполненного автора. Остаток до налогов и расходов — не прибыль.</p></div>
+      <div class="panel">
+        <div class="money-controls">
+          <div class="field"><label for="authors">Количество авторов</label><strong id="authorsVal">30</strong><input id="authors" type="range" min="10" max="100" step="10" value="30" oninput="calc()"></div>
+          <div class="field"><label for="service">Цена сопровождения / автор</label><strong id="serviceVal">1 200 ₽</strong><input id="service" type="range" min="1200" max="1200" step="1" value="1200" disabled></div>
+          <div class="field"><label for="manager">Менеджеру за успешного автора</label><strong id="managerVal">600 ₽</strong><input id="manager" type="range" min="600" max="600" step="1" value="600" disabled></div>
+        </div>
+        <div class="money-results">
+          <div><small>Только подбор</small><b id="selectionOut">15 000 ₽</b><small>500 ₽ × число откликов</small></div>
+          <div><small>Сумма апсейла</small><b id="upsellOut">36 000 ₽</b><small>Стоимость сопровождения</small></div>
+          <div><small>Общая выручка</small><b id="totalOut">51 000 ₽</b><small id="marginOut">После менеджера: 33 000 ₽</small></div>
+        </div>
+        <p class="tiny" style="margin-top:14px">Остаток после менеджера — ещё не прибыль: не учтены налоги, платёжные комиссии, рефералы, поддержка, дополнительные издержки. Также на действующем сайте обещано отсутствие наценки к ставке партнёрского менеджера. Если UMC продаёт собственное сопровождение с маржой, необходим отдельный прозрачный тариф.</p>
+        <div class="callout warning" style="margin-top:14px"><strong>Риск двойной комиссии</strong>30 выполненных подборов = 15 000 ₽; клиентский реферал 10% = 1 500 ₽, авторский реферал 20% = 3 000 ₽. Вместе 4 500 ₽ (30% подбора). Из 51 000 ₽ выручки при полном сопровождении минус 18 000 ₽ менеджерам и минус 4 500 ₽ рефералам остаётся 28 500 ₽ до налогов, комиссий платёжных систем, возвратов и операционных расходов. Персональные ставки требуют дополнительной проверки экономики.</div>
+      </div>
+    </section>
+
+    <section id="operations">
+      <div class="section-head"><div><span class="overline">06 / State machine</span><h2>События, таймеры, переходы</h2></div><p class="hint">Сроки не смешивать: 14 дней на первичное подтверждение отсчитываются от дедлайна работы, 72 часа на возражение — от первого подтверждения; отдельный hold — после окончательного успеха.</p></div>
+      <div class="panel">
+        <h3>Цикл сотрудничества одного автора</h3>
+        <table class="metric-table"><thead><tr><th>Из состояния → в состояние</th><th>Событие / дедлайн</th><th>Финансовый эффект и уведомление</th></tr></thead><tbody>
+          <tr><td>assigned → in_progress</td><td>Менеджер/клиент назначил автора, зафиксированы согласованное ТЗ и due_at</td><td>Создаём возможное ожидающее вознаграждение, но не available.</td></tr>
+          <tr><td>in_progress → success_claimed</td><td>Одна сторона нажала «Успешно», приложила ссылку/материал или указала доказательство</td><td>Вторая сторона получает <strong>один</strong> запрос: «Есть возражения?», окно до claimed_at + 72 ч.</td></tr>
+          <tr><td>success_claimed → disputed</td><td>Вторая сторона в 72 ч нажала «Не согласен», обязательна причина</td><td>Блокировка начислений и вывода по данному основанию; разбор у суперадмина с доказательствами.</td></tr>
+          <tr><td>success_claimed → success_final</td><td>Вторая сторона явно согласилась либо 72 ч прошли без возражения</td><td>Фиксируем успех, затем hold 14 суток. Не автоматизируем «успех» при полном молчании обеих сторон.</td></tr>
+          <tr><td>in_progress → unconfirmed_expired</td><td>Никто не заявил об успехе до due_at + 14 суток</td><td>Никакой комиссии рефералу автора и менеджеру; снять сумму из pending, оставить историю суперадмину. В партнёрском балансе не показывать как заработок.</td></tr>
+          <tr><td>success_final → available</td><td>success_final_at + 14 суток, при отсутствии возврата/спора</td><td>Атомарно освобождаем комиссию реферала автора и 600 ₽ менеджеру за фактически завершённого автора.</td></tr>
+          <tr><td>available → payout_reserved → paid</td><td>Заявка пользователя, затем проверка и ручная выплата не позднее 72 ч</td><td>Резервировать сумму, блокировать дубли, фиксировать уникальный платёжный референс.</td></tr>
+        </tbody></table>
+        <p class="tiny">Дедлайн <code>due_at</code> обязателен и согласован; его перенос версионируется и не должен скрытно сбрасывать окно подтверждения. Если подтверждение подано до due_at + 14 дней, окно возражения завершается независимо от этой границы. При системном сбое доставки запроса возражения — безопасный hold и задача суперадмину, не автоуспех.</p>
+        <h3 style="margin-top:24px">Отдельная машина состояний оплаченного подбора</h3>
+        <p><code>draft → paid → sourcing → partially_fulfilled → fulfilled → refund_window_complete → hold_complete → available</code>. Допустимые боковые переходы: <code>extension_agreed</code>, <code>partially_refunded</code>, <code>cancelled</code>, <code>disputed</code>. Каждая позиция хранит <code>order_id + paid_item_id + active_creator_id</code>, цену, историю замены и факт передачи.</p>
+        <p>Начисление клиентскому рефералу: <code>pending</code> на сумму оплаченных позиций → корректировка на невыполненные/возвращённые → после реального закрытия подбора, окончания срока возвратов и hold 14 суток → <code>available</code>. Начисление авторского реферала и менеджера связано с отдельной подтверждённой работой автора, а не с оплаченным пакетом как целым.</p>
+        <h3 style="margin-top:22px">Неизменяемая финансовая проводка</h3>
+        <p>Минимальные поля: <code>ledger_entry_id</code>, <code>business_key</code>, <code>event_id</code>, <code>order_id</code>, <code>paid_item_id</code>, <code>creator_id</code>, <code>partner_id</code>, <code>side</code> (business / creator / management), <code>rate_snapshot</code>, <code>rule_version</code>, <code>amount_gross_minor</code>, <code>amount_adjustment_minor</code>, <code>currency</code>, <code>status</code>, <code>available_at</code>, <code>source_entry_id</code>, <code>actor_id</code>, <code>created_at</code>. Хранить деньги в копейках/DECIMAL, не float. Уникальный индекс по <code>(business_key, side, partner_id)</code>, атомарная транзакция, повторная обработка сообщений безопасна; ID внешнего webhook — не ID обязательства.</p>
+      </div>
+    </section>
+
+    <section id="roles">
+      <div class="section-head"><div><span class="overline">07 / Scope by role</span><h2>Админка и кабинеты</h2></div><p class="hint">Один Telegram-профиль может иметь роли автора, реферала, менеджера и клиента, но права на чужую финансовую информацию не смешиваются.</p></div>
+      <div class="cols">
+        <div class="panel"><h3>Реферал / менеджер: личный кабинет</h3><ul>
+          <li>Постоянно видимая персональная ссылка; ставка на сторону клиента и автора, индивидуальный override, прогресс по верифицированным уникальным авторам.</li>
+          <li>Раздельные счета «Ожидает» (с указанием <em>кто/что не подтвердил</em>), «На удержании», «Доступно», «Зарезервировано», «Выплачено». Деньги с неподтверждённой работой после 14 дней не показывать как начисленные; полный журнал остаётся у суперадмина.</li>
+          <li>Свои приглашённые блогеры: Telegram identity, подтверждённый Instagram, дополнительные платформы/подписчики, активные заказы и выполненные работы — строго в рамках прав доступа и согласий.</li>
+          <li>Менеджер: назначенные заказы → закреплённые авторы → статусы/дедлайны → «попросить подтверждение» → материалы на проверку → завершённые авторы × 600 ₽; отдельно реферальные начисления.</li>
+          <li>Заявка на выплату только доступной суммы, история запросов и статусов; ошибка выплаты не стирает заявку. Обработка заявки ≤72 часов.</li>
+        </ul></div>
+        <div class="panel"><h3>Суперадмин: единый финансовый контроль</h3><ul>
+          <li>Заказы / позиции / авторы / стоимость подбора / сопровождения / продления / возвраты / резерв замен — в одном карточном представлении.</li>
+          <li>Ledger по каждому источнику: <strong>ожидание, удержание, доступно, резерв, выплаты, корректировки, спорная задолженность</strong>; общий прогноз обязательств, не допускать выплат больше свободных подтверждённых средств.</li>
+          <li>Очередь спорных подтверждений с доказательствами; ручная отмена или доначисление только с причиной, автором действия и журналом.</li>
+          <li>Ручные персональные ставки и их история; управление менеджерами и распределением авторов. Уже существующее назначение нескольких менеджеров по очереди <strong>переиспользовать</strong>.</li>
+          <li>Заявки «Нужно сопровождение»: сначала запись в БД с order_id, затем уведомление и подтверждение админом; сбой Telegram-доставки не теряет лид; запрет дубля при повторном нажатии.</li>
+          <li>Сверка: денежный приход по заказам → фактические поставленные позиции → потенциальные/подтверждённые обязательства → выплачено. Исключения выводить в отдельную красную очередь.</li>
+        </ul></div>
+      </div>
+      <div class="callout" style="margin-top:15px"><strong>Минимальная логика назначения менеджера</strong>Клиент выбирает «Сопровождение +1 200 ₽/автор» → заявка сохраняется → суперадмин принимает заказ и назначает себя или одного/нескольких менеджеров из существующей админки → назначение авторов по очереди → менеджер видит только свои пары заказ–автор → статус подтверждён → 600 ₽ за завершённого автора в hold и затем available. Реферал и менеджер — разные виды дохода; один человек может получать оба по независимым основаниям.</div>
+    </section>
+
+    <section id="miniapp">
+      <div class="section-head"><div><span class="overline">08 / UX backlog</span><h2>Mini App, профили и соцсети</h2></div><p class="hint">Визуальная переработка остаётся обязательной частью полного backlog, но не ценой ошибок в начислениях.</p></div>
+      <div class="panel">
+        <div class="cols">
+          <div><h3>Экраны Mini App</h3><ol>
+            <li>Главная по ролям с видимой ссылкой реферала, заказами, действиями и уведомлениями.</li>
+            <li>Оформление заказа: ЦА/формат/город/платформы/объём/бриф → пакет подбора → опция сопровождения → прозрачная сумма.</li>
+            <li>Кабинет автора: Instagram-верификация → последовательное предложение добавить TikTok → YouTube → Telegram-канал → необязательный VK.</li>
+            <li>Кабинет менеджера: своя сеть, назначения, дедлайны, статусы, подтверждающие материалы, реферальные и операционные доходы отдельно.</li>
+            <li>Кабинет реферала: ссылка, грейд, условие начисления, суммы «ожидает/доступно/выплачено» и заявки на вывод.</li>
+            <li>Карточка сотрудничества: «Успешно», «Возразить с причиной», ссылки на контент, реальное состояние и таймер ответа.</li>
+          </ol></div>
+          <div><h3>Данные и проверка соцсетей</h3><ul>
+            <li>Первичная идентичность через Telegram ID; реферальная привязка по регистрации; <strong>верификация владения Instagram обязательна</strong> до открытия дополнительных полей.</li>
+            <li>Для TikTok, YouTube, Telegram-канала (позже VK) пока достаточно ссылки; помечать как <strong>«указан автором, не верифицирован»</strong>, не создавать отдельный creator_id.</li>
+            <li>Парсить публично доступную статистику/подписчиков при технической возможности и разрешённом способе доступа; хранить источник и дату. Если недоступно — «нет данных», не выдумывать охваты.</li>
+            <li>Фильтр по площадке работает только по реально заполненным профилям, пригодным для задачи; исключать повторные аккаунты одного человека из числа рефералов.</li>
+          </ul><h3 style="margin-top:20px">Дизайн-система</h3><p>Использовать переданные Камилем токены (цвета, типографика, сетка, состояния, радиусы) как единый источник. Файл токенов приложить к задаче U01 перед вёрсткой. Мобильные состояния: пустая база, ошибка, загрузка, спор, заблокированная выплата и готовый отчёт. Проверка внутри Telegram WebView на iOS/Android.</p></div>
+        </div>
+        <div class="callout warning" style="margin-top:18px"><strong>Приоритет UX</strong>В первый релиз — понятные статусы, деньги, ссылка, выбор сопровождения и сокращение раздражающих напоминаний. Полный PWA/новый дизайн всех экранов, подписки и сложные фильтры — после запуска денежного контура. Дизайн Mini App не терять из дальнейшего backlog.</div>
+      </div>
+    </section>
+
+    <section id="sprint">
+      <div class="section-head"><div><span class="overline">09 / Execution plan</span><h2>План 7 дней: минимальный безопасный срез</h2></div><p class="hint">План ориентировочный, зависит от текущей БД. Не выпускать недоделанные финансовые начисления; feature flag + ограниченный пилот.</p></div>
+      <div class="timeline">
+        <div class="day"><label>ДЕНЬ 01</label><h3>Аудит</h3><p>Код, БД, статусы заказа, начисления, возвраты. Утверждаем события и оценку.</p></div>
+        <div class="day"><label>ДЕНЬ 02</label><h3>Ledger</h3><p>Уникальные обязательства за обе стороны, rate snapshot, возвраты, атомарная запись.</p></div>
+        <div class="day"><label>ДЕНЬ 03</label><h3>Подтверждение</h3><p>14 дней на заявление успеха, 72 часа на возражение, спор, hold, одна сводка.</p></div>
+        <div class="day"><label>ДЕНЬ 04</label><h3>Партнёрский экран</h3><p>Ссылка, процент, своя сеть и история заработка.</p></div>
+        <div class="day"><label>ДЕНЬ 05</label><h3>Апсейл и вывод</h3><p>1 200 ₽/автор, заявка менеджера, ручные выплаты с резервом, 600 ₽ по факту.</p></div>
+        <div class="day"><label>ДЕНЬ 06</label><h3>QA</h3><p>Частичный пакет, 20% замены, две комиссии, возврат после выплаты, гонки.</p></div>
+        <div class="day"><label>ДЕНЬ 07</label><h3>Пилот / rollback</h3><p>Тестовый заказ, сверка, релиз под флагом, без спорных удержаний и сгораний.</p></div>
+      </div>
+      <div class="callout dark-callout" style="margin-top:15px"><strong>Правило жёсткого скоупа</strong><p>Если технический аудит выявляет риск, сокращаем косметику и дополнительные поля, а не безопасность финансовых расчётов и тестирование. Полная разработка всех 15 задач в недельный релиз не входит.</p></div>
+    </section>
+
+    <section id="testing">
+      <div class="section-head"><div><span class="overline">10 / Definition of Done</span><h2>Чек-лист приёмки</h2></div><p class="hint">Можно отмечать прямо в браузере. Состояние сохраняется локально, не синхронизируется с командой.</p></div>
+      <div class="panel">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center"><strong>Проверка релиза</strong><span class="muted" style="font-size:12px" id="qaCounter">0 / 30</span></div>
+        <div class="progress"><div id="qaProgress"></div></div>
+        <div id="checklist"></div>
+      </div>
+    </section>
+
+    <section id="decisions">
+      <div class="section-head"><div><span class="overline">11 / Decision log</span><h2>Принято / ещё требуется согласование</h2></div></div>
+      <div class="panel">
+        <div class="question"><b>01. Согласовано: база комиссии</b><p>Только реально оказанный невозвращённый подбор (500 ₽/позиция); клиентская и авторская комиссии независимы, обе возможны.</p></div>
+        <div class="question"><b>02. Согласовано: подтверждение</b><p>До 14 суток после дедлайна на первый success_claim; 72 ч другой стороне на возражение; после успеха — 14 суток hold.</p></div>
+        <div class="question"><b>03. Согласовано: грейды</b><p>0/100/200/400 уникальных верифицированных Instagram-профилей = 10/12/15/20% за авторов; клиент всегда 10%, если не действует индивидуальный override.</p></div>
+        <div class="question"><b>04. Согласовано: год и ставка</b><p>Первый год от регистрации привлечённой стороны, далее 3% бессрочно; ставка и override фиксируются при оплате заказа.</p></div>
+        <div class="question"><b>05. Согласовано: сопровождение</b><p>Клиенту +1 200 ₽/автор, менеджеру 600 ₽ только после успеха, клиент автору платит напрямую.</p></div>
+        <div class="question"><b>06. Требуется юрист: сгорание «баллов»</b><p>Годовая индивидуальная экспирация денежных начислений — пожелание, а не разрешённый к запуску алгоритм. Проверить enforceability, переходные положения и оферту.</p></div>
+        <div class="question"><b>07. Требуется бухгалтер: «минус 6% УСН»</b><p>Нельзя автоматически удерживать УСН ИП из партнёрской выплаты; определить юридический статус получателя, НДФЛ/НПД/взносы и корректное отображение gross/net.</p></div>
+        <div class="question"><b>08. Требуется техаудит</b><p>Проверить существующие статусы/менеджерские назначения, старые выплаты и неуспешную доставку уведомлений перед миграцией.</p></div>
+      </div>
+    </section>
+
+    <section id="metrics">
+      <div class="section-head"><div><span class="overline">12 / Последующая проверка</span><h2>Как понять, что релиз сработал</h2></div></div>
+      <div class="cols">
+        <div class="panel"><h3>Продуктовая воронка</h3><table class="metric-table"><thead><tr><th>Показатель</th><th>Что измеряет</th></tr></thead><tbody><tr><td>Выручка на заказ</td><td>Монетизация выше 500 ₽/автор</td></tr><tr><td>Attach rate менеджера</td><td><strong>Оплаченные</strong> сопровождения / оплаченные заказы на подбор</td></tr><tr><td>Реферал → оплата</td><td>Качество партнёрского трафика и первой покупки</td></tr><tr><td>Активный реферал</td><td>Отправил ссылку / привёл регистрацию / привёл оплату: три отдельных события</td></tr><tr><td>Активный менеджер</td><td>Привёл пользователя и/или успешно выполнил назначенного автора</td></tr><tr><td>Расхождение ledger</td><td>0 ₽ разницы с контрольной сводкой по каждому платному item</td></tr><tr><td>Повторная покупка</td><td>Реальная ценность продукта</td></tr></tbody></table></div>
+        <div class="panel"><h3>Цели эксперимента на 14 дней</h3><table class="metric-table"><thead><tr><th>Цель</th><th>Проверка</th></tr></thead><tbody><tr><td class="emph">2+</td><td>Оплаченных сопровождения</td></tr><tr><td class="emph">10</td><td>Активных партнёров с используемой ссылкой</td></tr><tr><td class="emph">100%</td><td>Корректных начислений на пилотной выборке</td></tr><tr><td class="emph">1+</td><td>Повторный платный заказ</td></tr></tbody></table><p class="tiny">Это цели проверки, не прогноз или обещание результата.</p></div>
+      </div>
+      <div class="callout" style="margin-top:15px"><strong>Что сознательно не строим сейчас</strong>Полный PWA-редизайн, маркетплейс менеджеров, выгрузку всей базы, безлимитные рассылки, мгновенные автоматические переводы, автоматические CPV/CPA-отчёты. Нужны сначала оплаченные кейсы и проверенная экономика.</div>
+    </section>
+
+    <section>
+      <div class="section-head"><div><span class="overline">Материалы</span><h2>Ссылки и ориентиры</h2></div></div>
+      <div class="panel links"><p><a href="https://usemycontent.ru/pricing" target="_blank" rel="noopener">Текущие цены UMC</a><a href="https://usemycontent.ru/referral/" target="_blank" rel="noopener">Действующие правила рефералов</a><a href="https://usemycontent.ru/partner" target="_blank" rel="noopener">Страница менеджеров</a></p><p><a href="https://www.intercom.com/blog/rice-simple-prioritization-for-product-managers" target="_blank" rel="noopener">Метод RICE</a><a href="https://www.iab.com/insights/2025-Creator-economy-ad-spend-strategy-report/" target="_blank" rel="noopener">IAB: атрибуция и отчётность</a><a href="https://core.telegram.org/bots/webapps" target="_blank" rel="noopener">Telegram Mini Apps API</a></p><p class="tiny">Основа документа: созвон Камиля с Булатом от 22.10.2026, текущая модель UMC и последующий продуктовый разбор. Этот HTML — документ для обсуждения, не автоматически принятое техническое решение.</p></div>
+    </section>
+    <footer class="footer">UMC / Product Sprint — подготовлено для согласования разработки · 22 октября 2026</footer>
+  </main>
+</div>
+<script>
+  const tasks = [
+    {id:'R01',priority:'P0',name:'Автоматическое начисление реферального вознаграждения',summary:'Убрать зависимость оплаты UMC от двойного подтверждения публикации',hours:'8–14 ч',effect:'Очень высокий',why:'Рефералы приводят авторов, но не видят денег: сделки застревают в статусах.',scope:['Разделить оплаченный подбор UMC и фактическую публикацию автора.','Создать запись начисления при расчётном событии, предусмотреть период возвратов.','Учесть реферала клиента и реферала автора без дублей.','Хранить историю статусов и причины отмены/корректировки.'],done:['Повторный webhook не создаёт повторную комиссию.','Оплаченный и переданный отклик формирует правильное начисление.','Возврат корректно отменяет/уменьшает сумму.'],origin:'Боль из созвона + продуктовая рекомендация'},
+    {id:'R02',priority:'P0',name:'Одна сводка вместо трёх уведомлений каждому автору',summary:'Отказаться от 24/72 часов/7 дней по каждому блогеру',hours:'3–6 ч',effect:'Высокий',why:'30 откликов могут порождать 90 напоминаний и желание заблокировать бота.',scope:['Убрать каскад уведомлений по отдельным авторам.','Раз в неделю показывать одну сводку по кампании.','Дать пакетное обновление статусов, не требуя отметки по каждому.'],done:['Кампания с 30 авторами не создаёт 90 отдельных напоминаний.','Отсутствие отзыва не приравнивается к опубликованному ролику.'],origin:'Прямая жалоба из созвона'},
+    {id:'R03',priority:'P0',name:'Заметный вход в рефералку и прозрачная история дохода',summary:'Ссылка, процент, баланс, приглашённые и начисления',hours:'4–7 ч',effect:'Высокий',why:'Команды /referral и /referral_list существуют, но для обычного пользователя они неочевидны.',scope:['Показать «Партнёрская программа» в главном меню всех ролей.','Сделать процент кликабельным и ведущим в кабинет.','Показать ссылку, приглашённых, начислено, ожидает, доступно, выплачено.'],done:['Новый пользователь находит ссылку без знания команд.','В истории видно заказ, дату, базу и сумму каждого начисления.'],origin:'Прямая идея из созвона'},
+    {id:'S01',priority:'P0',name:'Выбор сопровождения при оформлении заказа',summary:'Кнопка «Нужен менеджер» как точка апсейла',hours:'3–5 ч',effect:'Очень высокий',why:'Подбор покупают охотно, а сопровождение сейчас приходится продавать вручную вне сценария бота.',scope:['Добавить выбор «Самостоятельно / С менеджером».','Сохранить флаг, объём заказа и контакты клиента.','Отправлять горячий запрос ответственному для персонального расчёта.'],done:['Выбор не ломает текущую оплату за подбор.','Заявка на сопровождение доступна Камилю/ответственному.'],origin:'Прямая коммерческая идея из созвона'},
+    {id:'T01',priority:'P0',name:'Аудит событий, тесты и наблюдаемость денежного потока',summary:'Схема статусов, журнал операций, QA перед релизом',hours:'5–8 ч',effect:'Критически высокий',why:'Ошибки с денежными событиями и комиссиями дороже косметических недочётов.',scope:['Согласовать схему campaign / creator / referral ledger.','Сохранять IDs событий, суммы, автора действия и время.','Написать контрольные кейсы и провести end-to-end тест на заказе 30 авторов.'],done:['Финансовая история воспроизводима по журналу.','Известны результаты всех основных QA-кейсов.'],origin:'Инженерная необходимость'},
+    {id:'M01',priority:'P1',name:'Минимальный кабинет инфлюенс-менеджера',summary:'Свои блогеры, активность, заказы и заработок',hours:'8–16 ч',effect:'Высокий',why:'Менеджер должен видеть полезность собственной сети и возвращаться в UMC.',scope:['Роль менеджера в существующем Telegram-профиле.','Список авторов, привлечённых персональной ссылкой.','Показатели: приглашены, активны, оплаченные подборы, подтверждённые работы, реферальный доход.'],done:['Менеджер видит только свою сеть.','Заказы и доход основаны на проверяемых событиях.'],origin:'Прямая идея из созвона'},
+    {id:'D01',priority:'P1',name:'Несколько соцсетей в одной карточке креатора',summary:'YouTube, TikTok, Telegram, VK наряду с текущим профилем',hours:'6–12 ч',effect:'Средний/высокий',why:'Один блогер может закрывать заказы по разным площадкам.',scope:['Один creator_id — несколько social_accounts.','Собирать URL/handle, платформу, подписчиков, дату обновления, формат работы.','Дать автору возможность дополнить профиль без новой регистрации.'],done:['Старые профили остаются рабочими.','Фильтр кампаний может учитывать добавленные платформы.'],origin:'Прямая идея из созвона'},
+    {id:'G01',priority:'P1',name:'Автоматические грейды партнёров 10/12/15/20%',summary:'Показывать прогресс до следующего уровня и корректную ставку',hours:'5–10 ч',effect:'Средний',why:'Грейды могут удерживать активных менеджеров в течение месяцев.',scope:['Взять пороги из действующих правил на сайте.','Считать пользователей и qualifying events по согласованной дефиниции.','Показывать прогресс и применять ставку только к следующим операциям.'],done:['Порог меняет ставку строго по правилам.','В кабинете видно, чего не хватает до повышения.'],origin:'Прямая идея из созвона'},
+    {id:'U01',priority:'P1',name:'Визуальное обновление существующего Mini App',summary:'Шрифты, цвета, кнопки, карточки, единый стиль с сайтом',hours:'6–12 ч',effect:'Средний',why:'Продукт должен выглядеть достаточно уверенно для реферального продвижения.',scope:['Камиль передаёт дизайн-токены и примеры ключевых экранов.','Сохранить рабочие маршруты и бизнес-логику.','Проверить мобильный Telegram WebView.'],done:['Обновлены ключевые экраны без регрессий.','Никакой полной миграции на новую платформу.'],origin:'Прямая идея из созвона'},
+    {id:'P01',priority:'P1',name:'Заявка на вывод начисленных средств',summary:'Запрос выплаты и статус обработки без мгновенного платёжного API',hours:'4–8 ч',effect:'Средний',why:'Рефералу нужна понятная конвертация накопленного заработка в реальные деньги.',scope:['Показывать только реально доступный остаток.','Разрешить запрос с указанными реквизитами в защищённом процессе.','Дать администратору возможность утвердить, отклонить или отметить выплату.'],done:['Вывод не проводится дважды.','Пользователь видит сумму и статус, а админ — очередь заявок.'],origin:'Из идеи мгновенных выплат выделен безопасный MVP'},
+    {id:'M02',priority:'P2',name:'Рассылки менеджера по собственной базе',summary:'Создание и модерация задания с доставкой подключённым авторам',hours:'16–30 ч',effect:'Потенциально высокий',why:'Даёт менеджеру утилитарную ценность и причину хранить базу в UMC.',scope:['Менеджер выбирает сегмент собственных приглашённых.','UMC модерирует задачу, проверяет лимиты и согласия.','Доставка только зарегистрированным авторам с работающим Telegram-ботом.'],done:['Нет произвольного спама или выгрузки контактов.','Есть лимиты, отчёт о доставке и откликах.'],origin:'Прямая идея из созвона'},
+    {id:'P02',priority:'P2',name:'Подписка менеджера на кампании по базе UMC',summary:'Тариф с лимитами и контролем рассылок — только после оплаченного теста',hours:'25–50 ч',effect:'Не подтверждён',why:'Пока нет доказательства, что менеджеры платят за доступ и получают достаточно клиентов.',scope:['Сначала продать пилот вручную минимум трём менеджерам.','Зафиксировать, за что платят: кампании, лимиты или доступ к фильтрам.','Не передавать общую базу или экспорт контактов без отдельного решения.'],done:['Есть оплаты и повторное использование до автоматизации тарифа.'],origin:'Гипотеза монетизации из созвона'},
+    {id:'O01',priority:'P2',name:'Полное оформление заказов через Mini App',summary:'Многошаговый бриф, фильтры, пакет, оплата, статусы',hours:'20–40 ч',effect:'Высокий, но дорогой',why:'Удобнее для клиентов, но текущий Telegram-путь уже продаёт подбор.',scope:['Сначала измерить отвал на нынешнем пути.','Сохранить общий backend и регистрацию Telegram.','Вводить сценарий поэтапно, без переписывания работающего бота.'],done:['Клиент проходит полный путь заказа без потери данных и статусов.'],origin:'Идея из созвона, вынесена за недельный скоуп'},
+    {id:'F01',priority:'P2',name:'Автоматические денежные переводы партнёрам',summary:'Платёжные интеграции, реквизиты, антифрод, аудит',hours:'25–60+ ч',effect:'Операционный',why:'Ускоряет выплаты, но создаёт финансовый и учётный риск.',scope:['Сначала отладить начисления и ручной реестр выплат.','Утвердить требования к реквизитам, учёту и проверкам.','Затем выбрать способ автоматизации после оценки стоимости.'],done:['Нет двойных выплат; все операции сверяются с реестром.'],origin:'Масштабная версия идеи из созвона'},
+    {id:'A01',priority:'P2',name:'Встроенная аналитика CPV / CPA / CPL',summary:'Отчёты по просмотрам, переходам и продажам внутри UMC',hours:'40–100+ ч',effect:'Не подтверждён',why:'Клиентам нужна аналитика, но отдельный инструмент уже существует и может закрыть пилот.',scope:['Сначала продавать и выполнять вручную 2–3 кампании.','Собрать реальные требования к атрибуции и достоверности данных.','Интегрировать только метрики, за которые клиенты готовы платить.'],done:['Есть платный спрос и согласованные источники событий.'],origin:'Из созвона; предлагается отложить интеграцию'}
+  ];
+  const taskAmendments = {
+    R01:{summary:'Две независимые комиссии только по фактически оказанной и невозвращённой услуге',why:'Оплата пакета не означает оказание услуги, а отклик не означает подтверждённую работу автора.',scope:['Снять ставку обеих сторон при оплате; создавать pending по оплаченным позициям.', 'Клиентская комиссия: фактически исполненный подбор и окно возвратов; авторская: success_final + 14 суток hold.', 'Возвраты, замены и корректировки через ledger, без удаления оригинальных событий.', 'Независимые комиссии business и creator даже одному партнёру; не включать 1 200 ₽ сопровождения.'],done:['30 оплачено, 25 доставлено, 5 возвращено → клиентская база 12 500 ₽.','Заменённый автор не получает вторую комиссию на позицию.','В споре или до окончания hold выплата невозможна.']},
+    R02:{summary:'Операционные уведомления без спама; 72 часа на возражение и 14 дней на первый claim',scope:['Убрать каскад 24/72 часа/7 дней с просьбами оценить каждого автора.','Сохранить уведомления об оплате, новом заказе и критичных сроках.', 'Отправлять один запрос другой стороне после success_claimed; при возражении обязательна причина.', 'Сводка по нескольким авторам; массовое редактирование отложить.'],done:['30 авторов не получают каскад из 90 оценочных уведомлений.','Полное молчание обоих не превращается в подтверждённую сделку.']},
+    R03:{summary:'Реферальная ссылка, ставка клиента и автора, pending/hold/available/paid',scope:['Главное меню: ссылка партнёра и процент с переходом в кабинет.', 'Ставка и прогресс только по верифицированным уникальным Instagram-авторам, rate override отдельно.', 'Подсказка: кто именно не подтвердил успех по ожидающим работам.', 'Не отображать неполученный доход после due_at + 14 суток, но хранить у суперадмина.'],done:['Кабинет не показывает зачисления до success_final + 14 суток.', 'Финансовые данные чужих партнёров недоступны.']},
+    S01:{summary:'Оплаченный апсейл: 500 ₽ подбор + 1 200 ₽ сопровождение = 1 700 ₽/автор',scope:['Показать стоимость сопровождения при заказе и понятный итог.', 'Сначала сохранить заявку order_id → notify админа; сбой уведомления не теряет лид.', 'Переиспользовать существующее назначение нескольких менеджеров, админ подтверждает.', 'Оплату автору оставить между клиентом и блогером напрямую.'],done:['Клиент видит 1 700 ₽ за автора с сопровождением.', 'Повторный клик не создаёт дубликат заявки.','Отправка Telegram-уведомления не обязательна для сохранения заявки.']},
+    T01:{summary:'Ledger, idempotency, обратный порядок событий, аудиторская сверка',scope:['Уникальные business_key+side+partner_id и атомарная проводка с защитой параллельных воркеров.', 'События из Telegram и оплаты обрабатывать независимо от их порядка, с ретраями.', 'Неизменяемые компенсирующие записи возвратов, аудит прав доступа и ручных действий.', 'Тестовый заказ 30 авторов и сверка до/после release flag.'],done:['Повторные webhook, параллельные обработчики и ручные повторы не удваивают долг.', 'Никакие суммы не становятся доступными без завершения hold.']},
+    M01:{summary:'Личный кабинет: собственная сеть, назначения, заработок по ролям',scope:['Свои приглашённые блогеры с проверенным Instagram и присоединёнными платформами.', 'Назначенные заказ–автор, дедлайны, success_claim, материалы и спор.', 'Отдельные балансы referral/management, статусы ожидания и вывода.', 'Операционное право редактировать только собственные назначения.'],done:['Менеджер видит число именно успешно завершённых блогеров × 600 ₽.', 'Никаких финансовых данных других менеджеров.']},
+    D01:{summary:'Один verified Instagram → ссылки TikTok/YouTube/Telegram (+VK)',scope:['Обязательная верификация Instagram перед добавлением остальных сетей.', 'По одному запросу на ссылку TikTok, YouTube, Telegram; позже VK.', 'Помечать прочие соцсети «добавлена ссылка, не верифицирована».', 'Подтянуть только реально доступные метрики из публичных законных источников с датой.'],done:['Несколько соцсетей не создают несколько пользователей для рефералки.', 'Отсутствие публичного API не приводит к фейковым показателям.']},
+    G01:{summary:'0/100/200/400 verified авторов; клиент фикс 10%; manual override',scope:['Только unique Instagram-verified creator_id считается в порогах.', 'Убрать условия о 10/20/40 выполненных заказах.', 'Ставка автора 10/12/15/20% в первый год; клиента 10% первый год; со второго 3% обе стороны.', 'Ручной override со стороной, периодом, объяснением, автором правки.', 'Ставка из оплаты не меняется от следующего грейда.'],done:['100 verified авторов повышают авторскую ставку до 12% без условия по заказам.', 'Операция с датой оплаты до повышения сохраняет старую ставку.']},
+    U01:{summary:'Обновить существующий Mini App по дизайн-системе Камиля',scope:['Использовать утверждённые дизайн-токены/макеты от Камиля; не придумывать чужой стиль.', 'Главная, заказ, рефералка, автор, менеджер, подтверждение, финансы.', 'Состояния загрузки, ошибки, пустой сети, спора и блокировки выплаты.', 'Проверить Telegram WebView iOS/Android и keyboard/safe areas.'],done:['Сценарии регистрации, заказа и рефералки сохранились.', 'Указаны ограничения, если исходный дизайн-файл недоступен.']},
+    P01:{priority:'P0',summary:'Запрос и резерв вывода в первом безопасном релизе',scope:['Запросить можно только available (не pending/hold).', 'Атомарно зарезервировать, показать статус и обработать ≤72 часа.', 'Ручная выплата, банковский reference, результат сверки.', 'При споре после запроса блокировать вывод до решения админа.'],done:['Двойная заявка и двойная выплата блокируются.', 'Выплачено + резерв + доступно совпадают с журналом.']}
+  };
+  for(const task of tasks){if(taskAmendments[task.id])Object.assign(task,taskAmendments[task.id]);}
+  tasks.push(
+    {id:'R04',priority:'P0',name:'72-часовое подтверждение, 14-дневное окно и споры',summary:'Одностороннее заявление успеха + право возражения с доказательством',hours:'6–12 ч',effect:'Критически высокий',why:'Это три независимых времени: due+14d, claim+72h, success+14d hold.',scope:['success_claimed → уведомление второй стороне и форма обязательной причины спора.','Нет claim до due+14d → скрыть pending у партнёра и отменить обязательство с журналом у админа.','Нет возражения после 72 ч → success_final; hold 14 суток; ошибки доставки проверять вручную.','Проверять версии due_at и материалы при переносах и спорах.'],done:['Возражение на 71-м часу блокирует комиссию.','Оба молчат 14 дней после дедлайна: комиссия не начислена.'],origin:'Новые согласованные решения 22.10.2026'},
+    {id:'R05',priority:'P0',name:'Админский ledger, возвраты и безопасная выплата',summary:'Управление всеми обязательствами, включая постфактум спор',hours:'8–16 ч',effect:'Критически высокий',why:'UMC не должен платить больше подтверждённых обязательств.',scope:['Сверка денег клиента по фактическим позициям подбора и сопровождения.', 'Списания из pending/available, блокировка reserve, debt при постфактум возврате.', 'Ручная доначисляющая операция суперадмина с причиной и доказательством.', 'Общая очередь исключений, резервов и payout-заявок.'],done:['Возврат после paid оставляет immutable историю и открывает case.', 'Реестр отражает gross, допустимые корректировки, net и proof.'],origin:'Финансовые правила v1'},
+    {id:'M03',priority:'P1',name:'Операционный учёт сопровождения ×600 ₽',summary:'600 ₽ назначенному менеджеру за успешно завершённого автора',hours:'8–16 ч',effect:'Очень высокий',why:'Допродажа на 1 200 ₽ имеет смысл только при контроле качества и себестоимости.',scope:['Переиспользовать существующий механизм назначения нескольких менеджеров на заказ.', 'Каждую пару order+creator привязывать к одному ответственному на момент успеха.', 'Создать отдельный management ledger, claim/спор/hold/available.', 'Корректировки и будущие зачёты только при принятых договорных правилах.'],done:['За 20 успешных работ у менеджера 12 000 ₽ gross, без оплаты за 10 несостоявшихся.', 'Менеджер может быть одновременно рефералом без смешения начислений.'],origin:'Новая коммерческая модель'},
+    {id:'D02',priority:'P1',name:'Верификация единого профиля и последующий сбор соцсетей',summary:'Последовательные запросы ссылок без ложной верификации',hours:'6–12 ч',effect:'Высокий',why:'Достоверные уникальные авторы нужны и для фильтрации, и для грейдов.',scope:['Проверять один verified Instagram на одного creator_id.', 'После подтверждения запрашивать TikTok → YouTube → Telegram канал; позднее VK.', 'Публичные подписчики/метрики с источником, временем и fallback.', 'Антидубли по Telegram identity и подтверждённым Instagram ID.'],done:['Повторная регистрация того же человека не увеличивает грейд.', 'Сторонние ссылки отображаются как unverified.'],origin:'Новые решения о профилях'},
+    {id:'L01',priority:'P0',name:'Правовая проверка сроков баллов и налогов партнёров',summary:'До включения сгорания / налоговых удержаний',hours:'По согласованию',effect:'Критический риск',why:'Переименование денежной комиссии в бонус и удержание УСН 6% не делают механику законной.',scope:['Получить позицию юриста по условиям и правам партнёров, публикации и изменению оферты.', 'Определить статусы получателей и обязательства по НДФЛ/НПД/договорам и взносам с бухгалтером.', 'После согласования включать опцию expires_at 1 год с уведомлением, batch-списанием и логом; до согласования — выключена.', 'В UI корректно отражать согласованную gross/net-сумму без фиктивного 6% налога.'],done:['Нет автоматического «6% налог УСН партнёра».','Нет необратимого списания заработанных средств до согласования правил.'],origin:'Явный блокер для рискованного подскоупа'}
+  );
+  const qaItems = [
+    'Реферальная ссылка видна из главного меню всем ролям.',
+    'Первый зарегистрировавший партнёр закреплён навсегда, самореферал невозможен.',
+    'Старый зарегистрированный участник не меняет партнёра по новой ссылке.',
+    'Один Telegram user с Instagram + TikTok + YouTube считается одним автором.',
+    'Грейд 12% включается ровно с 100 unique verified авторов без условия успешных работ.',
+    'Клиентская комиссия 10% независимо от блогерского грейда.',
+    'Индивидуальный 20% override хранит причину и действует с даты оплаты нужных заказов.',
+    'При повышении грейда между оплатой и выдачей отклика ставка ранее оплаченного заказа не меняется.',
+    'При покупке пакета 30 / выдаче 25 / возврате 5 база клиента равна 12 500 ₽.',
+    'За авторский отклик без успешного сотрудничества комиссия недоступна.',
+    'Заменённый из резерва автор не создаёт двойную комиссию на оплаченную позицию.',
+    'Замена после выполненной работы запрещена.',
+    'Сверх 20% резерва авто-замены не появляются без дополнительного решения.',
+    'Первое подтверждение создаёт success_claimed и 72-часовое окно возражений.',
+    'Возражение с причиной на 71-м часу блокирует выплату и создаёт спор.',
+    'Отсутствие возражения через 72 часа завершает сотрудничество, но не снимает 14-дневный hold.',
+    'Никто не подтвердил до due+14 суток: начисление исключается из суммы партнёра, история сохраняется суперадмину.',
+    'После ошибки отправки запроса возражений автоматический успех не проводится без безопасной проверки.',
+    'Сопровождение стоит клиенту 1 200 ₽, вместе с подбором 1 700 ₽ за автора.',
+    '600 ₽ менеджеру начисляются только за его успешно завершённую работу и отдельным ledger.',
+    'Менеджер и реферал в одном аккаунте получают отдельные обоснованные начисления.',
+    'Повторный webhook не создаёт повторную комиссию.',
+    'Два воркера одновременно и ручной повтор не создают две финансовые операции.',
+    'Возврат раньше обработанной оплаты не ломает сверку и не создаёт отрицательные доступные деньги.',
+    'Возврат до выплаты, во время payout reserve и после paid оставляет проверяемую историю.',
+    'Повторный запрос на выплату не резервирует и не отправляет те же средства дважды.',
+    'Заявка на менеджера сохраняется до Telegram-уведомления и не теряется при сбое доставки.',
+    'Партнёр не может прочитать чужую финансовую историю / админ может восстановить полный журнал.',
+    '30 авторов не порождают 90 раздражающих запросов оценки, операционные сообщения доставляются.',
+    'Персональное сгорание выплат и удержание «6% налога УСН» выключены до юридического и бухгалтерского согласования.'
+  ];
+  let filter='all';
+  function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+  function setFilter(p){filter=p;document.querySelectorAll('.chip').forEach(b=>b.classList.toggle('active',b.dataset.filter===p));renderTasks();}
+  function renderTasks(){
+    const q=document.getElementById('taskSearch').value.trim().toLocaleLowerCase('ru');
+    const shown=tasks.filter(t=>(filter==='all'||t.priority===filter)&&[t.id,t.name,t.summary,t.why,...t.scope,...t.done].join(' ').toLocaleLowerCase('ru').includes(q));
+    document.getElementById('taskCount').textContent=shown.length+' из '+tasks.length;
+    document.getElementById('taskList').innerHTML=shown.map(t=>`<details class="task"><summary class="task-head"><span class="badge ${t.priority.toLowerCase()}">${t.priority}</span><div><div class="task-title">${escapeHtml(t.id+' · '+t.name)}</div><div class="task-summary">${escapeHtml(t.summary)}</div></div><div class="task-meta"><span>${escapeHtml(t.hours)}</span><span>${escapeHtml(t.effect)}</span><b class="expand">+</b></div></summary><div class="task-body"><p><strong>Зачем:</strong> ${escapeHtml(t.why)}</p><h4>Что реализовать</h4><ul>${t.scope.map(s=>'<li>'+escapeHtml(s)+'</li>').join('')}</ul><h4>Готово, когда</h4><ul>${t.done.map(s=>'<li>'+escapeHtml(s)+'</li>').join('')}</ul><div class="task-foot"><span class="tag">${escapeHtml(t.origin)}</span><span class="tag">Оценить после аудита репозитория</span></div></div></details>`).join('')||'<div class="panel muted">Задачи не найдены. Попробуйте другой запрос.</div>';
+  }
+  function rub(n){return Math.round(n).toLocaleString('ru-RU')+' ₽';}
+  function calc(){const a=+document.getElementById('authors').value,s=+document.getElementById('service').value,m=+document.getElementById('manager').value;document.getElementById('authorsVal').textContent=a;document.getElementById('serviceVal').textContent=rub(s);document.getElementById('managerVal').textContent=rub(m);document.getElementById('selectionOut').textContent=rub(a*500);document.getElementById('upsellOut').textContent=rub(a*s);document.getElementById('totalOut').textContent=rub(a*(500+s));document.getElementById('marginOut').textContent='После менеджера: '+rub(a*(500+s-m));}
+  function getSaved(){try{return JSON.parse(localStorage.getItem('umc_sprint_qa_v2')||'[]')}catch(_){return []}}
+  function updateQA(){const checked=[...document.querySelectorAll('#checklist input:checked')].map(x=>+x.value);try{localStorage.setItem('umc_sprint_qa_v2',JSON.stringify(checked))}catch(_){}document.getElementById('qaCounter').textContent=checked.length+' / '+qaItems.length;document.getElementById('qaProgress').style.width=(100*checked.length/qaItems.length)+'%';}
+  function renderQA(){const saved=getSaved();document.getElementById('checklist').innerHTML=qaItems.map((s,i)=>`<label class="check"><input type="checkbox" value="${i}" ${saved.includes(i)?'checked':''} onchange="updateQA()"><span>${escapeHtml(s)}</span></label>`).join('');updateQA();}
+  function printSpec(){document.querySelectorAll('.task').forEach(t=>t.open=true);setTimeout(()=>window.print(),80)}
+  async function copySpec(){const out=['UMC — ТЗ разработчику, 22.10.2026, версия 2.0','20 задач: 15 исходных + 5 новых',''];for(const id of ['financial-v1','economics','operations','roles','miniapp']){const el=document.getElementById(id);if(el)out.push(el.innerText,'')}out.push('BACKLOG:');for(const t of tasks){out.push(`${t.priority} ${t.id}. ${t.name} (${t.hours})`,'Зачем: '+t.why,'Реализовать:',...t.scope.map(x=>'• '+x),'Приёмка:',...t.done.map(x=>'✓ '+x),'')}out.push('QA:',...qaItems.map((q,i)=>`${i+1}. ${q}`),'');try{await navigator.clipboard.writeText(out.join('\n'));alert('Полное техническое задание скопировано.')}catch(_){alert('Автокопирование недоступно. Выделите текст страницы и скопируйте вручную.')}}
+  renderTasks();calc();renderQA();
+</script>
+</body>
+</html>

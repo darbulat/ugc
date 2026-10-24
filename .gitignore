@@ -33,3 +33,5 @@ tests/e2e/.telethon_session/
 # Instagram session for scripts/instagram_user_stats.py
 .instagram_session.json
 test.db
+# Temporary Superdesign authoring/export files.
+.superdesign/tmp/

@@ -15,6 +15,10 @@ from typing import (
 )
 from uuid import UUID
 
+from ugc_bot.application.legacy_link_ports import (
+    LegacyMaxAttachment,
+    LegacyMaxPreparation,
+)
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
@@ -51,6 +55,27 @@ if TYPE_CHECKING:  # pragma: no cover
 
 class UserRepository(ABC):
     """Port for user persistence."""
+
+    def legacy_confirmation_supported(
+        self, session: object | None, participants: tuple[object, ...]
+    ) -> bool:
+        return False
+
+    async def prepare_legacy_max_attachment(
+        self,
+        target_id: UUID,
+        *,
+        code_id: UUID | None = None,
+        max_id: str | None = None,
+        max_chat_id: str | None = None,
+        session: object | None = None,
+    ) -> LegacyMaxPreparation:
+        return LegacyMaxPreparation(target_id, code_id, max_id, max_chat_id)
+
+    async def attach_prepared_max(
+        self, preparation: LegacyMaxPreparation, *, session: object | None
+    ) -> LegacyMaxAttachment:
+        return LegacyMaxAttachment("unavailable", "attachment_unavailable")
 
     @abstractmethod
     async def get_by_id(
@@ -126,6 +151,11 @@ class BloggerProfileRepository(ABC):
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by user id."""
 
+    async def current_legacy_profile(
+        self, user_id: UUID, *, session: object | None
+    ) -> Optional[BloggerProfile]:
+        return None
+
     async def get_by_user_ids(
         self,
         user_ids: List[UUID],
@@ -150,6 +180,14 @@ class BloggerProfileRepository(ABC):
         self, username: str, session: object | None = None
     ) -> Optional[BloggerProfile]:
         """Fetch blogger profile by Instagram username (case-insensitive)."""
+
+    async def get_by_instagram_user_id(
+        self,
+        instagram_user_id: str,
+        session: object | None = None,
+    ) -> Optional[BloggerProfile]:
+        """Look up a verified stable Instagram identity."""
+        raise NotImplementedError
 
     @abstractmethod
     async def save(
@@ -641,6 +679,11 @@ class BloggerRatingRepository(ABC):
 
 class InstagramVerificationRepository(ABC):
     """Port for Instagram verification code persistence."""
+
+    async def current_legacy_code(
+        self, code_id: UUID, user_id: UUID, code: str, *, session: object | None
+    ) -> Optional[InstagramVerificationCode]:
+        return None
 
     @abstractmethod
     async def save(

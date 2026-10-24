@@ -1,0 +1,149 @@
+/* UMC - токены дизайн-системы (из tokens.json). Тёмная тема - атрибут data-theme="dark" на <html>. */
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --card: #f5f5f5;
+  --ink: #141414;
+  --ink-hover: #2a2a2a;
+  --on-ink: #ffffff;
+  --on-ink-muted: rgba(255, 255, 255, 0.65);
+  --muted: #5e5e66;
+  --line: rgba(20, 20, 20, 0.1);
+  --line-strong: rgba(20, 20, 20, 0.14);
+  --lavender: #d2c4ff;
+  --peach: #ffcdb8;
+  --lilac: #edc2fa;
+  --mint: #c9ebd9;
+  --on-pastel: #141414;
+  --on-pastel-muted: rgba(20, 20, 20, 0.72);
+  --pastel-surface: #ffffff;
+  --pastel-glass: rgba(255, 255, 255, 0.6);
+  --focus: #141414;
+  --success: #1f7a4d;
+  --error: #b93a3a;
+  --shadow-float: 0 24px 60px rgba(20, 20, 20, 0.14);
+  --shadow-mock: 0 18px 40px rgba(20, 20, 20, 0.08);
+  --shadow-sticky: 0 14px 34px rgba(20, 20, 20, 0.25);
+  --font-display: "Oswald", "Arial Narrow", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  --space-6: 6px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-20: 20px;
+  --space-24: 24px;
+  --space-40: 40px;
+  --space-64: 64px;
+  --radius-12: 12px;
+  --radius-14: 14px;
+  --radius-20: 20px;
+  --radius-22: 22px;
+  --radius-28: 28px;
+  --radius-pill: 999px;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121214;
+  --card: #1e1e22;
+  --ink: #f2f2f3;
+  --ink-hover: #d9d9de;
+  --on-ink: #141414;
+  --on-ink-muted: rgba(20, 20, 20, 0.65);
+  --muted: #a3a3ad;
+  --line: rgba(255, 255, 255, 0.12);
+  --line-strong: rgba(255, 255, 255, 0.2);
+  --focus: #f2f2f3;
+  --success: #5fc48f;
+  --error: #ff7b7b;
+  --shadow-float: 0 24px 60px rgba(0, 0, 0, 0.5);
+  --shadow-mock: 0 18px 40px rgba(0, 0, 0, 0.4);
+  --shadow-sticky: 0 14px 34px rgba(0, 0, 0, 0.6);
+}
+
+.display-xl {
+  font-family: var(--font-display);
+  font-size: 52px;
+  line-height: 0.88;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+}
+.display-l {
+  font-family: var(--font-display);
+  font-size: 42px;
+  line-height: 0.92;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+}
+.display-m {
+  font-family: var(--font-display);
+  font-size: 35px;
+  line-height: 0.95;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+}
+.numeral {
+  font-family: var(--font-display);
+  font-size: 43px;
+  line-height: 1;
+  font-weight: 700;
+}
+.numeral-s {
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 700;
+}
+.lead {
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+.title {
+  font-family: var(--font-body);
+  font-size: 21px;
+  line-height: 1.2;
+  font-weight: 600;
+}
+.question {
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 600;
+}
+.body {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+.body-s {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+.button {
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 600;
+}
+.label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.caption {
+  font-family: var(--font-body);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+}

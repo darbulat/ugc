@@ -8,19 +8,27 @@ from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ugc_bot.application.identity_history_ports import current_identity_evidence
+from ugc_bot.application.legacy_link_ports import LegacySqlParticipant
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile
 from ugc_bot.domain.enums import BloggerGender, WorkFormat
+from ugc_bot.domain.social import CreatorIdentityConflict
+from ugc_bot.infrastructure.db.identity_history_schema import (
+    HISTORY_WRITER_LOCK_SQL,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     InstagramStatsModel,
+    UserModel,
 )
 from ugc_bot.infrastructure.db.repositories._shared import (
     _geometry_to_wkt,
@@ -33,10 +41,27 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
-class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
+class SqlAlchemyBloggerProfileRepository(
+    BloggerProfileRepository, LegacySqlParticipant
+):
     """SQLAlchemy-backed blogger profile repository."""
 
     session_factory: async_sessionmaker[AsyncSession]
+
+    async def current_legacy_profile(self, user_id, *, session):
+        if (
+            not isinstance(session, AsyncSession)
+            or not session.in_transaction()
+        ):
+            return None
+        await session.execute(text(HISTORY_WRITER_LOCK_SQL))
+        model = await session.scalar(
+            select(BloggerProfileModel)
+            .where(BloggerProfileModel.user_id == user_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return _to_blogger_profile_entity(model) if model is not None else None
 
     async def get_by_user_id(
         self, user_id: UUID, session: object | None = None
@@ -119,6 +144,29 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
             result = exec_result.scalar_one_or_none()
             return _to_blogger_profile_entity(result) if result else None
 
+    async def get_by_instagram_user_id(
+        self,
+        instagram_user_id: str,
+        session: object | None = None,
+    ) -> Optional[BloggerProfile]:
+        if not instagram_user_id.strip():
+            return None
+        async with _resolve_session(
+            self.session_factory, session
+        ) as db_session:
+            result = await db_session.scalar(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.confirmed.is_(True),
+                    func.trim(BloggerProfileModel.instagram_user_id)
+                    == instagram_user_id.strip(),
+                )
+            )
+            return (
+                _to_blogger_profile_entity(result)
+                if result is not None
+                else None
+            )
+
     async def save(
         self, profile: BloggerProfile, session: object | None = None
     ) -> None:
@@ -127,7 +175,72 @@ class SqlAlchemyBloggerProfileRepository(BloggerProfileRepository):
             self.session_factory, session
         ) as db_session:
             model = _to_blogger_profile_model(profile)
-            await db_session.merge(model)
+            observing = (
+                isinstance(db_session, AsyncSession)
+                and db_session.get_bind().dialect.name == "postgresql"
+            )
+            if observing:
+                # User NO KEY UPDATE, history barrier, profile, then history.
+                await db_session.execute(
+                    select(UserModel.user_id)
+                    .where(
+                        UserModel.user_id == profile.user_id,
+                    )
+                    .with_for_update(key_share=True)
+                )
+                await db_session.execute(text(HISTORY_WRITER_LOCK_SQL))
+                await db_session.execute(
+                    select(BloggerProfileModel.user_id)
+                    .where(
+                        BloggerProfileModel.user_id == profile.user_id,
+                    )
+                    .with_for_update()
+                )
+                evidence = current_identity_evidence()
+                await db_session.execute(
+                    text(
+                        "SELECT set_config('ugc.identity_source', :source, "
+                        "true), "
+                        "set_config('ugc.identity_key', :key, true), "
+                        "set_config('ugc.identity_fact_at', :fact_at, true)"
+                    ),
+                    {
+                        "source": evidence.source
+                        if evidence is not None
+                        else "",
+                        "key": evidence.business_key
+                        if evidence is not None
+                        else "",
+                        "fact_at": evidence.fact_at.isoformat()
+                        if evidence is not None
+                        else "",
+                    },
+                )
+            try:
+                await db_session.merge(model)
+                if observing or (
+                    profile.confirmed and profile.instagram_user_id
+                ):
+                    await db_session.flush()
+            except IntegrityError as exc:
+                constraint = getattr(
+                    getattr(exc.orig, "diag", None), "constraint_name", None
+                )
+                if constraint == "uq_blogger_verified_instagram_identity":
+                    raise CreatorIdentityConflict(
+                        "Instagram identity is already owned"
+                    ) from exc
+                raise
+            finally:
+                if observing and db_session.is_active:
+                    await db_session.execute(
+                        text(
+                            "SELECT set_config('ugc.identity_source', '', "
+                            "true), "
+                            "set_config('ugc.identity_key', '', true), "
+                            "set_config('ugc.identity_fact_at', '', true)"
+                        )
+                    )
 
     async def list_confirmed_user_ids(
         self,

@@ -174,9 +174,12 @@ async def test_system_issuance_is_not_reconstructed_as_user_issue(
             )
             == 1
         )
-        with pytest.raises(ValueError, match="^unsupported_system_issuance$"):
-            async with factory.begin() as session:
-                await repo.get_issue(command.business_key, session=session)
+        async with factory.begin() as session:
+            loaded = await repo.get_issue(command.business_key, session=session)
+            assert loaded.basis.actor_id is None
+            assert loaded.basis.actor_kind == "system"
+            assert loaded.basis.system_actor == "synthetic_financial_system"
+            assert loaded.movement == movement
         assert await durable_state(factory) == before
         async with factory.begin() as session:
             assert await repo.list_for_recipient(

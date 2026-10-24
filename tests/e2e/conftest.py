@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from tests.helpers.financial_environment import require_synthetic_e2e
+from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.infrastructure.db.base import Base
 
 _MINIAPP_CLASS_ORDER = {
@@ -119,11 +120,6 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 
 E2E_PORT = 8001
 BASE_URL = f"http://127.0.0.1:{E2E_PORT}"
-TABLES_TO_EXCLUDE = {
-    "outbox_events",
-    "blogger_profiles",
-    "payout_requests",  # uses AT TIME ZONE in index expression
-}
 
 
 @pytest.fixture(scope="session")
@@ -151,11 +147,7 @@ def test_database(
     from ugc_bot.infrastructure.db import models  # noqa: F401
 
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
-    tables_to_create = [
-        t
-        for t in Base.metadata.tables.values()
-        if t.name not in TABLES_TO_EXCLUDE
-    ]
+    tables_to_create = legacy_sqlite_tables(Base.metadata)
     Base.metadata.create_all(bind=engine, tables=tables_to_create)
     engine.dispose()
 

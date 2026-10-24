@@ -35,7 +35,7 @@ def require_test_database(value: str | None) -> str:
 
 
 @contextmanager
-def isolated_financial_database(value: str):
+def isolated_financial_database(value: str, *, target_revision: str = "head"):
     """Migrate a fresh UUID schema; teardown only that schema, never public.
 
     PostGIS types/functions live in public; application tables and Alembic's
@@ -77,14 +77,16 @@ def isolated_financial_database(value: str):
                 sys.executable,
                 "-c",
                 (
-                    "from alembic import command; "
+                    "import sys; from alembic import command; "
                     "from alembic.config import Config; "
                     "from alembic.script import ScriptDirectory; "
                     "c = Config('alembic.ini'); "
                     "s = ScriptDirectory.from_config(c); "
-                    "revs = list(s.walk_revisions()); "
+                    "revs = list(s.walk_revisions("
+                    "base='base', head=sys.argv[1])); "
                     "[command.upgrade(c, r.revision) for r in reversed(revs)]"
                 ),
+                target_revision,
             ],
             cwd=root,
             env=env,
@@ -162,4 +164,54 @@ if __name__ == "__main__":
         print(
             "Isolated migrations ready:",
             connection.scalar(text("SELECT version_num FROM alembic_version")),
+        )
+
+
+def upgrade_financial_schema(engine, *, target_revision: str):
+    """Advance an existing isolated test schema through the actual graph."""
+    from sqlalchemy import text
+
+    require_test_database(
+        engine.url.set(query={}).render_as_string(hide_password=False)
+    )
+    with engine.connect() as db:
+        schema = db.scalar(text("SELECT current_schema()"))
+    if not re.fullmatch(r"financial_test_[a-f0-9]{32}", schema or ""):
+        raise ValueError("An isolated financial schema is required")
+    env = os.environ.copy()
+    env.pop("MIGRATION_SCHEMA", None)
+    scoped_url = engine.url.render_as_string(hide_password=False)
+    env["DATABASE_URL"] = scoped_url
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; from alembic import command; "
+                "from alembic.config import Config; "
+                "from alembic.script import ScriptDirectory; "
+                "from alembic.migration import MigrationContext; "
+                "from sqlalchemy import create_engine; import os; "
+                "e=create_engine(os.environ['DATABASE_URL']); "
+                "c=Config('alembic.ini'); s=ScriptDirectory.from_config(c); "
+                "db=e.connect(); current=MigrationContext.configure(db)"
+                ".get_current_revision(); "
+                "db.close(); e.dispose(); "
+                "revs=list(s.walk_revisions(base=current or 'base',"
+                "head=sys.argv[1])); "
+                "[command.upgrade(c,r.revision) for r in reversed(revs) "
+                "if r.revision!=current]"
+            ),
+            target_revision,
+        ],
+        cwd=Path(__file__).resolve().parents[2],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "Isolated schema upgrade failed:\n"
+            + result.stderr.replace(scoped_url, "<isolated database>")
         )

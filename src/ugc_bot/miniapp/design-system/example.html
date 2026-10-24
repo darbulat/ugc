@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UMC - компоненты</title>
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="umc-ui.css">
+<style>
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); }
+  .ex { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  .ex-h { margin: 40px 0 12px; font: 600 13px/1.3 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .ex-box { border: 1px solid var(--line); border-radius: 22px; overflow: hidden; }
+  .ex-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+</style>
+</head>
+<body>
+<div class="ex">
+  <div class="ex-top"><h1 class="umc-display display-m" style="margin:0">UMC UI</h1>
+  <button class="umc-btn umc-btn--ghost umc-btn--sm" type="button" onclick="var r=document.documentElement;r.dataset.theme=r.dataset.theme==='dark'?'light':'dark'">Сменить тему</button></div>
+<h2 class="ex-h">Hero</h2>
+<div class="ex-box"><section class="umc umc-hero">
+  <p class="umc-hero__kicker">Регулярный поиск</p>
+  <h1 class="umc-display umc-hero__title">Новые блогеры под ваш бренд каждый месяц</h1>
+  <p class="umc-hero__lead">Ищем авторов за пределами базы, пишем первыми и ведём до публикации.</p>
+  <div class="umc-hero__cta"><a class="umc-btn umc-btn--primary" href="#">Обсудить запуск</a><a class="umc-btn umc-btn--ghost" href="#">Сколько стоит</a></div>
+  <p class="umc-hero__hint">Настройка 10&nbsp;000&nbsp;руб. · От 1&nbsp;500&nbsp;руб. за блогера</p>
+</section>
+</div>
+<h2 class="ex-h">Button</h2>
+<div class="ex-box"><div class="umc" style="padding:20px;display:grid;gap:16px">
+  <div style="display:flex;flex-wrap:wrap;gap:12px">
+    <a class="umc-btn umc-btn--primary" href="#">Запустить подбор</a>
+    <a class="umc-btn umc-btn--ghost" href="#">Я блогер - хочу задания</a>
+    <button class="umc-btn umc-btn--primary" disabled>Отправляем…</button>
+    <a class="umc-btn umc-btn--primary umc-btn--sm" href="#">Запустить подбор</a>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:12px;padding:20px;border-radius:22px;background:var(--ink)">
+    <a class="umc-btn umc-btn--inverse" href="#">Бизнесу: запустить подбор</a>
+    <a class="umc-btn umc-btn--inverse-ghost" href="#">Блогеру: получать задания</a>
+  </div>
+</div>
+</div>
+<h2 class="ex-h">Tabs</h2>
+<div class="ex-box"><div class="umc" style="padding:20px">
+  <div class="umc-tabs" role="tablist" aria-label="Форматы">
+    <button class="umc-tab" role="tab" aria-selected="true">Автоподбор</button>
+    <button class="umc-tab" role="tab" aria-selected="false">Под ключ</button>
+    <button class="umc-tab" role="tab" aria-selected="false">Регулярный поиск</button>
+    <button class="umc-tab" role="tab" aria-selected="false">За результат</button>
+    <button class="umc-tab" role="tab" aria-selected="false">Рефералам</button>
+  </div>
+</div>
+</div>
+<h2 class="ex-h">Card</h2>
+<div class="ex-box"><div class="umc" style="padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:20px">
+  <article class="umc-card">
+    <span class="umc-card__tag">Автоподбор</span>
+    <h3 class="umc-card__title">500 руб. за автора</h3>
+    <p class="umc-card__text">Получаете отклики авторов, которых устраивают ваши условия. Дальше ведёте сами.</p>
+    <a class="umc-btn umc-btn--ghost" href="#">Запустить в боте</a>
+  </article>
+  <article class="umc-card umc-card--lavender">
+    <span class="umc-card__tag umc-card__tag--ink">Подбор под ключ</span>
+    <h3 class="umc-card__title">1 700 руб. за автора</h3>
+    <ul class="umc-card__list"><li>Проверяем аудиторию и охваты</li><li>Согласуем условия по брифу</li><li>Собираем ссылки и статистику</li></ul>
+    <a class="umc-btn umc-btn--primary" href="#">Оставить заявку</a>
+  </article>
+</div>
+</div>
+<h2 class="ex-h">TariffCard</h2>
+<div class="ex-box"><div class="umc" style="padding:20px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px">
+  <div class="umc-tariff"><span class="umc-tariff__name">Тест</span><span class="umc-tariff__qty">10 откликов</span><span class="umc-tariff__price">5&nbsp;000 <span class="umc-tariff__cur">руб.</span></span><p class="umc-tariff__unit">Для первой проверки</p></div>
+  <div class="umc-tariff"><span class="umc-tariff__name">Старт</span><span class="umc-tariff__qty">30 откликов</span><span class="umc-tariff__price">15&nbsp;000 <span class="umc-tariff__cur">руб.</span></span><p class="umc-tariff__unit">500 руб. за отклик</p></div>
+  <div class="umc-tariff umc-tariff--featured"><span class="umc-tariff__name">Масштаб · чаще всего берут</span><span class="umc-tariff__qty">100 откликов</span><span class="umc-tariff__price">50&nbsp;000 <span class="umc-tariff__cur">руб.</span></span><p class="umc-tariff__unit">500 руб. за отклик</p></div>
+</div>
+</div>
+<h2 class="ex-h">Chip</h2>
+<div class="ex-box"><div class="umc" style="padding:20px;display:grid;gap:16px">
+  <ul class="umc-chips"><li class="umc-chip">Бьюти и уход</li><li class="umc-chip">Семья и материнство</li><li class="umc-chip">Еда и общепит</li><li class="umc-chip">Фитнес и спорт</li></ul>
+  <div style="display:flex;gap:10px;flex-wrap:wrap"><span class="umc-pill umc-pill--new">Новый</span><span class="umc-pill umc-pill--wait">В работе</span><span class="umc-pill umc-pill--ok">Готово</span></div>
+</div>
+</div>
+<h2 class="ex-h">Steps</h2>
+<div class="ex-box"><div class="umc" style="padding:20px">
+  <ol class="umc-steps">
+    <li><span class="umc-steps__num">01</span><div><p class="umc-steps__title">Описываете задачу</p><p class="umc-steps__text">Продукт, что снять, сколько авторов, деньги или бартер.</p></div></li>
+    <li><span class="umc-steps__num">02</span><div><p class="umc-steps__title">Ручная модерация</p><p class="umc-steps__text">Проверяем задание и отправляем подходящим авторам.</p></div></li>
+    <li><span class="umc-steps__num">03</span><div><p class="umc-steps__title">Получаете отклики</p><p class="umc-steps__text">Контакты приходят в бот сразу, не пакетом в конце.</p></div></li>
+  </ol>
+</div>
+</div>
+<h2 class="ex-h">FaqItem</h2>
+<div class="ex-box"><div class="umc" style="padding:20px">
+  <div class="umc-faq">
+    <details open><summary>UMC ведёт кампанию за меня?</summary><p>В Автоподборе - нет: мы передаём отклики, дальше работаете вы. В Подборе под ключ - да: ведём авторов до публикации.</p></details>
+    <details><summary>Что если автор пропал или отказался?</summary><p>В Подборе под ключ подберём замену, а ведение пропавшего автора вы не оплачиваете.</p></details>
+    <details><summary>Можно работать только по бартеру?</summary><p>Да. Формат вознаграждения вы указываете в задании.</p></details>
+  </div>
+</div>
+</div>
+<h2 class="ex-h">BotChat</h2>
+<div class="ex-box"><div class="umc" style="padding:24px;background:var(--lavender)">
+  <div class="umc-chat" style="max-width:340px">
+    <div class="umc-chat__head"><img class="umc-chat__ava" src="assets/umc-logo.png" alt="" width="36" height="36" /><span class="umc-chat__name">Use My Content<small>бот · онлайн</small></span></div>
+    <ul class="umc-chat__thread">
+      <li class="umc-chat__msg umc-chat__msg--out"><b>Задача</b>Нужны 30 авторов, бьюти, Казань и Москва. Бартер + 3&nbsp;000&nbsp;руб.</li>
+      <li class="umc-chat__msg"><b>UMC</b>Проверили задание и отправили подходящим авторам</li>
+      <li class="umc-chat__msg umc-chat__msg--hit"><b>Новый отклик</b>Автор согласен на ваши условия. Контакты внутри →</li>
+    </ul>
+  </div>
+</div>
+</div>
+<h2 class="ex-h">Field</h2>
+<div class="ex-box"><div class="umc" style="padding:20px">
+  <form class="umc-form" onsubmit="return false">
+    <div class="umc-field"><label class="umc-field__label" for="f-name">Имя *</label><input class="umc-field__control" id="f-name" placeholder="Как к вам обращаться" /></div>
+    <div class="umc-field"><label class="umc-field__label" for="f-tg">Telegram *</label><input class="umc-field__control" id="f-tg" value="usemycontent" aria-invalid="true" /><p class="umc-field__error">Укажите ник с @, например @usemycontent</p></div>
+    <div class="umc-field"><label class="umc-field__label" for="f-fmt">Что нужно</label><select class="umc-field__control" id="f-fmt"><option>Подбор под ключ</option><option>Регулярный поиск</option></select></div>
+    <label class="umc-consent"><input type="checkbox" /><span>Даю согласие на обработку персональных данных на условиях <a href="#">Согласия</a> и ознакомлен с <a href="#">Политикой конфиденциальности</a>.</span></label>
+    <button class="umc-btn umc-btn--primary">Отправить заявку</button>
+  </form>
+</div>
+</div>
+<h2 class="ex-h">Topbar</h2>
+<div class="ex-box"><header class="umc umc-topbar">
+  <img class="umc-topbar__logo" src="assets/umc-logo.png" alt="" width="34" height="34" />
+  <span class="umc-topbar__name">use my content</span>
+  <span class="umc-topbar__cta"><a class="umc-btn umc-btn--primary umc-btn--sm" href="#">Запустить подбор</a></span>
+</header>
+</div>
+<h2 class="ex-h">FinalBlock</h2>
+<div class="ex-box"><section class="umc umc-final">
+  <h2 class="umc-display umc-final__title">Найдём авторов под вашу задачу</h2>
+  <p class="umc-final__text">Опишите задачу в боте - первые отклики придут в день запуска.</p>
+  <div class="umc-final__cta"><a class="umc-btn umc-btn--inverse umc-btn--lg" href="#">Бизнесу: запустить подбор</a><a class="umc-btn umc-btn--inverse-ghost umc-btn--lg" href="#">Блогеру: получать задания</a></div>
+  <p class="umc-final__hint">Ручная модерация · Запуск в течение 24 часов</p>
+</section>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "provenance": "Exact real P01 producer bytes staged and verified by root before the authorized Task3b cutover. These files run only inside isolated synthetic PostgreSQL fixtures. They create actual historical receipts; no historical IDs are invented.",
+  "staged_at_utc": "2026-10-24T03:00:00.461252+00:00",
+  "parent_revision": "campaign_drafts_v1",
+  "cutover_revision": "financial_corrections_a1",
+  "files": [
+    {
+      "source_path": "src/ugc_bot/application/services/payout_service.py",
+      "fixture_file": "payout_service.py.source",
+      "sha256": "dcd5b2eee0d019d93fce9f4caa539d201139731ec46cfad458e1d45c9121dfbc",
+      "bytes": 42817
+    },
+    {
+      "source_path": "src/ugc_bot/infrastructure/db/repositories/payouts.py",
+      "fixture_file": "payouts.py.source",
+      "sha256": "4c4604de548b4278c9eadeecbb98d60100b228a0b3f4344e6c292730c110ab6e",
+      "bytes": 21808
+    },
+    {
+      "source_path": "src/ugc_bot/container/payout_factory.py",
+      "fixture_file": "payout_factory.py.source",
+      "sha256": "2e59a4d58f37f5909d2ed9659a5718e8a19a386a6ca797909997418021908a6b",
+      "bytes": 1182
+    }
+  ]
+}

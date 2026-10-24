@@ -11,12 +11,16 @@ from uuid import UUID
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from ugc_bot.application.legacy_link_ports import validated_max_chat_id
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
+    VerificationLinkConflict,
     VerificationLinkSuccess,
+    VerificationLinkUnavailable,
     VerificationMismatch,
     VerificationSuccess,
+    VerificationUnavailable,
 )
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
@@ -507,13 +511,47 @@ async def _notify_user_account_linked(
         )
 
 
+async def _notify_max_user_link_outcome(
+    result: VerificationLinkConflict | VerificationLinkUnavailable,
+    config: AppConfig,
+) -> None:
+    """Notify only the recorded initiator of an unsuccessful attachment."""
+    try:
+        chat_id = validated_max_chat_id(result.max_chat_id)
+        if not config.max_bot or chat_id is None:
+            return
+
+        locale_texts = _get_locale_texts(result.locale)
+        key = (
+            "msg_instagram_link_conflict"
+            if isinstance(result, VerificationLinkConflict)
+            else "msg_instagram_link_unavailable"
+        )
+        async with _create_max_messenger(config) as messenger_client:
+            await messenger_client.send_text(
+                chat_id=chat_id,
+                text=locale_texts[key],
+            )
+    except Exception:
+        logger.warning(
+            "Error sending account attachment notification",
+            extra={"user_id": result.user_id},
+        )
+
+
 async def _dispatch_verification_result(
     result: object,
     verification_service: InstagramVerificationService,
     config: AppConfig,
 ) -> None:
     """Send appropriate notification based on verification result."""
-    if isinstance(result, VerificationLinkSuccess):
+    if isinstance(
+        result, VerificationLinkConflict | VerificationLinkUnavailable
+    ):
+        await _notify_max_user_link_outcome(result, config)
+    elif isinstance(result, VerificationUnavailable):
+        return
+    elif isinstance(result, VerificationLinkSuccess):
         await _notify_user_verification_success(
             result.user_id, verification_service, config
         )

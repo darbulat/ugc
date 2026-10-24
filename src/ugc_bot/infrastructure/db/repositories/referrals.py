@@ -290,7 +290,8 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         ) as db_session:
             exec_result = await db_session.execute(
                 select(PayoutRequestModel).where(
-                    PayoutRequestModel.request_id == request_id
+                    PayoutRequestModel.request_id == request_id,
+                    PayoutRequestModel.payout_protocol.is_(None),
                 )
             )
             result = exec_result.scalar_one_or_none()
@@ -306,11 +307,15 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
-            conditions = [PayoutRequestModel.request_id == request_id]
+            conditions = [
+                PayoutRequestModel.request_id == request_id,
+                PayoutRequestModel.payout_protocol.is_(None),
+            ]
             if status == PayoutRequestStatus.PAID:
                 request = await db_session.get(PayoutRequestModel, request_id)
                 if (
                     request is None
+                    or request.payout_protocol is not None
                     or request.status != PayoutRequestStatus.PENDING
                 ):
                     return False
@@ -338,7 +343,8 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         ) as db_session:
             exec_result = await db_session.execute(
                 select(PayoutRequestModel).where(
-                    PayoutRequestModel.user_id == user_id
+                    PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.payout_protocol.is_(None),
                 )
             )
             return [
@@ -359,7 +365,8 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
         ) as db_session:
             exec_result = await db_session.execute(
                 select(PayoutRequestModel).where(
-                    PayoutRequestModel.user_id.in_(user_ids)
+                    PayoutRequestModel.user_id.in_(user_ids),
+                    PayoutRequestModel.payout_protocol.is_(None),
                 )
             )
             return [
@@ -381,6 +388,7 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
                 )
                 .where(
                     PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.payout_protocol.is_(None),
                     PayoutRequestModel.status == PayoutRequestStatus.PAID,
                 )
                 .group_by(PayoutRequestModel.currency)
@@ -402,6 +410,7 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
                 )
                 .where(
                     PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.payout_protocol.is_(None),
                     PayoutRequestModel.status == PayoutRequestStatus.PENDING,
                 )
                 .group_by(PayoutRequestModel.currency)
@@ -425,6 +434,7 @@ class SqlAlchemyPayoutRequestRepository(PayoutRequestRepository):
                 select(PayoutRequestModel.currency)
                 .where(
                     PayoutRequestModel.user_id == user_id,
+                    PayoutRequestModel.payout_protocol.is_(None),
                     PayoutRequestModel.requested_at >= today_start,
                     PayoutRequestModel.status.notin_(
                         [

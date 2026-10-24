@@ -6,6 +6,17 @@ from decimal import Decimal
 from typing import Dict, Iterable, List, Optional, Tuple
 from uuid import UUID
 
+from ugc_bot.application.financial_delivery_ownership import (
+    SEPARATE_DELIVERY_EVENT_TYPES,
+)
+from ugc_bot.application.legacy_link_ports import (
+    LegacyMaxAttachment,
+    LegacyMaxPreparation,
+    LegacyMemoryParticipant,
+    LegacyMemoryTransaction,
+    attachment_state,
+    validated_max_chat_id,
+)
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     BloggerProfileRepository,
@@ -66,15 +77,108 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
     RejectionReason,
 )
+from ugc_bot.infrastructure.memory_identity_history import (
+    InMemoryCreatorIdentityHistoryRepository,
+)
 
 
 @dataclass
-class InMemoryUserRepository(UserRepository):
+class InMemoryUserRepository(UserRepository, LegacyMemoryParticipant):
     """In-memory implementation of user repository."""
 
     users: Dict[UUID, User] = field(default_factory=dict)
     telegram_index: Dict[str, UUID] = field(default_factory=dict)
     max_index: Dict[str, UUID] = field(default_factory=dict)
+    identity_history: InMemoryCreatorIdentityHistoryRepository = field(
+        default_factory=InMemoryCreatorIdentityHistoryRepository
+    )
+
+    def legacy_confirmation_supported(self, session, participants):
+        return (
+            isinstance(session, LegacyMemoryTransaction)
+            and session.active
+            and all(
+                isinstance(repo, LegacyMemoryParticipant)
+                and session.contains(repo)
+                for repo in participants
+            )
+        )
+
+    async def prepare_legacy_max_attachment(
+        self,
+        target_id,
+        *,
+        code_id=None,
+        max_id=None,
+        max_chat_id=None,
+        session=None,
+    ):
+        if not self.legacy_confirmation_supported(session, (self,)):
+            return LegacyMaxPreparation(target_id, code_id, max_id, max_chat_id)
+        target = self.users.get(target_id)
+        owner = next(
+            (
+                u
+                for u in self.users.values()
+                if max_id is not None and u.max_id == max_id
+            ),
+            None,
+        )
+        scope = tuple(
+            sorted({target_id} | ({owner.user_id} if owner else set()), key=str)
+        )
+        state, reason = attachment_state(target, owner, max_id)
+        chat = validated_max_chat_id(max_chat_id)
+        if max_chat_id is not None and chat is None:
+            state, reason = "unavailable", "recorded_chat_invalid"
+        return LegacyMaxPreparation(
+            target_id,
+            code_id,
+            max_id,
+            chat,
+            scope if target is not None else (),
+            state,
+            reason,
+            owner.language or "ru" if owner else "ru",
+            session,
+        )
+
+    async def attach_prepared_max(self, preparation, *, session):
+        if (
+            not self.legacy_confirmation_supported(session, (self,))
+            or preparation.session is not session
+            or not preparation.protected
+        ):
+            return LegacyMaxAttachment("unavailable", "preparation_unavailable")
+        if preparation.state not in ("ready", "same_account"):
+            return LegacyMaxAttachment(preparation.state, preparation.reason)
+        target = self.users.get(preparation.target_id)
+        owner = next(
+            (
+                u
+                for u in self.users.values()
+                if preparation.max_id is not None
+                and u.max_id == preparation.max_id
+            ),
+            None,
+        )
+        state, reason = attachment_state(target, owner, preparation.max_id)
+        if state != "ready" or preparation.max_id is None:
+            return LegacyMaxAttachment(state, reason, target)
+        assert target is not None
+        updated = replace(
+            target,
+            max_id=preparation.max_id,
+            max_chat_id=preparation.max_chat_id,
+        )
+        self.users[target.user_id] = updated
+        self.max_index[preparation.max_id] = target.user_id
+        self.identity_history.observe_user(updated)
+        return LegacyMaxAttachment("ready", "attached", updated)
+
+    def __post_init__(self) -> None:
+        for user in self.users.values():
+            self.identity_history.observe_user(user)
 
     async def get_by_id(
         self, user_id: UUID, session: object | None = None
@@ -125,6 +229,7 @@ class InMemoryUserRepository(UserRepository):
     async def save(self, user: User, session: object | None = None) -> None:
         """Persist a user in memory."""
 
+        self.identity_history.observe_user(user)
         self.users[user.user_id] = user
         if user.telegram_id:
             self.telegram_index[user.telegram_id] = user.user_id
@@ -171,6 +276,12 @@ class InMemoryUserReferralBindingRepository(UserReferralBindingRepository):
     """In-memory implementation of user referral binding repository."""
 
     _bindings: List[UserReferralBinding] = field(default_factory=list)
+    identity_history: InMemoryCreatorIdentityHistoryRepository = field(
+        default_factory=InMemoryCreatorIdentityHistoryRepository
+    )
+
+    def __post_init__(self) -> None:
+        self.identity_history.seed_bindings(self._bindings)
 
     async def save(
         self,
@@ -178,6 +289,8 @@ class InMemoryUserReferralBindingRepository(UserReferralBindingRepository):
         session: object | None = None,
     ) -> None:
         """Persist referral binding."""
+        old = await self.get_by_referred_user(binding.referred_user_id)
+        self.identity_history.observe_binding(old, binding)
         self._bindings = [
             b
             for b in self._bindings
@@ -225,7 +338,7 @@ class InMemoryUserReferralBindingRepository(UserReferralBindingRepository):
         for b in self._bindings:
             if b.referred_user_id == binding.referred_user_id:
                 return b, False
-        self._bindings.append(binding)
+        await self.save(binding, session=session)
         return binding, True
 
 
@@ -516,10 +629,27 @@ class InMemoryReferralIncomeEntryRepository(ReferralIncomeEntryRepository):
 
 
 @dataclass
-class InMemoryBloggerProfileRepository(BloggerProfileRepository):
+class InMemoryBloggerProfileRepository(
+    BloggerProfileRepository, LegacyMemoryParticipant
+):
     """In-memory implementation of blogger profile repository."""
 
     profiles: Dict[UUID, BloggerProfile] = field(default_factory=dict)
+    identity_history: InMemoryCreatorIdentityHistoryRepository = field(
+        default_factory=InMemoryCreatorIdentityHistoryRepository
+    )
+
+    def __post_init__(self) -> None:
+        self.identity_history.seed_profiles(self.profiles.values())
+
+    async def current_legacy_profile(self, user_id, *, session):
+        if (
+            not isinstance(session, LegacyMemoryTransaction)
+            or not session.active
+            or not session.contains(self)
+        ):
+            return None
+        return self.profiles.get(user_id)
 
     async def get_by_user_id(
         self, user_id: UUID, session: object | None = None
@@ -567,11 +697,40 @@ class InMemoryBloggerProfileRepository(BloggerProfileRepository):
                 return profile
         return None
 
+    async def get_by_instagram_user_id(
+        self,
+        instagram_user_id: str,
+        session: object | None = None,
+    ) -> Optional[BloggerProfile]:
+        return next(
+            (
+                p
+                for p in self.profiles.values()
+                if p.confirmed
+                and (p.instagram_user_id or "").strip()
+                == instagram_user_id.strip()
+                and instagram_user_id.strip()
+            ),
+            None,
+        )
+
     async def save(
         self, profile: BloggerProfile, session: object | None = None
     ) -> None:
         """Persist blogger profile in memory."""
+        if profile.confirmed and profile.instagram_user_id:
+            from ugc_bot.domain.social import CreatorIdentityConflict
 
+            existing = await self.get_by_instagram_user_id(
+                profile.instagram_user_id
+            )
+            if existing is not None and existing.user_id != profile.user_id:
+                raise CreatorIdentityConflict(
+                    "Instagram identity is already owned"
+                )
+        self.identity_history.observe_profile(
+            self.profiles.get(profile.user_id), profile
+        )
         self.profiles[profile.user_id] = profile
 
     async def list_confirmed_user_ids(
@@ -643,10 +802,30 @@ class InMemoryAdvertiserProfileRepository(AdvertiserProfileRepository):
 
 
 @dataclass
-class InMemoryInstagramVerificationRepository(InstagramVerificationRepository):
+class InMemoryInstagramVerificationRepository(
+    InstagramVerificationRepository, LegacyMemoryParticipant
+):
     """In-memory implementation of Instagram verification repository."""
 
     codes: Dict[UUID, InstagramVerificationCode] = field(default_factory=dict)
+
+    async def current_legacy_code(self, code_id, user_id, code, *, session):
+        if (
+            not isinstance(session, LegacyMemoryTransaction)
+            or not session.active
+            or not session.contains(self)
+        ):
+            return None
+        item = self.codes.get(code_id)
+        if (
+            item is None
+            or item.user_id != user_id
+            or item.code != code
+            or item.used
+            or item.expires_at <= datetime.now(timezone.utc)
+        ):
+            return None
+        return item
 
     async def save(
         self, code: InstagramVerificationCode, session: object | None = None
@@ -1549,7 +1728,7 @@ class InMemoryFinancialDeliveryRepository(InMemoryOutboxRepository):
     def _owns_event(self, event: OutboxEvent) -> bool:
         return (
             event.event_type.startswith("financial.")
-            and event.event_type != "financial.capture_intent"
+            and event.event_type not in SEPARATE_DELIVERY_EVENT_TYPES
         )
 
     async def delete_processed_events(

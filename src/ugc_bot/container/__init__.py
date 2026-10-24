@@ -8,10 +8,25 @@ from typing import TYPE_CHECKING
 from sqlalchemy.engine import Engine
 
 if TYPE_CHECKING:
+    from aiogram import Bot
+    from aiohttp import ClientSession
+
+    from ugc_bot.application.services.paid_selection_delivery import (
+        PaidSelectionDelivery,
+    )
     from ugc_bot.container.types import BotServices
 
 from ugc_bot.application.ports import GeocoderPort
+from ugc_bot.application.services.accompaniment_lead_delivery import (
+    AccompanimentLeadDelivery,
+)
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.collaboration_notice_delivery import (
+    CollaborationNoticeDelivery,
+)
+from ugc_bot.application.services.collaboration_sweep_service import (
+    CollaborationSweepService,
+)
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
@@ -94,6 +109,80 @@ class Container:
             repos,
             self._transaction_manager,
             currency_symbol=self._config.market.currency_symbol,
+        )
+
+    def build_collaboration_sweep(self) -> CollaborationSweepService:
+        if self._transaction_manager is None:
+            raise ValueError(
+                "DATABASE_URL is required for collaboration sweep."
+            )
+        return service_factory.build_collaboration_sweep(
+            self.build_repos(), self._transaction_manager
+        )
+
+    def build_collaboration_notice_delivery(
+        self, bot: "Bot", *, max_session: "ClientSession | None" = None
+    ) -> CollaborationNoticeDelivery | None:
+        if not self._config.financial.core_enabled:
+            return None
+        if self._transaction_manager is None:
+            raise ValueError(
+                "DATABASE_URL is required for collaboration notices."
+            )
+        return service_factory.build_collaboration_notice_delivery(
+            self._config,
+            self.build_repos(),
+            self._transaction_manager,
+            bot,
+            max_session=max_session,
+        )
+
+    def build_accompaniment_lead_delivery(
+        self, bot: "Bot", *, max_session: "ClientSession | None" = None
+    ) -> AccompanimentLeadDelivery | None:
+        if not self._config.financial.core_enabled:
+            return None
+        if self._transaction_manager is None:
+            raise ValueError("DATABASE_URL is required for lead notices.")
+        from ugc_bot.container.order_intake_factory import build_lead_delivery
+
+        return build_lead_delivery(
+            self._config,
+            self._transaction_manager,
+            bot,
+            max_session=max_session,
+        )
+
+    def build_paid_selection_delivery(
+        self, bot: "Bot", *, max_session: "ClientSession | None" = None
+    ) -> "PaidSelectionDelivery | None":
+        if not self._config.financial.core_enabled:
+            return None
+        if self._transaction_manager is None:
+            raise ValueError(
+                "DATABASE_URL is required for paid selection delivery."
+            )
+        from ugc_bot.container.paid_selection_delivery_factory import (
+            build_paid_selection_delivery,
+        )
+
+        return build_paid_selection_delivery(
+            self._config,
+            self._transaction_manager,
+            bot,
+            max_session=max_session,
+        )
+
+    def build_campaign_digest(self, bot: "Bot", *, max_session=None):
+        from ugc_bot.container.campaign_digest_factory import (
+            build_campaign_digest,
+        )
+
+        return build_campaign_digest(
+            self._config,
+            self._transaction_manager,
+            bot,
+            max_session=max_session,
         )
 
     def build_user_role_service(self) -> UserRoleService:
@@ -282,6 +371,7 @@ class Container:
             issue_lock_manager,
             offer_response_rate_limiter,
             geocode_public_rate_limiter,
+            session_factory=self._session_factory,
         )
         self._exchange_rate_service = bot_services["exchange_rate_service"]
         return bot_services

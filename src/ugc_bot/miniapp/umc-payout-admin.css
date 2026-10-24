@@ -1,0 +1,18 @@
+/* Administrative extensions of the supplied UMC mint section. */
+.umc-payout-admin { min-width: 0; }
+.umc-payout-admin .umc-admin-region:not(:empty) { background: var(--card); border-radius: var(--radius-22); padding: var(--space-24); margin-bottom: var(--space-20); min-width: 0; overflow-wrap: anywhere; }
+.umc-payout-admin .btn { width: 100%; white-space: normal; margin-bottom: var(--space-12); }
+.umc-payout-admin input, .umc-payout-admin textarea, .umc-payout-admin select { width: 100%; min-width: 0; box-sizing: border-box; }
+.umc-payout-admin input[type="checkbox"] { width: 24px; height: 24px; accent-color: var(--ink); }
+.umc-payout-admin textarea { min-height: 120px; resize: vertical; }
+.umc-payout-admin label { display: block; margin-top: var(--space-16); }
+.umc-payout-admin dl { margin: 0; }
+.umc-payout-admin dt { color: var(--muted); font-size: 13px; margin-top: var(--space-12); }
+.umc-payout-admin dd { margin: 0; }
+.umc-payout-admin details { border-top: 1px solid var(--line); padding: var(--space-12) 0; }
+.umc-payout-admin summary { cursor: pointer; }
+.umc-payout-admin .umc-admin-document { white-space: pre-wrap; line-height: 1.6; }
+.umc-payout-admin .umc-admin-money { font-size: clamp(14px, 4vw, 20px); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.umc-payout-admin .error:empty { display: none; }
+.umc-payout-admin [hidden] { display: none !important; }
+@media (max-width: 360px) { .umc-payout-admin .umc-admin-region:not(:empty) { padding: var(--space-16); } }

@@ -2257,19 +2257,22 @@ class PayoutRequestAdmin(ModelView, model=PayoutRequestModel):
     def list_query(self, request: Request):
         stmt = super().list_query(request)
         return stmt.where(
-            PayoutRequestModel.status != PayoutRequestStatus.DELETED
+            PayoutRequestModel.status != PayoutRequestStatus.DELETED,
+            PayoutRequestModel.payout_protocol.is_(None),
         )
 
     def count_query(self, request: Request):
         stmt = super().count_query(request)
         return stmt.where(
-            PayoutRequestModel.status != PayoutRequestStatus.DELETED
+            PayoutRequestModel.status != PayoutRequestStatus.DELETED,
+            PayoutRequestModel.payout_protocol.is_(None),
         )
 
     def form_edit_query(self, request: Request):
         stmt = super().form_edit_query(request)
         return stmt.where(
-            PayoutRequestModel.status != PayoutRequestStatus.DELETED
+            PayoutRequestModel.status != PayoutRequestStatus.DELETED,
+            PayoutRequestModel.payout_protocol.is_(None),
         )
 
 

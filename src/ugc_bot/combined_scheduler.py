@@ -6,18 +6,25 @@ import logging
 
 from aiogram import Bot
 
+from ugc_bot.accompaniment_lead_scheduler import run_enabled as lead_loop
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.campaign_digest_scheduler import run_enabled as feedback_loop
+from ugc_bot.collaboration_scheduler import run_loop as collaboration_loop
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
+from ugc_bot.container.campaign_digest_factory import enabled as digest_enabled
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
 )
-from ugc_bot.feedback_scheduler import run_loop as feedback_loop
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.notice_delivery_scheduler import run_enabled as notice_loop
+from ugc_bot.paid_selection_delivery_scheduler import (
+    run_enabled as selection_loop,
+)
 from ugc_bot.referral_reconciliation_scheduler import (
     run_loop as referral_loop,
 )
@@ -34,39 +41,50 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
     messenger_clients: dict[str, MessengerClient] = {
         "telegram": TelegramMessengerClient(bot),
     }
-    default_locale = (
-        getattr(getattr(config, "market", None), "default_locale", "ru") or "ru"
-    )
-
     tasks: list[asyncio.Task] = []
 
-    if config.feedback.feedback_enabled:
-        deps = container.build_feedback_scheduler_deps()
-        bot_texts_service = container.build_bot_texts_service()
+    if getattr(getattr(config, "financial", None), "core_enabled", False):
         tasks.append(
             asyncio.create_task(
-                feedback_loop(
-                    messenger_clients,
-                    deps["interaction_repo"],
-                    deps["interaction_service"],
-                    deps["user_role_service"],
-                    deps["profile_service"],
-                    deps["order_repo"],
-                    config.feedback,
-                    interval_seconds=(
-                        config.feedback.feedback_poll_interval_seconds
-                    ),
-                    transaction_manager=deps["transaction_manager"],
-                    default_locale=default_locale,
-                    bot_texts_service=bot_texts_service,
-                    close_clients_on_exit=False,
-                ),
-                name="feedback-scheduler",
+                collaboration_loop(container.build_collaboration_sweep()),
+                name="collaboration-deadline-scheduler",
             )
         )
-        logger.info("Feedback scheduler enabled")
+        logger.info("Collaboration deadline scheduler enabled")
+        tasks.append(
+            asyncio.create_task(
+                notice_loop(config, container, bot),
+                name="collaboration-notice-delivery",
+            )
+        )
+        logger.info("Collaboration notice delivery enabled")
+        tasks.append(
+            asyncio.create_task(
+                lead_loop(config, container, bot),
+                name="accompaniment-lead-delivery",
+            )
+        )
+        logger.info("Accompaniment lead delivery enabled")
+        tasks.append(
+            asyncio.create_task(
+                selection_loop(config, container, bot),
+                name="paid-selection-contact-delivery",
+            )
+        )
+        logger.info("Paid selection contact delivery enabled")
+
+    if digest_enabled(config):
+        tasks.append(
+            asyncio.create_task(
+                feedback_loop(config, container, bot),
+                name="campaign-summary-scheduler",
+            )
+        )
+        logger.info("Weekly campaign summary scheduler enabled")
     else:
-        logger.info("Feedback scheduler disabled by config")
+        logger.info(
+            "Campaign summaries disabled; legacy rating cascade retired"
+        )
 
     if config.role_reminder.role_reminder_enabled:
         user_role_service = container.build_user_role_service()

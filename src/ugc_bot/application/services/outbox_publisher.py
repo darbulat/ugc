@@ -108,7 +108,7 @@ class OutboxPublisher:
 
     async def process_pending_events(
         self,
-        kafka_publisher: OrderActivationPublisher,
+        kafka_publisher: OrderActivationPublisher | None,
         max_retries: int = 3,
         batch_limit: int = 100,
         concurrency: int = 10,
@@ -119,6 +119,13 @@ class OutboxPublisher:
         (pool_size + max_overflow, default 15).
         """
 
+        # A financial-only worker must not acquire or retry legacy deliveries.
+        if kafka_publisher is None and self.financial_router is None:
+            if self.financial_delivery is not None:
+                await self.financial_delivery.process_pending_events(
+                    None, max_retries, batch_limit, concurrency
+                )
+            return
         await self._reset_stale_events()
 
         async def _claim(session: object | None):
@@ -189,7 +196,7 @@ class OutboxPublisher:
     async def _process_one_event(
         self,
         event: OutboxEvent,
-        kafka_publisher: OrderActivationPublisher,
+        kafka_publisher: OrderActivationPublisher | None,
         max_retries: int,
     ) -> None:
         """Process a single event in one transaction."""
@@ -199,8 +206,10 @@ class OutboxPublisher:
                 event.event_id, session=session
             )
             if self.financial_router is not None:
-                self.financial_router.route(event)
-            if event.event_type == "order.activated":
+                await self.financial_router.route(event, session=session)
+            elif event.event_type == "order.activated":
+                if kafka_publisher is None:
+                    raise ValueError("order_activation_publisher_unavailable")
                 await self._process_order_activation(
                     event, kafka_publisher, session=session
                 )

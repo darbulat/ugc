@@ -7,6 +7,7 @@ import pytest_asyncio
 from aiogram import Bot, Dispatcher
 from sqlalchemy import create_engine
 
+from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.session import (
@@ -31,18 +32,7 @@ def engine(test_database_url: str):
 
     eng = create_engine(test_database_url, echo=False)
 
-    # Exclude tables with JSONB or PostgreSQL-specific indexes
-    tables_to_exclude = {
-        "outbox_events",
-        "blogger_profiles",
-        "instagram_stats",
-        "payout_requests",  # uses AT TIME ZONE in index expression
-    }
-    tables_to_create = [
-        table
-        for table in Base.metadata.tables.values()
-        if table.name not in tables_to_exclude
-    ]
+    tables_to_create = legacy_sqlite_tables(Base.metadata)
     Base.metadata.create_all(bind=eng, tables=tables_to_create)
     try:
         yield eng

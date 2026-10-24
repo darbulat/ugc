@@ -117,6 +117,8 @@ class TelegramEventAdapter:
                 username=username,
             ),
             payload=query.invoice_payload,
+            total_amount=getattr(query, "total_amount", None),
+            currency=getattr(query, "currency", None),
         )
 
 

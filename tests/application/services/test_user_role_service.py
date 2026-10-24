@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from tests.helpers.legacy_verification import MemoryVerificationTransaction
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.services.user_role_service import (
     UserRoleService,
@@ -686,8 +687,8 @@ async def test_set_country_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_link_max_account_success() -> None:
-    """Link max_id to existing Telegram user, clearing orphan Max user."""
+async def test_link_max_account_preserves_separate_canonical_owner() -> None:
+    """A separately created MAX shell remains a separate canonical owner."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
 
@@ -735,6 +736,9 @@ async def test_link_max_account_success() -> None:
     service = UserRoleService(
         user_repo=user_repo,
         blogger_profile_repo=blogger_repo,
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo
+        ),
     )
     # URL differs from stored one (trailing slash, www) — match by username
     linked = await service.link_max_account(
@@ -744,18 +748,10 @@ async def test_link_max_account_success() -> None:
         max_chat_id="chat_222",
     )
 
-    assert linked is not None
-    assert linked.user_id == existing_user.user_id
-    assert linked.max_id == "max_222"
-    assert linked.max_chat_id == "chat_222"
-    assert linked.telegram_id == "tg_111"
-    assert linked.messenger_type == MessengerType.TELEGRAM
-    assert linked.username == "alice_max"
-
-    cleared_orphan = await user_repo.get_by_id(orphan_user.user_id)
-    assert cleared_orphan is not None
-    assert cleared_orphan.max_id is None
-    assert cleared_orphan.max_chat_id is None
+    assert linked.state == "conflict"
+    assert linked.reason == "separate_canonical_owner"
+    assert await user_repo.get_by_id(existing_user.user_id) == existing_user
+    assert await user_repo.get_by_id(orphan_user.user_id) == orphan_user
 
 
 @pytest.mark.asyncio
@@ -767,6 +763,9 @@ async def test_link_max_account_not_found() -> None:
     service = UserRoleService(
         user_repo=user_repo,
         blogger_profile_repo=blogger_repo,
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo
+        ),
     )
     result = await service.link_max_account(
         max_id="max_333",
@@ -774,7 +773,7 @@ async def test_link_max_account_not_found() -> None:
         username="nobody",
     )
 
-    assert result is None
+    assert result.state == "unavailable"
 
 
 @pytest.mark.asyncio
@@ -803,13 +802,16 @@ async def test_link_max_account_profile_user_missing() -> None:
     service = UserRoleService(
         user_repo=user_repo,
         blogger_profile_repo=blogger_repo,
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo
+        ),
     )
     result = await service.link_max_account(
         max_id="max_999",
         instagram_url="https://instagram.com/ghost",
         username="ghost",
     )
-    assert result is None
+    assert result.state == "unavailable"
 
 
 @pytest.mark.asyncio
@@ -850,6 +852,9 @@ async def test_link_max_account_already_has_max_id() -> None:
     service = UserRoleService(
         user_repo=user_repo,
         blogger_profile_repo=blogger_repo,
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo
+        ),
     )
     result = await service.link_max_account(
         max_id="max_new",
@@ -857,7 +862,8 @@ async def test_link_max_account_already_has_max_id() -> None:
         username="alice_max",
     )
 
-    assert result is None
+    assert result.state == "conflict"
+    assert result.reason == "target_bound_elsewhere"
 
 
 @pytest.mark.asyncio
@@ -898,6 +904,9 @@ async def test_link_max_account_idempotent() -> None:
     service = UserRoleService(
         user_repo=user_repo,
         blogger_profile_repo=blogger_repo,
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo
+        ),
     )
     result = await service.link_max_account(
         max_id="max_222",
@@ -905,9 +914,9 @@ async def test_link_max_account_idempotent() -> None:
         username="alice_updated",
     )
 
-    assert result is not None
-    assert result.max_id == "max_222"
-    assert result.username == "alice_updated"
+    assert result.state == "same_account"
+    assert result.user == existing_user
+    assert await user_repo.get_by_id(existing_user.user_id) == existing_user
 
 
 @pytest.mark.asyncio
@@ -920,7 +929,7 @@ async def test_link_max_account_no_blogger_repo() -> None:
         instagram_url="https://instagram.com/alice",
         username="alice",
     )
-    assert result is None
+    assert result.state == "unavailable"
 
 
 @pytest.mark.asyncio
@@ -929,11 +938,15 @@ async def test_link_max_account_invalid_url() -> None:
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     service = UserRoleService(
-        user_repo=user_repo, blogger_profile_repo=blogger_repo
+        user_repo=user_repo,
+        blogger_profile_repo=blogger_repo,
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo
+        ),
     )
     result = await service.link_max_account(
         max_id="max_1",
         instagram_url="not-a-valid-url",
         username="alice",
     )
-    assert result is None
+    assert result.state == "unavailable"

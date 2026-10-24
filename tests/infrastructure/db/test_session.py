@@ -108,3 +108,13 @@ async def test_transaction_manager_rollback(session_factory) -> None:
         result = await session.execute(text("SELECT count(*) FROM items"))
         count = result.scalar_one()
     assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_transaction_manager_begins_before_first_repository_call(
+    session_factory,
+) -> None:
+    """Strict financial adapters require an active caller transaction."""
+    manager = SessionTransactionManager(session_factory)
+    async with manager.transaction() as session:
+        assert session.in_transaction()

@@ -453,10 +453,10 @@ def test_build_geocode_public_rate_limiter_without_redis() -> None:
     assert isinstance(limiter, RateLimiter)
 
 
-def test_build_repos_uses_redis_verification_when_configured() -> None:
-    """instagram_repo uses Redis when USE_REDIS_STORAGE is True."""
-    from ugc_bot.infrastructure.redis_verification import (
-        RedisInstagramVerificationRepository,
+def test_build_repos_keeps_verification_in_sql_with_redis() -> None:
+    """Code consumption shares the SQL identity transaction with Redis on."""
+    from ugc_bot.infrastructure.db.repositories import (
+        SqlAlchemyInstagramVerificationRepository,
     )
 
     config = AppConfig.model_validate(
@@ -470,8 +470,9 @@ def test_build_repos_uses_redis_verification_when_configured() -> None:
     container = Container(config)
     repos = container.build_repos()
     assert isinstance(
-        repos["instagram_repo"], RedisInstagramVerificationRepository
+        repos["instagram_repo"], SqlAlchemyInstagramVerificationRepository
     )
+    assert repos["instagram_repo"].session_factory is container.session_factory
 
 
 def test_build_repos_uses_sql_verification_without_redis() -> None:

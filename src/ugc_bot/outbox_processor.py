@@ -26,7 +26,7 @@ class OutboxProcessor:
     def __init__(
         self,
         outbox_publisher: OutboxPublisher,
-        kafka_publisher: OrderActivationPublisher,
+        kafka_publisher: OrderActivationPublisher | None,
         poll_interval: float = 5.0,
         max_retries: int = 3,
         outbox_config: Optional[OutboxConfig] = None,
@@ -143,8 +143,13 @@ async def run_processor() -> None:
     container = Container(config)
     outbox_publisher, kafka_publisher = container.build_outbox_deps()
 
-    if not kafka_publisher:
+    if (
+        kafka_publisher is None
+        and outbox_publisher.financial_delivery is None
+        and outbox_publisher.financial_router is None
+    ):
         logger.error("Kafka is disabled, cannot run outbox processor")
+        await container.dispose()
         return
 
     # Create and start processor

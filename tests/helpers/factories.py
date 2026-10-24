@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from enum import Enum
 from uuid import UUID, uuid4
 
 from ugc_bot.domain.entities import (
@@ -189,7 +190,11 @@ async def create_test_blogger_profile(
     return profile
 
 
-_SENTINEL = object()
+class _AgreementDefault(Enum):
+    UNSET = "unset"
+
+
+_SENTINEL = _AgreementDefault.UNSET
 
 
 async def create_test_advertiser_profile(
@@ -198,7 +203,7 @@ async def create_test_advertiser_profile(
     phone: str = "+79001234567",
     brand: str = "Test Brand",
     site_link: str | None = None,
-    agreement_confirmed_at: datetime | None | object = _SENTINEL,
+    agreement_confirmed_at: datetime | None | _AgreementDefault = _SENTINEL,
 ) -> AdvertiserProfile:
     """Create and save advertiser profile.
 
@@ -215,7 +220,7 @@ async def create_test_advertiser_profile(
     """
     resolved_agreement = (
         datetime.now(timezone.utc)
-        if agreement_confirmed_at is _SENTINEL
+        if isinstance(agreement_confirmed_at, _AgreementDefault)
         else agreement_confirmed_at
     )
     profile = AdvertiserProfile(

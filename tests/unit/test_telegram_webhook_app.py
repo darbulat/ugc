@@ -4064,6 +4064,7 @@ def test_webhook_rejects_invalid_secret() -> None:
         patch("ugc_bot.telegram_webhook_app.Bot") as MockBot,
     ):
         fake_dp = MagicMock()
+        fake_dp.get.return_value = None  # No optional checkout runtime here.
         fake_dp.feed_update = AsyncMock(return_value=None)
         mock_bot_texts = MagicMock()
         mock_bot_texts.load_from_db = AsyncMock(return_value=None)

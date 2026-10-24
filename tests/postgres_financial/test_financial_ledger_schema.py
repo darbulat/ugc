@@ -88,11 +88,14 @@ def test_ledger_is_append_only(
 
 
 def put(conn, table, payload):
+    # Supply only the intended fields so later additive defaults still apply.
+    columns = ", ".join('"' + name + '"' for name in payload)
     conn.execute(
         text(
             (
                 # Ignore generated identity fields: PG assigns append order.
-                f"INSERT INTO {table} OVERRIDING USER VALUE SELECT * FROM "
+                f"INSERT INTO {table} ({columns}) OVERRIDING USER VALUE "
+                f"SELECT {columns} FROM "
                 f"jsonb_populate_record(NULL::{table}, CAST(:data AS "
                 f"jsonb))"
             )
@@ -572,18 +575,23 @@ def test_runtime_least_privilege(financial_pg_engine, runtime_role, statement):
 
 
 def test_empty_downgrade_and_legacy_money_preserved(financial_pg_engine, seed):
+    import os
+
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
 
-    from ugc_bot.infrastructure.db.base import Base
+    from tests.helpers.financial_environment import isolated_financial_database
     from ugc_bot.infrastructure.db.migrations.versions import financial_ledger
 
-    schema = "ledger_legacy_" + uuid4().hex
-    with financial_pg_engine.begin() as conn:
-        original = conn.scalar(text("SELECT current_schema()"))
-        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
-        conn.execute(text(f'SET LOCAL search_path TO "{schema}",public'))
-        Base.metadata.create_all(conn)
+    with financial_pg_engine.connect() as source:
+        original = source.scalar(text("SELECT current_schema()"))
+    with (
+        isolated_financial_database(
+            os.environ["FINANCIAL_TEST_DATABASE_URL"],
+            target_revision="financial_ledger",
+        ) as historical,
+        historical.begin() as conn,
+    ):
         with Operations.context(MigrationContext.configure(conn)):
             financial_ledger.downgrade()
         assert not set(TABLES) & set(inspect(conn).get_table_names())
@@ -632,7 +640,6 @@ def test_empty_downgrade_and_legacy_money_preserved(financial_pg_engine, seed):
             conn.scalar(text(f"SELECT count(*) FROM {table}")) == 0
             for table in TABLES
         )
-        conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
 
 
 @pytest.mark.parametrize(

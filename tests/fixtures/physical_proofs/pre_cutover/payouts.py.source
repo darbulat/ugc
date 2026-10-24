@@ -1,0 +1,589 @@
+"""Payout authority with all User/wallet scope locked before items."""
+
+from contextlib import asynccontextmanager
+from dataclasses import asdict
+from typing import cast
+from uuid import UUID, uuid4
+
+from sqlalchemy import Table, and_, insert, or_, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
+
+from ugc_bot.application.payout_ports import PayoutApplicationRefused
+from ugc_bot.application.services.financial_reconciliation_service import (
+    replay_journal,
+    validate_issuance,
+)
+from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.models import PayoutRequestModel, UserModel
+from ugc_bot.infrastructure.db.payout_models import TABLE_MAP
+from ugc_bot.infrastructure.db.repositories.financial_ledger import (
+    SqlAlchemyFinancialLedgerRepository,
+    _canonical,
+    _session,
+    payload_hash,
+)
+from ugc_bot.infrastructure.db.repositories.legacy_financial_guards import (
+    SqlAlchemyLegacyFinancialGuardRepository,
+)
+from ugc_bot.infrastructure.db.repositories.payout_contracts import (
+    SqlAlchemyPayoutContractRepository,
+)
+
+
+class SqlAlchemyPayoutRepository:
+    def __init__(self, session_factory):
+        self.session_factory = session_factory
+        self.ledger = SqlAlchemyFinancialLedgerRepository()
+        self.contracts = SqlAlchemyPayoutContractRepository()
+
+    async def get(self, name, identity, *, session):
+        table = TABLE_MAP[name]
+        key = list(table.primary_key.columns)[0]
+        result = await _session(session).execute(
+            select(table).where(key == identity)
+        )
+        return result.mappings().one_or_none()
+
+    async def add(self, name, values, *, session):
+        await _session(session).execute(
+            insert(TABLE_MAP[name]).values(**values)
+        )
+
+    async def lock_users(self, identities, *, session):
+        await self.ledger.lock_recipients(
+            tuple(sorted(set(identities), key=str)), session=session
+        )
+
+    async def user(self, identity, *, session):
+        result = await _session(session).execute(
+            select(UserModel.__table__).where(UserModel.user_id == identity)
+        )
+        return result.mappings().one_or_none()
+
+    async def command(self, actor_id, key, *, session):
+        table = TABLE_MAP["commands"]
+        row = await _session(session).execute(
+            select(table).where(
+                table.c.actor_id == actor_id, table.c.operation_key == key
+            )
+        )
+        return row.mappings().one_or_none()
+
+    async def requirements_lock(self, *, session):
+        await _session(session).execute(
+            text(
+                "SELECT "
+                "pg_advisory_xact_lock(hashtext('ugc:payout-requirements'))"
+            )
+        )
+
+    async def latest_requirements(self, at=None, *, session):
+        table = TABLE_MAP["requirements"]
+        query = select(table).order_by(table.c.version.desc()).limit(1)
+        if at is not None:
+            query = query.where(table.c.effective_from <= at)
+        result = await _session(session).execute(query)
+        return result.mappings().one_or_none()
+
+    async def lock_money_scope(self, recipient_id, request_id=None, *, session):
+        db = _session(session)
+        await self.ledger.lock_wallets(((recipient_id, "RUB"),), session=db)
+        obligations = Base.metadata.tables["financial_obligations"]
+        rows = (
+            (
+                await db.execute(
+                    select(obligations)
+                    .where(
+                        obligations.c.recipient_id == recipient_id,
+                        obligations.c.currency == "RUB",
+                    )
+                    .order_by(obligations.c.id)
+                )
+            )
+            .mappings()
+            .all()
+        )
+        for item in sorted({r["paid_item_id"] for r in rows}, key=str):
+            await self.ledger.lock_item(item, session=db)
+        for row in rows:
+            await db.execute(
+                select(obligations.c.id)
+                .where(obligations.c.id == row["id"])
+                .with_for_update()
+            )
+        if request_id is not None:
+            await db.execute(
+                select(TABLE_MAP["states"])
+                .where(TABLE_MAP["states"].c.request_id == request_id)
+                .with_for_update()
+            )
+        return rows
+
+    async def reconcile_locked(self, recipient_id, *, session):
+        entries = await self.ledger.list_for_recipient(
+            recipient_id, "RUB", session=session
+        )
+        bases = await self.ledger.list_obligation_bases(
+            recipient_id, "RUB", session=session
+        )
+        replay = replay_journal(entries, currency="RUB")
+        errors = validate_issuance(
+            entries, bases, recipient_id=recipient_id, currency="RUB"
+        )
+        projection = await self.ledger.read_projection(
+            recipient_id, "RUB", session=session
+        )
+        if not replay.balanced or errors or projection != replay.balances:
+            raise ValueError("reconciliation_mismatch_audit_required")
+        return replay
+
+    async def require_history_authority(self, recipient_id, *, session):
+        """Money readiness only; preserve/read unproven foundation v1 facts.
+
+        Caller holds all User/wallet/item barriers. A balanced journal UUID is
+        not accepted allocation or physical bank authority. Legacy-only payout
+        rows and referral balances are outside this v1 journal query.
+        """
+        movement = Base.metadata.tables["financial_movements"]
+        obligation = Base.metadata.tables["financial_obligations"]
+        anchor = PayoutRequestModel.__table__
+        link, allocation, request, settlement, outcome, intent = (
+            TABLE_MAP[n]
+            for n in (
+                "movement_links",
+                "allocations",
+                "requests",
+                "settlements",
+                "outcomes",
+                "intents",
+            )
+        )
+        allocation_proof = (
+            select(link.c.movement_id)
+            .select_from(
+                link.join(
+                    allocation,
+                    allocation.c.allocation_id == link.c.allocation_id,
+                )
+                .join(request, request.c.request_id == link.c.request_id)
+                .join(anchor, anchor.c.request_id == request.c.request_id)
+            )
+            .where(
+                link.c.movement_id == movement.c.id,
+                link.c.request_id == movement.c.request_id,
+                link.c.allocation_id == movement.c.allocation_id,
+                link.c.obligation_id == movement.c.obligation_id,
+                link.c.currency == movement.c.currency,
+                link.c.amount_minor == movement.c.amount_minor,
+                link.c.execution_id.is_not_distinct_from(
+                    movement.c.execution_id
+                ),
+                allocation.c.request_id == movement.c.request_id,
+                allocation.c.obligation_id == movement.c.obligation_id,
+                allocation.c.recipient_id == recipient_id,
+                allocation.c.currency == movement.c.currency,
+                allocation.c.amount_minor >= movement.c.amount_minor,
+                request.c.recipient_id == recipient_id,
+                request.c.currency == movement.c.currency,
+                anchor.c.payout_protocol == "financial_v1",
+            )
+            .correlate(movement)
+            .exists()
+        )
+        paid_proof = (
+            select(settlement.c.execution_id)
+            .select_from(
+                settlement.join(
+                    outcome, outcome.c.outcome_id == settlement.c.outcome_id
+                ).join(
+                    intent, intent.c.execution_id == settlement.c.execution_id
+                )
+            )
+            .where(
+                settlement.c.execution_id == movement.c.execution_id,
+                settlement.c.request_id == movement.c.request_id,
+                settlement.c.currency == movement.c.currency,
+                intent.c.request_id == movement.c.request_id,
+                intent.c.amount_minor == settlement.c.amount_minor,
+                intent.c.currency == movement.c.currency,
+                outcome.c.execution_id == movement.c.execution_id,
+                outcome.c.request_id == movement.c.request_id,
+                outcome.c.applied.is_(True),
+                outcome.c.status == "paid",
+                outcome.c.amount_minor == settlement.c.amount_minor,
+                outcome.c.currency == movement.c.currency,
+                outcome.c.bank_account == settlement.c.bank_account,
+                outcome.c.bank_reference == settlement.c.bank_reference,
+                outcome.c.settled_at == settlement.c.settled_at,
+                outcome.c.fingerprint == intent.c.fingerprint,
+            )
+            .correlate(movement)
+            .exists()
+        )
+        missing = await _session(session).scalar(
+            select(movement.c.id)
+            .join(obligation, obligation.c.id == movement.c.obligation_id)
+            .where(
+                obligation.c.recipient_id == recipient_id,
+                movement.c.currency == "RUB",
+                or_(
+                    movement.c.bucket_from == "reserved",
+                    movement.c.bucket_to.in_(("reserved", "paid")),
+                ),
+                or_(
+                    ~allocation_proof,
+                    and_(movement.c.bucket_to == "paid", ~paid_proof),
+                ),
+            )
+            .limit(1)
+        )
+        if missing is not None:
+            raise ValueError("payout_history_authority_review_required")
+
+    async def legacy_clear(self, recipient_id, *, session):
+        await SqlAlchemyLegacyFinancialGuardRepository(
+            self.session_factory
+        ).assert_payout_allowed(recipient_id, "RUB", session=session)
+
+    async def item_clear(self, item_id, *, session):
+        """Read current correction projection under the held item barrier."""
+        table = Base.metadata.tables["order_items"]
+        state = await _session(session).scalar(
+            select(table.c.selection_state).where(
+                table.c.paid_item_id == item_id
+            )
+        )
+        if state in (None, "cancelled", "refunded"):
+            raise ValueError("payout_item_corrected_review_required")
+
+    async def allocations(self, request_id, *, session):
+        table = TABLE_MAP["allocations"]
+        return (
+            (
+                await _session(session).execute(
+                    select(table)
+                    .where(table.c.request_id == request_id)
+                    .order_by(table.c.allocation_id)
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    async def anchor(
+        self, identity, recipient_id, amount_minor, at, *, session
+    ):
+        await _session(session).execute(
+            insert(cast(Table, PayoutRequestModel.__table__)).values(
+                request_id=identity,
+                user_id=recipient_id,
+                amount=None,
+                currency="RUB",
+                requested_at=at,
+                updated_at=at,
+                status="pending",
+                payout_protocol="financial_v1",
+            )
+        )
+
+    async def movement_locked(self, movement, *, session):
+        """Only the coordinator's already locked immutable allocation scope."""
+        db = _session(session)
+        table = Base.metadata.tables["financial_movements"]
+        values = asdict(movement)
+        values = values | {"id": uuid4(), "payload_hash": payload_hash(values)}
+        await db.execute(insert(table).values(**values))
+        await self.add(
+            "movement_links",
+            dict(
+                movement_id=values["id"],
+                request_id=movement.request_id,
+                allocation_id=movement.allocation_id,
+                obligation_id=movement.obligation_id,
+                amount_minor=movement.amount_minor,
+                currency=movement.currency,
+                execution_id=movement.execution_id,
+            ),
+            session=db,
+        )
+        await self.ledger.apply_projection(movement, session=db)
+
+    async def transition(
+        self,
+        request_id,
+        state,
+        actor_id,
+        action,
+        reason,
+        at,
+        *,
+        details=None,
+        execution_id=None,
+        block_reason="",
+        session,
+    ):
+        previous, consistent = await self.state_authority(
+            request_id, session=session
+        )
+        if not consistent:
+            raise ValueError("payout_state_reconciliation_required")
+        version = previous["version"] + 1 if previous is not None else 1
+        values = dict(
+            request_id=request_id,
+            version=version,
+            state=state,
+            execution_id=execution_id
+            if execution_id is not None
+            else (previous["execution_id"] if previous is not None else None),
+            block_reason=block_reason,
+        )
+        await self.add(
+            "events",
+            dict(
+                event_id=uuid4(),
+                request_id=request_id,
+                version=version,
+                action=action,
+                state=state,
+                actor_id=actor_id,
+                reason=reason,
+                recorded_at=at,
+                details=_canonical(
+                    dict(details or {}) | {"projection": values}
+                ),
+            ),
+            session=session,
+        )
+        table = TABLE_MAP["states"]
+        await _session(session).execute(
+            pg_insert(table)
+            .values(**values)
+            .on_conflict_do_update(
+                index_elements=[table.c.request_id], set_=values
+            )
+        )
+        return await self.view(request_id, session=session)
+
+    async def state_authority(self, identity, *, session):
+        """Immutable event authority plus explicit mutable-projection equality.
+
+        Missing/older incomplete audit is unavailable; never infer or repair a
+        state from mutable data, timestamps or a bank observer's assertion.
+        """
+        raw = await self.get("states", identity, session=session)
+        events = TABLE_MAP["events"]
+        result = await _session(session).execute(
+            select(events)
+            .where(events.c.request_id == identity)
+            .order_by(events.c.version.desc())
+            .limit(1)
+        )
+        event = result.mappings().one_or_none()
+        if event is None:
+            return None, raw is None
+        details = event["details"]
+        proof = details.get("projection") if isinstance(details, dict) else None
+        keys = {
+            "request_id",
+            "version",
+            "state",
+            "execution_id",
+            "block_reason",
+        }
+        if (
+            not isinstance(proof, dict)
+            or set(proof) != keys
+            or type(proof["version"]) is not int
+            or proof["version"] != event["version"]
+            or proof["state"] != event["state"]
+            or proof["request_id"] != str(identity)
+            or not isinstance(proof["block_reason"], str)
+            or len(proof["block_reason"]) > 100
+        ):
+            return None, False
+        try:
+            authority = proof | {
+                "request_id": UUID(proof["request_id"]),
+                "execution_id": UUID(proof["execution_id"])
+                if proof["execution_id"] is not None
+                else None,
+            }
+        except (ValueError, TypeError, AttributeError):
+            return None, False
+        return authority, raw is not None and _canonical(dict(raw)) == proof
+
+    async def view(self, identity, *, session):
+        request = await self.get("requests", identity, session=session)
+        if request is None:
+            return None
+        state, consistent = await self.state_authority(
+            identity, session=session
+        )
+        if not consistent or state is None:
+            raise ValueError("payout_state_reconciliation_required")
+        details = await self.get(
+            "requisites", request["requisites_id"], session=session
+        )
+        return _canonical(
+            dict(request)
+            | dict(state)
+            | {"masked_label": details["masked_label"]}
+        )
+
+    async def list_requests(self, recipient_id=None, *, session):
+        table = TABLE_MAP["requests"]
+        query = select(table.c.request_id).order_by(
+            table.c.requested_at, table.c.request_id
+        )
+        if recipient_id is not None:
+            query = query.where(table.c.recipient_id == recipient_id)
+        return tuple(await _session(session).scalars(query))
+
+    async def bank_reference_lock(self, account, reference, *, session):
+        await _session(session).execute(
+            text("SELECT pg_advisory_xact_lock(hashtext(:proof))"),
+            {"proof": "payout-bank:" + account + ":" + reference},
+        )
+
+    async def receipt_used(
+        self, account, reference, *, request_id, execution_id, session
+    ):
+        db = _session(session)
+        await self.bank_reference_lock(account, reference, session=db)
+        table = TABLE_MAP["settlements"]
+        settled = await db.scalar(
+            select(table.c.execution_id).where(
+                table.c.bank_account == account,
+                table.c.bank_reference == reference,
+            )
+        )
+        if settled is not None:
+            return settled
+        observations = TABLE_MAP["outcomes"]
+        return await db.scalar(
+            select(observations.c.execution_id)
+            .where(
+                observations.c.status == "paid",
+                observations.c.bank_account == account,
+                observations.c.bank_reference == reference,
+                (observations.c.request_id != request_id)
+                | (observations.c.execution_id != execution_id),
+            )
+            .limit(1)
+        )
+
+    @asynccontextmanager
+    async def application_savepoint(self, *, session):
+        try:
+            async with _session(session).begin_nested():
+                yield
+        except IntegrityError as error:
+            raise PayoutApplicationRefused(
+                "payout_money_application_refused"
+            ) from error
+
+    async def validate_movement_links(self, *, session):
+        db = _session(session)
+        await db.execute(
+            text("SET CONSTRAINTS payout_movement_guard IMMEDIATE")
+        )
+        await db.execute(text("SET CONSTRAINTS payout_movement_guard DEFERRED"))
+
+    async def list_requirements(self, *, session):
+        table = TABLE_MAP["requirements"]
+        return (
+            (
+                await _session(session).execute(
+                    select(table).order_by(table.c.version.desc())
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    async def list_facts(self, name, request_id, *, session):
+        table = TABLE_MAP[name]
+        return (
+            (
+                await _session(session).execute(
+                    select(table).where(table.c.request_id == request_id)
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    async def unmatched_bank(self, recipient_id, matching=None, *, session):
+        db = _session(session)
+        outcomes, requests, settlements = (
+            TABLE_MAP[n] for n in ("outcomes", "requests", "settlements")
+        )
+        observations = (
+            (
+                await db.execute(
+                    select(outcomes)
+                    .join(
+                        requests, requests.c.request_id == outcomes.c.request_id
+                    )
+                    .where(
+                        requests.c.recipient_id == recipient_id,
+                        outcomes.c.status == "paid",
+                        outcomes.c.applied.is_(False),
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        applied = (
+            (
+                await db.execute(
+                    select(outcomes)
+                    .join(
+                        settlements,
+                        settlements.c.outcome_id == outcomes.c.outcome_id,
+                    )
+                    .join(
+                        requests, requests.c.request_id == outcomes.c.request_id
+                    )
+                    .where(requests.c.recipient_id == recipient_id)
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+        def same(left, right):
+            fields = (
+                "execution_id",
+                "request_id",
+                "amount_minor",
+                "currency",
+                "settled_at",
+                "bank_account",
+                "bank_reference",
+            )
+            return all(left[k] == right[k] for k in fields) and (
+                left["key_id"] == "unavailable"
+                or left["fingerprint"] == right["fingerprint"]
+            )
+
+        return any(
+            not any(same(observed, known) for known in applied)
+            and not (matching is not None and same(observed, matching))
+            for observed in observations
+        )
+
+    async def event_exists(self, request_id, action, *, session):
+        table = TABLE_MAP["events"]
+        return (
+            await _session(session).scalar(
+                select(table.c.event_id)
+                .where(
+                    table.c.request_id == request_id, table.c.action == action
+                )
+                .limit(1)
+            )
+            is not None
+        )

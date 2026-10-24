@@ -111,6 +111,7 @@ async def advertiser_command(incoming: IncomingMessage, deps: dict) -> None:
             "btn_support",
             "btn_advertiser_start",
             "msg_choose_action",
+            "btn_partner_program",
         ],
         locale,
     )
@@ -158,6 +159,7 @@ async def handle_role_advertiser_callback(
             "btn_support",
             "btn_advertiser_start",
             "msg_choose_action",
+            "btn_partner_program",
         ],
         locale,
     )
@@ -239,6 +241,7 @@ async def handle_advertiser_start_callback(
             "msg_choose_action",
             "msg_whats_your_name",
             "msg_phone_request",
+            "btn_partner_program",
         ],
         locale,
     )
@@ -570,6 +573,7 @@ async def handle_agreements_callback(
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
+            "btn_partner_program",
         ],
         locale,
     )

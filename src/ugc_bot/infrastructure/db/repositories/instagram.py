@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ugc_bot.application.legacy_link_ports import LegacySqlParticipant
 from ugc_bot.application.ports import (
     InstagramStatsRepository,
     InstagramVerificationRepository,
@@ -22,11 +23,38 @@ from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 
 @dataclass(slots=True)
 class SqlAlchemyInstagramVerificationRepository(
-    InstagramVerificationRepository
+    InstagramVerificationRepository, LegacySqlParticipant
 ):
     """SQLAlchemy-backed Instagram verification repository."""
 
     session_factory: async_sessionmaker[AsyncSession]
+
+    async def current_legacy_code(self, code_id, user_id, code, *, session):
+        if (
+            not isinstance(session, AsyncSession)
+            or not session.in_transaction()
+        ):
+            return None
+        model = await session.scalar(
+            select(InstagramVerificationCodeModel)
+            .where(
+                InstagramVerificationCodeModel.code_id == code_id,
+                InstagramVerificationCodeModel.user_id == user_id,
+                InstagramVerificationCodeModel.code == code,
+                InstagramVerificationCodeModel.used.is_(False),
+                InstagramVerificationCodeModel.expires_at
+                > datetime.now(timezone.utc),
+            )
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if (
+            model is None
+            or model.used
+            or model.expires_at <= datetime.now(timezone.utc)
+        ):
+            return None
+        return _to_verification_entity(model)
 
     async def save(
         self, code: InstagramVerificationCode, session: object | None = None

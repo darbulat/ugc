@@ -1,0 +1,24 @@
+/* Campaign drafts use the supplied UMC cards, mint section and form controls. */
+.umc-campaign-workbench { min-width: 0; }
+.umc-campaign-workbench [hidden] { display: none !important; }
+.umc-campaign-card { background: var(--card); border-radius: var(--radius-22); padding: var(--space-24); margin-bottom: var(--space-20); min-width: 0; }
+.umc-campaign-card h2 { font-size: 22px; }
+.umc-campaign-card h3 { font-size: 18px; }
+.umc-campaign-workbench .btn { white-space: normal; overflow-wrap: anywhere; width: 100%; margin: var(--space-6) 0; }
+.umc-campaign-workbench label { display: block; margin: var(--space-16) 0; }
+.umc-campaign-workbench label > span { display: block; margin-bottom: var(--space-6); }
+.umc-campaign-workbench input, .umc-campaign-workbench textarea, .umc-campaign-workbench select { width: 100%; max-width: 100%; min-width: 0; }
+.umc-campaign-workbench textarea { min-height: 130px; resize: vertical; }
+.umc-campaign-workbench .hint, .umc-campaign-reference { overflow-wrap: anywhere; }
+.umc-campaign-reference { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.umc-campaign-workbench .error:empty, .umc-campaign-workbench [role="status"]:empty { display: none; }
+.umc-campaign-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--space-16); }
+.umc-campaign-statistics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-16); }
+.umc-campaign-statistics div { padding: var(--space-16); background: var(--bg); border-radius: var(--radius-14); }
+.umc-campaign-statistics dt { font-size: 13px; color: var(--muted); }
+.umc-campaign-statistics dd { margin: var(--space-6) 0 0; font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.umc-campaign-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.umc-campaign-workbench dl { margin: var(--space-16) 0; }
+.umc-campaign-exclusions > div { display: flex; justify-content: space-between; gap: var(--space-16); margin: var(--space-12) 0; }
+.umc-campaign-exclusions dd { margin: 0; font-variant-numeric: tabular-nums; }
+@media (max-width: 360px) { .umc-campaign-card { padding: var(--space-16); } .umc-campaign-filters { grid-template-columns: minmax(0, 1fr); } }

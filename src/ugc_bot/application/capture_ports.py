@@ -9,6 +9,8 @@ from ugc_bot.domain.entities import Payment
 
 
 class FinancialCaptureRepository(Protocol):
+    async def lock_payer(self, client_id: UUID, *, session: object) -> None: ...
+
     async def lock_order(self, order_id: UUID, *, session: object) -> None: ...
 
     async def issue(

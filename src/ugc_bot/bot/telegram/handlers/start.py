@@ -1,6 +1,6 @@
 """Start and role selection handlers."""
 
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
@@ -21,6 +21,7 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.partner_entry import CALLBACK_PARTNER_OPEN, send_partner_entry
 from ugc_bot.bot.telegram.filters import TextEqualsKey
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_CHANGE_COUNTRY_PREFIX,
@@ -43,6 +44,41 @@ from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
+
+
+@router.message(Command("partner"))
+async def partner_command(
+    message: Message,
+    config: AppConfig,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        message, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_message(message)
+    await send_partner_entry(
+        messenger_client, incoming.chat_id, config, "telegram", user_locale
+    )
+
+
+@router.callback_query(F.data == CALLBACK_PARTNER_OPEN)
+async def partner_callback(
+    callback: CallbackQuery,
+    config: AppConfig,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    await send_partner_entry(
+        messenger_client, incoming.chat_id, config, "telegram", user_locale
+    )
 
 
 @router.message(Command("app"))
@@ -124,7 +160,8 @@ async def start_command(
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     country_prompt = (
         await bot_texts_service.get("country_prompt", locale)
@@ -198,7 +235,8 @@ async def country_selected(
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     await AiogramStateStore(state).clear()
     await messenger_client.send_text(
@@ -263,7 +301,8 @@ async def language_selected(
         await bot_texts_service.get("start_message", new_locale)
     ).strip() or "UGC — сервис для UGC."
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], new_locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        new_locale,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -400,7 +439,8 @@ async def change_role_callback(
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     await _change_role_button(
         incoming=incoming,
@@ -439,7 +479,8 @@ async def change_role_button(
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     await _change_role_button(
         incoming=incoming,
@@ -491,6 +532,7 @@ async def support_callback(
             "btn_my_orders",
             "btn_my_profile",
             "btn_edit_profile",
+            "btn_partner_program",
         ],
         locale,
     )
@@ -550,6 +592,7 @@ async def support_button(
             "btn_my_orders",
             "btn_my_profile",
             "btn_edit_profile",
+            "btn_partner_program",
         ],
         locale,
     )

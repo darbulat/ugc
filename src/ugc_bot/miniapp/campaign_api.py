@@ -1,0 +1,158 @@
+"""Strict signed campaign configuration/settings, with no dispatch endpoint."""
+
+from typing import Any
+from uuid import UUID
+
+from fastapi import APIRouter, HTTPException, Request
+from pydantic import Field, StrictInt
+
+from ugc_bot.domain.campaigns import CampaignCommand, CampaignConflict
+from ugc_bot.miniapp.principal import PrincipalResolver, SignedMiniAppRequest
+
+
+class CampaignOperation(SignedMiniAppRequest):
+    operation_key: str = Field(min_length=1, max_length=256)
+    expected_version: int = Field(ge=0, strict=True)
+
+
+class PolicyPublish(CampaignOperation):
+    terms_version: str = Field(min_length=1, max_length=1000)
+    default_locale: str
+    terms: dict[str, str]
+    limits: dict[str, StrictInt]
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class PolicySuspend(CampaignOperation):
+    reason: str = Field(min_length=1, max_length=1000)
+
+
+class PublisherChange(PolicySuspend):
+    owner_id: UUID
+
+
+class ConsentAllow(CampaignOperation):
+    policy_version: int = Field(ge=1, strict=True)
+    terms_hash: str = Field(min_length=64, max_length=64)
+    consent_context: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class AccountLookup(SignedMiniAppRequest):
+    search: str = Field(default="", max_length=100)
+    page: int = Field(default=0, ge=0, le=100000, strict=True)
+
+
+def _workbench_capabilities(dispatcher, view):
+    review = dispatcher.get("campaign_review_service")
+    audience = dispatcher.get("campaign_audience_service")
+    readable = all(
+        callable(getattr(review, method, None))
+        for method in ("list_drafts", "detail")
+    )
+    writable = bool(
+        (view.get("publisher") or {}).get("active") is True
+        and (view.get("policy") or {}).get("enabled") is True
+    )
+    return {
+        "read_own_drafts": readable,
+        "read_own_operations": readable
+        and callable(getattr(review, "operation_status", None)),
+        "save_draft": readable
+        and writable
+        and callable(getattr(review, "save_draft", None)),
+        "preview_audience": readable
+        and writable
+        and callable(getattr(audience, "preview", None)),
+        # These contracts are dormant and have no mounted production adapter.
+        "submit_campaign": False,
+        "cancel_campaign": False,
+        "read_admin_queue": False,
+        "review_campaign": False,
+    }
+
+
+async def _invoke(resolve, request, body, *, action=None, accounts=False):
+    if request.query_params:
+        raise HTTPException(422, "Unexpected query parameters")
+    actor = await resolve(request, body.init_data, platform=body.platform)
+    dispatcher = request.app.state.dispatcher
+    service = dispatcher.get("campaign_service")
+    transactions = dispatcher.get("transaction_manager")
+    if service is None or transactions is None:
+        raise HTTPException(503, "Campaign settings unavailable")
+    try:
+        async with transactions.transaction() as session:
+            if accounts:
+                return await service.accounts(
+                    actor, body.search, body.page, session=session
+                )
+            if action is None:
+                view = await service.view(actor, session=session)
+                return {
+                    **view,
+                    "capabilities": _workbench_capabilities(dispatcher, view),
+                }
+            payload: dict[str, Any] = body.model_dump(
+                exclude={
+                    "init_data",
+                    "platform",
+                    "operation_key",
+                    "expected_version",
+                },
+                mode="json",
+            )
+            command = CampaignCommand(
+                actor,
+                body.operation_key,
+                action,
+                body.expected_version,
+                payload,
+            )
+            return await service.execute(command, session=session)
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except CampaignConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except ValueError as exc:
+        status = 503 if str(exc) == "campaign_foundation_unavailable" else 422
+        raise HTTPException(status, str(exc)) from exc
+
+
+def create_campaign_router(resolve: PrincipalResolver) -> APIRouter:
+    router = APIRouter(prefix="/campaigns")
+
+    @router.post("/settings")
+    async def settings(request: Request, body: SignedMiniAppRequest):
+        return await _invoke(resolve, request, body)
+
+    @router.post("/admin/accounts")
+    async def accounts(request: Request, body: AccountLookup):
+        return await _invoke(resolve, request, body, accounts=True)
+
+    @router.post("/policy/publish")
+    async def publish(request: Request, body: PolicyPublish):
+        return await _invoke(resolve, request, body, action="publish")
+
+    @router.post("/policy/suspend")
+    async def suspend(request: Request, body: PolicySuspend):
+        return await _invoke(resolve, request, body, action="suspend")
+
+    @router.post("/publishers/grant")
+    async def grant(request: Request, body: PublisherChange):
+        return await _invoke(resolve, request, body, action="grant")
+
+    @router.post("/publishers/revoke")
+    async def revoke(request: Request, body: PublisherChange):
+        return await _invoke(resolve, request, body, action="revoke")
+
+    @router.post("/consent/allow")
+    async def allow(request: Request, body: ConsentAllow):
+        return await _invoke(resolve, request, body, action="consent")
+
+    @router.post("/consent/revoke")
+    async def unsubscribe(request: Request, body: CampaignOperation):
+        return await _invoke(resolve, request, body, action="unsubscribe")
+
+    return router

@@ -111,6 +111,8 @@ class IncomingPreCheckout:
     query_id: str
     user: IncomingUser
     payload: str
+    total_amount: int | None = None
+    currency: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

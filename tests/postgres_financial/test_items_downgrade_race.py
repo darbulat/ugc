@@ -23,7 +23,6 @@ from ugc_bot.domain.enums import (
     PaymentStatus,
     UserStatus,
 )
-from ugc_bot.infrastructure.db.migrations.versions import financial_ledger
 from ugc_bot.infrastructure.db.models import OrderModel, PaymentModel, UserModel
 
 
@@ -31,14 +30,9 @@ from ugc_bot.infrastructure.db.models import OrderModel, PaymentModel, UserModel
 def items_revision_engine(financial_pg_engine):
     # Use the original validated URL, not its search_path-bearing derivative.
     with isolated_financial_database(
-        os.environ["FINANCIAL_TEST_DATABASE_URL"]
+        os.environ["FINANCIAL_TEST_DATABASE_URL"],
+        target_revision="financial_items",
     ) as engine:
-        with engine.begin() as conn:
-            with Operations.context(MigrationContext.configure(conn)):
-                financial_ledger.downgrade()
-            conn.execute(
-                text("UPDATE alembic_version SET version_num='financial_items'")
-            )
         with engine.connect() as conn:
             assert conn.scalar(
                 text("SELECT version_num FROM alembic_version")

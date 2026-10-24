@@ -6,6 +6,7 @@ Message.date is Telegram protocol message time, not bank settlement time.
 All writes use the caller's transaction; there are no sends or commits here.
 """
 
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -14,6 +15,9 @@ from sqlalchemy import select, text
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.messenger.dto import PaymentSuccess
+from ugc_bot.application.services.creator_identity_history_service import (
+    CreatorIdentityHistoryService,
+)
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicy,
     FinancialPolicyService,
@@ -21,6 +25,7 @@ from ugc_bot.application.services.financial_policy_service import (
 from ugc_bot.domain.entities import Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.identity_history import IdentityHistoryUnavailable
 from ugc_bot.infrastructure.db.models import (
     FinancialPolicyVersionModel,
     OrderItemModel,
@@ -35,6 +40,7 @@ from ugc_bot.infrastructure.db.repositories.financial_items import (
     SqlAlchemyFinancialItemRepository,
     _session,
 )
+from ugc_bot.infrastructure.db.repositories.financial_ledger import _canonical
 from ugc_bot.infrastructure.db.repositories.orders import _to_payment_entity
 from ugc_bot.infrastructure.db.repositories.payment_allocations import (
     SqlAlchemyPaymentAllocationRepository,
@@ -56,9 +62,26 @@ def capture_id(account: str, external_id: str) -> UUID:
 
 
 class SqlAlchemyFinancialCaptureRepository:
-    def __init__(self, policy_service: FinancialPolicyService) -> None:
+    def __init__(
+        self,
+        policy_service: FinancialPolicyService,
+        *,
+        history: CreatorIdentityHistoryService | None = None,
+    ) -> None:
         self.policy_service = policy_service
+        self.history = history
         self.allocations = SqlAlchemyPaymentAllocationRepository()
+
+    async def lock_payer(self, client_id: UUID, *, session: object) -> None:
+        # Before order coordination, including the outer payment service.
+        # Prevent User deletion/PK cascades from inverting order→history locks.
+        row = await _session(session).scalar(
+            select(UserModel.user_id)
+            .where(UserModel.user_id == client_id)
+            .with_for_update(key_share=True)
+        )
+        if row is None:
+            raise OrderCreationError("capture_order_owner_mismatch")
 
     async def lock_order(self, order_id: UUID, *, session: object) -> None:
         await SqlAlchemyFinancialItemRepository().lock_order(
@@ -66,6 +89,7 @@ class SqlAlchemyFinancialCaptureRepository:
         )
 
     async def _locked(self, order_id: UUID, client_id: UUID, session: object):
+        await self.lock_payer(client_id, session=session)
         await self.lock_order(order_id, session=session)
         db = _session(session)
         order = await db.scalar(
@@ -323,6 +347,7 @@ class SqlAlchemyFinancialCaptureRepository:
             db, payment, account, receipt.provider_payment_charge_id
         )
         await self._policy(db, order, items, at, issuing=False)
+        attribution = await self._client_attribution(client_id, at, db)
         payment.status = PaymentStatus.PAID
         payment.external_id = receipt.provider_payment_charge_id
         payment.captured_minor = receipt.total_amount
@@ -351,14 +376,6 @@ class SqlAlchemyFinancialCaptureRepository:
                         ),
                         session=db,
                     )
-        # Freeze client attribution; never invent a recipient.
-        binding = await db.scalar(
-            select(UserReferralBindingModel).where(
-                UserReferralBindingModel.referred_user_id == client_id,
-                UserReferralBindingModel.created_at <= at,
-            )
-        )
-        client = await db.get(UserModel, client_id)
         db.add(
             OutboxEventModel(
                 event_id=event_id,
@@ -368,12 +385,7 @@ class SqlAlchemyFinancialCaptureRepository:
                 payload={
                     "capture": identity,
                     "payment_id": str(payment.payment_id),
-                    "client_registered_at": client.created_at.isoformat()
-                    if client
-                    else None,
-                    "client_referrer_id": str(binding.referrer_user_id)
-                    if binding
-                    else None,
+                    **attribution,
                     "selection_bases": [
                         [str(i.paid_item_id), i.selection_minor] for i in items
                     ],
@@ -383,3 +395,54 @@ class SqlAlchemyFinancialCaptureRepository:
         order.status = OrderStatus.PENDING_MODERATION
         await db.flush()
         return _to_payment_entity(payment)
+
+    async def _client_attribution(self, client_id, at, db):
+        if self.history is None:
+            # Existing internal capture callers have no authoritative history
+            # dependency. The monetary consumer still verifies their payload.
+            binding = await db.scalar(
+                select(UserReferralBindingModel).where(
+                    UserReferralBindingModel.referred_user_id == client_id,
+                    UserReferralBindingModel.created_at <= at,
+                )
+            )
+            client = await db.get(UserModel, client_id)
+            return {
+                "client_registered_at": client.created_at.isoformat()
+                if client
+                else None,
+                "client_referrer_id": str(binding.referrer_user_id)
+                if binding
+                else None,
+            }
+        # Payer→order→payment are already locked. This precedes item mutation;
+        # no new User locks may be acquired after taking the shared barrier.
+        await self.history.acquire_snapshot_barrier(session=db)
+        try:
+            fact = await self.history.resolve_direct_binding(
+                client_id, at, session=db
+            )
+        except IdentityHistoryUnavailable as error:
+            # A real captured receipt is recorded even when no commission can
+            # be assessed. The consumer will retain it unresolved, never infer
+            # a historical recipient or registration from today's profile.
+            return {
+                "client_registered_at": None,
+                "client_referrer_id": None,
+                "attribution_history": {
+                    "status": "unavailable",
+                    "reason": str(error),
+                },
+            }
+        return {
+            "client_registered_at": fact.registered_at.isoformat()
+            if fact.registered_at is not None
+            else None,
+            "client_referrer_id": str(fact.referrer_user_id)
+            if fact.referrer_user_id is not None
+            else None,
+            "attribution_history": {
+                "status": "assessed",
+                "fact": _canonical(asdict(fact)),
+            },
+        }

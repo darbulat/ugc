@@ -1,7 +1,5 @@
 """Factory for creating repository instances."""
 
-import logging
-
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.infrastructure.db.repositories import (
@@ -30,39 +28,71 @@ from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyUserRepository,
     SqlReferralOrderIncomeLoader,
 )
+from ugc_bot.infrastructure.db.repositories.campaign_review import (
+    SqlAlchemyCampaignReviewRepository,
+)
+from ugc_bot.infrastructure.db.repositories.campaign_summary import (
+    SqlAlchemyCampaignSummaryRepository,
+)
+from ugc_bot.infrastructure.db.repositories.campaigns import (
+    SqlAlchemyCampaignRepository,
+)
+from ugc_bot.infrastructure.db.repositories.collaborations import (
+    SqlAlchemyCollaborationRepository,
+)
+from ugc_bot.infrastructure.db.repositories.entitlements import (
+    SqlAlchemyClientEntitlementRepository,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import (
     SqlAlchemyFinancialItemRepository,
+)
+from ugc_bot.infrastructure.db.repositories.financial_ledger import (
+    SqlAlchemyFinancialLedgerRepository,
 )
 from ugc_bot.infrastructure.db.repositories.financial_policy import (
     SqlAlchemyFinancialPolicyRepository,
 )
+from ugc_bot.infrastructure.db.repositories.identity_history import (
+    SqlAlchemyCreatorIdentityHistoryRepository,
+)
 from ugc_bot.infrastructure.db.repositories.legacy_financial_cases import (
     SqlAlchemyLegacyFinancialCaseRepository,
+)
+from ugc_bot.infrastructure.db.repositories.order_intake import (
+    SqlAlchemyOrderIntakeRepository,
 )
 from ugc_bot.infrastructure.db.repositories.outbox import (
     SqlAlchemyFinancialDeliveryRepository,
 )
-
-logger = logging.getLogger(__name__)
+from ugc_bot.infrastructure.db.repositories.paid_selection import (
+    SqlAlchemyPaidSelectionRepository,
+)
+from ugc_bot.infrastructure.db.repositories.partner_view import (
+    SqlAlchemyPartnerViewRepository,
+)
+from ugc_bot.infrastructure.db.repositories.rate_overrides import (
+    SqlAlchemyRateOverrideRepository,
+)
+from ugc_bot.infrastructure.db.repositories.selection_view import (
+    SqlAlchemySelectionViewRepository,
+)
+from ugc_bot.infrastructure.db.repositories.social import (
+    SqlAlchemySocialAccountRepository,
+)
+from ugc_bot.infrastructure.db.repositories.work_entitlements import (
+    SqlAlchemyWorkEntitlementRepository,
+)
 
 
 def _build_instagram_verification_repo(
     session_factory: async_sessionmaker[AsyncSession],
     redis_url: str | None = None,
-):
-    """Build Instagram verification repository (Redis or SQL)."""
-    if redis_url:
-        try:
-            from ugc_bot.infrastructure.redis_verification import (
-                RedisInstagramVerificationRepository,
-            )
+) -> SqlAlchemyInstagramVerificationRepository:
+    """Keep code consumption inside the SQL identity-confirmation transaction.
 
-            logger.info("Using Redis for Instagram verification codes")
-            return RedisInstagramVerificationRepository(redis_url=redis_url)
-        except ImportError:  # pragma: no cover
-            logger.debug(
-                "redis package not installed, using SQL for verification codes"
-            )
+    The Redis argument remains accepted for existing factory callers. Pending
+    Redis codes are not copied or treated as SQL confirmation evidence.
+    """
     return SqlAlchemyInstagramVerificationRepository(
         session_factory=session_factory
     )
@@ -76,13 +106,30 @@ def build_repos(
 
     Args:
         session_factory: Async session factory from create_session_factory.
-        redis_url: Optional Redis URL for Redis-backed repositories.
+        redis_url: Legacy setting; verification facts always use SQL.
 
     Returns:
         Dict of repository name to repository instance.
     """
+    history_repo = SqlAlchemyCreatorIdentityHistoryRepository(session_factory)
+    campaign_repo = SqlAlchemyCampaignRepository()
     return {
+        "order_intake_repo": SqlAlchemyOrderIntakeRepository(),
+        "collaboration_repo": SqlAlchemyCollaborationRepository(),
+        "creator_identity_history_repo": history_repo,
+        "client_entitlement_repo": SqlAlchemyClientEntitlementRepository(),
+        "work_entitlement_repo": SqlAlchemyWorkEntitlementRepository(),
+        "financial_ledger_repo": SqlAlchemyFinancialLedgerRepository(),
+        "rate_override_repo": SqlAlchemyRateOverrideRepository(),
+        "campaign_repo": campaign_repo,
+        "campaign_review_repo": SqlAlchemyCampaignReviewRepository(
+            campaign_repo
+        ),
+        "partner_view_repo": SqlAlchemyPartnerViewRepository(),
         "financial_item_repo": SqlAlchemyFinancialItemRepository(),
+        "paid_selection_repo": SqlAlchemyPaidSelectionRepository(),
+        "selection_view_repo": SqlAlchemySelectionViewRepository(),
+        "campaign_summary_repo": SqlAlchemyCampaignSummaryRepository(),
         "financial_delivery_repo": SqlAlchemyFinancialDeliveryRepository(
             session_factory
         ),
@@ -92,6 +139,9 @@ def build_repos(
         ),
         "user_repo": SqlAlchemyUserRepository(session_factory=session_factory),
         "blogger_repo": SqlAlchemyBloggerProfileRepository(
+            session_factory=session_factory
+        ),
+        "social_account_repo": SqlAlchemySocialAccountRepository(
             session_factory=session_factory
         ),
         "blogger_rating_repo": SqlAlchemyBloggerRatingRepository(

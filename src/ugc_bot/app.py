@@ -30,6 +30,9 @@ from ugc_bot.bot.telegram.handlers.feedback import router as feedback_router
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     router as instagram_router,
 )
+from ugc_bot.bot.telegram.handlers.messenger_linking import (
+    router as messenger_linking_router,
+)
 from ugc_bot.bot.telegram.handlers.my_orders import router as my_orders_router
 from ugc_bot.bot.telegram.handlers.offer_responses import (
     router as offer_response_router,
@@ -49,6 +52,10 @@ from ugc_bot.bot.telegram.handlers.survey_messenger import (
 )
 from ugc_bot.bot.telegram.middleware.error_handler import ErrorHandlerMiddleware
 from ugc_bot.bot.telegram.middleware.locale import LocaleMiddleware
+from ugc_bot.bot.telegram.middleware.messenger_linking import (
+    ReservedLinkMiddleware,
+)
+from ugc_bot.checkout_runtime import register_checkout_lifecycle
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
 from ugc_bot.infrastructure.fsm_json import fsm_json_dumps, fsm_json_loads
@@ -108,15 +115,18 @@ def build_dispatcher(
         metrics_collector=services["metrics_collector"]
     )
     dispatcher.update.outer_middleware(error_handler)
+    dispatcher.update.outer_middleware(ReservedLinkMiddleware())
     dispatcher.update.outer_middleware(LocaleMiddleware())
 
     # Register all services in dispatcher
     for key, service in services.items():
         dispatcher[key] = service
+    register_checkout_lifecycle(dispatcher, config)
     if include_routers:
         dispatcher.include_router(
             payments_router
         )  # before start for /start pay_
+        dispatcher.include_router(messenger_linking_router)
         dispatcher.include_router(support_chat_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)

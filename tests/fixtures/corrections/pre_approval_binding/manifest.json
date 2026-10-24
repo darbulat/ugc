@@ -1,0 +1,46 @@
+{
+  "format_version": 1,
+  "purpose": "Portable actual pre-approval-binding complete-intent writer; no historical IDs or data fabricated.",
+  "head": "financial_corrections_a1",
+  "parent": "campaign_drafts_v1",
+  "source_files": [
+    {
+      "archive_file": "correction_ports.py.source",
+      "source_file": "src/ugc_bot/application/correction_ports.py",
+      "sha256": "61767738b1451980867120a582d91c1518962e9af774c96350537ea8a59b45e1",
+      "bytes": 22436
+    },
+    {
+      "archive_file": "correction_service.py.source",
+      "source_file": "src/ugc_bot/application/services/correction_service.py",
+      "sha256": "3be3d5f49e5601d192fe6fd86907bb7e10ea0de3cf2e521bbce5c0731e399d1b",
+      "bytes": 29145
+    },
+    {
+      "archive_file": "corrections_repository.py.source",
+      "source_file": "src/ugc_bot/infrastructure/db/repositories/corrections.py",
+      "sha256": "7928c0774a0e1e5320b1237531af9118669e8732338d2e8e54c186f8aec0c753",
+      "bytes": 29752
+    }
+  ],
+  "unchanged_dependencies_sha256": {
+    "src/ugc_bot/domain/corrections.py": "05005cc779c5a15265df8683af1188a1cdb3cb91e6fbda80c9790d03e8d54739",
+    "src/ugc_bot/application/physical_proof_ports.py": "39c7aa414c74237d5123e251d2c4299de1802d23f1ee3e866d59488d1674308b",
+    "src/ugc_bot/infrastructure/db/correction_models.py": "014c05379b06cc052a25e9aa1782cc3e9b04b5d93583b2ee4c7489447e4f658a",
+    "src/ugc_bot/infrastructure/db/correction_schema.py": "a6c84ae490c3b176f98727d91b37759975334848e581e38f7bde14839ea52c29",
+    "src/ugc_bot/infrastructure/db/repositories/physical_proofs.py": "d2d6692f8c97a9cdda528970f480b264dd73bdb8f1566c3cdd3647a5643095b6",
+    "src/ugc_bot/infrastructure/db/migrations/versions/financial_corrections_a1.py": "2e94cbade3fe0ba00e2d7d657f5940e4800ce7b1b1801b053622008e26a46f00"
+  },
+  "witnesses": {
+    "builder_freeze_sha256": "b0234714356294f50d46b84ba38677d9950059aa268e16d97a609991fca791c0",
+    "builder_report_sha256": "2586e0c2ca2f9d72cfae945ac38070437c14c6da1d09be24160bcfd0dcba3fbd",
+    "initial_two_case_log": "task-6ca1-task4-initial-red.txt",
+    "initial_two_case_log_sha256": "f502b4be1c4f7b65bd5af5dd463aa673cfd977bb6db1e431d77cd9c3ae52862f",
+    "initial_log_actual_result": "2 passed in6.43s; historical filename is not a behavioral RED claim",
+    "genuine_writer_case": "test_actual_captured_writer_retains_genuine_approval_proof_and_match",
+    "current_head_builder_result": "425 passed; genuine ReviewSelectionRefund command/event and common physical owner; match awaits assessment only",
+    "independent_sql_acceptance": "pending at archive creation; archive does not imply broader acceptance"
+  },
+  "scope": "Direct source copies only. No loader/import/execution/DB/schema/model/migration action. Early stable NULL-intent matching stays unavailable in this historical writer.",
+  "future_loader_requirement": "Use all three archived modules with local import substitution and exact archived commands; no global canonical-module patch or fallback to current service/storage helper."
+}

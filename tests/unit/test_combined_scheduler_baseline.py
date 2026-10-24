@@ -12,7 +12,9 @@ from ugc_bot import combined_scheduler as scheduler
 def settings(enabled=False):
     return NS(
         feedback=NS(
-            feedback_enabled=enabled, feedback_poll_interval_seconds=17
+            feedback_enabled=enabled,
+            campaign_digest_enabled=enabled,
+            feedback_poll_interval_seconds=17,
         ),
         role_reminder=NS(role_reminder_enabled=enabled),
         referral=NS(
@@ -99,24 +101,13 @@ async def test_enabled_loops_receive_dependencies_and_cancel_peers_on_failure(
     monkeypatch.setattr(scheduler, "feedback_loop", feedback)
     monkeypatch.setattr(scheduler, "role_reminder_loop", reminder)
     monkeypatch.setattr(scheduler, "referral_loop", referral)
-    await scheduler._run_all(config, container, object())
+    bot = object()
+    await scheduler._run_all(config, container, bot)
     args, kwargs = calls["feedback"]
-    assert args == (
-        {"telegram": boundaries[1]},
-        deps["interaction_repo"],
-        deps["interaction_service"],
-        deps["user_role_service"],
-        deps["profile_service"],
-        deps["order_repo"],
-        config.feedback,
-    )
-    assert kwargs == dict(
-        interval_seconds=17,
-        transaction_manager=deps["transaction_manager"],
-        default_locale="ru",
-        bot_texts_service=container.build_bot_texts_service.return_value,
-        close_clients_on_exit=False,
-    )
+    assert args == (config, container, bot)
+    assert kwargs == {}
+    container.build_feedback_scheduler_deps.assert_not_called()
+    container.build_bot_texts_service.assert_not_called()
     assert calls["reminder"] == (
         {"telegram": boundaries[1]},
         container.build_user_role_service.return_value,
@@ -131,7 +122,7 @@ async def test_enabled_loops_receive_dependencies_and_cancel_peers_on_failure(
     )
     assert sorted(cancelled) == (["referral", "reminder"] if failure else [])
     assert (
-        "Scheduler task failed: feedback-scheduler" in caplog.text
+        "Scheduler task failed: campaign-summary-scheduler" in caplog.text
     ) == failure
 
 
@@ -165,8 +156,9 @@ def test_main_validates_database_and_disposes_resources(
 
 def test_main_closes_resources_when_scheduler_setup_fails(monkeypatch):
     config = settings(True)
+    config.feedback.campaign_digest_enabled = False
     container = Mock(dispose=AsyncMock())
-    container.build_feedback_scheduler_deps.side_effect = RuntimeError(
+    container.build_user_role_service.side_effect = RuntimeError(
         "dependency unavailable"
     )
     bot = NS(session=NS(close=AsyncMock()))
