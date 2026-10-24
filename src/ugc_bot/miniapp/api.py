@@ -57,6 +57,7 @@ from ugc_bot.bot.telegram.validators import (
     validate_site_link,
     validate_topics,
 )
+from ugc_bot.domain.checkout import CheckoutActor
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.entities import User as UserEntity
 from ugc_bot.domain.enums import (
@@ -72,6 +73,24 @@ from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
     validate_init_data_for_platform,
 )
+from ugc_bot.miniapp.campaign_api import create_campaign_router
+from ugc_bot.miniapp.campaign_review_api import create_campaign_review_router
+from ugc_bot.miniapp.campaign_summary_api import create_campaign_summary_router
+from ugc_bot.miniapp.checkout_api import create_checkout_router
+from ugc_bot.miniapp.collaboration_api import create_collaboration_router
+from ugc_bot.miniapp.correction_api import create_correction_router
+from ugc_bot.miniapp.financial_principal import resolve_financial_principal
+from ugc_bot.miniapp.messenger_linking_api import (
+    create_messenger_linking_router,
+)
+from ugc_bot.miniapp.order_intake_api import create_order_intake_router
+from ugc_bot.miniapp.override_api import create_override_router
+from ugc_bot.miniapp.partner_api import create_partner_router
+from ugc_bot.miniapp.payout_api import create_payout_router
+from ugc_bot.miniapp.payout_view_api import create_payout_view_router
+from ugc_bot.miniapp.principal import with_recent_init_data
+from ugc_bot.miniapp.selection_api import create_selection_router
+from ugc_bot.miniapp.social_api import create_social_router
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +231,7 @@ class OrderListItem(BaseModel):
     payment_link: str = ""  # t.me/bot?start=pay_ORDER_ID
     currency_symbol: str = "₽"
     brand_name: str = ""
+    financial_version: str | None = None
 
 
 class OrdersListResponse(BaseModel):
@@ -535,6 +555,39 @@ async def _ensure_user_and_get_id(
                 "Failed to auto-set country for Max user %s", external_id
             )
     return user.user_id
+
+
+_ensure_recent_user_and_get_id = with_recent_init_data(_ensure_user_and_get_id)
+
+
+async def _checkout_actor(
+    request: Request, init_data: str, *, platform: Platform
+) -> CheckoutActor:
+    actor_id = await _ensure_recent_user_and_get_id(
+        request, init_data, platform=platform
+    )
+    external_id = _get_external_id(request, init_data, platform=platform)
+    return CheckoutActor(actor_id, platform, external_id)
+
+
+router.include_router(create_checkout_router(_checkout_actor))
+router.include_router(create_order_intake_router(resolve_financial_principal))
+router.include_router(create_social_router(resolve_financial_principal))
+router.include_router(create_collaboration_router(resolve_financial_principal))
+router.include_router(create_override_router(resolve_financial_principal))
+router.include_router(create_partner_router(resolve_financial_principal))
+router.include_router(create_payout_router(resolve_financial_principal))
+router.include_router(create_correction_router(resolve_financial_principal))
+router.include_router(create_payout_view_router())
+router.include_router(create_messenger_linking_router())
+router.include_router(create_campaign_router(_ensure_recent_user_and_get_id))
+router.include_router(
+    create_campaign_review_router(_ensure_recent_user_and_get_id)
+)
+router.include_router(
+    create_campaign_summary_router(resolve_financial_principal)
+)
+router.include_router(create_selection_router(resolve_financial_principal))
 
 
 async def _is_user_admin(dispatcher: Any, user_id: UUID) -> bool:
@@ -1525,8 +1578,9 @@ async def list_orders(
             price=float(o.price),
             order_type=o.order_type.value,
             created_at=o.created_at.isoformat(),
+            financial_version=o.financial_version,
             payment_link=_payment_link_for_order(str(o.order_id), bot_username)
-            if o.status == OrderStatus.NEW
+            if o.status == OrderStatus.NEW and o.financial_version is None
             else "",
             currency_symbol=cur_map.get(o.currency, "₽"),
         )

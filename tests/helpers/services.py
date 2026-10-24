@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from ugc_bot.application.ports import TransactionManager
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
@@ -53,7 +54,7 @@ def build_order_service(
     user_repo: InMemoryUserRepository,
     advertiser_repo: InMemoryAdvertiserProfileRepository,
     order_repo: InMemoryOrderRepository,
-    transaction_manager: object | None = None,
+    transaction_manager: TransactionManager | None = None,
     allowed_blogger_counts: frozenset[int] | None = None,
     max_order_price: float = 10_000.0,
     country_repo: InMemoryCountryRepository | None = None,
@@ -87,7 +88,7 @@ def build_order_service(
 
 def build_user_role_service(
     user_repo: InMemoryUserRepository,
-    transaction_manager: object | None = None,
+    transaction_manager: TransactionManager | None = None,
 ) -> UserRoleService:
     """Build user role service for tests.
 
@@ -110,7 +111,7 @@ def build_payment_service(
     order_repo: InMemoryOrderRepository,
     payment_repo: InMemoryPaymentRepository,
     pricing_repo: InMemoryContactPricingRepository,
-    transaction_manager: object,
+    transaction_manager: TransactionManager,
     country_repo: InMemoryCountryRepository | None = None,
 ) -> PaymentService:
     """Build payment service for tests.
@@ -174,7 +175,7 @@ def build_service_fixtures(
     blogger_repo: InMemoryBloggerProfileRepository | None = None,
     advertiser_repo: InMemoryAdvertiserProfileRepository | None = None,
     order_repo: InMemoryOrderRepository | None = None,
-    transaction_manager: object | None = None,
+    transaction_manager: TransactionManager | None = None,
 ) -> dict:
     """Build common service fixtures.
 

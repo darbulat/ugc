@@ -150,6 +150,7 @@ class SessionTransactionManager:
         """Provide a transactional session scope."""
         session = self._session_factory()
         try:
+            await session.begin()
             yield session
             await session.commit()
         except Exception:

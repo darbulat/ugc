@@ -9,13 +9,18 @@ from ugc_bot.application.errors import (
     OrderCreationError,
     OrderNotActiveError,
     OrderNotFoundError,
+    PaidSelectionResponseError,
 )
+from ugc_bot.application.paid_selection_ports import SelectionInterest
 from ugc_bot.application.ports import (
     ManagerOrderRepository,
     OfferDispatchRepository,
     OrderRepository,
     TransactionManager,
     UserRepository,
+)
+from ugc_bot.application.services.paid_selection_interest import (
+    PaidSelectionInterestService,
 )
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus
@@ -33,6 +38,8 @@ class OfferResponseResult:
     completed_at: Optional[datetime]
     accepted: bool  # True = within limit; False = overflow (analytics/reserve)
     manager_id: UUID | None = None
+    delivery_queued: bool = False
+    selection_assignment_id: UUID | None = None
 
 
 @dataclass(slots=True)
@@ -46,6 +53,7 @@ class OfferResponseService:
     transaction_manager: TransactionManager | None = None
     user_repo: UserRepository | None = None
     referral_income_service: Optional[Any] = None
+    paid_selection_service: PaidSelectionInterestService | None = None
 
     async def respond(self, order_id: UUID, blogger_id: UUID) -> OfferDispatch:
         """Record response and return the updated dispatch."""
@@ -139,6 +147,22 @@ class OfferResponseService:
                 "OfferResponseService needs transaction_manager for atomic ops."
             )
 
+        if self.paid_selection_service is not None:
+            try:
+                interest = await self.paid_selection_service.respond(
+                    order_id, blogger_id
+                )
+            except ValueError as exc:
+                raise PaidSelectionResponseError(str(exc)) from exc
+            if interest is not None:
+                return await self._paid_result(interest)
+
+        return await self._respond_legacy(order_id, blogger_id)
+
+    async def _respond_legacy(
+        self, order_id: UUID, blogger_id: UUID
+    ) -> OfferResponseResult:
+        assert self.transaction_manager is not None
         now = datetime.now(timezone.utc)
         async with self.transaction_manager.transaction() as session:
             order = await self.order_repo.get_by_id_for_update(
@@ -146,6 +170,8 @@ class OfferResponseService:
             )
             if order is None:
                 raise OrderNotFoundError("Order not found.")
+            if order.financial_version is not None:
+                raise OrderCreationError("paid_selection_runtime_unavailable")
             accepted_count = await self.dispatch_repo.count_accepted_by_order(
                 order_id, session=session
             )
@@ -225,6 +251,40 @@ class OfferResponseService:
             completed_at=updated.completed_at,
             accepted=within_limit,
             manager_id=manager_id,
+        )
+
+    async def _paid_result(
+        self, interest: SelectionInterest
+    ) -> OfferResponseResult:
+        assert self.transaction_manager is not None
+        assert self.paid_selection_service is not None
+        async with self.transaction_manager.transaction() as session:
+            order = await self.order_repo.get_by_id(
+                interest.order_id, session=session
+            )
+            if order is None:
+                raise OrderNotFoundError("Order not found.")
+            count = await self.paid_selection_service.repository.count_accepted(
+                interest.order_id, session=session
+            )
+        return OfferResponseResult(
+            order=order,
+            response=OfferDispatch(
+                order_id=interest.order_id,
+                blogger_id=interest.creator_id,
+                created_at=interest.confirmed_at,
+                updated_at=interest.confirmed_at,
+                accepted=True,
+                in_offer=interest.accepted,
+                manager_id=interest.manager_id,
+            ),
+            response_count=count,
+            order_closed=False,
+            completed_at=None,
+            accepted=interest.accepted,
+            manager_id=interest.manager_id,
+            delivery_queued=interest.accepted,
+            selection_assignment_id=interest.assignment_id,
         )
 
 

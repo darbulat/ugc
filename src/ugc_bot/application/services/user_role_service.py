@@ -12,6 +12,10 @@ from uuid import UUID, uuid4
 from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.errors import UserNotFoundError
+from ugc_bot.application.legacy_link_ports import (
+    LegacyMaxAttachment,
+    LegacyMaxPreparation,
+)
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     TransactionManager,
@@ -421,6 +425,13 @@ class UserRoleService:
 
         await with_optional_tx(self.transaction_manager, _run)
 
+    async def attach_verified_max(
+        self, preparation: LegacyMaxPreparation, *, session: object | None
+    ) -> LegacyMaxAttachment:
+        return await self.user_repo.attach_prepared_max(
+            preparation, session=session
+        )
+
     async def link_max_account(
         self,
         max_id: str,
@@ -428,55 +439,57 @@ class UserRoleService:
         username: str,
         max_chat_id: str | None = None,
         session: object | None = None,
-    ) -> User | None:
-        """Link a Max account to existing user by Instagram username.
+    ) -> LegacyMaxAttachment:
+        """Discover one target, then attach only a genuinely unused identity."""
 
-        Extracts the username from *instagram_url* and looks up existing
-        profiles by that username (case-insensitive).
-
-        Returns the updated User if linked, None if no matching user found
-        or user already has a different max_id.
-
-        When *session* is provided the operations run within that session
-        (joining an outer transaction) instead of opening a new one.
-        """
-
-        async def _run(session: object | None) -> User | None:
-            if self.blogger_profile_repo is None:
-                return None
-            ig_username = _extract_instagram_username(instagram_url)
-            if not ig_username:
-                return None
-            profile = await self.blogger_profile_repo.get_by_instagram_username(
-                ig_username, session=session
+        async def _run(db):
+            profiles = self.blogger_profile_repo
+            if profiles is None:
+                return LegacyMaxAttachment(
+                    "unavailable", "profile_repository_missing"
+                )
+            if not self.user_repo.legacy_confirmation_supported(
+                db, (self.user_repo, profiles)
+            ):
+                return LegacyMaxAttachment(
+                    "unavailable", "transaction_unavailable"
+                )
+            if not isinstance(max_id, str) or not re.fullmatch(
+                r"[A-Za-z0-9_-]{1,128}", max_id
+            ):
+                return LegacyMaxAttachment(
+                    "unavailable", "native_identity_invalid"
+                )
+            handle = _extract_instagram_username(instagram_url)
+            if not handle:
+                return LegacyMaxAttachment(
+                    "unavailable", "profile_identity_invalid"
+                )
+            discovered = await profiles.get_by_instagram_username(
+                handle, session=db
             )
-            if profile is None:
-                return None
-
-            existing = await self.user_repo.get_by_id(
-                profile.user_id, session=session
-            )
-            if existing is None:
-                return None
-
-            if existing.max_id is not None and existing.max_id != max_id:
-                return None
-
-            orphan = await self.user_repo.get_by_external(
-                max_id, MessengerType.MAX, session=session
-            )
-            if orphan and orphan.user_id != existing.user_id:
-                cleared = replace(orphan, max_id=None, max_chat_id=None)
-                await self.user_repo.save(cleared, session=session)
-
-            updated = replace(
-                existing,
+            if discovered is None:
+                return LegacyMaxAttachment("unavailable", "profile_missing")
+            preparation = await self.user_repo.prepare_legacy_max_attachment(
+                discovered.user_id,
                 max_id=max_id,
-                max_chat_id=max_chat_id or existing.max_chat_id,
-                username=username or existing.username,
+                max_chat_id=max_chat_id,
+                session=db,
             )
-            await self.user_repo.save(updated, session=session)
-            return updated
+            if not preparation.protected:
+                return LegacyMaxAttachment("unavailable", preparation.reason)
+            current = await profiles.current_legacy_profile(
+                discovered.user_id, session=db
+            )
+            if (
+                current is None
+                or _extract_instagram_username(current.instagram_url or "")
+                != handle
+            ):
+                return LegacyMaxAttachment(
+                    "unavailable", "target_profile_changed"
+                )
+            return await self.attach_verified_max(preparation, session=db)
 
         if session is not None:
             return await _run(session)

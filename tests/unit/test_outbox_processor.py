@@ -380,7 +380,13 @@ class TestRunProcessor:
 
         fake_container = Mock()
         fake_container.dispose = AsyncMock()
-        fake_container.build_outbox_deps.return_value = (Mock(), None)
+        unconfigured_publisher = Mock(
+            financial_delivery=None, financial_router=None
+        )
+        fake_container.build_outbox_deps.return_value = (
+            unconfigured_publisher,
+            None,
+        )
 
         monkeypatch.setattr(
             "ugc_bot.outbox_processor.load_config", lambda: mock_config

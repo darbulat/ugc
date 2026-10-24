@@ -19,8 +19,9 @@ def pytest_collection_modifyitems(items):
             item.add_marker(pytest.mark.timeout(60))
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def financial_pg_engine(request):
+    """Retain module facts without inheriting unrelated worker backlog."""
     url = os.environ.get("FINANCIAL_TEST_DATABASE_URL")
     if not url:
         if request.config.getoption("--require-financial-postgres"):

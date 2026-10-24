@@ -5,6 +5,7 @@ from uuid import UUID
 
 import pytest
 
+from tests.helpers.legacy_verification import MemoryVerificationTransaction
 from ugc_bot.application.errors import (
     BloggerRegistrationError,
     UserNotFoundError,
@@ -13,9 +14,12 @@ from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
+    VerificationLinkConflict,
     VerificationLinkSuccess,
+    VerificationLinkUnavailable,
     VerificationMismatch,
     VerificationSuccess,
+    VerificationUnavailable,
     _extract_code_from_text,
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -37,6 +41,20 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
 )
+
+
+def memory_service(**kwargs):
+    """Positive tests explicitly own a supported memory transaction."""
+    kwargs.setdefault(
+        "transaction_manager",
+        MemoryVerificationTransaction(
+            kwargs["user_repo"],
+            kwargs["blogger_repo"],
+            kwargs["verification_repo"],
+            kwargs.get("social_repo"),
+        ),
+    )
+    return InstagramVerificationService(**kwargs)
 
 
 async def _seed_user(user_repo: InMemoryUserRepository) -> UUID:
@@ -83,7 +101,7 @@ async def _seed_profile(
 async def test_generate_code_requires_user() -> None:
     """Fail when user is missing."""
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -101,7 +119,7 @@ async def test_verify_code_requires_profile() -> None:
 
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
@@ -131,7 +149,7 @@ async def test_verify_code_success() -> None:
     )
     await verification_repo.save(code)
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -153,7 +171,7 @@ async def test_verify_code_invalid() -> None:
     user_id = await _seed_user(user_repo)
     await _seed_profile(profile_repo, user_id)
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -200,7 +218,7 @@ async def test_verify_code_preserves_optional_fields() -> None:
         created_at=now,
     )
     await verification_repo.save(code)
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -224,7 +242,14 @@ async def test_verify_code_by_instagram_sender_success() -> None:
     user_id = await _seed_user(user_repo)
     await _seed_profile(profile_repo, user_id)
 
-    service = InstagramVerificationService(
+    service = memory_service(
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={
+                "instagram_user_123": "test_user",
+                "instagram_123": "test_user",
+                "999111": "test_user",
+            }
+        ),
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -255,7 +280,7 @@ async def test_verify_code_by_instagram_sender_invalid_code() -> None:
     user_id = await _seed_user(user_repo)
     await _seed_profile(profile_repo, user_id)
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -293,7 +318,7 @@ async def test_verify_code_by_instagram_sender_expired_code() -> None:
     )
     await verification_repo.save(expired_code)
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -317,7 +342,14 @@ async def test_verify_code_by_instagram_sender_no_profile() -> None:
     user_id = await _seed_user(user_repo)
     # Don't create profile
 
-    service = InstagramVerificationService(
+    service = memory_service(
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={
+                "instagram_user_123": "test_user",
+                "instagram_123": "test_user",
+                "999111": "test_user",
+            }
+        ),
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -332,7 +364,8 @@ async def test_verify_code_by_instagram_sender_no_profile() -> None:
         admin_instagram_username="admin_test",
     )
 
-    assert result is None
+    assert isinstance(result, VerificationUnavailable)
+    assert result.reason == "profile_missing"
 
 
 @pytest.mark.asyncio
@@ -355,7 +388,7 @@ async def test_verify_code_by_instagram_sender_used_code() -> None:
     )
     await verification_repo.save(used_code)
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -403,7 +436,7 @@ async def test_verify_code_by_instagram_sender_extracts_username_from_url() -> (
         username_map={"instagram_user_123": "test_user"}
     )
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -444,7 +477,7 @@ async def test_verify_code_by_instagram_sender_saves_instagram_stats() -> None:
         profile_map={"instagram_sender_1": full_profile},
     )
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -516,7 +549,7 @@ async def test_verify_code_username_extraction_variants() -> None:
             }
         )
 
-        service = InstagramVerificationService(
+        service = memory_service(
             user_repo=user_repo,
             blogger_repo=profile_repo,
             verification_repo=verification_repo,
@@ -590,7 +623,7 @@ async def test_verify_code_by_instagram_sender_username_mismatch() -> None:
         username_map={"instagram_user_123": "different_user"}
     )
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -649,7 +682,7 @@ async def test_verify_code_by_instagram_sender_api_exception() -> None:
 
     api_client = FailingInstagramGraphApiClient()
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -698,7 +731,7 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
     )
     await profile_repo.save(profile)
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -706,17 +739,20 @@ async def test_verify_code_by_instagram_sender_url_parsing_edge_case() -> None:
 
     verification = await service.generate_code(user_id)
 
-    # Should still succeed (no API client, so no username verification)
+    # An absent provider cannot confirm an incomplete expected profile.
     result = await service.verify_code_by_instagram_sender(
         instagram_sender_id="instagram_user_123",
         code=verification.code,
         admin_instagram_username="admin_test",
     )
 
-    assert isinstance(result, VerificationSuccess) and result.user_id == user_id
+    assert (
+        isinstance(result, VerificationApiUnavailable)
+        and result.user_id == user_id
+    )
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
-    assert updated.confirmed is True
+    assert updated.confirmed is False
 
 
 @pytest.mark.asyncio
@@ -728,11 +764,10 @@ async def test_generate_code_with_transaction_manager(fake_tm: object) -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     await _seed_profile(profile_repo, user_id)
     verification_repo = InMemoryInstagramVerificationRepository()
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
-        transaction_manager=fake_tm,
     )
     verification = await service.generate_code(user_id)
     assert verification.user_id == user_id
@@ -748,11 +783,10 @@ async def test_verify_code_with_transaction_manager(fake_tm: object) -> None:
     profile_repo = InMemoryBloggerProfileRepository()
     await _seed_profile(profile_repo, user_id)
     verification_repo = InMemoryInstagramVerificationRepository()
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
-        transaction_manager=fake_tm,
     )
     verification = await service.generate_code(user_id)
     result = await service.verify_code(user_id, verification.code)
@@ -783,11 +817,10 @@ async def test_get_notification_recipient_with_transaction_manager(
     profile_repo = InMemoryBloggerProfileRepository()
     await _seed_profile(profile_repo, user_id)
     verification_repo = InMemoryInstagramVerificationRepository()
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
-        transaction_manager=fake_tm,
     )
     user, profile = await service.get_notification_recipient(user_id)
     assert user is not None
@@ -805,11 +838,10 @@ async def test_get_notification_recipient_user_none_with_transaction_manager(
     user_repo = InMemoryUserRepository()
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
-        transaction_manager=fake_tm,
     )
     user, profile = await service.get_notification_recipient(
         UUID("00000000-0000-0000-0000-000000000999")
@@ -824,11 +856,10 @@ async def test_generate_code_user_not_found_with_transaction_manager(
 ) -> None:
     """generate_code raises UserNotFoundError when user missing, tm used."""
 
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=InMemoryUserRepository(),
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
-        transaction_manager=fake_tm,
     )
     with pytest.raises(UserNotFoundError):
         await service.generate_code(
@@ -844,11 +875,10 @@ async def test_verify_code_profile_not_found_with_transaction_manager(
 
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
         verification_repo=InMemoryInstagramVerificationRepository(),
-        transaction_manager=fake_tm,
     )
     with pytest.raises(BloggerRegistrationError):
         await service.verify_code(user_id, "ABC123")
@@ -865,11 +895,17 @@ async def test_verify_code_by_instagram_sender_with_transaction_manager(
     profile_repo = InMemoryBloggerProfileRepository()
     await _seed_profile(profile_repo, user_id)
     verification_repo = InMemoryInstagramVerificationRepository()
-    service = InstagramVerificationService(
+    service = memory_service(
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={
+                "instagram_user_123": "test_user",
+                "instagram_123": "test_user",
+                "999111": "test_user",
+            }
+        ),
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
-        transaction_manager=fake_tm,
     )
     verification = await service.generate_code(user_id)
     result = await service.verify_code_by_instagram_sender(
@@ -895,7 +931,14 @@ async def test_verify_code_by_instagram_sender_link_success() -> None:
         user_repo=user_repo,
         blogger_profile_repo=profile_repo,
     )
-    service = InstagramVerificationService(
+    service = memory_service(
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={
+                "instagram_user_123": "test_user",
+                "instagram_123": "test_user",
+                "999111": "test_user",
+            }
+        ),
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -933,7 +976,7 @@ async def test_verify_code_link_success() -> None:
         user_repo=user_repo,
         blogger_profile_repo=profile_repo,
     )
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -952,13 +995,13 @@ async def test_verify_code_link_success() -> None:
 
 @pytest.mark.asyncio
 async def test_try_link_no_user_role_service() -> None:
-    """_try_link returns None when no user_role_service."""
+    """Valid confirmation retains an explicit unavailable attachment outcome."""
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
     profile_repo = InMemoryBloggerProfileRepository()
     await _seed_profile(profile_repo, user_id)
     verification_repo = InMemoryInstagramVerificationRepository()
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -970,12 +1013,14 @@ async def test_try_link_no_user_role_service() -> None:
         link_username="maxuser",
     )
     result = await service.verify_code(user_id, verification.code)
-    assert result is True
+    assert isinstance(result, VerificationLinkUnavailable)
+    assert result.reason == "linking_service_missing"
+    assert verification_repo.codes[verification.code_id].used
 
 
 @pytest.mark.asyncio
-async def test_try_link_returns_none_when_link_fails() -> None:
-    """_try_link returns None when user has different max_id."""
+async def test_try_link_returns_conflict_when_target_bound_elsewhere() -> None:
+    """Valid IG confirmation cannot hide an attachment conflict."""
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
     user = await user_repo.get_by_id(user_id)
@@ -992,7 +1037,7 @@ async def test_try_link_returns_none_when_link_fails() -> None:
         user_repo=user_repo,
         blogger_profile_repo=profile_repo,
     )
-    service = InstagramVerificationService(
+    service = memory_service(
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -1005,7 +1050,9 @@ async def test_try_link_returns_none_when_link_fails() -> None:
         link_username="maxuser",
     )
     result = await service.verify_code(user_id, verification.code)
-    assert result is True
+    assert isinstance(result, VerificationLinkConflict)
+    assert result.reason == "target_bound_elsewhere"
+    assert verification_repo.codes[verification.code_id].used
 
 
 # ---------------------------------------------------------------------------
@@ -1057,7 +1104,14 @@ async def test_verify_code_by_instagram_sender_greeting_before_code() -> None:
     user_id = await _seed_user(user_repo)
     await _seed_profile(profile_repo, user_id)
 
-    service = InstagramVerificationService(
+    service = memory_service(
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={
+                "instagram_user_123": "test_user",
+                "instagram_123": "test_user",
+                "999111": "test_user",
+            }
+        ),
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,
@@ -1084,7 +1138,14 @@ async def test_verify_code_by_instagram_sender_code_with_trailing_words() -> (
     user_id = await _seed_user(user_repo)
     await _seed_profile(profile_repo, user_id)
 
-    service = InstagramVerificationService(
+    service = memory_service(
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={
+                "instagram_user_123": "test_user",
+                "instagram_123": "test_user",
+                "999111": "test_user",
+            }
+        ),
         user_repo=user_repo,
         blogger_repo=profile_repo,
         verification_repo=verification_repo,

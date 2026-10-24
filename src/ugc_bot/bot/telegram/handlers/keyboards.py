@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.bot.partner_entry import partner_menu_button
 
 if TYPE_CHECKING:
     from ugc_bot.domain.entities import Country, Language
@@ -225,6 +226,7 @@ def role_inline_keyboard(texts: dict[str, str]) -> Keyboard:
                     callback_data=CALLBACK_ROLE_ADVERTISER,
                 )
             ],
+            [partner_menu_button(texts)],
         ],
     )
 
@@ -269,6 +271,7 @@ def main_menu_inline_keyboard(
                     callback_data=CALLBACK_CHANGE_ROLE,
                 )
             ],
+            [partner_menu_button(texts)],
         ],
     )
 
@@ -309,6 +312,7 @@ def creator_filled_profile_inline_keyboard(
                 )
             ],
             [support_btn],
+            [partner_menu_button(texts)],
         ],
     )
 
@@ -458,6 +462,7 @@ def advertiser_menu_inline_keyboard(texts: dict[str, str]) -> Keyboard:
                     callback_data=CALLBACK_PROFILE_EDIT,
                 ),
             ],
+            [partner_menu_button(texts)],
         ],
     )
 

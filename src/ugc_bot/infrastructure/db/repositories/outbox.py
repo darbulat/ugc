@@ -7,6 +7,9 @@ from uuid import UUID
 from sqlalchemy import and_, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ugc_bot.application.financial_delivery_ownership import (
+    SEPARATE_DELIVERY_EVENT_TYPES,
+)
 from ugc_bot.application.ports import OutboxRepository
 from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OutboxEventStatus
@@ -249,7 +252,9 @@ class SqlAlchemyFinancialDeliveryRepository(SqlAlchemyOutboxRepository):
                 .where(
                     OutboxEventModel.status == OutboxEventStatus.PROCESSING,
                     OutboxEventModel.event_type.like("financial.%"),
-                    OutboxEventModel.event_type != "financial.capture_intent",
+                    OutboxEventModel.event_type.not_in(
+                        SEPARATE_DELIVERY_EVENT_TYPES
+                    ),
                     OutboxEventModel.claimed_at < cutoff,
                 )
                 .values(status=OutboxEventStatus.PENDING)
@@ -274,7 +279,9 @@ class SqlAlchemyFinancialDeliveryRepository(SqlAlchemyOutboxRepository):
                 .where(
                     OutboxEventModel.status == OutboxEventStatus.PENDING,
                     OutboxEventModel.event_type.like("financial.%"),
-                    OutboxEventModel.event_type != "financial.capture_intent",
+                    OutboxEventModel.event_type.not_in(
+                        SEPARATE_DELIVERY_EVENT_TYPES
+                    ),
                 )
                 .order_by(OutboxEventModel.created_at)
                 .limit(limit)
@@ -291,8 +298,9 @@ class SqlAlchemyFinancialDeliveryRepository(SqlAlchemyOutboxRepository):
                     .where(
                         OutboxEventModel.status == OutboxEventStatus.PENDING,
                         OutboxEventModel.event_type.like("financial.%"),
-                        OutboxEventModel.event_type
-                        != "financial.capture_intent",
+                        OutboxEventModel.event_type.not_in(
+                            SEPARATE_DELIVERY_EVENT_TYPES
+                        ),
                     )
                     .order_by(OutboxEventModel.created_at)
                     .limit(limit)

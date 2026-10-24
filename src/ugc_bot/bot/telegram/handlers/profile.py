@@ -1217,7 +1217,12 @@ async def show_profile(
     reply_markup = None
     if blogger is not None:
         blog_texts = await bot_texts_service.get_many(
-            ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"],
+            [
+                "btn_edit_profile",
+                "btn_confirm_instagram",
+                "btn_my_profile",
+                "btn_partner_program",
+            ],
             locale,
         )
         reply_markup = blogger_profile_view_inline_keyboard(
@@ -1230,6 +1235,7 @@ async def show_profile(
                 "btn_my_orders",
                 "btn_my_profile",
                 "btn_edit_profile",
+                "btn_partner_program",
             ],
             locale,
         )
@@ -1343,7 +1349,12 @@ async def handle_profile_agree_callback(
     reply_markup = None
     if blogger is not None:
         blog_texts = await bot_texts_service.get_many(
-            ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"],
+            [
+                "btn_edit_profile",
+                "btn_confirm_instagram",
+                "btn_my_profile",
+                "btn_partner_program",
+            ],
             locale,
         )
         reply_markup = blogger_profile_view_inline_keyboard(
@@ -1356,6 +1367,7 @@ async def handle_profile_agree_callback(
                 "btn_my_orders",
                 "btn_my_profile",
                 "btn_edit_profile",
+                "btn_partner_program",
             ],
             locale,
         )
@@ -1423,6 +1435,7 @@ async def handle_profile_edit_callback(
                 "btn_edit_profile_advertiser",
                 "btn_my_profile",
                 "msg_choose_profile_edit",
+                "btn_partner_program",
             ],
             locale,
         )
@@ -1559,7 +1572,12 @@ async def handle_profile_my_profile_callback(
     reply_markup = None
     if blogger is not None:
         blog_texts = await bot_texts_service.get_many(
-            ["btn_edit_profile", "btn_confirm_instagram", "btn_my_profile"],
+            [
+                "btn_edit_profile",
+                "btn_confirm_instagram",
+                "btn_my_profile",
+                "btn_partner_program",
+            ],
             locale,
         )
         reply_markup = blogger_profile_view_inline_keyboard(
@@ -1572,6 +1590,7 @@ async def handle_profile_my_profile_callback(
                 "btn_my_orders",
                 "btn_my_profile",
                 "btn_edit_profile",
+                "btn_partner_program",
             ],
             locale,
         )
@@ -1956,6 +1975,7 @@ async def edit_profile_start(
                 "btn_edit_profile_advertiser",
                 "btn_my_profile",
                 "msg_choose_profile_edit",
+                "btn_partner_program",
             ],
             locale,
         )
@@ -2077,6 +2097,7 @@ async def edit_profile_choose_type(
             "btn_edit_profile_advertiser",
             "btn_my_profile",
             "msg_choose_from_keyboard",
+            "btn_partner_program",
         ],
         locale,
     )

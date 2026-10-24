@@ -1,6 +1,6 @@
 """Type definitions for container and service factories."""
 
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from ugc_bot.application.ports import CountryRepository, LanguageRepository
 from ugc_bot.application.services.advertiser_registration_service import (
@@ -13,12 +13,34 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.campaign_audience_service import (
+    CampaignAudienceService,
+)
+from ugc_bot.application.services.campaign_review_service import (
+    CampaignReviewService,
+)
+from ugc_bot.application.services.campaign_service import (
+    CampaignFoundationService,
+)
+from ugc_bot.application.services.campaign_summary_service import (
+    CampaignSummaryService,
+)
+from ugc_bot.application.services.collaboration_service import (
+    CollaborationService,
+)
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
 )
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
+)
+from ugc_bot.application.services.correction_service import CorrectionService
+from ugc_bot.application.services.correction_view_service import (
+    CorrectionViewService,
+)
+from ugc_bot.application.services.creator_identity_history_service import (
+    CreatorIdentityHistoryService,
 )
 from ugc_bot.application.services.exchange_rate_service import (
     ExchangeRateService,
@@ -28,6 +50,9 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.application.services.interaction_service import InteractionService
 from ugc_bot.application.services.manager_service import ManagerService
+from ugc_bot.application.services.messenger_linking_service import (
+    MessengerLinkingService,
+)
 from ugc_bot.application.services.nps_service import NpsService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -35,14 +60,27 @@ from ugc_bot.application.services.offer_dispatch_service import (
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
+from ugc_bot.application.services.order_intake_service import OrderIntakeService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+from ugc_bot.application.services.partner_view_service import PartnerViewService
 from ugc_bot.application.services.payment_service import PaymentService
+from ugc_bot.application.services.payout_service import PayoutService
+from ugc_bot.application.services.payout_view_service import PayoutViewService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.rate_override_service import (
+    RateOverrideService,
+)
 from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
 from ugc_bot.application.services.referral_service import ReferralService
+from ugc_bot.application.services.selection_view_service import (
+    SelectionViewService,
+)
+from ugc_bot.application.services.social_account_service import (
+    SocialAccountService,
+)
 from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.application.services.user_role_service import UserRoleService
 
@@ -50,13 +88,30 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 class BotServices(TypedDict):
     """Typed structure for bot dispatcher services and dependencies."""
 
+    checkout_service: NotRequired[Any]
     legacy_financial_case_service: Any
     metrics_collector: Any
     content_moderation_service: ContentModerationService
     user_role_service: UserRoleService
+    partner_view_service: PartnerViewService | None
+    selection_view_service: SelectionViewService | None
+    campaign_summary_service: CampaignSummaryService | None
+    campaign_service: CampaignFoundationService | None
+    campaign_review_service: CampaignReviewService | None
+    campaign_audience_service: CampaignAudienceService | None
+    payout_service: PayoutService | None
+    correction_service: CorrectionService | None
+    correction_view_service: CorrectionViewService | None
+    payout_view_service: PayoutViewService | None
+    messenger_linking_service: MessengerLinkingService | None
+    rate_override_service: RateOverrideService | None
     blogger_registration_service: BloggerRegistrationService
     advertiser_registration_service: AdvertiserRegistrationService
     instagram_verification_service: InstagramVerificationService
+    social_account_service: SocialAccountService | None
+    collaboration_service: CollaborationService | None
+    creator_identity_history_service: CreatorIdentityHistoryService | None
+    order_intake_service: OrderIntakeService | None
     order_service: OrderService
     offer_dispatch_service: OfferDispatchService
     blogger_rating_service: BloggerRatingService

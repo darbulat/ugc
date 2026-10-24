@@ -334,6 +334,7 @@ class PaymentService:
     ) -> Order:
         # Quote lock order: advisory identity, then order FOR UPDATE.
         if self.capture_repository is not None:
+            await self.capture_repository.lock_payer(user_id, session=session)
             await self.capture_repository.lock_order(order_id, session=session)
         order = await self.order_repo.get_by_id_for_update(
             order_id, session=session

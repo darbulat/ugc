@@ -52,6 +52,9 @@ from ugc_bot.infrastructure.db.repositories.referrals import (
     SqlAlchemyUserReferralPendingRepository,
     SqlReferralOrderIncomeLoader,
 )
+from ugc_bot.infrastructure.db.repositories.social import (
+    SqlAlchemySocialAccountRepository,
+)
 from ugc_bot.infrastructure.db.repositories.support import (
     SqlAlchemyComplaintRepository,
     SqlAlchemyManagerOrderRepository,
@@ -65,6 +68,7 @@ from ugc_bot.infrastructure.db.repositories.user import (
 )
 
 __all__ = [
+    "SqlAlchemySocialAccountRepository",
     "AsyncSession",
     "SqlAlchemyAdvertiserProfileRepository",
     "SqlAlchemyBloggerProfileRepository",

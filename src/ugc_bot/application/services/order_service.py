@@ -305,13 +305,17 @@ class OrderService:
         accompaniment_ordinals: frozenset[int],
         client_contact_reference: str,
         idempotency_key: str,
+        session: object | None = None,
     ) -> tuple[Order, FinancialQuote]:
         """Explicit opt-in: validate first, commit order and quote together.
 
         The order UUID is the caller's stable command identity. No notification,
-        referral income or management lead is emitted for an unpaid quote.
+        referral income is emitted for an unpaid quote. The caller may persist
+        a separately requested unpaid accompaniment lead in the same session.
         """
-        if self.paid_item_service is None or self.transaction_manager is None:
+        if self.paid_item_service is None or (
+            self.transaction_manager is None and session is None
+        ):
             raise ValueError("financial_service_and_transaction_required")
         paid = self.paid_item_service
         quote = paid.prepare_quote(
@@ -335,7 +339,8 @@ class OrderService:
             self.allowed_blogger_counts | {30},
             self.max_order_price,
         )
-        async with self.transaction_manager.transaction() as session:
+
+        async def _run(session: object) -> tuple[Order, FinancialQuote]:
             await paid.repository.lock_order(order_id, session=session)
             existing = await self.order_repo.get_by_id(
                 order_id, session=session
@@ -393,7 +398,13 @@ class OrderService:
                 order_id, session=session
             )
             assert persisted is not None
-        return persisted, saved
+            return persisted, saved
+
+        if session is not None:
+            return await _run(session)
+        assert self.transaction_manager is not None
+        async with self.transaction_manager.transaction() as owned_session:
+            return await _run(owned_session)
 
     _EDITABLE_ORDER_STATUSES = frozenset(
         {OrderStatus.NEW, OrderStatus.PENDING_MODERATION}

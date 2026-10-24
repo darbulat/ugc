@@ -2,7 +2,7 @@
 
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal, Protocol
 from uuid import UUID
 
@@ -210,15 +210,24 @@ class IssueBasis:
     verified_count: int | None
     event_id: str
     reason: str
-    actor_id: UUID
+    actor_id: UUID | None
     available_at: datetime | None = None
+    rate_source: Literal["standard", "override"] = "standard"
+    override_id: UUID | None = None
+    actor_kind: Literal["user", "admin", "system"] = "user"
+    system_actor: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("snapshot_at", "registered_at"):
             if (
                 name == "registered_at"
-                and self.kind == "management"
                 and self.registered_at is None
+                and (
+                    self.kind == "management"
+                    or self.recipient_id is None
+                    or self.rate_bps is None
+                    or self.policy_version is None
+                )
             ):
                 continue
             object.__setattr__(self, name, utc(getattr(self, name)))
@@ -234,6 +243,27 @@ class IssueBasis:
             raise ValueError("basis_provenance_required")
         self._validate_scope()
         self._validate_values()
+        self._validate_actor()
+        if self.rate_source not in ("standard", "override"):
+            raise ValueError("invalid_rate_provenance")
+        if (self.rate_source == "override") != (self.override_id is not None):
+            raise ValueError("override_reference_required")
+        if self.kind == "management" and self.rate_source != "standard":
+            raise ValueError("management_override_not_applicable")
+
+    def _validate_actor(self) -> None:
+        if self.actor_kind == "system":
+            if (
+                self.actor_id is not None
+                or not isinstance(self.system_actor, str)
+                or not self.system_actor.strip()
+            ):
+                raise ValueError("basis_actor_provenance_required")
+            object.__setattr__(self, "system_actor", self.system_actor.strip())
+        elif self.actor_kind not in ("user", "admin") or (
+            self.actor_id is None or self.system_actor is not None
+        ):
+            raise ValueError("basis_actor_provenance_required")
 
     def _validate_values(self) -> None:
         if self.kind == "management" and any(
@@ -262,10 +292,13 @@ class IssueBasis:
             or not 0 < self.base_minor <= MAX_MINOR
         ):
             raise ValueError("positive_base_required")
-        if not (
+        count_unknown = self.verified_count is None and (
             self.kind in ("client_referral", "management")
-            and self.verified_count is None
-        ) and (type(self.verified_count) is not int or self.verified_count < 0):
+            or (self.kind == "creator_referral" and self.rate_bps is None)
+        )
+        if not count_unknown and (
+            type(self.verified_count) is not int or self.verified_count < 0
+        ):
             raise ValueError("invalid_verified_count")
         if self.policy_version is not None and not self.policy_version.strip():
             raise ValueError("invalid_policy_version")
@@ -279,6 +312,7 @@ class IssueBasis:
             self.referred_user_id,
             self.payment_id,
             self.actor_id,
+            self.override_id,
         ):
             if ref is not None and (not isinstance(ref, UUID) or ref.int == 0):
                 raise ValueError("invalid_basis_reference")
@@ -312,7 +346,159 @@ class ObligationBasis:
     amount_minor: int
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ApprovedRateOverride:
+    """Immutable server approval loaded by the policy repository."""
+
+    override_id: UUID
+    recipient_id: UUID
+    side: Literal["client", "creator"]
+    rate_bps: int
+    policy_version: str
+    effective_from: datetime
+    effective_until: datetime
+    approved_by: UUID
+    approved_at: datetime
+    reason: str
+
+    def __post_init__(self):
+        for name in ("effective_from", "effective_until", "approved_at"):
+            object.__setattr__(self, name, utc(getattr(self, name)))
+        if any(
+            not isinstance(x, UUID) or x.int == 0
+            for x in (self.override_id, self.recipient_id, self.approved_by)
+        ):
+            raise ValueError("override_identity_required")
+        if (
+            self.side not in ("client", "creator")
+            or type(self.rate_bps) is not int
+            or not 0 < self.rate_bps <= 10000
+        ):
+            raise ValueError("invalid_override_rate")
+        if (
+            self.effective_until <= self.effective_from
+            or self.approved_at > self.effective_from
+        ):
+            raise ValueError("invalid_override_period")
+        if not self.reason.strip() or not self.policy_version.strip():
+            raise ValueError("override_provenance_required")
+
+    def applies(self, basis: IssueBasis) -> bool:
+        return (
+            self.recipient_id == basis.recipient_id
+            and self.policy_version == basis.policy_version
+            and self.side
+            == ("client" if basis.kind == "client_referral" else "creator")
+            and self.rate_bps == basis.rate_bps
+            and self.effective_from <= basis.snapshot_at < self.effective_until
+            and self.approved_at <= basis.snapshot_at
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveEconomicGround:
+    obligation_id: UUID
+    business_key: str
+    recipient_id: UUID
+    currency: str
+    paid_item_id: UUID
+    kind: str
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class WorkMaturitySource:
+    source_id: UUID
+    source_event_id: UUID
+    assignment_id: UUID
+    paid_item_id: UUID
+    order_id: UUID
+    policy_version: str
+    creator_id: UUID
+    manager_id: UUID | None
+    state: str
+    assignment_ended_at: datetime | None
+    success_final_at: datetime
+    release_at: datetime
+
+    def __post_init__(self):
+        for name in ("success_final_at", "release_at", "assignment_ended_at"):
+            value = getattr(self, name)
+            if value is not None:
+                object.__setattr__(self, name, utc(value))
+        if self.release_at != self.success_final_at + timedelta(days=14):
+            raise ValueError("invalid_work_maturity_schedule")
+
+    def require_for(self, basis: IssueBasis) -> None:
+        if (
+            self.state not in ("success_final", "available")
+            or self.assignment_ended_at is not None
+            or self.assignment_id != basis.assignment_id
+            or self.paid_item_id != basis.paid_item_id
+            or self.order_id != basis.order_id
+            or self.policy_version != basis.policy_version
+            or self.creator_id != basis.referred_user_id
+            or basis.kind not in ("creator_referral", "management")
+            or (
+                basis.kind == "management"
+                and self.manager_id != basis.recipient_id
+            )
+        ):
+            raise ValueError("maturity_source_not_eligible")
+
+
+@dataclass(frozen=True, slots=True)
+class ObligationMaturity:
+    maturity_id: UUID
+    obligation_id: UUID
+    source_id: UUID
+    assignment_id: UUID
+    paid_item_id: UUID
+    success_final_at: datetime
+    release_at: datetime
+    producer: str
+    recorded_at: datetime
+
+
 class LedgerRepository(JournalRepository, FinancialLocks, Protocol):
+    async def get_rate_override(
+        self,
+        override_id: UUID,
+        *,
+        as_of: datetime | None = None,
+        session: object,
+    ) -> ApprovedRateOverride | None:
+        """Server approval effective at capture, including revocation facts."""
+        ...
+
+    async def list_item_grounds(
+        self, item_id: UUID, kind: str, *, session: object
+    ) -> tuple[ActiveEconomicGround, ...]:
+        """All immutable historical obligations, independent of projections."""
+        ...
+
+    async def get_active_ground(
+        self, item_id: UUID, kind: str, *, session: object
+    ) -> ActiveEconomicGround | None: ...
+
+    async def set_active_ground(
+        self, record: IssuedObligation, *, session: object
+    ) -> None: ...
+
+    async def get_entry_ref(
+        self, operation_key: str, *, session: object
+    ) -> UUID | None: ...
+
+    async def load_maturity_source(
+        self, source_id: UUID, *, session: object
+    ) -> WorkMaturitySource | None: ...
+
+    async def get_maturity(
+        self, obligation_id: UUID, *, session: object
+    ) -> ObligationMaturity | None: ...
+
+    async def save_maturity(
+        self, fact: ObligationMaturity, *, session: object
+    ) -> ObligationMaturity: ...
     async def list_obligation_bases(
         self, recipient_id: UUID, currency: str, *, session: object
     ) -> tuple[ObligationBasis, ...]: ...

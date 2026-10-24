@@ -7,6 +7,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tests.postgres_financial.conftest import (
+    financial_pg_engine as _shared_engine,
+)
 from tests.postgres_financial.test_v1_capture import (
     capture_env as _capture_env,
 )
@@ -29,6 +32,13 @@ from ugc_bot.infrastructure.db.session import SessionTransactionManager
 from ugc_bot.outbox_processor import OutboxProcessor
 
 capture_env = _capture_env
+
+
+@pytest.fixture
+def financial_pg_engine(request):
+    # A bounded processor batch must see only this scenario's actual queue,
+    # independently of whether an earlier test happened to process it.
+    yield from _shared_engine.__wrapped__(request)
 
 
 def durable_state(env):

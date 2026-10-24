@@ -12,7 +12,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.application.errors import (
+    OrderCreationError,
+    PaidSelectionResponseError,
+)
 from ugc_bot.application.messenger.dto import (
     Button,
     IncomingCallback,
@@ -36,6 +39,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
@@ -171,11 +175,16 @@ async def _reply_offer_response_result(
                 chat_id=incoming.chat_id, text=result.order.product_link
             )
         msg_what_next = await bot_texts_service.get(
-            "msg_blogger_after_response_what_next", locale
+            "msg_blogger_selection_interest_saved"
+            if result.delivery_queued is True
+            else "msg_blogger_after_response_what_next",
+            locale,
         )
         await messenger_client.send_text(
             chat_id=incoming.chat_id, text=msg_what_next
         )
+        if result.delivery_queued is True:
+            return
         contact_texts = await bot_texts_service.get_many(
             list(_SEND_CONTACT_TEXTS_KEYS), locale
         )
@@ -790,6 +799,15 @@ async def handle_offer_confirm(
         result = await offer_response_service.respond_and_finalize(
             order_id, user.user_id
         )
+    except PaidSelectionResponseError as exc:
+        text = await bot_texts_service.get(
+            selection_response_message_key(exc.reason), locale
+        )
+        await messenger_client.answer_callback(
+            callback_id=incoming.callback_id,
+            text=text,
+        )
+        return
     except OrderCreationError:
         await _send_order_closed_and_remove_keyboard(
             incoming, messenger_client, bot_texts_service, locale

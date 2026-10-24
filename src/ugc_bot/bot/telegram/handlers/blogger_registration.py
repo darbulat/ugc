@@ -185,6 +185,7 @@ async def _choose_creator_role_impl(
             "btn_my_orders",
             "btn_support",
             "msg_choose_action",
+            "btn_partner_program",
         ],
         locale,
     )
@@ -1949,7 +1950,7 @@ async def handle_agreements_callback(
         "msg_profile_created", locale
     )
     after_texts = await bot_texts_service.get_many(
-        ["btn_confirm_instagram", "btn_my_profile"],
+        ["btn_confirm_instagram", "btn_my_profile", "btn_partner_program"],
         locale,
     )
     await messenger_client.send_text(
@@ -2014,7 +2015,7 @@ async def handle_agreements(
         "msg_profile_created", locale
     )
     after_texts = await bot_texts_service.get_many(
-        ["btn_confirm_instagram", "btn_my_profile"],
+        ["btn_confirm_instagram", "btn_my_profile", "btn_partner_program"],
         locale,
     )
     await messenger_client.send_text(

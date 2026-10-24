@@ -3,17 +3,23 @@
 import hashlib
 import hmac
 import json
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import pytest_asyncio
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from tests.helpers.fakes import FakeMessengerClient
+from tests.helpers.legacy_verification import MemoryVerificationTransaction
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
+    VerificationLinkConflict,
     VerificationLinkSuccess,
+    VerificationLinkUnavailable,
     VerificationMismatch,
 )
 from ugc_bot.config import AppConfig
@@ -26,6 +32,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerProfileRepository,
+    InMemoryInstagramGraphApiClient,
     InMemoryInstagramVerificationRepository,
     InMemoryUserRepository,
 )
@@ -400,6 +407,7 @@ async def test_webhook_event_processing_success(
     mock_load_config: MagicMock,
     client: TestClient,
     test_config: AppConfig,
+    link_notice_messengers,
 ) -> None:
     """Test successful webhook event processing."""
     mock_load_config.return_value = test_config
@@ -442,7 +450,12 @@ async def test_webhook_event_processing_success(
         user_repo=user_repo,
         blogger_repo=blogger_repo,
         verification_repo=verification_repo,
-        instagram_api_client=None,
+        instagram_api_client=InMemoryInstagramGraphApiClient(
+            username_map={"instagram_user_id": "test_user"}
+        ),
+        transaction_manager=MemoryVerificationTransaction(
+            user_repo, blogger_repo, verification_repo
+        ),
     )
     verification = await verification_service.generate_code(user.user_id)
 
@@ -579,7 +592,9 @@ def test_webhook_event_invalid_json(
 @patch("ugc_bot.instagram_webhook_app._notify_user_verification_success")
 @patch("ugc_bot.instagram_webhook_app.load_config")
 @patch("ugc_bot.instagram_webhook_app._process_webhook_events")
+@patch("ugc_bot.instagram_webhook_app.Container")
 def test_webhook_event_processing_exception(
+    mock_container_cls: MagicMock,
     mock_process_events: MagicMock,
     mock_load_config: MagicMock,
     mock_notify: MagicMock,
@@ -1694,3 +1709,268 @@ async def test_dispatch_mismatch_without_max_chat(
     ) as mock_tg:
         await _dispatch_verification_result(mismatch, service, test_config)
         mock_tg.assert_called_once()
+
+
+@pytest.fixture
+def link_notice_config() -> AppConfig:
+    return AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "MAX_BOT_TOKEN": "max_test_token",
+            "BOT_DEFAULT_LOCALE": "en",
+        }
+    )
+
+
+@pytest.fixture
+def link_notice_messengers(monkeypatch):
+    max_client = FakeMessengerClient()
+    telegram_client = FakeMessengerClient()
+
+    @asynccontextmanager
+    async def max_messenger(_config):
+        yield max_client
+
+    @asynccontextmanager
+    async def telegram_messenger(_config):
+        yield telegram_client
+
+    monkeypatch.setattr(
+        "ugc_bot.instagram_webhook_app._create_max_messenger", max_messenger
+    )
+    monkeypatch.setattr(
+        "ugc_bot.instagram_webhook_app._create_messenger", telegram_messenger
+    )
+    return max_client, telegram_client
+
+
+@pytest_asyncio.fixture
+async def link_notice_service():
+    user_repo = InMemoryUserRepository()
+    user = User(
+        user_id=uuid4(),
+        telegram_id="target_telegram_chat",
+        max_id="target_max_id",
+        max_chat_id="target_max_chat",
+        messenger_type=MessengerType.TELEGRAM,
+        username="private_target_username",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+        language="en",
+    )
+    await user_repo.save(user)
+    service = InstagramVerificationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        verification_repo=InMemoryInstagramVerificationRepository(),
+        instagram_api_client=None,
+    )
+    return service, user.user_id
+
+
+_LINK_NOTICE_LOCALES = [
+    (
+        "ru",
+        "Instagram подтверждён. Аккаунты не привязаны: это отдельные "
+        "аккаунты. Для решения вопроса обратитесь в поддержку.",
+        "Instagram подтверждён, но привязать аккаунт MAX сейчас не удалось. "
+        "Обратитесь в поддержку.",
+    ),
+    (
+        "en",
+        "Instagram is verified. The accounts were not linked because they "
+        "are separate accounts. Contact support for help.",
+        "Instagram is verified, but the MAX account could not be linked "
+        "right now. Contact support for help.",
+    ),
+    (
+        "kk",
+        "Instagram расталды. Аккаунттар байланыстырылмады: олар бөлек "
+        "аккаунттар. Мәселені шешу үшін қолдау қызметіне хабарласыңыз.",
+        "Instagram расталды, бірақ MAX аккаунтын қазір байланыстыру мүмкін "
+        "болмады. Қолдау қызметіне хабарласыңыз.",
+    ),
+    (
+        "be",
+        "Instagram пацверджаны. Акаўнты не прывязаны: гэта асобныя "
+        "акаўнты. Каб вырашыць пытанне, звярніцеся ў падтрымку.",
+        "Instagram пацверджаны, але прывязаць акаўнт MAX зараз не атрымалася. "
+        "Звярніцеся ў падтрымку.",
+    ),
+    (
+        "uz",
+        "Instagram tasdiqlandi. Akkauntlar bog'lanmadi: ular alohida "
+        "akkauntlar. Yordam uchun qo'llab-quvvatlash xizmatiga murojaat "
+        "qiling.",
+        "Instagram tasdiqlandi, lekin MAX akkauntini hozir bog'lab bo'lmadi. "
+        "Qo'llab-quvvatlash xizmatiga murojaat qiling.",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("result_type", "message_index"),
+    [(VerificationLinkConflict, 1), (VerificationLinkUnavailable, 2)],
+    ids=["conflict", "unavailable"],
+)
+@pytest.mark.parametrize(
+    ("locale", "conflict_text", "unavailable_text"),
+    _LINK_NOTICE_LOCALES,
+    ids=["ru", "en", "kk", "be", "uz"],
+)
+async def test_link_outcome_notifies_only_recorded_max_chat(
+    result_type,
+    message_index,
+    locale,
+    conflict_text,
+    unavailable_text,
+    link_notice_config,
+    link_notice_messengers,
+    link_notice_service,
+) -> None:
+    """A failed attachment sends one localized notice to its initiator."""
+    service, user_id = link_notice_service
+    result = result_type(
+        user_id=user_id,
+        max_chat_id="initiating_max_chat",
+        reason="private_separate_owner_id",
+        locale=locale,
+    )
+
+    await _dispatch_verification_result(result, service, link_notice_config)
+
+    max_client, telegram_client = link_notice_messengers
+    expected = (None, conflict_text, unavailable_text)[message_index]
+    assert [(m["chat_id"], m["text"]) for m in max_client.sent_text] == [
+        ("initiating_max_chat", expected)
+    ]
+    assert telegram_client.sent_text == []
+    assert "private_separate_owner_id" not in max_client.sent_text[0]["text"]
+    assert "private_target_username" not in max_client.sent_text[0]["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result_type", [VerificationLinkConflict, VerificationLinkUnavailable]
+)
+@pytest.mark.parametrize("locale", ["unsupported", "", "EN", "en "])
+async def test_link_outcome_unsupported_locale_uses_russian(
+    result_type,
+    locale,
+    link_notice_config,
+    link_notice_messengers,
+    link_notice_service,
+) -> None:
+    service, user_id = link_notice_service
+    result = result_type(
+        user_id=user_id,
+        max_chat_id="initiating_max_chat",
+        reason="private_reason",
+        locale=locale,
+    )
+
+    await _dispatch_verification_result(result, service, link_notice_config)
+
+    max_client, telegram_client = link_notice_messengers
+    assert len(max_client.sent_text) == 1
+    assert max_client.sent_text[0]["text"].startswith("Instagram подтверждён")
+    assert telegram_client.sent_text == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result_type", [VerificationLinkConflict, VerificationLinkUnavailable]
+)
+@pytest.mark.parametrize(
+    "chat_id",
+    [None, "", " ", "\t", "chat\n42", " chat_42", "chat_42 ", "x" * 129],
+)
+async def test_link_outcome_missing_or_unsafe_chat_has_no_fallback_notice(
+    result_type,
+    chat_id,
+    link_notice_config,
+    link_notice_messengers,
+    link_notice_service,
+) -> None:
+    service, user_id = link_notice_service
+    result = result_type(
+        user_id=user_id, max_chat_id=chat_id, reason="private_reason"
+    )
+
+    await _dispatch_verification_result(result, service, link_notice_config)
+
+    max_client, telegram_client = link_notice_messengers
+    assert max_client.sent_text == []
+    assert telegram_client.sent_text == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result_type", [VerificationLinkConflict, VerificationLinkUnavailable]
+)
+async def test_link_outcome_without_max_config_has_no_fallback_notice(
+    result_type,
+    test_config,
+    link_notice_messengers,
+    link_notice_service,
+) -> None:
+    service, user_id = link_notice_service
+    result = result_type(
+        user_id=user_id,
+        max_chat_id="initiating_max_chat",
+        reason="private_reason",
+    )
+
+    await _dispatch_verification_result(result, service, test_config)
+
+    max_client, telegram_client = link_notice_messengers
+    assert max_client.sent_text == []
+    assert telegram_client.sent_text == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "result_type", [VerificationLinkConflict, VerificationLinkUnavailable]
+)
+async def test_link_outcome_send_failure_keeps_event_processed(
+    result_type,
+    link_notice_config,
+    link_notice_messengers,
+    link_notice_service,
+    caplog,
+) -> None:
+    from ugc_bot.instagram_webhook_app import _process_single_messaging_event
+
+    _service, user_id = link_notice_service
+    result = result_type(
+        user_id=user_id,
+        max_chat_id="initiating_max_chat",
+        reason="private_reason",
+    )
+    service = MagicMock(spec=InstagramVerificationService)
+    service.verify_code_by_instagram_sender = AsyncMock(return_value=result)
+    max_client, telegram_client = link_notice_messengers
+    with patch.object(
+        max_client,
+        "send_text",
+        new=AsyncMock(side_effect=RuntimeError("private_send_failure")),
+    ) as send:
+        processed = await _process_single_messaging_event(
+            {
+                "sender": {"id": "synthetic_sender"},
+                "message": {"text": "ABC123XY"},
+            },
+            service,
+            link_notice_config,
+        )
+
+    assert processed is True
+    send.assert_awaited_once()
+    assert send.call_args.kwargs["chat_id"] == "initiating_max_chat"
+    assert telegram_client.sent_text == []
+    assert result.reason == "private_reason"
+    assert "private_send_failure" not in caplog.text
+    assert "private_reason" not in caplog.text

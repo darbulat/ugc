@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Complaint, Interaction, Order, User
@@ -25,18 +26,7 @@ def test_db_engine():
     """Create in-memory SQLite engine for admin tests."""
     engine = create_engine("sqlite:///:memory:", echo=False)
 
-    # Exclude tables with JSONB or PostgreSQL-specific indexes
-    tables_to_exclude = {
-        "outbox_events",
-        "blogger_profiles",
-        "instagram_stats",
-        "payout_requests",  # uses AT TIME ZONE in index expression
-    }
-    tables_to_create = [
-        table
-        for table in Base.metadata.tables.values()
-        if table.name not in tables_to_exclude
-    ]
+    tables_to_create = legacy_sqlite_tables(Base.metadata)
     Base.metadata.create_all(bind=engine, tables=tables_to_create)
     return engine
 

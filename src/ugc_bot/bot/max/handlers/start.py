@@ -17,6 +17,7 @@ from ugc_bot.application.messenger.dto import (
 from ugc_bot.bot.max.handlers.support_chat import CALLBACK_SUPPORT_START_CHAT
 from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
+from ugc_bot.bot.partner_entry import CALLBACK_PARTNER_OPEN, send_partner_entry
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_CHANGE_COUNTRY_PREFIX,
     CALLBACK_CHANGE_ROLE,
@@ -35,6 +36,31 @@ from ugc_bot.bot.telegram.handlers.start import (
 )
 
 router = MaxRouter()
+
+
+@router.message(lambda m: bool(m.text and m.text.split()[0] == "/partner"))
+async def partner_command(incoming: IncomingMessage, deps: dict) -> None:
+    config = deps["config"]
+    await send_partner_entry(
+        deps["messenger_client"],
+        incoming.chat_id,
+        config,
+        "max",
+        deps.get("locale", config.market.default_locale),
+    )
+
+
+@router.callback(lambda c: c.data == CALLBACK_PARTNER_OPEN)
+async def partner_callback(incoming: IncomingCallback, deps: dict) -> None:
+    client, config = deps["messenger_client"], deps["config"]
+    await client.answer_callback(callback_id=incoming.callback_id)
+    await send_partner_entry(
+        client,
+        incoming.chat_id,
+        config,
+        "max",
+        deps.get("locale", config.market.default_locale),
+    )
 
 
 @router.message(lambda m: bool(m.text and m.text.startswith("/start")))
@@ -60,7 +86,8 @@ async def start_handler(incoming: IncomingMessage, deps: dict) -> None:
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
 
     # Max is Russia-only: skip country/language selection
@@ -135,7 +162,8 @@ async def country_selected(incoming: IncomingCallback, deps: dict) -> None:
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     await state_store.clear()
     await messenger_client.send_text(
@@ -194,7 +222,8 @@ async def language_selected(incoming: IncomingCallback, deps: dict) -> None:
         await bot_texts_service.get("start_message", new_locale)
     ).strip() or "UGC — сервис для UGC."
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], new_locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        new_locale,
     )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
@@ -322,7 +351,8 @@ async def change_role_callback(incoming: IncomingCallback, deps: dict) -> None:
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     await _change_role_button(
         incoming=incoming,
@@ -356,7 +386,8 @@ async def change_role_command(incoming: IncomingMessage, deps: dict) -> None:
             "Бизнесу — подбор креаторов, креаторам — заказы."
         )
     texts = await bot_texts_service.get_many(
-        ["btn_creator", "btn_advertiser", "btn_support"], locale
+        ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
+        locale,
     )
     await _change_role_button(
         incoming=incoming,
@@ -417,7 +448,7 @@ async def support_callback(incoming: IncomingCallback, deps: dict) -> None:
         )
 
     texts = await bot_texts_service.get_many(
-        ["btn_support_write", "btn_change_role"], locale
+        ["btn_support_write", "btn_change_role", "btn_partner_program"], locale
     )
     rows: list[list[Button]] = []
     # Add "Write to support" button if support chat is configured
@@ -474,7 +505,7 @@ async def support_command(incoming: IncomingMessage, deps: dict) -> None:
         )
 
     texts = await bot_texts_service.get_many(
-        ["btn_support_write", "btn_change_role"], locale
+        ["btn_support_write", "btn_change_role", "btn_partner_program"], locale
     )
     rows: list[list[Button]] = []
     if (config.market.support_chat_id or "").strip():

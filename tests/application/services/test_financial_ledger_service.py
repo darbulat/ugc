@@ -61,6 +61,7 @@ class MemoryLedger:
         self.records = {}
         self.bases = {}
         self.movements = {}
+        self.active_grounds = {}
         self.wallet = {
             b: 0
             for b in (
@@ -96,6 +97,40 @@ class MemoryLedger:
 
     async def get_issue(self, key, *, session):
         return self.records.get(key)
+
+    async def get_active_ground(self, item_id, kind, *, session):
+        return self.active_grounds.get((item_id, kind))
+
+    async def list_item_grounds(self, item_id, kind, *, session):
+        return tuple(
+            ports.ActiveEconomicGround(
+                record.obligation_id,
+                record.basis.business_key,
+                record.basis.recipient_id,
+                record.basis.currency,
+                item_id,
+                kind,
+            )
+            for record in self.records.values()
+            if record.basis.paid_item_id == item_id
+            and record.basis.kind == kind
+        )
+
+    async def set_active_ground(self, record, *, session):
+        b = record.basis
+        self.active_grounds[(b.paid_item_id, b.kind)] = (
+            ports.ActiveEconomicGround(
+                record.obligation_id,
+                b.business_key,
+                b.recipient_id,
+                b.currency,
+                b.paid_item_id,
+                b.kind,
+            )
+        )
+
+    async def get_maturity(self, obligation_id, *, session):
+        return None
 
     async def save_issue(self, record, *, session):
         self.records[record.basis.business_key] = record

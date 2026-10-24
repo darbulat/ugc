@@ -22,6 +22,7 @@ EN: dict[str, str] = {
     "btn_my_orders": "📂 My orders",
     "btn_change_role": "Change role",
     "btn_create_profile": "Create profile",
+    "btn_partner_program": "Partner program",
     "btn_advertiser_start": "Start",
     "btn_create_order": "➕ Create order",
     "btn_confirm_instagram": "✅ Confirm Instagram",
@@ -666,6 +667,20 @@ EN: dict[str, str] = {
         "We'll send new orders as soon as they appear.\n\n"
         "Watch for notifications in the bot 🙌"
     ),
+    "msg_offer_response_unavailable": (
+        "Interest confirmation is unavailable right now. Please try later."
+    ),
+    "msg_offer_response_verification_required": (
+        "Verify Instagram in your profile, then try again."
+    ),
+    "msg_offer_response_identity_used": (
+        "This Instagram account has already responded to this order."
+    ),
+    "msg_blogger_selection_interest_saved": (
+        "Your interest is saved. Please wait for the client to contact you.\n\n"
+        "Agree on the work and fee directly. Share a watermarked preview "
+        "and send the final material after payment."
+    ),
     "msg_blogger_after_response_what_next": (
         "⏳ What's next\n\n"
         "💬 Wait for the advertiser to message — they have your Instagram link "
@@ -717,6 +732,14 @@ EN: dict[str, str] = {
     "msg_instagram_verification_api_unavailable": (
         "We couldn't verify your Instagram account. "
         "Please try verification again later or contact support."
+    ),
+    "msg_instagram_link_conflict": (
+        "Instagram is verified. The accounts were not linked because they "
+        "are separate accounts. Contact support for help."
+    ),
+    "msg_instagram_link_unavailable": (
+        "Instagram is verified, but the MAX account could not be linked "
+        "right now. Contact support for help."
     ),
     "msg_instagram_mismatch": (
         "The Instagram in your profile doesn't match the account "

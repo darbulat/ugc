@@ -5,7 +5,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import asdict, fields
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import RowMapping, Table, select
@@ -13,15 +13,33 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.application.financial_ports import (
+    ActiveEconomicGround,
+    ApprovedRateOverride,
     IssueBasis,
     IssuedObligation,
     JournalMovement,
     ObligationBasis,
+    ObligationMaturity,
     PotentialBasis,
+    WorkMaturitySource,
 )
 from ugc_bot.domain.financial import first_anniversary, utc
 from ugc_bot.infrastructure.db import models as _models  # noqa: F401
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.collaboration_models import (
+    CollaborationModel,
+    CollaborationReleaseScheduleModel,
+)
+from ugc_bot.infrastructure.db.financial_lifecycle_models import (
+    ActiveEconomicGroundModel,
+    ObligationMaturityModel,
+    RateOverrideModel,
+)
+from ugc_bot.infrastructure.db.financial_lifecycle_schema import (
+    extend_ledger_metadata,
+)
+
+extend_ledger_metadata(Base.metadata)
 
 
 def _session(session: object) -> AsyncSession:
@@ -58,7 +76,210 @@ def payload_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded.encode()).hexdigest()
 
 
+def _legacy_user_potential_matches(
+    row: RowMapping, payload: dict[str, Any]
+) -> bool:
+    """Read old defaults from their authoritative actor; never rewrite history.
+
+    Early IssueBasis JSON omitted actor/rate provenance defaults. Only an
+    unchanged old user potential with a valid original hash can be normalized.
+    Explicit overrides, system actors and any changed economics still conflict.
+    """
+    details = row["details"]
+    if (
+        row["action"] != "potential_basis"
+        or payload.get("action") != "potential_basis"
+        or row["actor_kind"] != "user"
+        or payload.get("actor_kind") != "user"
+        or row["system_actor"] is not None
+        or payload.get("system_actor") is not None
+        or not isinstance(details, dict)
+        or details.get("actor_id") != _canonical(row["actor_id"])
+        or payload_hash(dict(row)) != row["payload_hash"]
+    ):
+        return False
+    defaults = dict(
+        actor_kind="user",
+        system_actor=None,
+        rate_source="standard",
+        override_id=None,
+    )
+    missing = defaults.keys() - details.keys()
+    if not missing:
+        return False
+    normalized = dict(row) | {"details": defaults | details}
+    return payload_hash(normalized) == payload_hash(payload)
+
+
 class SqlAlchemyFinancialLedgerRepository:
+    async def get_rate_override(self, override_id, *, as_of=None, session):
+        if as_of is not None:
+            from ugc_bot.infrastructure.db.repositories.rate_overrides import (
+                SqlAlchemyRateOverrideRepository,
+            )
+
+            state = await SqlAlchemyRateOverrideRepository().get(
+                override_id, session=session
+            )
+            return (
+                state.approval
+                if state is not None and state.active_at(as_of)
+                else None
+            )
+        row = (
+            (
+                await _session(session).execute(
+                    select(RateOverrideModel.__table__).where(
+                        RateOverrideModel.override_id == override_id
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return ApprovedRateOverride(**row) if row is not None else None
+
+    async def list_item_grounds(self, item_id, kind, *, session):
+        table = Base.metadata.tables["financial_obligations"]
+        rows = (
+            (
+                await _session(session).execute(
+                    select(
+                        table.c.id.label("obligation_id"),
+                        table.c.business_key,
+                        table.c.recipient_id,
+                        table.c.currency,
+                        table.c.paid_item_id,
+                        table.c.kind,
+                    ).where(
+                        table.c.paid_item_id == item_id, table.c.kind == kind
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        return tuple(ActiveEconomicGround(**row) for row in rows)
+
+    async def get_active_ground(self, item_id, kind, *, session):
+        active = ActiveEconomicGroundModel.__table__
+        obligations = Base.metadata.tables["financial_obligations"]
+        row = (
+            (
+                await _session(session).execute(
+                    select(active, obligations.c.business_key)
+                    .join(
+                        obligations, obligations.c.id == active.c.obligation_id
+                    )
+                    .where(
+                        active.c.paid_item_id == item_id, active.c.kind == kind
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return ActiveEconomicGround(**row) if row is not None else None
+
+    async def set_active_ground(self, record, *, session):
+        basis = record.basis
+        table = cast(Table, ActiveEconomicGroundModel.__table__)
+        values = dict(
+            paid_item_id=basis.paid_item_id,
+            kind=basis.kind,
+            obligation_id=record.obligation_id,
+            recipient_id=basis.recipient_id,
+            currency=basis.currency,
+        )
+        await _session(session).execute(
+            insert(table)
+            .values(**values)
+            .on_conflict_do_update(
+                index_elements=[table.c.paid_item_id, table.c.kind], set_=values
+            )
+        )
+
+    async def get_entry_ref(self, operation_key, *, session):
+        table = Base.metadata.tables["financial_movements"]
+        return await _session(session).scalar(
+            select(table.c.id).where(table.c.operation_key == operation_key)
+        )
+
+    async def load_maturity_source(self, source_id, *, session):
+        schedule = CollaborationReleaseScheduleModel.__table__
+        work = CollaborationModel.__table__
+        assignment = Base.metadata.tables["item_assignments"]
+        row = (
+            (
+                await _session(session).execute(
+                    select(
+                        schedule.c.schedule_id.label("source_id"),
+                        schedule.c.source_event_id,
+                        schedule.c.assignment_id,
+                        schedule.c.success_final_at,
+                        schedule.c.release_at,
+                        work.c.paid_item_id,
+                        work.c.order_id,
+                        work.c.policy_version,
+                        work.c.creator_id,
+                        work.c.manager_id,
+                        work.c.state,
+                        assignment.c.valid_to.label("assignment_ended_at"),
+                    )
+                    .join(
+                        work, work.c.assignment_id == schedule.c.assignment_id
+                    )
+                    .join(
+                        assignment,
+                        assignment.c.assignment_id == schedule.c.assignment_id,
+                    )
+                    .where(schedule.c.schedule_id == source_id)
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return WorkMaturitySource(**row) if row is not None else None
+
+    async def get_maturity(self, obligation_id, *, session):
+        row = (
+            (
+                await _session(session).execute(
+                    select(ObligationMaturityModel.__table__).where(
+                        ObligationMaturityModel.obligation_id == obligation_id
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return self._maturity(row) if row is not None else None
+
+    @staticmethod
+    def _maturity(row):
+        return ObligationMaturity(
+            row["id"],
+            row["obligation_id"],
+            row["source_id"],
+            row["assignment_id"],
+            row["paid_item_id"],
+            row["success_final_at"],
+            row["release_at"],
+            row["producer"],
+            row["recorded_at"],
+        )
+
+    async def save_maturity(self, fact, *, session):
+        data = asdict(fact)
+        data["id"] = data.pop("maturity_id")
+        row = await self._insert(
+            cast(Table, ObligationMaturityModel.__table__),
+            "obligation_id",
+            data,
+            session=session,
+        )
+        return self._maturity(row)
+
     async def save_potential(
         self,
         basis: IssueBasis,
@@ -75,8 +296,8 @@ class SqlAlchemyFinancialLedgerRepository:
                 scope="paid_item:" + str(basis.paid_item_id),
                 reason=reason,
                 actor_id=basis.actor_id,
-                actor_kind="user",
-                system_actor=None,
+                actor_kind=basis.actor_kind,
+                system_actor=basis.system_actor,
                 obligation_id=None,
                 movement_id=None,
                 effective_at=basis.snapshot_at,
@@ -138,8 +359,6 @@ class SqlAlchemyFinancialLedgerRepository:
             .one()
         )
         movement = self._movement(journal)
-        if movement.actor_id is None:
-            raise ValueError("unsupported_system_issuance")
         basis = IssueBasis(
             business_key=key,
             kind=row["kind"],
@@ -159,7 +378,11 @@ class SqlAlchemyFinancialLedgerRepository:
             event_id=movement.event_id,
             reason=movement.reason,
             actor_id=movement.actor_id,
+            actor_kind=movement.actor_kind,
+            system_actor=movement.system_actor,
             available_at=row["available_at"],
+            rate_source=rate.get("rate_source", "standard"),
+            override_id=rate.get("override_id"),
         )
         return IssuedObligation(row["id"], rate["id"], basis, movement)
 
@@ -202,6 +425,8 @@ class SqlAlchemyFinancialLedgerRepository:
                 age_rule=self._snapshot_age_rule(basis),
                 verified_count=basis.verified_count,
                 rate_bps=basis.rate_bps,
+                rate_source=basis.rate_source,
+                override_id=basis.override_id,
             ),
             session=session,
         )
@@ -326,6 +551,11 @@ class SqlAlchemyFinancialLedgerRepository:
             .one()
         )
         if row["payload_hash"] != payload["payload_hash"]:
+            if (
+                table.name == "financial_audit_events"
+                and _legacy_user_potential_matches(row, payload)
+            ):
+                return row
             raise ValueError("idempotency_payload_conflict")
         return row
 

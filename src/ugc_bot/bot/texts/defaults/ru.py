@@ -26,6 +26,7 @@ RU: dict[str, str] = {
     "btn_my_orders": "📂 Мои заказы",
     "btn_change_role": "Смена роли",
     "btn_create_profile": "Создать профиль",
+    "btn_partner_program": "Партнёрская программа",
     "btn_advertiser_start": "Начать",
     "btn_create_order": "➕ Создать заказ",
     "btn_confirm_instagram": "✅ Подтвердить Instagram",
@@ -733,6 +734,20 @@ RU: dict[str, str] = {
         "Мы обязательно пришлём новые заказы, как только они появятся.\n\n"
         "Следите за уведомлениями в боте 🙌"
     ),
+    "msg_offer_response_unavailable": (
+        "Подтверждение отклика сейчас недоступно. Попробуйте позже."
+    ),
+    "msg_offer_response_verification_required": (
+        "Подтвердите Instagram в профиле и повторите отклик."
+    ),
+    "msg_offer_response_identity_used": (
+        "Этот Instagram уже есть в откликах на заказ."
+    ),
+    "msg_blogger_selection_interest_saved": (
+        "Отклик сохранён. Ожидайте сообщения заказчика.\n\n"
+        "Условия работы и гонорар согласуйте напрямую. Показывайте превью "
+        "с водяным знаком; финальный материал отправляйте после оплаты."
+    ),
     "msg_blogger_after_response_what_next": (
         "⏳ Что дальше\n\n"
         "💬 Ожидайте сообщение от заказчика — он получил ссылку на Instagram "
@@ -787,6 +802,14 @@ RU: dict[str, str] = {
         "Не удалось проверить ваш Instagram-аккаунт. "
         "Попробуйте пройти верификацию позже или напишите "
         "в чат поддержки."
+    ),
+    "msg_instagram_link_conflict": (
+        "Instagram подтверждён. Аккаунты не привязаны: это отдельные "
+        "аккаунты. Для решения вопроса обратитесь в поддержку."
+    ),
+    "msg_instagram_link_unavailable": (
+        "Instagram подтверждён, но привязать аккаунт MAX сейчас не удалось. "
+        "Обратитесь в поддержку."
     ),
     "msg_instagram_mismatch": (
         "Указанный в профиле Instagram не совпадает с аккаунтом, "

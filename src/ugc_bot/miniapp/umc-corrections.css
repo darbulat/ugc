@@ -1,0 +1,22 @@
+/* Corrections share the supplied UMC mint section and flat cards. */
+.umc-corrections { min-width: 0; }
+.umc-correction-card { padding: var(--space-24); margin-bottom: var(--space-20); border-radius: var(--radius-22); background: var(--card); min-width: 0; }
+.umc-correction-card h2 { font-size: 21px; margin-top: 0; }
+.umc-corrections .btn { width: 100%; margin-bottom: var(--space-12); white-space: normal; }
+.umc-corrections label { display: block; margin-bottom: var(--space-8); }
+.umc-corrections input, .umc-corrections textarea, .umc-corrections select { max-width: 100%; box-sizing: border-box; }
+.umc-corrections textarea { min-height: 104px; resize: vertical; }
+.umc-correction-reference { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.6; }
+.umc-correction-money { font: 600 clamp(15px, 5vw, 28px)/1.4 var(--font-body); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.umc-correction-status { display: flex; flex-wrap: wrap; gap: var(--space-8); padding: 0; list-style: none; }
+.umc-correction-status li { border: 1px solid var(--line); border-radius: var(--radius-12); padding: var(--space-8) var(--space-12); font-size: 13px; overflow-wrap: anywhere; max-width: 100%; }
+.umc-correction-item { display: flex !important; align-items: flex-start; gap: var(--space-12); padding-block: var(--space-12); border-bottom: 1px solid var(--line); }
+.umc-correction-item input { width: 24px; min-width: 24px; height: 24px; min-height: 24px; margin: 0; accent-color: var(--ink); }
+.umc-correction-item span { min-width: 0; overflow-wrap: anywhere; }
+.umc-correction-item .umc-correction-reference { display: block; margin-top: var(--space-6); font-weight: 400; }
+.umc-correction-pair { margin-bottom: var(--space-16); }
+.umc-correction-pair dt { color: var(--muted); font-size: 13px; margin-bottom: var(--space-6); }
+.umc-correction-pair dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.umc-corrections [hidden] { display: none !important; }
+.umc-corrections [role="alert"]:empty, .umc-corrections [role="status"]:empty { display: none; }
+@media (max-width: 360px) { .umc-correction-card { padding: var(--space-16); } }

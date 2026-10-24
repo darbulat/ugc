@@ -17,6 +17,7 @@ BE: dict[str, str] = {
     "btn_my_orders": "📂 Мае заказы",
     "btn_change_role": "Змена ролі",
     "btn_create_profile": "Стварыць профіль",
+    "btn_partner_program": "Партнёрская праграма",
     "btn_advertiser_start": "Пачаць",
     "btn_create_order": "➕ Стварыць заказ",
     "btn_confirm_instagram": "✅ Пацвердзіць Instagram",
@@ -720,6 +721,20 @@ BE: dict[str, str] = {
         "Мы абавязкова прышлём новыя заказы, як толькі яны з'явяцца.\n\n"
         "Сачыце за апавяшчэннямі ў боце 🙌"
     ),
+    "msg_offer_response_unavailable": (
+        "Пацвярджэнне адгуку зараз недаступнае. Паспрабуйце пазней."
+    ),
+    "msg_offer_response_verification_required": (
+        "Пацвердзіце Instagram у профілі і паўтарыце адгук."
+    ),
+    "msg_offer_response_identity_used": (
+        "Гэты Instagram ужо ёсць у адгуках на заказ."
+    ),
+    "msg_blogger_selection_interest_saved": (
+        "Адгук захаваны. Чакайце паведамлення заказчыка.\n\n"
+        "Умовы працы і ганарар узгадніце наўпрост. Паказвайце прэв'ю "
+        "з вадзяным знакам; фінальны матэрыял дасылайце пасля аплаты."
+    ),
     "msg_blogger_after_response_what_next": (
         "⏳ Што далей\n\n"
         "💬 Чакайце паведамленне ад заказчыка — ён атрымаў спасылку на Instagram "
@@ -774,6 +789,14 @@ BE: dict[str, str] = {
         "Не атрымалася праверыць ваш Instagram-акаўнт. "
         "Паспрабуйце прайсці верыфікацыю пазней або напішыце "
         "ў чат падтрымкі."
+    ),
+    "msg_instagram_link_conflict": (
+        "Instagram пацверджаны. Акаўнты не прывязаны: гэта асобныя "
+        "акаўнты. Каб вырашыць пытанне, звярніцеся ў падтрымку."
+    ),
+    "msg_instagram_link_unavailable": (
+        "Instagram пацверджаны, але прывязаць акаўнт MAX зараз не атрымалася. "
+        "Звярніцеся ў падтрымку."
     ),
     "msg_instagram_mismatch": (
         "Паказаны ў профілі Instagram не супадае з акаўнтам, "

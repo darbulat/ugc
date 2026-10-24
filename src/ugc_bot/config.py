@@ -4,15 +4,25 @@ Config is split into domain sections (bot, db, kafka, etc.) to simplify
 maintenance and testing. AppConfig composes them.
 """
 
+import base64
+import binascii
+import re
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV = SettingsConfigDict(
     env_file=".env",
     env_file_encoding="utf-8",
     extra="ignore",
+    hide_input_in_errors=True,
 )
 
 _FLAT_KEYS = {
@@ -54,6 +64,7 @@ _FLAT_KEYS = {
         "FEEDBACK_DELAY_MINUTES",
         "FEEDBACK_POLL_INTERVAL_SECONDS",
         "FEEDBACK_ENABLED",
+        "CAMPAIGN_DIGEST_ENABLED",
         "FEEDBACK_REMINDER_HOUR",
         "FEEDBACK_REMINDER_MINUTE",
         "FEEDBACK_REMINDER_TIMEZONE",
@@ -122,8 +133,21 @@ _FLAT_KEYS = {
         "FINANCIAL_CORE_ENABLED",
         "FINANCIAL_NEW_ORDERS_ENABLED",
         "FINANCIAL_PAYOUTS_ENABLED",
+        "FINANCIAL_REQUISITES_KEY",
+        "FINANCIAL_REQUISITES_KEY_ID",
+        "FINANCIAL_MANUAL_BANK_ACCOUNT_ID",
+        "FINANCIAL_MANUAL_BANK_SOURCE_ID",
     ],
-    "referral": ["REFERRAL_SUPPORT_CHAT_ID", "REFERRAL_BOT_USERNAME"],
+    "messenger_linking": [
+        "MESSENGER_LINKING_ENABLED",
+        "MESSENGER_LINKING_TOKEN_SECRET",
+        "MESSENGER_LINKING_KEY_ID",
+    ],
+    "referral": [
+        "REFERRAL_SUPPORT_CHAT_ID",
+        "REFERRAL_BOT_USERNAME",
+        "MAX_REFERRAL_BOT_USERNAME",
+    ],
     "max_bot": [
         "MAX_BOT_TOKEN",
         "MAX_BOT_WEBHOOK_URL",
@@ -296,6 +320,9 @@ class FeedbackConfig(BaseSettings):
         default=300, alias="FEEDBACK_POLL_INTERVAL_SECONDS"
     )
     feedback_enabled: bool = Field(default=True, alias="FEEDBACK_ENABLED")
+    campaign_digest_enabled: bool = Field(
+        default=False, alias="CAMPAIGN_DIGEST_ENABLED"
+    )
     feedback_reminder_hour: int = Field(
         default=10, alias="FEEDBACK_REMINDER_HOUR"
     )
@@ -645,12 +672,67 @@ class FinancialConfig(BaseSettings):
     payouts_enabled: bool = Field(
         default=False, alias="FINANCIAL_PAYOUTS_ENABLED"
     )
+    requisites_key: SecretStr = Field(
+        default=SecretStr(""), alias="FINANCIAL_REQUISITES_KEY"
+    )
+    requisites_key_id: str = Field(
+        default="", alias="FINANCIAL_REQUISITES_KEY_ID"
+    )
+    manual_bank_account_id: str = Field(
+        default="", alias="FINANCIAL_MANUAL_BANK_ACCOUNT_ID", max_length=256
+    )
+    manual_bank_source_id: str = Field(
+        default="", alias="FINANCIAL_MANUAL_BANK_SOURCE_ID", max_length=256
+    )
+
+
+class MessengerLinkingConfig(BaseSettings):
+    """Dedicated identity-linking key; missing configuration grants no proof."""
+
+    model_config = SettingsConfigDict(**_ENV, populate_by_name=True)
+
+    enabled: bool = Field(default=False, alias="MESSENGER_LINKING_ENABLED")
+    token_secret: SecretStr | None = Field(
+        default=None, alias="MESSENGER_LINKING_TOKEN_SECRET"
+    )
+    key_id: str | None = Field(
+        default=None,
+        alias="MESSENGER_LINKING_KEY_ID",
+        pattern=r"^[A-Za-z0-9_-]{1,64}$",
+    )
+
+    @field_validator("token_secret")
+    @classmethod
+    def _validate_token_secret(
+        cls, value: SecretStr | None
+    ) -> SecretStr | None:
+        if value is None:
+            return None
+        encoded = value.get_secret_value()
+        message = "Linking key must be canonical base64url for at least32 bytes"
+        if not re.fullmatch(r"[A-Za-z0-9_-]{43,4096}", encoded):
+            raise ValueError(message)
+        try:
+            decoded = base64.b64decode(
+                encoded + "=" * (-len(encoded) % 4),
+                altchars=b"-_",
+                validate=True,
+            )
+        except (binascii.Error, ValueError):
+            raise ValueError(message) from None
+        if (
+            len(decoded) < 32
+            or base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+            != encoded
+        ):
+            raise ValueError(message)
+        return value
 
 
 class AppConfig(BaseModel):
     """Application configuration."""
 
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "hide_input_in_errors": True}
 
     bot: BotConfig
     log: LogConfig
@@ -669,6 +751,9 @@ class AppConfig(BaseModel):
     market: MarketConfig
     referral: ReferralConfig
     financial: FinancialConfig = Field(default_factory=FinancialConfig)
+    messenger_linking: MessengerLinkingConfig = Field(
+        default_factory=MessengerLinkingConfig
+    )
     max_bot: MaxBotConfig | None = None
 
     @model_validator(mode="before")
@@ -697,6 +782,9 @@ class AppConfig(BaseModel):
             "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
             "financial": FinancialConfig.model_validate(nested["financial"]),
+            "messenger_linking": MessengerLinkingConfig.model_validate(
+                nested["messenger_linking"]
+            ),
             "max_bot": (
                 max_cfg
                 if (

@@ -2,8 +2,8 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>UGC — Регистрация и заказы</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>UMC — Регистрация и заказы</title>
   <script>
   (function() {
     window.__miniapp_platform = 'telegram';
@@ -12,136 +12,46 @@
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      margin: 0;
-      padding: 0;
-      background: var(--tg-theme-bg-color, #fff);
-      color: var(--tg-theme-text-color, #000);
-      min-height: 100vh;
-      padding: 12px;
-    }
-    .screen { display: none; }
-    .screen.active { display: block; }
-    h1 { font-size: 1.2rem; margin: 0 0 12px 0; font-weight: 600; }
-    .hint { font-size: 0.9rem; color: var(--tg-theme-hint-color, #999); margin-bottom: 12px; }
-    label { display: block; font-size: 0.9rem; margin-top: 10px; margin-bottom: 4px; }
-    input, textarea, select {
-      width: 100%;
-      padding: 10px 12px;
-      font-size: 16px;
-      border-radius: 8px;
-      border: 1px solid var(--tg-theme-hint-color, #ccc);
-      background: var(--tg-theme-bg-color, #fff);
-      color: var(--tg-theme-text-color, #000);
-    }
-    textarea { min-height: 80px; resize: vertical; }
-    .btn {
-      display: block;
-      width: 100%;
-      margin-top: 16px;
-      padding: 14px 20px;
-      font-size: 16px;
-      font-weight: 600;
-      border: none;
-      border-radius: 12px;
-      background: var(--tg-theme-button-color, #2481cc);
-      color: var(--tg-theme-button-text-color, #fff);
-      cursor: pointer;
-      text-align: center;
-    }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-secondary {
-      background: var(--tg-theme-secondary-bg-color, #e0e0e0);
-      color: var(--tg-theme-text-color, #000);
-      margin-top: 8px;
-    }
-    .role-btns .btn { margin-bottom: 8px; }
-    .error { color: #c00; font-size: 0.9rem; margin-top: 8px; }
-    .success { color: #0a0; font-size: 0.9rem; margin-top: 8px; }
-    #orders-list, #blogger-orders-list, #manager-orders-list, #manager-creators-list { list-style: none; padding: 0; margin: 0; }
-    #orders-list li, #blogger-orders-list li, #manager-orders-list li, #manager-creators-list li {
-      padding: 12px;
-      margin-bottom: 8px;
-      border-radius: 8px;
-      background: var(--tg-theme-secondary-bg-color, #f5f5f5);
-    }
-    #orders-list li strong, #blogger-orders-list li strong, #manager-orders-list li strong { display: block; margin-bottom: 4px; }
-    #orders-list .btn-pay, #blogger-orders-list .btn-pay { display: block; width: 100%; margin-top: 10px; text-align: center; box-sizing: border-box; }
-    .themed-link { color: var(--tg-theme-link-color, #2481cc); }
-    .pagination-btns { display: flex; gap: 8px; margin-top: 12px; }
-    .pagination-btns .btn { flex: 1; margin-top: 0; }
-    .instagram-input-group {
-      display: flex;
-      align-items: stretch;
-      border-radius: 8px;
-      border: 1px solid var(--tg-theme-hint-color, #ccc);
-      overflow: hidden;
-      margin-top: 4px;
-    }
-    .instagram-input-group .instagram-prefix {
-      padding: 10px 0 10px 12px;
-      font-size: 16px;
-      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-      color: var(--tg-theme-hint-color, #999);
-      white-space: nowrap;
-      user-select: none;
-      display: flex;
-      align-items: center;
-      border: none;
-    }
-    .instagram-input-group input {
-      flex: 1;
-      min-width: 0;
-      border: none;
-      border-radius: 0;
-      padding: 10px 12px 10px 0;
-      background: var(--tg-theme-secondary-bg-color, #f0f0f0);
-    }
-    .instagram-input-group input:focus { outline: none; }
-    .date-row { display: flex; gap: 8px; margin-top: 4px; }
-    .date-row select { flex: 1; min-width: 0; }
-    .payment-link { display: block; margin-top: 8px; word-break: break-all; font-size: 0.9rem; }
-    .payment-link a { color: var(--tg-theme-link-color, #2481cc); }
-    #block-blogger-city-map { margin-top: 8px; }
-    #blogger-city-map { width: 100%; height: 240px; border-radius: 8px; border: 1px solid var(--tg-theme-hint-color, #ccc); }
-    #blg-city-map-hint { font-size: 0.85rem; color: var(--tg-theme-hint-color, #999); margin-top: 4px; }
-    .agreements-links { margin: 12px 0; }
-    .agreements-links a { display: block; margin-bottom: 8px; color: var(--tg-theme-link-color, #2481cc); }
-    .agreement-checkbox { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0; cursor: pointer; }
-    .agreement-checkbox input { width: auto; margin-top: 4px; }
-    .instagram-instruction { margin: 12px 0; white-space: pre-wrap; }
-    .instagram-instruction a { color: var(--tg-theme-link-color, #2481cc); }
-    .instagram-unconfirmed-warning {
-      margin: 12px 0; padding: 14px; border-radius: 10px;
-      background: var(--tg-theme-secondary-bg-color, #fef3cd);
-      border: 1px solid var(--tg-theme-hint-color, #d4a017);
-      color: var(--tg-theme-text-color, #1a1a1a);
-      font-weight: 600; font-size: 0.95rem; line-height: 1.4;
-    }
-    .country-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-      margin-top: 12px;
-    }
-    .country-grid .btn { margin-top: 0; }
-  </style>
+  <link rel="stylesheet" href="/miniapp/design-system/fonts/fonts.css">
+  <link rel="stylesheet" href="/miniapp/design-system/tokens.css">
+  <link rel="stylesheet" href="/miniapp/design-system/umc-ui.css">
+  <link rel="stylesheet" href="/miniapp/umc-app.css">
+  <link rel="stylesheet" href="/miniapp/umc-payouts.css">
+  <link rel="stylesheet" href="/miniapp/umc-payout-admin.css">
+  <link rel="stylesheet" href="/miniapp/umc-campaign-workbench.css">
+  <link rel="stylesheet" href="/miniapp/umc-corrections.css">
+  <script src="/miniapp/umc-payout-money.js" defer></script>
+  <script src="/miniapp/umc-payout-state.js" defer></script>
+  <script src="/miniapp/umc-shell.js" defer></script>
+  <script src="/miniapp/umc-payout-admin.js" defer></script>
+  <script src="/miniapp/umc-payouts.js" defer></script>
+  <script src="/miniapp/umc-collaborations.js" defer></script>
+  <script src="/miniapp/umc-partner.js" defer></script>
+  <script src="/miniapp/umc-selection.js" defer></script>
+  <script src="/miniapp/umc-checkout.js" defer></script>
+  <script src="/miniapp/umc-messenger-linking.js" defer></script>
+  <script src="/miniapp/umc-summary.js" defer></script>
+  <script src="/miniapp/umc-campaigns.js" defer></script>
+  <script src="/miniapp/umc-campaign-workbench.js" defer></script>
+  <script src="/miniapp/umc-corrections.js" defer></script>
 </head>
-<body>
-  <div id="screen-loading" class="screen active">
+<body class="umc">
+  <main class="umc-app" id="umc-app">
+    <div class="umc-brand" aria-label="UMC — use my content">
+      <img src="/miniapp/design-system/assets/umc-logo.png" alt="" width="40" height="40">
+      <span>use my content</span>
+    </div>
+  <div id="screen-loading" class="screen active" data-umc-section="lavender" role="status" aria-live="polite" aria-busy="true">
     <p class="hint">Загрузка…</p>
   </div>
 
-  <div id="screen-country-select" class="screen">
+  <div id="screen-country-select" class="screen" data-umc-section="lavender">
     <h1>Выберите вашу страну</h1>
     <div id="country-grid" class="country-grid"></div>
-    <div id="country-error" class="error"></div>
+    <div id="country-error" class="error" role="alert" aria-live="assertive"></div>
   </div>
 
-  <div id="screen-role-choice" class="screen">
+  <div id="screen-role-choice" class="screen" data-umc-section="lavender">
     <h1>Выберите роль</h1>
     <p class="hint" id="role-choice-hint">Зарегистрируйтесь как рекламодатель или креатор.</p>
     <div class="role-btns">
@@ -151,7 +61,7 @@
     </div>
   </div>
 
-  <div id="screen-register-advertiser" class="screen">
+  <div id="screen-register-advertiser" class="screen" data-umc-section="lavender">
     <h1>Регистрация рекламодателя</h1>
     <form id="form-advertiser">
       <label id="lbl-adv-name" for="adv-name">Имя / как к вам обращаться</label>
@@ -166,13 +76,13 @@
       <input type="text" id="adv-city" name="city">
       <label id="lbl-adv-activity" for="adv-activity">Чем занимается компания</label>
       <input type="text" id="adv-activity" name="company_activity">
-      <div id="adv-error" class="error"></div>
-      <button type="submit" class="btn" id="btn-submit-advertiser">Зарегистрироваться</button>
+      <div id="adv-error" class="error" role="alert" aria-live="assertive"></div>
+      <button type="submit" class="btn" id="btn-submit-advertiser" data-umc-primary="20">Зарегистрироваться</button>
     </form>
-    <button type="button" class="btn btn-secondary" id="back-from-advertiser">Назад</button>
+    <button type="button" class="btn btn-secondary" id="back-from-advertiser" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-register-blogger" class="screen">
+  <div id="screen-register-blogger" class="screen" data-umc-section="peach">
     <h1>Регистрация креатора</h1>
     <form id="form-blogger">
       <label id="lbl-blg-name" for="blg-name">Имя / ник (как к вам обращаться) *</label>
@@ -234,13 +144,14 @@
         <option value="m">Мужской</option>
         <option value="f">Женский</option>
       </select>
-      <div id="blg-error" class="error"></div>
-      <button type="submit" class="btn" id="btn-submit-blogger">Зарегистрироваться</button>
+      <div id="blg-error" class="error" role="alert" aria-live="assertive"></div>
+      <button type="submit" class="btn" id="btn-submit-blogger" data-umc-primary="20">Зарегистрироваться</button>
     </form>
-    <button type="button" class="btn btn-secondary" id="back-from-blogger">Назад</button>
+    <button type="button" class="btn btn-secondary" id="btn-edit-profile-socials" style="display:none;">Соцсети</button>
+    <button type="button" class="btn btn-secondary" id="back-from-blogger" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-agreements-advertiser" class="screen">
+  <div id="screen-agreements-advertiser" class="screen" data-umc-section="lavender">
     <h1>Подтверждение согласия</h1>
     <p class="hint" id="agreements-adv-intro">Ознакомьтесь с документами платформы и подтвердите согласие.</p>
     <div id="agreements-adv-links" class="agreements-links"></div>
@@ -249,12 +160,12 @@
       <input type="checkbox" id="adv-agree-checkbox">
       <span>Я подтверждаю согласие с документами платформы</span>
     </label>
-    <div id="adv-agreement-error" class="error"></div>
-    <button type="button" class="btn" id="btn-confirm-adv-agreement">✅ Подтвердить согласие</button>
-    <button type="button" class="btn btn-secondary" id="back-from-adv-agreements">Назад</button>
+    <div id="adv-agreement-error" class="error" role="alert" aria-live="assertive"></div>
+    <button type="button" class="btn" id="btn-confirm-adv-agreement" data-umc-primary="20">Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="back-from-adv-agreements" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-agreements-blogger" class="screen">
+  <div id="screen-agreements-blogger" class="screen" data-umc-section="peach">
     <h1>Подтверждение согласия</h1>
     <p class="hint" id="agreements-blg-intro">Ознакомьтесь с документами платформы и подтвердите согласие.</p>
     <div id="agreements-blg-links" class="agreements-links"></div>
@@ -263,15 +174,15 @@
       <input type="checkbox" id="blg-agree-checkbox">
       <span>Я подтверждаю согласие с документами платформы</span>
     </label>
-    <div id="blg-agreement-error" class="error"></div>
-    <button type="button" class="btn" id="btn-confirm-blg-agreement">✅ Подтвердить согласие</button>
-    <button type="button" class="btn btn-secondary" id="back-from-blg-agreements">Назад</button>
+    <div id="blg-agreement-error" class="error" role="alert" aria-live="assertive"></div>
+    <button type="button" class="btn" id="btn-confirm-blg-agreement" data-umc-primary="20">Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="back-from-blg-agreements" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-advertiser-dashboard" class="screen">
+  <div id="screen-advertiser-dashboard" class="screen" data-umc-section="lavender">
     <h1>Личный кабинет рекламодателя</h1>
     <p class="hint">Создайте заказ или посмотрите список заказов.</p>
-    <button type="button" class="btn" id="btn-show-create-order">Создать заказ</button>
+    <button type="button" class="btn" id="btn-show-create-order" data-umc-primary="10">Создать заказ</button>
     <button type="button" class="btn btn-secondary" id="btn-show-orders-list">Мои заказы</button>
     <button type="button" class="btn btn-secondary" id="btn-adv-update-profile">Обновить профиль</button>
     <button type="button" class="btn btn-secondary" id="btn-change-role-from-adv">Сменить роль</button>
@@ -302,9 +213,9 @@
         <select id="ord-content-usage" name="content_usage">
           <option value="">— не выбрано —</option>
         </select>
-        <div id="ord-error" class="error"></div>
-        <div id="ord-success" class="success"></div>
-        <button type="submit" class="btn" id="btn-submit-order">Создать заказ</button>
+        <div id="ord-error" class="error" role="alert" aria-live="assertive"></div>
+        <div id="ord-success" class="success" role="status" aria-live="polite"></div>
+        <button type="submit" class="btn" id="btn-submit-order" data-umc-primary="30">Создать заказ</button>
       </form>
       <button type="button" class="btn btn-secondary" id="hide-create-order">Скрыть форму</button>
     </div>
@@ -316,7 +227,7 @@
     </div>
   </div>
 
-  <div id="screen-order-detail" class="screen">
+  <div id="screen-order-detail" class="screen" data-umc-section="lavender">
     <h1 id="order-detail-title">Заказ</h1>
     <p class="hint" id="order-detail-status"></p>
     <form id="form-order-detail">
@@ -343,66 +254,67 @@
       <select id="ord-detail-content-usage" name="content_usage">
         <option value="">— не выбрано —</option>
       </select>
-      <div id="ord-detail-error" class="error"></div>
-      <div id="ord-detail-success" class="success"></div>
-      <button type="submit" class="btn" id="btn-order-detail-save">Сохранить</button>
+      <div id="ord-detail-error" class="error" role="alert" aria-live="assertive"></div>
+      <div id="ord-detail-success" class="success" role="status" aria-live="polite"></div>
+      <button type="submit" class="btn" id="btn-order-detail-save" data-umc-primary="20">Сохранить</button>
     </form>
-    <a id="btn-order-detail-pay" href="#" target="_blank" rel="noopener" class="btn btn-pay" style="display: none;">Оплатить</a>
-    <button type="button" class="btn btn-secondary" id="btn-order-detail-back">Назад к списку</button>
+    <a id="btn-order-detail-pay" data-umc-primary="30" href="#" target="_blank" rel="noopener" class="btn btn-pay" style="display: none;">Оплатить</a>
+    <button type="button" class="btn btn-secondary" id="btn-order-detail-back" data-umc-back>Назад к списку</button>
   </div>
 
-  <div id="screen-blogger-done" class="screen">
+  <div id="screen-blogger-done" class="screen" data-umc-section="peach">
     <h1>Вы зарегистрированы как креатор</h1>
     <p class="hint">Возвращайтесь в бота, чтобы получать офферы и управлять профилем.</p>
     <button type="button" class="btn" id="btn-close-blogger">Закрыть</button>
     <button type="button" class="btn btn-secondary" id="btn-change-role-from-blogger">Сменить роль</button>
   </div>
 
-  <div id="screen-blogger-dashboard" class="screen">
+  <div id="screen-blogger-dashboard" class="screen" data-umc-section="peach">
     <h1>Личный кабинет креатора</h1>
     <p class="hint">Управление профилем и заказами.</p>
     <div id="blogger-instagram-warning" class="instagram-unconfirmed-warning" style="display: none;">
-      ⚠️ Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.
+      Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.
     </div>
-    <button type="button" class="btn" id="btn-blogger-confirm-instagram" style="display: none;">✅ Подтвердить Instagram</button>
-    <button type="button" class="btn" id="btn-blogger-orders">Мои заказы</button>
+    <button type="button" class="btn" id="btn-blogger-confirm-instagram" data-umc-primary="20" style="display: none;">Подтвердить Instagram</button>
+    <button type="button" class="btn" id="btn-blogger-orders" data-umc-primary="10">Мои заказы</button>
     <div id="block-blogger-orders-list" style="display: none; margin-top: 16px;">
       <h2 style="font-size: 1.1rem;">Мои заказы</h2>
       <ul id="blogger-orders-list"></ul>
       <button type="button" class="btn btn-secondary" id="hide-blogger-orders-list">Закрыть</button>
     </div>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-social-accounts">Соцсети</button>
     <button type="button" class="btn btn-secondary" id="btn-blogger-update-profile">Обновить профиль</button>
     <button type="button" class="btn btn-secondary" id="btn-blogger-change-role">Сменить роль</button>
   </div>
 
-  <div id="screen-instagram-verification" class="screen">
+  <div id="screen-instagram-verification" class="screen" data-umc-section="peach">
     <h1>Подтверждение Instagram</h1>
     <div id="instagram-verification-instruction" class="instagram-instruction"></div>
     <p class="hint">Ваш код (действует 15 минут):</p>
     <div id="instagram-verification-code" class="instagram-code" style="font-family: monospace; padding: 12px; background: var(--tg-theme-secondary-bg-color, #eee); border-radius: 8px; margin: 8px 0; word-break: break-all;"></div>
     <button type="button" class="btn" id="btn-instagram-open">Открыть Instagram</button>
-    <button type="button" class="btn btn-secondary" id="btn-instagram-verification-back">В личный кабинет</button>
+    <button type="button" class="btn btn-secondary" id="btn-instagram-verification-back" data-umc-back>В личный кабинет</button>
   </div>
 
-  <div id="screen-manager-orders" class="screen">
+  <div id="screen-manager-orders" class="screen" data-umc-section="lilac">
     <h1>Мои заказы</h1>
     <ul id="manager-orders-list"></ul>
     <div class="pagination-btns">
       <button type="button" class="btn btn-secondary" id="mgr-orders-prev" style="display:none;">← Назад</button>
       <button type="button" class="btn btn-secondary" id="mgr-orders-next" style="display:none;">Далее →</button>
     </div>
-    <button type="button" class="btn btn-secondary" id="mgr-orders-back">Назад</button>
+    <button type="button" class="btn btn-secondary" id="mgr-orders-back" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-manager-order-detail" class="screen">
+  <div id="screen-manager-order-detail" class="screen" data-umc-section="lilac">
     <h1 id="mgr-order-detail-title">Заказ</h1>
-    <button type="button" class="btn" id="btn-mgr-creators-in-offer">В заказе</button>
+    <button type="button" class="btn" id="btn-mgr-creators-in-offer" data-umc-primary="10">В заказе</button>
     <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">В резерве</button>
     <button type="button" class="btn btn-secondary" id="btn-mgr-creators-expensive">Дороже</button>
-    <button type="button" class="btn btn-secondary" id="mgr-order-detail-back">Назад</button>
+    <button type="button" class="btn btn-secondary" id="mgr-order-detail-back" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-manager-creators" class="screen">
+  <div id="screen-manager-creators" class="screen" data-umc-section="lilac">
     <h1>Креаторы</h1>
     <input type="text" id="mgr-creators-search" placeholder="Поиск по имени или telegram" style="margin-bottom:10px;">
     <ul id="manager-creators-list"></ul>
@@ -410,15 +322,206 @@
       <button type="button" class="btn btn-secondary" id="mgr-creators-prev" style="display:none;">← Назад</button>
       <button type="button" class="btn btn-secondary" id="mgr-creators-next" style="display:none;">Далее →</button>
     </div>
-    <button type="button" class="btn btn-secondary" id="mgr-creators-back">Назад</button>
+    <button type="button" class="btn btn-secondary" id="mgr-creators-back" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-creator-detail" class="screen">
+  <div id="screen-creator-detail" class="screen" data-umc-section="lilac">
     <h1>Детали креатора</h1>
     <div id="creator-detail-body"></div>
-    <button type="button" class="btn btn-secondary" id="creator-detail-back">Назад</button>
+    <button type="button" class="btn btn-secondary" id="creator-detail-back" data-umc-back>Назад</button>
   </div>
 
+
+  <div id="screen-social-accounts" class="screen" data-umc-section="peach">
+    <h1 id="social-accounts-title">Соцсети</h1>
+    <p class="hint" id="social-accounts-intro"></p>
+    <p id="social-accounts-state" class="hint" role="status" aria-live="polite"></p>
+    <div id="social-accounts-error" class="error" role="alert" aria-live="assertive"></div>
+    <div id="social-accounts-success" class="success" role="status" aria-live="polite"></div>
+    <div id="social-accounts-gate" class="umc-social-gate" hidden>
+      <p id="social-accounts-gate-text"></p>
+      <button type="button" class="btn" id="btn-social-verify-instagram"></button>
+    </div>
+    <form id="form-social-account" hidden>
+      <h2 id="social-account-editor-title"></h2>
+      <p class="hint" id="social-account-editor-hint"></p>
+      <label for="social-account-url" id="lbl-social-account-url"></label>
+      <input type="url" id="social-account-url" required maxlength="2048" inputmode="url" autocomplete="url">
+      <label for="social-account-work-format" id="lbl-social-account-work-format"></label>
+      <select id="social-account-work-format">
+        <option value="ugc_only"></option>
+        <option value="ads_in_account"></option>
+      </select>
+      <button type="submit" class="btn" id="btn-social-save" data-umc-primary="20"></button>
+      <button type="button" class="btn btn-secondary" id="btn-social-skip"></button>
+    </form>
+    <ul id="social-accounts-list" class="umc-social-list"></ul>
+    <p class="hint" id="social-accounts-empty" hidden></p>
+    <p class="hint" id="social-accounts-done" hidden></p>
+    <div id="social-accounts-add-options" class="umc-social-options"></div>
+    <button type="button" class="btn btn-secondary" id="btn-social-reload"></button>
+    <button type="button" class="btn btn-secondary" id="btn-social-back" data-umc-back></button>
+  </div>
+
+  <section id="screen-campaign-settings" class="screen umc-campaigns" data-umc-section="mint" aria-busy="false"></section>
+  <section id="screen-campaign-workbench" class="screen umc-campaign-workbench" data-umc-section="mint" aria-busy="false"></section>
+  <section id="screen-corrections" class="screen umc-corrections" data-umc-section="mint" aria-busy="false"></section>
+
+  <section id="screen-payouts" class="screen umc-payouts" data-umc-section="mint" aria-busy="false"></section>
+  <section id="screen-payout-admin" class="screen umc-payout-admin" data-umc-section="mint" aria-busy="false"></section>
+
+  <section id="screen-partner" class="screen" data-umc-section="mint" aria-busy="false">
+    <h1 id="partner-title"></h1>
+    <p id="partner-loading" class="hint" role="status" aria-live="polite"></p>
+    <p id="partner-error" class="error" role="alert" aria-live="assertive"></p>
+    <div id="partner-content" hidden>
+      <p id="partner-paused" class="umc-partner-notice"></p>
+      <p id="partner-status" class="hint"></p>
+      <section class="umc-partner-intro">
+        <h2 id="partner-link-title"></h2>
+        <a id="partner-link" target="_blank" rel="noopener noreferrer" hidden></a>
+        <input id="partner-link-value" type="text" readonly aria-label="Referral link" hidden>
+        <p id="partner-link-unavailable" class="hint"></p>
+        <button id="btn-partner-copy" type="button" class="btn" data-umc-primary="10" hidden></button>
+        <p id="partner-copy-status" class="hint" role="status" aria-live="polite"></p>
+      </section>
+      <section class="umc-partner-grade">
+        <h2 id="partner-grade-title"></h2>
+        <p id="partner-grade-value" class="umc-partner-rate"></p>
+        <p id="partner-grade-count"></p><p id="partner-grade-next" class="hint"></p>
+        <p id="partner-rules" class="hint"></p>
+      </section>
+      <section><h2 id="partner-overrides-title"></h2><div id="partner-overrides"></div></section>
+      <section><h2 id="partner-network-title"></h2><div id="partner-network"></div></section>
+      <section><h2 id="partner-finance-title"></h2><p id="partner-financial-status" class="umc-partner-notice"></p><div id="partner-balances"></div></section>
+      <section><h2 id="partner-history-title"></h2><div id="partner-history"></div></section>
+      <section><h2 id="partner-assignments-title"></h2><div id="partner-assignments"></div></section>
+    </div>
+    <button id="btn-partner-reload" type="button" class="btn btn-secondary"></button>
+    <button id="btn-partner-back" type="button" class="btn btn-secondary" data-umc-back></button>
+  </section>
+
+  <section id="screen-collaboration" class="screen" data-umc-section="mint" aria-busy="false">
+    <h1 id="collaboration-title"></h1>
+    <p id="collaboration-loading" class="hint" role="status" aria-live="polite"></p>
+    <p id="collaboration-error" class="error" role="alert" aria-live="assertive"></p>
+    <p id="collaboration-feedback" class="success" role="status" aria-live="polite"></p>
+    <div id="collaboration-details" hidden>
+      <p id="collaboration-status" class="umc-collaboration-status"></p>
+      <p id="collaboration-id" class="hint umc-collaboration-id"></p>
+      <section id="collaboration-proof" class="umc-collaboration-proof" hidden>
+        <h2 id="collaboration-proof-title"></h2>
+        <div id="collaboration-evidence-view"></div>
+      </section>
+      <div class="umc-collaboration-terms">
+        <h2 id="collaboration-terms-title"></h2>
+        <p id="collaboration-terms-view"></p>
+      </div>
+      <dl id="collaboration-dates" class="umc-collaboration-dates"></dl>
+      <p id="collaboration-dispute-reason" class="umc-collaboration-reason"></p>
+      <p id="collaboration-notice-state" class="hint"></p>
+      <p id="collaboration-readonly" class="hint" hidden></p>
+    </div>
+    <div id="collaboration-actions" class="umc-collaboration-actions"></div>
+    <form id="form-collaboration-command" hidden novalidate aria-busy="false">
+      <h2 id="collaboration-action-title"></h2>
+      <p id="collaboration-confirm" class="hint"></p>
+      <div id="collaboration-field-evidence" hidden>
+        <label id="lbl-collaboration-evidence" for="collaboration-evidence"></label>
+        <textarea id="collaboration-evidence" maxlength="4000"></textarea>
+      </div>
+      <div id="collaboration-field-due-at" hidden>
+        <label id="lbl-collaboration-due-at" for="collaboration-due-at"></label>
+        <input id="collaboration-due-at" type="datetime-local">
+      </div>
+      <div id="collaboration-field-terms" hidden>
+        <label id="lbl-collaboration-terms" for="collaboration-terms"></label>
+        <textarea id="collaboration-terms" maxlength="500"></textarea>
+      </div>
+      <div id="collaboration-field-reason" hidden>
+        <label id="lbl-collaboration-reason" for="collaboration-reason"></label>
+        <textarea id="collaboration-reason" maxlength="4000"></textarea>
+      </div>
+      <button id="btn-collaboration-submit" type="submit" class="btn" data-umc-primary="40"></button>
+      <button id="btn-collaboration-cancel" type="button" class="btn btn-secondary"></button>
+    </form>
+    <button id="btn-collaboration-reload" type="button" class="btn btn-secondary"></button>
+    <button id="btn-collaboration-back" type="button" class="btn btn-secondary" data-umc-back></button>
+  </section>
+  <section id="screen-intake" class="screen umc-selection" data-umc-section="lavender" aria-busy="false">
+    <h1 data-intake-copy="title"></h1>
+    <p id="intake-loading" class="hint" role="status" aria-live="polite"></p>
+    <p id="intake-error" class="error" role="alert" aria-live="assertive"></p>
+    <p id="intake-paused" class="umc-selection-notice" hidden></p>
+    <p id="intake-empty" class="hint" hidden></p>
+    <form id="form-umc-intake" hidden>
+      <label for="intake-policy" data-intake-copy="policy"></label>
+      <select id="intake-policy" required></select>
+      <div id="intake-terms" class="umc-selection-terms" hidden></div>
+      <label for="intake-product" data-intake-copy="product"></label>
+      <input id="intake-product" type="url" required maxlength="2048">
+      <label for="intake-brief" data-intake-copy="brief"></label>
+      <textarea id="intake-brief" required maxlength="4000"></textarea>
+      <label for="intake-honorarium" data-intake-copy="honorarium"></label>
+      <input id="intake-honorarium" type="number" required min="0.01" step="0.01" max="9999999999.99" inputmode="decimal">
+      <p class="hint" data-intake-copy="direct"></p>
+      <label for="intake-due" id="intake-due-label"></label>
+      <input id="intake-due" type="datetime-local" required>
+      <label for="intake-contact" data-intake-copy="contact"></label>
+      <input id="intake-contact" required maxlength="500" autocomplete="off">
+      <fieldset class="umc-selection-modes">
+        <legend data-intake-copy="mode"></legend>
+        <label><input type="radio" name="intake-mode" value="self_service" checked><span data-intake-copy="self"></span></label>
+        <label><input type="radio" name="intake-mode" value="with_manager"><span data-intake-copy="manager"></span></label>
+      </fieldset>
+      <div id="intake-manager-options" hidden>
+        <label class="umc-selection-choice"><input id="intake-all-manager" type="checkbox" checked><span data-intake-copy="all"></span></label>
+        <fieldset id="intake-positions" hidden><legend data-intake-copy="positions"></legend><div class="umc-selection-position-grid" id="intake-position-options"></div></fieldset>
+        <p class="hint" data-intake-copy="leadHint"></p>
+      </div>
+      <div id="intake-preview" class="umc-selection-summary" hidden></div>
+      <button id="btn-intake-create" type="submit" class="btn" data-umc-primary="40" data-intake-copy="create"></button>
+    </form>
+    <div id="intake-uncertain" class="umc-selection-notice" hidden><p data-intake-copy="uncertain"></p><button id="btn-intake-retry" type="button" class="btn" data-umc-primary="40" data-intake-copy="retry"></button></div>
+    <div id="intake-result" hidden>
+      <h2 data-intake-copy="saved"></h2>
+      <p id="intake-order-id" class="umc-selection-reference"></p>
+      <dl id="intake-quote" class="umc-selection-summary"></dl>
+      <p id="intake-lead-state" class="umc-selection-notice"></p>
+      <p class="hint" data-intake-copy="direct"></p>
+      <button id="btn-intake-selection" type="button" class="btn" data-intake-copy="viewSelection"></button>
+      <button id="btn-intake-new" type="button" class="btn btn-secondary" data-intake-copy="newOrder"></button>
+    </div>
+    <button id="btn-intake-refresh" type="button" class="btn btn-secondary" data-intake-copy="reload"></button>
+    <button id="btn-intake-back" type="button" class="btn btn-secondary" data-umc-back data-intake-copy="back"></button>
+  </section>
+  <section id="screen-summary" class="screen umc-summary" data-umc-section="mint" aria-busy="false">
+    <h1 id="summary-title"></h1>
+    <p id="summary-order" class="umc-summary-reference"></p>
+    <p id="summary-loading" class="hint" role="status" aria-live="polite"></p>
+    <p id="summary-error" class="error" role="alert" aria-live="assertive"></p>
+    <div id="summary-content" hidden>
+      <p id="summary-role" class="hint"></p><h2 id="summary-source"></h2>
+      <div class="umc-summary-total"><span id="summary-total-label"></span><strong id="summary-total"></strong></div>
+      <p id="summary-contacts"></p><dl id="summary-states"></dl>
+      <p id="summary-empty" class="hint"></p><p id="summary-asof" class="hint"></p>
+    </div>
+    <button id="btn-summary-refresh" type="button" class="btn btn-secondary" data-umc-primary="1"></button>
+    <button id="btn-summary-back" type="button" class="btn btn-secondary" data-umc-back></button>
+  </section>
+  <section id="screen-messenger-linking" class="screen umc-messenger-linking" data-umc-section="lavender" aria-busy="false"></section>
+  <section id="screen-selection" class="screen umc-selection" data-umc-section="lavender" aria-busy="false">
+    <h1 data-intake-copy="selectionTitle"></h1>
+    <p id="selection-order-id" class="umc-selection-reference"></p>
+    <p id="selection-loading" class="hint" role="status" aria-live="polite"></p>
+    <p id="selection-error" class="error" role="alert" aria-live="assertive"></p>
+    <p id="selection-paused" class="umc-selection-notice" hidden></p>
+    <p id="selection-waitlist" class="hint"></p>
+    <div id="selection-positions"></div>
+    <button id="btn-selection-refresh" type="button" class="btn btn-secondary" data-intake-copy="reload"></button>
+    <button id="btn-selection-back" type="button" class="btn btn-secondary" data-umc-back data-intake-copy="back"></button>
+  </section>
+  </main>
   <script>
     (function() {
       function _getWebApp() {
@@ -440,7 +543,10 @@
       function showScreen(id) {
         document.querySelectorAll('.screen').forEach(function(el) { el.classList.remove('active'); });
         var el = document.getElementById(id);
-        if (el) el.classList.add('active');
+        if (el) {
+          el.classList.add('active');
+          document.dispatchEvent(new CustomEvent('umc:screen-change', { detail: { screen: id } }));
+        }
       }
 
       function openPaymentAndClose(url) {
@@ -460,11 +566,11 @@
         return fallback || 'Ошибка запроса';
       }
 
-      function api(path, body) {
-        var initData = getInitData();
+      function api(path, body, checkedAuth) {
+        var initData = checkedAuth ? checkedAuth.initData : getInitData();
         if (!initData) return Promise.reject(new Error('No initData'));
-        var basePayload = { init_data: initData, platform: window.__miniapp_platform || 'telegram' };
-        var payload = typeof body === 'object' ? Object.assign(basePayload, body) : basePayload;
+        var basePayload = { init_data: initData, platform: checkedAuth ? checkedAuth.platform : window.__miniapp_platform || 'telegram' };
+        var payload = typeof body === 'object' ? (checkedAuth ? Object.assign({}, body, basePayload) : Object.assign(basePayload, body)) : basePayload;
         return fetch(base + '/miniapp/api' + path, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -472,9 +578,15 @@
         }).then(function(r) {
           if (!r.ok) {
             return r.json().then(function(j) {
-              throw new Error(parseApiError(j.detail, r.statusText));
+              var error = new Error(parseApiError(j.detail, r.statusText));
+              error.status = r.status;
+              throw error;
             }).catch(function(e) {
-              if (e instanceof SyntaxError) throw new Error(r.statusText || 'Ошибка запроса');
+              if (e instanceof SyntaxError) {
+                var invalidResponse = new Error(r.statusText || 'Ошибка запроса');
+                invalidResponse.status = r.status;
+                throw invalidResponse;
+              }
               throw e;
             });
           }
@@ -591,7 +703,7 @@
           a.href = offer;
           a.target = '_blank';
           a.rel = 'noopener';
-          a.textContent = '\uD83D\uDCC4 Оферта';
+          a.textContent = 'Оферта';
           container.appendChild(a);
         }
         if (privacy) {
@@ -599,7 +711,7 @@
           b.href = privacy;
           b.target = '_blank';
           b.rel = 'noopener';
-          b.textContent = '\uD83D\uDD12 Политика конфиденциальности';
+          b.textContent = 'Политика конфиденциальности';
           container.appendChild(b);
         }
         if (consent) {
@@ -607,7 +719,7 @@
           c.href = consent;
           c.target = '_blank';
           c.rel = 'noopener';
-          c.textContent = '\uD83D\uDCDE Согласие на обработку персональных данных';
+          c.textContent = 'Согласие на обработку персональных данных';
           container.appendChild(c);
         }
         if (fallbackEl) {
@@ -691,7 +803,7 @@
           btn_close: 'Закрыть',
           agreements_intro: 'Ознакомьтесь с документами платформы и подтвердите согласие.',
           agreements_fallback: 'Подтвердите согласие с документами платформы.',
-          btn_confirm_agreement: '✅ Подтвердить согласие',
+          btn_confirm_agreement: 'Подтвердить согласие',
           adv_dashboard_h1: 'Личный кабинет рекламодателя',
           adv_dashboard_hint: 'Создайте заказ или посмотрите список заказов.',
           btn_create_order: 'Создать заказ',
@@ -705,18 +817,18 @@
           blg_dashboard_hint: 'Управление профилем и заказами.',
           blg_done_h1: 'Вы зарегистрированы как креатор',
           blg_done_hint: 'Возвращайтесь в бота, чтобы получать офферы и управлять профилем.',
-          btn_confirm_instagram: '✅ Подтвердить Instagram',
+          btn_confirm_instagram: 'Подтвердить Instagram',
           btn_blogger_orders: 'Мои заказы',
           btn_update_blg_profile: 'Обновить профиль',
           btn_blogger_change_role: 'Сменить роль',
           instagram_code_hint: 'Ваш код (действует 15 минут):',
-          instagram_warning: '⚠️ Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.',
+          instagram_warning: 'Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.',
           instagram_instr_h1: 'Подтверждение Instagram',
           instagram_instr_title: 'Для верификации Instagram выполните 3 шага:',
           instagram_instr_step1: 'Скопируйте код ниже',
           instagram_instr_step2: 'Отправьте его в Direct аккаунту UGC в Instagram',
           instagram_instr_step3: 'Дождитесь автоматической верификации',
-          instagram_instr_link: '🔗 Instagram UGC:',
+          instagram_instr_link: 'Instagram UGC:',
           btn_open_instagram: 'Открыть Instagram',
           btn_back_to_cabinet: 'В личный кабинет',
           order_detail_back: 'Назад к списку',
@@ -832,7 +944,7 @@
           btn_close: 'Close',
           agreements_intro: 'Please review the platform documents and confirm your agreement.',
           agreements_fallback: 'Confirm agreement with platform documents.',
-          btn_confirm_agreement: '✅ Confirm agreement',
+          btn_confirm_agreement: 'Confirm agreement',
           adv_dashboard_h1: 'Advertiser dashboard',
           adv_dashboard_hint: 'Create an order or view your orders list.',
           btn_create_order: 'Create order',
@@ -846,18 +958,18 @@
           blg_dashboard_hint: 'Manage your profile and orders.',
           blg_done_h1: 'You are registered as a creator',
           blg_done_hint: 'Return to the bot to receive offers and manage your profile.',
-          btn_confirm_instagram: '✅ Confirm Instagram',
+          btn_confirm_instagram: 'Confirm Instagram',
           btn_blogger_orders: 'My orders',
           btn_update_blg_profile: 'Update profile',
           btn_blogger_change_role: 'Switch role',
           instagram_code_hint: 'Your code (valid for 15 minutes):',
-          instagram_warning: '⚠️ Without a confirmed Instagram account, you won\'t receive orders. Confirm Instagram to start receiving orders from advertisers.',
+          instagram_warning: 'Without a confirmed Instagram account, you won\'t receive orders. Confirm Instagram to start receiving orders from advertisers.',
           instagram_instr_h1: 'Instagram verification',
           instagram_instr_title: 'To verify your Instagram account, follow 3 steps:',
           instagram_instr_step1: 'Copy the code below',
           instagram_instr_step2: 'Send it in a direct message to the UGC Instagram account',
           instagram_instr_step3: 'Wait for automatic verification',
-          instagram_instr_link: '🔗 Instagram UGC:',
+          instagram_instr_link: 'Instagram UGC:',
           btn_open_instagram: 'Open Instagram',
           btn_back_to_cabinet: 'Back to dashboard',
           order_detail_back: 'Back to list',
@@ -973,7 +1085,7 @@
           btn_close: 'Жабу',
           agreements_intro: 'Платформа құжаттарымен танысып, келісімді растаңыз.',
           agreements_fallback: 'Платформа құжаттарымен келісімді растаңыз.',
-          btn_confirm_agreement: '✅ Келісімді растау',
+          btn_confirm_agreement: 'Келісімді растау',
           adv_dashboard_h1: 'Жарнама берушінің жеке кабинеті',
           adv_dashboard_hint: 'Тапсырыс жасаңыз немесе тапсырыстар тізімін қараңыз.',
           btn_create_order: 'Тапсырыс жасау',
@@ -987,18 +1099,18 @@
           blg_dashboard_hint: 'Профиль мен тапсырыстарды басқару.',
           blg_done_h1: 'Сіз креатор ретінде тіркелдіңіз',
           blg_done_hint: 'Офферлер алу және профильді басқару үшін ботқа оралыңыз.',
-          btn_confirm_instagram: '✅ Instagram растау',
+          btn_confirm_instagram: 'Instagram растау',
           btn_blogger_orders: 'Менің тапсырыстарым',
           btn_update_blg_profile: 'Профильді жаңарту',
           btn_blogger_change_role: 'Рөлді өзгерту',
           instagram_code_hint: 'Сіздің кодыңыз (15 минутқа жарамды):',
-          instagram_warning: '⚠️ Расталмаған Instagram болмаса тапсырыстар келмейді. Жарнама берушілерден тапсырыс алу үшін Instagram растаңыз.',
+          instagram_warning: 'Расталмаған Instagram болмаса тапсырыстар келмейді. Жарнама берушілерден тапсырыс алу үшін Instagram растаңыз.',
           instagram_instr_h1: 'Instagram растау',
           instagram_instr_title: 'Instagram тіркелгіңізді растау үшін 3 қадамды орындаңыз:',
           instagram_instr_step1: 'Төмендегі коды көшіріңіз',
           instagram_instr_step2: 'Оны UGC Instagram тіркелгісіне Direct арқылы жіберіңіз',
           instagram_instr_step3: 'Автоматты растауды күтіңіз',
-          instagram_instr_link: '🔗 Instagram UGC:',
+          instagram_instr_link: 'Instagram UGC:',
           btn_open_instagram: 'Instagram ашу',
           btn_back_to_cabinet: 'Жеке кабинетке',
           order_detail_back: 'Тізімге оралу',
@@ -1110,7 +1222,7 @@
           btn_close: 'Закрыць',
           agreements_intro: 'Азнаёмцеся з дакументамі платформы і пацвердзіце згоду.',
           agreements_fallback: 'Пацвердзіце згоду з дакументамі платформы.',
-          btn_confirm_agreement: '✅ Пацвердзіць згоду',
+          btn_confirm_agreement: 'Пацвердзіць згоду',
           adv_dashboard_h1: 'Асабісты кабінет рэкламадаўцы',
           adv_dashboard_hint: 'Стварыце заказ або паглядзець спіс заказаў.',
           btn_create_order: 'Стварыць заказ',
@@ -1124,18 +1236,18 @@
           blg_dashboard_hint: 'Кіраванне профілем і заказамі.',
           blg_done_h1: 'Вы зарэгістраваны як крэатар',
           blg_done_hint: 'Вярніцеся ў бота, каб атрымліваць офферы і кіраваць профілем.',
-          btn_confirm_instagram: '✅ Пацвердзіць Instagram',
+          btn_confirm_instagram: 'Пацвердзіць Instagram',
           btn_blogger_orders: 'Мае заказы',
           btn_update_blg_profile: 'Абнавіць профіль',
           btn_blogger_change_role: 'Змяніць ролю',
           instagram_code_hint: 'Ваш код (дзейнічае 15 хвілін):',
-          instagram_warning: '⚠️ Без пацверджанага Instagram заказы вам не будуць прыходзіць. Пацвердзіце Instagram, каб атрымліваць заказы ад рэкламадаўцаў.',
+          instagram_warning: 'Без пацверджанага Instagram заказы вам не будуць прыходзіць. Пацвердзіце Instagram, каб атрымліваць заказы ад рэкламадаўцаў.',
           instagram_instr_h1: 'Пацверджанне Instagram',
           instagram_instr_title: 'Для верыфікацыі Instagram выканайце 3 крокі:',
           instagram_instr_step1: 'Скапіруйце код ніжэй',
           instagram_instr_step2: 'Адпраўце яго ў Direct акаунту UGC у Instagram',
           instagram_instr_step3: 'Дачакайцеся аўтаматычнай верыфікацыі',
-          instagram_instr_link: '🔗 Instagram UGC:',
+          instagram_instr_link: 'Instagram UGC:',
           btn_open_instagram: 'Адкрыць Instagram',
           btn_back_to_cabinet: 'У асабісты кабінет',
           order_detail_back: 'Назад да спісу',
@@ -1247,7 +1359,7 @@
           btn_close: 'Yopish',
           agreements_intro: 'Platforma hujjatlarini o\'qing va roziligingizni tasdiqlang.',
           agreements_fallback: 'Platforma hujjatlariga roziligingizni tasdiqlang.',
-          btn_confirm_agreement: '✅ Rozilikni tasdiqlash',
+          btn_confirm_agreement: 'Rozilikni tasdiqlash',
           adv_dashboard_h1: 'Reklamachi shaxsiy kabineti',
           adv_dashboard_hint: 'Buyurtma yarating yoki buyurtmalar ro\'yxatini ko\'ring.',
           btn_create_order: 'Buyurtma yaratish',
@@ -1261,18 +1373,18 @@
           blg_dashboard_hint: 'Profil va buyurtmalarni boshqarish.',
           blg_done_h1: 'Siz kreator sifatida ro\'yxatdan o\'tdingiz',
           blg_done_hint: 'Offerlar olish va profilni boshqarish uchun botga qayting.',
-          btn_confirm_instagram: '✅ Instagram tasdiqlash',
+          btn_confirm_instagram: 'Instagram tasdiqlash',
           btn_blogger_orders: 'Mening buyurtmalarim',
           btn_update_blg_profile: 'Profilni yangilash',
           btn_blogger_change_role: 'Rolni o\'zgartirish',
           instagram_code_hint: 'Sizning kodingiz (15 daqiqa amal qiladi):',
-          instagram_warning: '⚠️ Tasdiqlanmagan Instagram bo\'lmasa buyurtmalar kelmaydi. Reklamachilardan buyurtma olish uchun Instagram tasdiqlang.',
+          instagram_warning: 'Tasdiqlanmagan Instagram bo\'lmasa buyurtmalar kelmaydi. Reklamachilardan buyurtma olish uchun Instagram tasdiqlang.',
           instagram_instr_h1: 'Instagram tasdiqlash',
           instagram_instr_title: 'Instagram hisobingizni tasdiqlash uchun 3 qadamni bajaring:',
           instagram_instr_step1: 'Quyidagi kodni nusxalang',
           instagram_instr_step2: 'Uni Instagram\'dagi UGC hisobiga Direct orqali yuboring',
           instagram_instr_step3: 'Avtomatik tasdiqlanishni kuting',
-          instagram_instr_link: '🔗 Instagram UGC:',
+          instagram_instr_link: 'Instagram UGC:',
           btn_open_instagram: 'Instagram ochish',
           btn_back_to_cabinet: 'Shaxsiy kabinetga',
           order_detail_back: 'Ro\'yxatga qaytish',
@@ -1378,6 +1490,7 @@
       function applyLocale() {
         var locale = (window._me && window._me.locale) || 'ru';
         var L = I18N[locale] || I18N.ru;
+        document.documentElement.lang = I18N[locale] ? locale : 'ru';
         function setText(id, text) {
           var el = document.getElementById(id);
           if (el && text !== undefined) el.textContent = text;
@@ -1556,6 +1669,7 @@
         var show = me && me.has_blogger_profile && me.blogger_profile && !me.blogger_profile.confirmed;
         btn.style.display = show ? 'block' : 'none';
         if (warning) warning.style.display = show ? 'block' : 'none';
+        document.dispatchEvent(new CustomEvent('umc:creator-state', { detail: me }));
       }
 
       document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
@@ -1962,13 +2076,14 @@
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
             li.setAttribute('data-order-id', o.order_id);
+            li.dataset.financialVersion = o.financial_version || '';
             li.style.cursor = 'pointer';
             var strong = document.createElement('strong');
             strong.textContent = o.product_link || o.order_id;
             li.appendChild(strong);
             var datePart = fmtDate(o.created_at);
             li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol) + (datePart ? ' \u00b7 ' + datePart : '')));
-            var payLink = o.payment_link || '';
+            var payLink = o.financial_version ? '' : (o.payment_link || '');
             if (payLink) {
               var payBtn = document.createElement('a');
               payBtn.href = payLink;
@@ -2174,6 +2289,7 @@
           } else {
             orders.forEach(function(o) {
               var li = document.createElement('li');
+              li.dataset.orderId = o.order_id;
               li.style.cursor = 'pointer';
               var rawLink = o.product_link || '';
               var displayLink = rawLink.replace(/^https?:\/\//, '');
@@ -2202,7 +2318,7 @@
               var datePart = fmtDate(o.created_at);
               li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol) + (datePart ? ' \u00b7 ' + datePart : '')));
               li.addEventListener('click', function() {
-                openManagerOrder(o.order_id, o.product_link || o.order_id);
+                openManagerOrder(o.order_id, o.product_link || o.order_id, o.currency_symbol);
               });
               if (ul) ul.appendChild(li);
             });
@@ -2224,8 +2340,9 @@
         });
       }
 
-      function openManagerOrder(orderId, title) {
+      function openManagerOrder(orderId, title, currencySymbol) {
         window._mgrCurrentOrderId = orderId;
+        if (currencySymbol) window._mgrCurrentCurrencySymbol = currencySymbol;
         var titleEl = document.getElementById('mgr-order-detail-title');
         if (titleEl) titleEl.textContent = tx('mgr_order_detail_title') + ' ' + title;
         showScreen('screen-manager-order-detail');
@@ -2280,8 +2397,8 @@
               if (filterType === 'expensive' && c.desired_price != null) {
                 li.appendChild(document.createTextNode(' \u00b7 '));
                 var priceSpan = document.createElement('span');
-                priceSpan.style.cssText = 'color:#e65100;font-weight:600';
-                priceSpan.textContent = c.desired_price + ' \u20bd';
+                priceSpan.style.cssText = 'color:var(--ink);font-weight:600';
+                priceSpan.textContent = fmtPrice(c.desired_price, c.currency_symbol || window._mgrCurrentCurrencySymbol);
                 li.appendChild(priceSpan);
               }
               if (!c.name && !c.instagram_url && !c.telegram) {
@@ -2366,7 +2483,7 @@
         submitBtn.addEventListener('click', function() {
           if (selectedScore < 1) {
             statusEl.textContent = tx('mgr_creator_rating_pick');
-            statusEl.style.color = '#c62828';
+            statusEl.style.color = 'var(--error)';
             return;
           }
           submitBtn.disabled = true;
@@ -2380,7 +2497,7 @@
           if (c) payload.comment = c;
           api('/ratings', payload).then(function() {
             statusEl.textContent = tx('mgr_creator_rating_saved');
-            statusEl.style.color = '#2e7d32';
+            statusEl.style.color = 'var(--success)';
           }).catch(function(err) {
             var raw = (err && err.message) ? err.message : '';
             var msg = raw || tx('mgr_creator_rating_error');
@@ -2392,7 +2509,7 @@
               submitBtn.disabled = false;
             }
             statusEl.textContent = msg;
-            statusEl.style.color = '#c62828';
+            statusEl.style.color = 'var(--error)';
           });
         });
 
@@ -2416,7 +2533,7 @@
 
             if (data.instagram_url) {
               var p = document.createElement('p');
-              var icon = document.createTextNode('📸 ');
+              var icon = document.createTextNode('');
               var a = document.createElement('a');
               a.setAttribute('href', data.instagram_url);
               a.setAttribute('target', '_blank');
@@ -2495,7 +2612,7 @@
             if (data.in_offer) {
               var removeBtn = document.createElement('button');
               removeBtn.setAttribute('type', 'button');
-              removeBtn.style.cssText = 'width:100%;padding:11px;background:#ffebee;color:#c62828;border:1.5px solid #ef9a9a;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer';
+              removeBtn.style.cssText = 'width:100%;padding:11px;background:var(--card);color:var(--ink);border:1px solid var(--line-strong);border-radius:9px;font-size:14px;font-weight:600;cursor:pointer';
               removeBtn.textContent = 'Убрать из заказа';
               removeBtn.addEventListener('click', function() {
                 mgmtDiv.removeChild(removeBtn);
@@ -2505,7 +2622,7 @@
             } else {
               var addBtn = document.createElement('button');
               addBtn.setAttribute('type', 'button');
-              addBtn.style.cssText = 'width:100%;padding:11px;background:#e8f5e9;color:#2e7d32;border:1.5px solid #a5d6a7;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer';
+              addBtn.style.cssText = 'width:100%;padding:11px;background:var(--ink);color:var(--on-ink);border:1px solid transparent;border-radius:9px;font-size:14px;font-weight:600;cursor:pointer';
               addBtn.textContent = 'Добавить в заказ';
               addBtn.addEventListener('click', function() {
                 addCreatorToOrder(orderId, bloggerId);
@@ -2562,7 +2679,7 @@
               if (!data.ok) throw new Error('Ошибка удаления');
               return sendManagerFeedback(orderId, bloggerId, feedbackStatus, issueDescription, noDealReason)
                 .catch(function() {
-                  setBlockMessage(block, '⚠ Убрано, но отзыв не записан', '#e65100');
+                  setBlockMessage(block, 'Убрано, но отзыв не записан', 'var(--error)');
                   setTimeout(function() {
                     loadManagerCreators(orderId, window._mgrCurrentFilter || 'in_offer', 0);
                     showScreen('screen-manager-creators');
@@ -2571,8 +2688,8 @@
                 });
             })
             .then(function() {
-              var msg = feedbackStatus === 'issue' ? '✅ Жалоба отправлена' : '✅ Убрано из заказа';
-              setBlockMessage(block, msg, '#2e7d32');
+              var msg = feedbackStatus === 'issue' ? 'Жалоба отправлена' : 'Убрано из заказа';
+              setBlockMessage(block, msg, 'var(--success)');
               setTimeout(function() {
                 loadManagerCreators(orderId, window._mgrCurrentFilter || 'in_offer', 0);
                 showScreen('screen-manager-creators');
@@ -2580,21 +2697,21 @@
             })
             .catch(function(err) {
               if (err && err.message === '_handled') return;
-              var msg = (err && err.message) ? '❌ ' + err.message : '❌ Ошибка';
-              setBlockMessage(block, msg, '#c62828');
+              var msg = (err && err.message) ? '' + err.message : 'Ошибка';
+              setBlockMessage(block, msg, 'var(--error)');
             });
         }
 
         var noDealReasons = [
-          { text: '💰 Не сошлись по условиям', key: 'conditions' },
+          { text: 'Не сошлись по условиям', key: 'conditions' },
           { text: '⏱ Не подошли сроки', key: 'timing' },
-          { text: '📝 Креатор хотел изменить условия', key: 'creator_change' },
-          { text: '🤝 Другое', key: 'other' }
+          { text: 'Креатор хотел изменить условия', key: 'creator_change' },
+          { text: 'Другое', key: 'other' }
         ];
 
         var noDealBtn = document.createElement('button');
         noDealBtn.setAttribute('type', 'button');
-        noDealBtn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        noDealBtn.style.cssText = 'width:100%;padding:9px;background:var(--ink);color:var(--on-ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
         noDealBtn.textContent = 'Не договорились';
         noDealBtn.addEventListener('click', function() {
           btnRow.style.display = 'none';
@@ -2606,7 +2723,7 @@
           noDealReasons.forEach(function(reason) {
             var btn = document.createElement('button');
             btn.setAttribute('type', 'button');
-            btn.style.cssText = 'width:100%;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left';
+            btn.style.cssText = 'width:100%;padding:9px;background:var(--ink);color:var(--on-ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;text-align:left';
             btn.textContent = reason.text;
             btn.addEventListener('click', function() {
               if (reason.key === 'other') {
@@ -2620,18 +2737,18 @@
                 otherRow.style.cssText = 'display:flex;gap:8px;margin-top:8px';
                 var otherSend = document.createElement('button');
                 otherSend.setAttribute('type', 'button');
-                otherSend.style.cssText = 'flex:1;padding:9px;background:#5d4037;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                otherSend.style.cssText = 'flex:1;padding:9px;background:var(--ink);color:var(--on-ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
                 otherSend.textContent = 'Отправить';
                 otherSend.addEventListener('click', function() {
                   var txt = otherArea.value.trim();
-                  if (!txt) { otherArea.style.borderColor = '#c62828'; return; }
+                  if (!txt) { otherArea.style.borderColor = 'var(--error)'; return; }
                   otherSend.disabled = true;
                   otherBack.disabled = true;
-                  doRemoveAndFeedback('no_deal', undefined, '🤝 Другое: ' + txt);
+                  doRemoveAndFeedback('no_deal', undefined, 'Другое: ' + txt);
                 });
                 var otherBack = document.createElement('button');
                 otherBack.setAttribute('type', 'button');
-                otherBack.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+                otherBack.style.cssText = 'flex:1;padding:9px;background:var(--card);color:var(--ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
                 otherBack.textContent = 'Назад';
                 otherBack.addEventListener('click', function() {
                   block.removeChild(otherArea);
@@ -2653,7 +2770,7 @@
 
           var reasonBackBtn = document.createElement('button');
           reasonBackBtn.setAttribute('type', 'button');
-          reasonBackBtn.style.cssText = 'width:100%;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          reasonBackBtn.style.cssText = 'width:100%;padding:9px;background:var(--card);color:var(--ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
           reasonBackBtn.textContent = 'Назад';
           reasonBackBtn.addEventListener('click', function() {
             block.removeChild(reasonsCol);
@@ -2667,7 +2784,7 @@
 
         var issueBtn = document.createElement('button');
         issueBtn.setAttribute('type', 'button');
-        issueBtn.style.cssText = 'width:100%;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        issueBtn.style.cssText = 'width:100%;padding:9px;background:var(--ink);color:var(--on-ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
         issueBtn.textContent = 'Проблема';
         issueBtn.addEventListener('click', function() {
           btnRow.style.display = 'none';
@@ -2683,12 +2800,12 @@
 
           var sendBtn = document.createElement('button');
           sendBtn.setAttribute('type', 'button');
-          sendBtn.style.cssText = 'flex:1;padding:9px;background:#c62828;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          sendBtn.style.cssText = 'flex:1;padding:9px;background:var(--ink);color:var(--on-ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
           sendBtn.textContent = 'Отправить';
           sendBtn.addEventListener('click', function() {
             var desc = textarea.value.trim();
             if (!desc) {
-              textarea.style.borderColor = '#c62828';
+              textarea.style.borderColor = 'var(--error)';
               return;
             }
             sendBtn.disabled = true;
@@ -2698,7 +2815,7 @@
 
           var backBtn = document.createElement('button');
           backBtn.setAttribute('type', 'button');
-          backBtn.style.cssText = 'flex:1;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+          backBtn.style.cssText = 'flex:1;padding:9px;background:var(--card);color:var(--ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
           backBtn.textContent = 'Назад';
           backBtn.addEventListener('click', function() {
             block.removeChild(textarea);
@@ -2714,7 +2831,7 @@
 
         var cancelBtn = document.createElement('button');
         cancelBtn.setAttribute('type', 'button');
-        cancelBtn.style.cssText = 'width:100%;padding:9px;background:#eee;color:#555;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
+        cancelBtn.style.cssText = 'width:100%;padding:9px;background:var(--card);color:var(--ink);border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer';
         cancelBtn.textContent = 'Отмена';
         cancelBtn.addEventListener('click', function() {
           block.parentNode.removeChild(block);
@@ -2736,7 +2853,7 @@
         if (!url) {
           if (status) {
             status.textContent = 'Введите ссылку';
-            status.style.color = '#c62828';
+            status.style.color = 'var(--error)';
           }
           return;
         }
@@ -2744,20 +2861,20 @@
         api('/manager/orders/' + orderId + '/creators/' + bloggerId + '/ugc-video', { url: url })
           .then(function(data) {
             if (data.ok && status) {
-              status.textContent = '✅ Сохранено';
-              status.style.color = '#2e7d32';
+              status.textContent = 'Сохранено';
+              status.style.color = 'var(--success)';
               sendManagerFeedback(orderId, bloggerId, 'ok').catch(function() {
                 if (status) {
-                  status.textContent = '⚠ Видео сохранено, отзыв не записан';
-                  status.style.color = '#e65100';
+                  status.textContent = 'Видео сохранено, отзыв не записан';
+                  status.style.color = 'var(--error)';
                 }
               });
             }
           })
           .catch(function() {
             if (status) {
-              status.textContent = '❌ Ошибка сохранения';
-              status.style.color = '#c62828';
+              status.textContent = 'Ошибка сохранения';
+              status.style.color = 'var(--error)';
             }
           });
       }
@@ -2769,8 +2886,8 @@
           .then(function(data) {
             if (data.ok) {
               if (status) {
-                status.textContent = '✅ Добавлен в заказ';
-                status.style.color = '#2e7d32';
+                status.textContent = 'Добавлен в заказ';
+                status.style.color = 'var(--success)';
               }
               setTimeout(function() {
                 loadManagerCreators(orderId, window._mgrCurrentFilter || 'reserve', 0);
@@ -2780,12 +2897,12 @@
           })
           .catch(function(err) {
             if (status) {
-              var msg = '❌ Нет свободных слотов';
+              var msg = 'Нет свободных слотов';
               if (err && err.status && err.status !== 409) {
-                msg = '❌ Ошибка';
+                msg = 'Ошибка';
               }
               status.textContent = msg;
-              status.style.color = '#c62828';
+              status.style.color = 'var(--error)';
             }
           });
       }
@@ -2843,7 +2960,8 @@
       });
 
       function updateCurrencyLabels(sym) {
-        var s = sym || '₽';
+        var rawSymbol = sym || '₽';
+        var s = window.UMCShell ? window.UMCShell.currencyLabel(rawSymbol, (window._me && window._me.locale) || 'ru') : rawSymbol;
         var labels = [
           { id: 'lbl-blg-price', key: 'price_label' },
           { id: 'lbl-ord-price', key: 'budget_label' },
@@ -2853,11 +2971,13 @@
           var el = document.getElementById(l.id);
           if (el) el.textContent = tx(l.key).replace('{s}', s);
         });
-        window._currencySymbol = s;
+        window._currencySymbol = rawSymbol;
       }
 
       function fmtPrice(price, symbol) {
-        return price + ' ' + (symbol || window._currencySymbol || '₽');
+        var currency = symbol || window._currencySymbol || '₽';
+        var locale = (window._me && window._me.locale) || 'ru';
+        return window.UMCShell ? window.UMCShell.formatPrice(price, currency, locale) : price + ' ' + currency;
       }
 
       function fmtDate(isoStr) {
@@ -2884,6 +3004,8 @@
         } else {
           showScreen('screen-role-choice');
         }
+        window.__umcAppReady = true;
+        document.dispatchEvent(new CustomEvent('umc:app-ready'));
       }
 
       function showCountrySelector(countries, onSelected) {
@@ -2911,6 +3033,29 @@
         showScreen('screen-country-select');
       }
 
+      function createRequestContext() {
+        var initial = getInitData(), platform = window.__miniapp_platform || 'telegram', invalid = !initial;
+        function current() {
+          if (getInitData() !== initial || (window.__miniapp_platform || 'telegram') !== platform) invalid = true;
+          return !invalid;
+        }
+        function changed() { var error = new Error('payout_context_changed'); error.code = 'payout_context_changed'; error.status = 401; return error; }
+        return Object.freeze({
+          isCurrent: current,
+          dispose: function () { invalid = true; initial = ''; },
+          request: function (path, body) {
+            if (!current()) return Promise.reject(changed());
+            // Dispatch uses this exact checked value; body cannot override auth.
+            var checked = {initData: initial, platform: platform};
+            return api(path, body, checked).then(function (result) {
+              if (!current()) throw changed();
+              return result;
+            }, function (error) { if (!current()) throw changed(); throw error; });
+          }
+        });
+      }
+      window.__umcAppBridge = { request: api, showScreen: showScreen, createRequestContext: createRequestContext };
+      window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       (window.__webAppReady || Promise.resolve()).then(function() {
         var wa = _getWebApp();
@@ -2925,7 +3070,7 @@
         applyLocale();
         fillBirthDateSelects();
         updateCurrencyLabels(me.currency_symbol);
-        if (!me.country && window.__miniapp_platform !== 'max') {
+        if (!me.country && window.__miniapp_platform !== 'max' && !new URLSearchParams(location.search).has('assignment') && !new URLSearchParams(location.search).has('assignment_id') && new URLSearchParams(location.search).get('view') !== 'partner') {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {
@@ -2944,7 +3089,10 @@
         var loadingScreen = document.getElementById('screen-loading');
         var hintEl = loadingScreen && loadingScreen.querySelector('.hint');
         if (hintEl) {
-          hintEl.textContent = 'Ошибка: ' + (err.message || 'нет данных').replace(/^Ошибка: Ошибка: /, 'Ошибка: ');
+          hintEl.textContent = err.message === 'No initData'
+            ? (window.__miniapp_platform === 'max' ? 'Откройте UMC в MAX, чтобы войти.' : 'Откройте UMC в Telegram, чтобы войти.')
+            : 'Ошибка: ' + (err.message || 'нет данных').replace(/^Ошибка: Ошибка: /, 'Ошибка: ');
+          loadingScreen.dataset.failed = 'true';
         }
       });
     })();

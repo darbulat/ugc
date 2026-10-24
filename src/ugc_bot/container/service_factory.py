@@ -2,10 +2,15 @@
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ugc_bot.application.cache_ports import CachePort
-from ugc_bot.application.ports import GeocoderPort
+
+if TYPE_CHECKING:
+    from aiogram import Bot
+    from aiohttp import ClientSession
+
+from ugc_bot.application.ports import GeocoderPort, TransactionManager
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
 )
@@ -16,6 +21,30 @@ from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.campaign_audience_service import (
+    CampaignAudienceService,
+)
+from ugc_bot.application.services.campaign_review_service import (
+    CampaignReviewService,
+)
+from ugc_bot.application.services.campaign_service import (
+    CampaignFoundationService,
+)
+from ugc_bot.application.services.campaign_summary_service import (
+    CampaignSummaryService,
+)
+from ugc_bot.application.services.client_entitlement_service import (
+    ClientEntitlementService,
+)
+from ugc_bot.application.services.collaboration_notice_delivery import (
+    CollaborationNoticeDelivery,
+)
+from ugc_bot.application.services.collaboration_service import (
+    CollaborationService,
+)
+from ugc_bot.application.services.collaboration_sweep_service import (
+    CollaborationSweepService,
+)
 from ugc_bot.application.services.complaint_service import ComplaintService
 from ugc_bot.application.services.contact_pricing_service import (
     ContactPricingService,
@@ -23,11 +52,18 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.creator_identity_history_service import (
+    CreatorIdentityHistoryService,
+)
 from ugc_bot.application.services.exchange_rate_service import (
     ExchangeRateService,
 )
 from ugc_bot.application.services.financial_event_router import (
+    FinancialEventHandler,
     FinancialEventRouter,
+)
+from ugc_bot.application.services.financial_ledger_service import (
+    FinancialLedgerService,
 )
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
@@ -62,11 +98,19 @@ from ugc_bot.application.services.offer_dispatch_service import (
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
+from ugc_bot.application.services.order_intake_service import OrderIntakeService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.paid_item_service import PaidItemService
+from ugc_bot.application.services.paid_selection_interest import (
+    PaidSelectionInterestService,
+)
+from ugc_bot.application.services.partner_view_service import PartnerViewService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
+from ugc_bot.application.services.rate_override_service import (
+    RateOverrideService,
+)
 from ugc_bot.application.services.referral_income_recorder import (
     ReferralIncomeRecorder,
 )
@@ -74,10 +118,29 @@ from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
 from ugc_bot.application.services.referral_service import ReferralService
+from ugc_bot.application.services.selection_view_service import (
+    SelectionViewService,
+)
+from ugc_bot.application.services.social_account_service import (
+    SocialAccountService,
+)
 from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.application.services.work_entitlement_service import (
+    WorkEntitlementService,
+)
+from ugc_bot.application.services.work_financial_guard import WorkFinancialGuard
+from ugc_bot.application.work_entitlement_ports import WORK_EVENT_TYPES
 from ugc_bot.config import AppConfig
+from ugc_bot.container.checkout_factory import build_checkout_service
+from ugc_bot.container.correction_factory import build_correction_services
+from ugc_bot.container.messenger_linking_factory import (
+    build_messenger_linking_service,
+)
+from ugc_bot.container.payout_factory import build_payout_service
+from ugc_bot.container.payout_view_factory import build_payout_view_service
 from ugc_bot.container.types import BotServices
+from ugc_bot.infrastructure.clock import SystemClock
 from ugc_bot.infrastructure.db.repositories.financial_capture import (
     SqlAlchemyFinancialCaptureRepository,
 )
@@ -212,11 +275,45 @@ def build_outbox_deps(config: AppConfig, repos, transaction_manager):
             repos["outbox_repo"].events, repos["outbox_repo"]._claimed_at
         )
     if financial_repo is not None:
+        handlers: dict[str, FinancialEventHandler] = {}
+        work_repo = repos.get("work_entitlement_repo")
+        work_guard = (
+            WorkFinancialGuard(work_repo) if work_repo is not None else None
+        )
+        if config.financial.core_enabled and repos.get(
+            "client_entitlement_repo"
+        ):
+            handlers["financial.client_snapshot_requested"] = (
+                ClientEntitlementService(
+                    repos["client_entitlement_repo"],
+                    FinancialLedgerService(repos["financial_ledger_repo"]),
+                    CreatorIdentityHistoryService(
+                        repos["creator_identity_history_repo"]
+                    ),
+                    repos["rate_override_repo"],
+                    SystemClock(),
+                    work_guard=work_guard,
+                )
+            )
+            if work_repo is not None:
+                work_handler = WorkEntitlementService(
+                    work_repo,
+                    FinancialLedgerService(repos["financial_ledger_repo"]),
+                    CreatorIdentityHistoryService(
+                        repos["creator_identity_history_repo"]
+                    ),
+                    repos["rate_override_repo"],
+                    SystemClock(),
+                    guard=work_guard,
+                )
+                handlers.update(
+                    {kind: work_handler for kind in WORK_EVENT_TYPES}
+                )
         outbox_publisher.financial_delivery = OutboxPublisher(
             financial_repo,
             repos["order_repo"],
             transaction_manager,
-            financial_router=FinancialEventRouter(),
+            financial_router=FinancialEventRouter(handlers),
         )
     if config.kafka.kafka_enabled:
         kafka_publisher = KafkaOrderActivationPublisher(
@@ -271,6 +368,7 @@ def build_instagram_verification_service(
         instagram_api_client=instagram_api_client,
         transaction_manager=transaction_manager,
         user_role_service=user_role_service,
+        social_repo=repos.get("social_account_repo"),
     )
 
 
@@ -358,6 +456,66 @@ def build_instagram_stats_collector_scheduler_deps(
 logger = logging.getLogger(__name__)
 
 
+def build_collaboration_sweep(repos, transaction_manager):
+    return CollaborationSweepService(
+        CollaborationService(repos["collaboration_repo"], SystemClock()),
+        transaction_manager,
+    )
+
+
+def build_collaboration_notice_delivery(
+    config: AppConfig,
+    repos: dict,
+    transaction_manager: TransactionManager,
+    bot: "Bot",
+    *,
+    max_session: "ClientSession | None" = None,
+) -> CollaborationNoticeDelivery | None:
+    if not config.financial.core_enabled:
+        return None
+    from urllib.parse import urlsplit
+
+    from ugc_bot.application.notice_delivery_ports import NoticeReceiptTransport
+    from ugc_bot.infrastructure.db.repositories.notice_delivery import (
+        SqlAlchemyNoticeDeliveryRepository,
+    )
+    from ugc_bot.infrastructure.messenger.notice_receipts import (
+        MaxNoticeReceipts,
+        RoutedNoticeReceipts,
+        TelegramNoticeReceipts,
+    )
+
+    transports: dict[str, NoticeReceiptTransport] = {
+        "telegram": TelegramNoticeReceipts(bot)
+    }
+    max_config = config.max_bot
+    if max_config and max_config.token.strip() and max_session is not None:
+        transports["max"] = MaxNoticeReceipts(max_session, max_config.token)
+    telegram_base = config.webhook.webhook_base_url.rstrip("/")
+    try:
+        max_url = urlsplit(max_config.webhook_url if max_config else "")
+        max_base = (
+            f"{max_url.scheme}://{max_url.netloc}"
+            if max_url.scheme and max_url.netloc
+            else ""
+        )
+    except ValueError:
+        max_base = ""
+    return CollaborationNoticeDelivery(
+        CollaborationService(repos["collaboration_repo"], SystemClock()),
+        SqlAlchemyNoticeDeliveryRepository(),
+        transaction_manager,
+        RoutedNoticeReceipts(transports),
+        {
+            "telegram": telegram_base + "/miniapp/app.html"
+            if telegram_base
+            else "",
+            "max": max_base + "/miniapp/max_app.html" if max_base else "",
+        },
+        default_locale=config.market.default_locale or "ru",
+    )
+
+
 def build_exchange_rate_service(
     config: AppConfig,
 ) -> ExchangeRateService | None:
@@ -395,6 +553,7 @@ def build_bot_services(
     issue_lock_manager: Any,
     offer_response_rate_limiter: Any,
     geocode_public_rate_limiter: Any,
+    session_factory: Any = None,
 ) -> BotServices:
     """Build all services and repos for the bot dispatcher."""
     referral_service = ReferralService(
@@ -424,10 +583,112 @@ def build_bot_services(
         transaction_manager=transaction_manager,
         blogger_profile_repo=repos["blogger_repo"],
     )
+    order_service = OrderService(
+        user_repo=repos["user_repo"],
+        advertiser_repo=repos["advertiser_repo"],
+        order_repo=repos["order_repo"],
+        paid_item_service=PaidItemService(
+            repository=repos["financial_item_repo"],
+            policy_service=FinancialPolicyService(
+                config.financial,
+                reader=repos["financial_policy_repo"],
+                transaction_manager=transaction_manager,
+            ),
+        ),
+        allowed_blogger_counts=config.order.get_allowed_blogger_counts_set(),
+        max_order_price=config.order.max_order_price,
+        metrics_collector=metrics_collector,
+        transaction_manager=transaction_manager,
+        geocoder=geocoder,
+        country_repo=repos.get("country_repo"),
+    )
+    correction_service, correction_view_service = (
+        build_correction_services(config, transaction_manager, session_factory)
+        if session_factory is not None
+        else (None, None)
+    )
     return {
         "metrics_collector": metrics_collector,
+        "messenger_linking_service": build_messenger_linking_service(
+            config, transaction_manager
+        ),
+        "payout_service": build_payout_service(
+            config, transaction_manager, session_factory
+        )
+        if session_factory is not None
+        else None,
+        "correction_service": correction_service,
+        "correction_view_service": correction_view_service,
+        "payout_view_service": build_payout_view_service(
+            config, session_factory
+        )
+        if session_factory is not None
+        else None,
+        "campaign_summary_service": CampaignSummaryService(
+            repos["campaign_summary_repo"], transaction_manager, SystemClock()
+        )
+        if repos.get("campaign_summary_repo") is not None
+        else None,
         "content_moderation_service": ContentModerationService(),
+        "selection_view_service": SelectionViewService(
+            repos["selection_view_repo"],
+            transaction_manager,
+        )
+        if repos.get("selection_view_repo") is not None
+        else None,
         "user_role_service": user_role_service,
+        "campaign_service": CampaignFoundationService(
+            repos["campaign_repo"], SystemClock()
+        )
+        if repos.get("campaign_repo") is not None
+        else None,
+        "campaign_review_service": CampaignReviewService(
+            repos["campaign_review_repo"],
+            repos["campaign_repo"],
+            SystemClock(),
+        )
+        if repos.get("campaign_review_repo") is not None
+        and repos.get("campaign_repo") is not None
+        else None,
+        "campaign_audience_service": CampaignAudienceService(
+            repos["campaign_review_repo"], repos["campaign_repo"]
+        )
+        if repos.get("campaign_review_repo") is not None
+        and repos.get("campaign_repo") is not None
+        else None,
+        "partner_view_service": PartnerViewService(
+            repos["partner_view_repo"],
+            SystemClock(),
+            {
+                "telegram": config.referral.referral_bot_username,
+                "max": config.referral.max_referral_bot_username,
+            },
+        )
+        if repos.get("partner_view_repo") is not None
+        else None,
+        "rate_override_service": RateOverrideService(
+            repos["rate_override_repo"], SystemClock()
+        )
+        if repos.get("rate_override_repo") is not None
+        else None,
+        "creator_identity_history_service": CreatorIdentityHistoryService(
+            repos["creator_identity_history_repo"]
+        )
+        if repos.get("creator_identity_history_repo") is not None
+        else None,
+        "collaboration_service": CollaborationService(
+            repos["collaboration_repo"], SystemClock()
+        )
+        if repos.get("collaboration_repo") is not None
+        else None,
+        "social_account_service": SocialAccountService(
+            account_repo=repos["social_account_repo"],
+            blogger_repo=repos["blogger_repo"],
+            transaction_manager=transaction_manager,
+            editor_repository=repos["social_account_repo"],
+        )
+        if repos.get("social_account_repo") is not None
+        else None,
         "blogger_registration_service": BloggerRegistrationService(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
@@ -451,26 +712,19 @@ def build_bot_services(
             instagram_api_client=instagram_api_client,
             transaction_manager=transaction_manager,
             user_role_service=user_role_service,
+            social_repo=repos.get("social_account_repo"),
         ),
-        "order_service": OrderService(
-            user_repo=repos["user_repo"],
-            advertiser_repo=repos["advertiser_repo"],
-            order_repo=repos["order_repo"],
-            paid_item_service=PaidItemService(
-                repository=repos["financial_item_repo"],
-                policy_service=FinancialPolicyService(
-                    config.financial,
-                    reader=repos["financial_policy_repo"],
-                    transaction_manager=transaction_manager,
-                ),
-            ),
-            allowed_blogger_counts=config.order.get_allowed_blogger_counts_set(),
-            max_order_price=config.order.max_order_price,
-            metrics_collector=metrics_collector,
-            transaction_manager=transaction_manager,
-            geocoder=geocoder,
-            country_repo=repos.get("country_repo"),
-        ),
+        "order_service": order_service,
+        "order_intake_service": OrderIntakeService(
+            repos["order_intake_repo"],
+            order_service,
+            repos["financial_policy_repo"],
+            transaction_manager,
+            SystemClock(),
+            config.financial,
+        )
+        if repos.get("order_intake_repo") is not None
+        else None,
         "offer_dispatch_service": OfferDispatchService(
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
@@ -495,6 +749,14 @@ def build_bot_services(
             transaction_manager=transaction_manager,
             user_repo=repos["user_repo"],
             referral_income_service=referral_income_service,
+            paid_selection_service=PaidSelectionInterestService(
+                repos["paid_selection_repo"],
+                transaction_manager,
+                SystemClock(),
+                enabled=config.financial.core_enabled,
+            )
+            if repos.get("paid_selection_repo") is not None
+            else None,
         ),
         "interaction_service": InteractionService(
             interaction_repo=repos["interaction_repo"],
@@ -508,6 +770,7 @@ def build_bot_services(
             user_repo=repos["user_repo"],
             referral_income_service=referral_income_service,
         ),
+        "checkout_service": build_checkout_service(config, transaction_manager),
         "payment_service": PaymentService(
             user_repo=repos["user_repo"],
             advertiser_repo=repos["advertiser_repo"],
@@ -517,7 +780,12 @@ def build_bot_services(
             country_repo=repos.get("country_repo"),
             capture_repository=(
                 SqlAlchemyFinancialCaptureRepository(
-                    FinancialPolicyService(config.financial)
+                    FinancialPolicyService(config.financial),
+                    history=CreatorIdentityHistoryService(
+                        repos["creator_identity_history_repo"]
+                    )
+                    if repos.get("creator_identity_history_repo")
+                    else None,
                 )
                 if config.bot.telegram_payment_account_id
                 else None

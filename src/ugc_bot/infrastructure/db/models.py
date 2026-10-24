@@ -46,9 +46,15 @@ from ugc_bot.domain.enums import (
     UserStatus,
     WorkFormat,
 )
+from ugc_bot.infrastructure.db import (
+    checkout_models as _checkout_models,  # noqa: F401
+)
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.financial_schema import TRIGGER_SQL
 from ugc_bot.infrastructure.db.journal_order_schema import add_journal_order
+from ugc_bot.infrastructure.db.social_models import (
+    SocialAccountModel,  # noqa: F401
+)
 
 
 class _GeometryOrText(TypeDecorator):
@@ -194,6 +200,15 @@ class BloggerProfileModel(Base):
 
     __tablename__ = "blogger_profiles"
     __table_args__ = (
+        sa.Index(
+            "uq_blogger_verified_instagram_identity",
+            sa.func.trim(sa.column("instagram_user_id")),
+            unique=True,
+            postgresql_where=sa.text(
+                "confirmed AND trim(instagram_user_id) <> ''"
+            ),
+            sqlite_where=sa.text("confirmed AND trim(instagram_user_id) <> ''"),
+        ),
         sa.Index(
             "ix_blogger_profiles_confirmed",
             "confirmed",
@@ -1050,6 +1065,10 @@ class PayoutRequestModel(Base):
 
     __tablename__ = "payout_requests"
 
+    payout_protocol: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True
+    )
+
     request_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         primary_key=True,
@@ -1090,7 +1109,10 @@ class PayoutRequestModel(Base):
             "currency",
             sa.func.date(sa.text("requested_at AT TIME ZONE 'UTC'")),
             unique=True,
-            postgresql_where=sa.text("status NOT IN ('cancelled', 'deleted')"),
+            postgresql_where=sa.text(
+                "payout_protocol IS NULL AND "
+                "status NOT IN ('cancelled', 'deleted')"
+            ),
         ),
     )
 
@@ -1372,6 +1394,20 @@ add_management_basis_applicability(_LEDGER_TABLES["rate_snapshots"])
 add_management_reward_standard(_LEDGER_TABLES["financial_obligations"])
 
 
+# Extend core tables before SQLAlchemy maps their columns.
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    collaboration_models as _collaboration_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    financial_lifecycle_models as _financial_lifecycle_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db.financial_lifecycle_schema import (  # noqa: E402
+    extend_ledger_metadata,
+)
+
+extend_ledger_metadata(Base.metadata)
+
+
 class FinancialWalletModel(Base):
     __table__ = _LEDGER_TABLES["financial_wallets"]
 
@@ -1398,4 +1434,55 @@ sa.event.listen(
     PaymentItemAllocationModel.__table__,
     "after_create",
     sa.DDL(TRIGGER_SQL).execute_if(dialect="postgresql"),
+)
+
+
+# Register canonical identity history with the full metadata.
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    campaign_digest_models as _campaign_digest_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    campaign_models as _campaign_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    campaign_review_models as _campaign_review_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    correction_approval_models as _correction_approval_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    correction_models as _correction_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    entitlement_models as _entitlement_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    identity_history_models as _identity_history_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    messenger_linking_models as _messenger_linking_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    notice_delivery_models as _notice_delivery_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    order_intake_models as _order_intake_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    override_models as _override_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    paid_selection_models as _paid_selection_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    payout_contract_models as _payout_contract_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    payout_models as _payout_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    selection_delivery_models as _selection_delivery_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    work_entitlement_models as _work_entitlement_models,  # noqa: F401
 )

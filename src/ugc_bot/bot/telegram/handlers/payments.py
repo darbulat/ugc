@@ -1,5 +1,6 @@
 """Telegram payment handlers."""
 
+import asyncio
 import logging
 from typing import cast
 from uuid import UUID
@@ -22,6 +23,10 @@ from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_order_paid,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.checkout_paid_receipts import (
+    PaidReceiptProcessor,
+    native_receipt,
+)
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
@@ -31,6 +36,7 @@ from ugc_bot.application.services.payment_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.telegram.handlers.checkout import send_checkout_if_v1
 from ugc_bot.bot.telegram.handlers.keyboards import (
     PAY_ORDER_CALLBACK_PREFIX,
     advertiser_menu_inline_keyboard,
@@ -144,6 +150,7 @@ async def start_pay_order_link(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    checkout_service=None,
 ) -> None:
     """Handle t.me/bot?start=pay_ORDER_ID — send invoice for that order."""
     order_id = _parse_pay_order_id_from_start(message.text or "")
@@ -182,6 +189,18 @@ async def start_pay_order_link(
             text=msg_fill,
         )
         return
+    if await send_checkout_if_v1(
+        order_id,
+        user,
+        incoming,
+        message,
+        messenger_client,
+        payment_service,
+        checkout_service,
+        config,
+        locale,
+    ):
+        return
     result = await payment_service.validate_order_for_invoice(
         order_id, user.user_id, user.country, config
     )
@@ -212,6 +231,7 @@ async def pay_order(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    checkout_service=None,
 ) -> None:
     """Send Telegram invoice for an order (email via payment form)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -270,6 +290,18 @@ async def pay_order(
         )
         return
 
+    if await send_checkout_if_v1(
+        order_id,
+        user,
+        incoming,
+        message,
+        messenger_client,
+        payment_service,
+        checkout_service,
+        config,
+        locale,
+    ):
+        return
     result = await payment_service.validate_order_for_invoice(
         order_id, user.user_id, user.country, config
     )
@@ -304,6 +336,7 @@ async def pay_order_callback(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    checkout_service=None,
 ) -> None:
     """Send Telegram invoice for an order from 'My orders' list button."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -356,6 +389,18 @@ async def pay_order_callback(
         )
         return
 
+    if await send_checkout_if_v1(
+        order_id,
+        user,
+        incoming,
+        callback,
+        messenger_client,
+        payment_service,
+        checkout_service,
+        config,
+        locale,
+    ):
+        return
     result = await payment_service.validate_order_for_invoice(
         order_id, user.user_id, user.country, config
     )
@@ -380,6 +425,8 @@ async def pre_checkout_query_handler(
     pre_checkout_query: PreCheckoutQuery,
     payment_provider: PaymentProvider,
     event_adapter: MessengerEventAdapter | None = None,
+    payment_service: PaymentService | None = None,
+    checkout_service=None,
 ) -> None:
     """Confirm pre-checkout query from Telegram."""
     adapter = cast(
@@ -387,7 +434,52 @@ async def pre_checkout_query_handler(
         event_adapter if event_adapter is not None else TelegramEventAdapter(),
     )
     incoming = adapter.from_pre_checkout(pre_checkout_query)
+    if payment_service is not None or checkout_service is not None:
+        try:
+            async with asyncio.timeout(7):
+                order_id = UUID(incoming.payload)
+                order = (
+                    await payment_service.get_order(order_id)
+                    if payment_service
+                    else None
+                )
+                if order is None:
+                    raise ValueError("order_not_found")
+                if order.financial_version is not None:
+                    if checkout_service is None:
+                        raise ValueError("checkout_unavailable")
+                    await checkout_service.authorize(
+                        order_id,
+                        incoming.user.external_id,
+                        incoming.query_id,
+                        incoming.total_amount,
+                        incoming.currency,
+                    )
+        except Exception:
+            await payment_provider.reject_pre_checkout(
+                query_id=incoming.query_id,
+                error_message=(
+                    "Оплата пока недоступна. Проверьте сохранённый статус "
+                    "заказа."
+                ),
+            )
+            return
     await payment_provider.confirm_pre_checkout(query_id=incoming.query_id)
+
+
+async def _persist_native_paid(incoming, checkout_service, payment_service):
+    if checkout_service is None:
+        return False
+    processor = PaidReceiptProcessor(
+        checkout_service.repository,
+        checkout_service.transactions,
+        payment_service,
+    )
+    try:
+        receipt = native_receipt(incoming)
+    except ValueError:
+        return False
+    return await processor.accept(receipt)
 
 
 @router.message(F.successful_payment)
@@ -401,6 +493,7 @@ async def successful_payment_handler(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    checkout_service=None,
 ) -> None:
     """Handle successful Telegram payment."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -408,6 +501,8 @@ async def successful_payment_handler(
     )
     incoming = event_adapter.from_message(message)
     if incoming.successful_payment is None:
+        return
+    if await _persist_native_paid(incoming, checkout_service, payment_service):
         return
 
     locale = user_locale
@@ -469,8 +564,12 @@ async def successful_payment_handler(
 
     order = await payment_service.get_order(order_id)
     if order:
-        invoice_data = await payment_service.calculate_invoice_data(
-            order, user.country, config
+        invoice_data = (
+            await payment_service.calculate_invoice_data(
+                order, user.country, config
+            )
+            if order.financial_version is None
+            else None
         )
         symbol = (
             invoice_data.currency_symbol
@@ -507,6 +606,7 @@ async def successful_payment_handler(
             "btn_my_orders",
             "btn_my_profile",
             "btn_edit_profile",
+            "btn_partner_program",
         ],
         locale,
     )

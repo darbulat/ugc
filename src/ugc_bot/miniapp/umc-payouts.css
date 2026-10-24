@@ -1,0 +1,17 @@
+/* Owner payouts extend the supplied UMC mint section, typography and cards. */
+.umc-payouts { min-width: 0; }
+.umc-payout-card { margin: 0 0 var(--space-20); padding: var(--space-24); border-radius: var(--radius-22); background: var(--card); min-width: 0; }
+.umc-payout-card .umc-payout-card { padding: var(--space-16) 0; margin: 0; border-radius: 0; border-top: 1px solid var(--line); }
+.umc-payout-card h2 { font-size: 21px; }
+.umc-payout-money { font: 600 clamp(15px, 5vw, 30px)/1.35 var(--font-body); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.umc-payout-reference { overflow-wrap: anywhere; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.umc-payout-document { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; }
+.umc-payout-pair { margin: 0 0 var(--space-16); }
+.umc-payout-pair dt { color: var(--muted); font-size: 13px; margin-bottom: var(--space-6); }
+.umc-payout-pair dd { margin: 0; overflow-wrap: anywhere; line-height: 1.5; }
+.umc-payout-accept { display: flex; align-items: flex-start; gap: var(--space-12); font-size: 15px; }
+.umc-payout-accept input { width: 24px; min-width: 24px; min-height: 24px; height: 24px; margin: 0; accent-color: var(--ink); }
+.umc-payouts > .btn, .umc-payout-card > .btn { width: 100%; margin-bottom: var(--space-12); white-space: normal; }
+.umc-payouts [hidden] { display: none !important; }
+.umc-payouts .error:empty, .umc-payouts [role="status"]:empty { display: none; }
+@media (max-width: 360px) { .umc-payout-card, .umc-payouts form { padding: var(--space-16); } .umc-payouts .umc-payout-card .umc-payout-card { padding-inline: 0; } }

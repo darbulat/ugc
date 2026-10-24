@@ -6,21 +6,239 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import Session, SessionTransaction
 
+from ugc_bot.application.legacy_link_ports import (
+    LegacyMaxAttachment,
+    LegacyMaxPreparation,
+    LegacySqlParticipant,
+    attachment_state,
+    validated_max_chat_id,
+)
 from ugc_bot.application.ports import UserRepository
 from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import UserModel
+from ugc_bot.infrastructure.db.repositories import messenger_linking
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
+
+_LEGACY_MAX_PREPARATIONS = "legacy_max_preparations"
 
 
 @dataclass(slots=True)
-class SqlAlchemyUserRepository(UserRepository):
+class _LegacyMaxCapabilities:
+    transaction: SessionTransaction
+    preparations: list[LegacyMaxPreparation]
+
+
+def _expire_legacy_max_capabilities(
+    session: Session, transaction: SessionTransaction
+) -> None:
+    registered = session.info.get(_LEGACY_MAX_PREPARATIONS)
+    if (
+        isinstance(registered, _LegacyMaxCapabilities)
+        and registered.transaction is transaction
+    ):
+        session.info.pop(_LEGACY_MAX_PREPARATIONS)
+
+
+def _register_legacy_max_preparation(
+    session: AsyncSession,
+    transaction: SessionTransaction,
+    preparation: LegacyMaxPreparation,
+) -> None:
+    # One stable session handler, independent of preparation/root count.
+    if not event.contains(
+        session.sync_session,
+        "after_transaction_end",
+        _expire_legacy_max_capabilities,
+    ):
+        event.listen(
+            session.sync_session,
+            "after_transaction_end",
+            _expire_legacy_max_capabilities,
+        )
+    registered = session.info.get(_LEGACY_MAX_PREPARATIONS)
+    if (
+        not isinstance(registered, _LegacyMaxCapabilities)
+        or registered.transaction is not transaction
+    ):
+        registered = _LegacyMaxCapabilities(transaction, [])
+        session.info[_LEGACY_MAX_PREPARATIONS] = registered
+    registered.preparations.append(preparation)
+
+
+def _current_legacy_max_preparation(
+    session: AsyncSession, preparation: LegacyMaxPreparation
+) -> bool:
+    registered = session.info.get(_LEGACY_MAX_PREPARATIONS)
+    transaction = session.sync_session.get_transaction()
+    return (
+        isinstance(registered, _LegacyMaxCapabilities)
+        and transaction is registered.transaction
+        and transaction.is_active
+        and any(item is preparation for item in registered.preparations)
+    )
+
+
+@dataclass(slots=True)
+class SqlAlchemyUserRepository(UserRepository, LegacySqlParticipant):
     """SQLAlchemy-backed user repository."""
 
     session_factory: async_sessionmaker[AsyncSession]
+
+    def legacy_confirmation_supported(self, session, participants):
+        return (
+            isinstance(session, AsyncSession)
+            and session.in_transaction()
+            and all(
+                isinstance(repo, LegacySqlParticipant) for repo in participants
+            )
+        )
+
+    async def _legacy_user(self, db, condition, *, lock=False):
+        query = (
+            select(UserModel)
+            .where(condition)
+            .execution_options(populate_existing=True)
+        )
+        if lock:
+            query = query.with_for_update(key_share=True)
+        model = await db.scalar(query)
+        return _to_user_entity(model) if model is not None else None
+
+    async def prepare_legacy_max_attachment(
+        self,
+        target_id,
+        *,
+        code_id=None,
+        max_id=None,
+        max_chat_id=None,
+        session=None,
+    ):
+        if not self.legacy_confirmation_supported(session, (self,)):
+            return LegacyMaxPreparation(target_id, code_id, max_id, max_chat_id)
+        db = session
+        # Barriers acquired inside a savepoint may disappear on its rollback.
+        if db.in_nested_transaction():
+            return LegacyMaxPreparation(
+                target_id,
+                code_id,
+                max_id,
+                max_chat_id,
+                reason="nested_transaction_unavailable",
+            )
+        transaction = db.sync_session.get_transaction()
+        if transaction is None or not transaction.is_active:
+            return LegacyMaxPreparation(target_id, code_id, max_id, max_chat_id)
+        owner = (
+            await self._legacy_user(db, UserModel.max_id == max_id)
+            if max_id is not None
+            else None
+        )
+        scope = tuple(
+            sorted({target_id} | ({owner.user_id} if owner else set()), key=str)
+        )
+        for uid in scope:
+            await self._legacy_user(db, UserModel.user_id == uid, lock=True)
+        if max_id is not None:
+            await messenger_linking.acquire_link_identity_barrier(db)
+        current_owner = (
+            await self._legacy_user(db, UserModel.max_id == max_id)
+            if max_id is not None
+            else None
+        )
+        if (current_owner.user_id if current_owner else None) != (
+            owner.user_id if owner else None
+        ):
+            return LegacyMaxPreparation(
+                target_id,
+                code_id,
+                max_id,
+                max_chat_id,
+                reason="native_scope_changed",
+            )
+        target = await self._legacy_user(db, UserModel.user_id == target_id)
+        state, reason = attachment_state(target, current_owner, max_id)
+        chat = validated_max_chat_id(max_chat_id)
+        if max_chat_id is not None and chat is None:
+            state, reason = "unavailable", "recorded_chat_invalid"
+        preparation = LegacyMaxPreparation(
+            target_id,
+            code_id,
+            max_id,
+            chat,
+            scope if target is not None else (),
+            state,
+            reason,
+            current_owner.language or "ru" if current_owner else "ru",
+            db,
+        )
+        if preparation.protected:
+            if (
+                db.sync_session.get_transaction() is not transaction
+                or not transaction.is_active
+            ):
+                return LegacyMaxPreparation(
+                    target_id,
+                    code_id,
+                    max_id,
+                    max_chat_id,
+                    reason="transaction_changed",
+                )
+            _register_legacy_max_preparation(db, transaction, preparation)
+        return preparation
+
+    async def attach_prepared_max(self, preparation, *, session):
+        if (
+            not self.legacy_confirmation_supported(session, (self,))
+            or preparation.session is not session
+            or not preparation.protected
+            or not _current_legacy_max_preparation(session, preparation)
+        ):
+            return LegacyMaxAttachment("unavailable", "preparation_unavailable")
+        if preparation.state not in ("ready", "same_account"):
+            return LegacyMaxAttachment(preparation.state, preparation.reason)
+        target = await self._legacy_user(
+            session, UserModel.user_id == preparation.target_id
+        )
+        owner = (
+            await self._legacy_user(
+                session, UserModel.max_id == preparation.max_id
+            )
+            if preparation.max_id is not None
+            else None
+        )
+        state, reason = attachment_state(target, owner, preparation.max_id)
+        if state != "ready" or preparation.max_id is None:
+            return LegacyMaxAttachment(state, reason, target)
+        try:
+            async with session.begin_nested():
+                updated = await session.scalar(
+                    update(UserModel)
+                    .where(
+                        UserModel.user_id == preparation.target_id,
+                        UserModel.max_id.is_(None),
+                    )
+                    .values(
+                        max_id=preparation.max_id,
+                        max_chat_id=preparation.max_chat_id,
+                    )
+                    .returning(UserModel)
+                    .execution_options(populate_existing=True)
+                )
+        except IntegrityError as error:
+            if getattr(error.orig, "sqlstate", None) != "23505":
+                raise
+            return LegacyMaxAttachment("conflict", "native_identity_taken")
+        if updated is None:
+            return LegacyMaxAttachment("conflict", "target_changed")
+        return LegacyMaxAttachment(
+            "ready", "attached", _to_user_entity(updated)
+        )
 
     async def get_by_id(
         self, user_id: UUID, session: object | None = None

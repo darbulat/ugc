@@ -15,6 +15,7 @@ UZ: dict[str, str] = {
     "btn_my_orders": "📂 Mening buyurtmalarim",
     "btn_change_role": "Rolni o'zgartirish",
     "btn_create_profile": "Profil yaratish",
+    "btn_partner_program": "Hamkorlik dasturi",
     "btn_advertiser_start": "Boshlash",
     "btn_create_order": "➕ Buyurtma yaratish",
     "btn_confirm_instagram": "✅ Instagram tasdiqlash",
@@ -709,6 +710,20 @@ UZ: dict[str, str] = {
         "Yangi buyurtmalar paydo bo'lishi bilan albatta yuboramiz.\n\n"
         "Botdagi bildirishnomalarni kuzatib boring 🙌"
     ),
+    "msg_offer_response_unavailable": (
+        "Javobni tasdiqlash hozir mavjud emas. Keyinroq urinib ko'ring."
+    ),
+    "msg_offer_response_verification_required": (
+        "Profilingizda Instagram-ni tasdiqlab, qayta urinib ko'ring."
+    ),
+    "msg_offer_response_identity_used": (
+        "Bu Instagram hisobi ushbu buyurtmaga allaqachon javob bergan."
+    ),
+    "msg_blogger_selection_interest_saved": (
+        "Javobingiz saqlandi. Buyurtmachining xabarini kuting.\n\n"
+        "Ish shartlari va haqini bevosita kelishing. Suv belgisi bor "
+        "namunani ko'rsating; yakuniy materialni to'lovdan keyin yuboring."
+    ),
     "msg_blogger_after_response_what_next": (
         "⏳ Keyingi qadam\n\n"
         "💬 Buyurtmachidan xabar kuting — u Instagram havolangizni oldi "
@@ -763,6 +778,15 @@ UZ: dict[str, str] = {
         "Instagram-akkauntingizni tekshirib bo'lmadi. "
         "Verifikatsiyadan keyinroq qaytadan o'ting yoki "
         "qo'llab-quvvatlash chatiga yozing."
+    ),
+    "msg_instagram_link_conflict": (
+        "Instagram tasdiqlandi. Akkauntlar bog'lanmadi: ular alohida "
+        "akkauntlar. Yordam uchun qo'llab-quvvatlash xizmatiga murojaat "
+        "qiling."
+    ),
+    "msg_instagram_link_unavailable": (
+        "Instagram tasdiqlandi, lekin MAX akkauntini hozir bog'lab bo'lmadi. "
+        "Qo'llab-quvvatlash xizmatiga murojaat qiling."
     ),
     "msg_instagram_mismatch": (
         "Profilingizdagi Instagram kod yuborgan akkaunt bilan mos kelmadi. "

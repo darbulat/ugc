@@ -1,4 +1,4 @@
-"""Scheduler for feedback requests after contacts sharing."""
+"""Legacy feedback helpers; production scheduling uses weekly summaries."""
 
 import asyncio
 import logging
@@ -20,8 +20,10 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.telegram.handlers.utils import send_with_retry
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+from ugc_bot.campaign_digest_scheduler import run_enabled as run_digest
 from ugc_bot.config import FeedbackConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.container.campaign_digest_factory import enabled as digest_enabled
 from ugc_bot.domain.entities import BloggerProfile, Interaction, Order, User
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.exception_hooks import (
@@ -29,9 +31,6 @@ from ugc_bot.exception_hooks import (
     install_exception_hooks,
 )
 from ugc_bot.infrastructure.db.session import with_optional_tx
-from ugc_bot.infrastructure.messenger.telegram.client import (
-    TelegramMessengerClient,
-)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -517,8 +516,10 @@ def main() -> None:
         logger=logger, service_name="Feedback scheduler", config=config
     )
 
-    if not config.feedback.feedback_enabled:
-        logger.info("Feedback scheduler disabled by config")
+    if not digest_enabled(config):
+        logger.info(
+            "Campaign summaries disabled; legacy rating cascade retired"
+        )
         return
 
     if not config.db.database_url:
@@ -535,32 +536,9 @@ def main() -> None:
         },
     )
     container = Container(config)
-    deps = container.build_feedback_scheduler_deps()
-    bot_texts_service = container.build_bot_texts_service()
-
     bot = Bot(token=config.bot.bot_token)
-    messenger_clients: dict[str, MessengerClient] = {
-        "telegram": TelegramMessengerClient(bot),
-    }
-    default_locale = (
-        getattr(getattr(config, "market", None), "default_locale", "ru") or "ru"
-    )
     try:
-        asyncio.run(
-            run_loop(
-                messenger_clients,
-                deps["interaction_repo"],
-                deps["interaction_service"],
-                deps["user_role_service"],
-                deps["profile_service"],
-                deps["order_repo"],
-                config.feedback,
-                interval_seconds=config.feedback.feedback_poll_interval_seconds,
-                transaction_manager=deps["transaction_manager"],
-                default_locale=default_locale,
-                bot_texts_service=bot_texts_service,
-            )
-        )
+        asyncio.run(run_digest(config, container, bot))
     finally:
         session = getattr(bot, "session", None)
         if session is not None:

@@ -21,6 +21,14 @@ class OrderCreationError(ValueError):
     """Raised when order creation data is invalid."""
 
 
+class PaidSelectionResponseError(OrderCreationError):
+    """A versioned interest failed without proving the order is closed."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+        super().__init__(reason)
+
+
 class OrderNotFoundError(OrderCreationError):
     """Raised when an order cannot be found."""
 

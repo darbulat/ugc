@@ -7,6 +7,9 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
 
+from tests.postgres_financial.conftest import (
+    financial_pg_engine as _shared_engine,
+)
 from tests.postgres_financial.test_financial_delivery_runtime import (
     capture_env as _capture_env,
 )
@@ -23,6 +26,13 @@ from ugc_bot.infrastructure.db.session import SessionTransactionManager
 from ugc_bot.outbox_processor import OutboxProcessor
 
 capture_env = _capture_env
+
+
+@pytest.fixture
+def financial_pg_engine(request):
+    # Global queue discovery needs a fresh schema: one process_once handles
+    # only a bounded batch, not all earlier scenarios' retained requests.
+    yield from _shared_engine.__wrapped__(request)
 
 
 class ActivationProbe:
@@ -106,8 +116,12 @@ async def test_independent_financial_claim_skips_live_uncommitted_claim(
                     select(OutboxEventModel.event_id).where(
                         OutboxEventModel.status == OutboxEventStatus.PENDING,
                         OutboxEventModel.event_type.like("financial.%"),
-                        OutboxEventModel.event_type
-                        != "financial.capture_intent",
+                        OutboxEventModel.event_type.not_in(
+                            (
+                                "financial.capture_intent",
+                                "financial.collaboration.notice_requested",
+                            )
+                        ),
                     )
                 )
             )

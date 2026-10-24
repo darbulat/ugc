@@ -1,0 +1,384 @@
+/* UMC UI - компоненты сайта usemycontent.ru (дизайн v4) на токенах tokens.json.
+   Подключать после tokens.css. Все значения взяты из styles.css сайта. */
+
+.umc {
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.umc *,
+.umc *::before,
+.umc *::after { box-sizing: border-box; }
+
+.umc :where(a, button, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.umc-display {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+
+/* ── Button ── */
+.umc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 50px;
+  padding: 0 22px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-14);
+  font: 600 15px/1 var(--font-body);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 180ms ease, background 180ms ease, border-color 180ms ease;
+}
+
+.umc-btn:hover { transform: translateY(-1px); }
+.umc-btn:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+.umc-btn--primary { background: var(--ink); color: var(--on-ink); }
+.umc-btn--primary:hover { background: var(--ink-hover); }
+
+.umc-btn--ghost { background: var(--bg); color: var(--ink); border-color: var(--line-strong); }
+.umc-btn--ghost:hover { border-color: var(--ink); }
+
+/* На заливке ink (финальный блок): светлая кнопка и прозрачная с рамкой */
+.umc-btn--inverse { background: var(--on-ink); color: var(--ink); }
+.umc-btn--inverse-ghost { background: transparent; color: var(--on-ink); border-color: var(--on-ink-muted); }
+
+.umc-btn--lg { min-height: 56px; padding: 0 28px; font-size: 16px; }
+.umc-btn--sm { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: var(--radius-12); }
+.umc-btn--block { width: 100%; }
+
+/* ── Tabs ── */
+.umc-tabs { display: flex; flex-wrap: wrap; gap: var(--space-8); }
+
+.umc-tab {
+  padding: 12px 20px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  color: var(--ink);
+  font: 600 15px/1 var(--font-body);
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.umc-tab[aria-selected="true"] { background: var(--ink); color: var(--on-ink); }
+
+/* ── Card ── */
+.umc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: var(--space-24);
+  border-radius: var(--radius-22);
+  background: var(--card);
+  color: var(--ink);
+}
+
+.umc-card--lavender { background: var(--lavender); color: var(--on-pastel); }
+.umc-card--peach { background: var(--peach); color: var(--on-pastel); }
+.umc-card--lilac { background: var(--lilac); color: var(--on-pastel); }
+.umc-card--mint { background: var(--mint); color: var(--on-pastel); }
+
+.umc-card__tag {
+  align-self: flex-start;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--pastel-glass);
+  color: var(--on-pastel);
+  font: 600 11px/1.3 var(--font-body);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.umc-card__tag--ink { background: var(--ink); color: var(--on-ink); }
+.umc-card__title { margin: 0; font: 600 21px/1.2 var(--font-body); }
+.umc-card__text { margin: 0; font-size: 15px; color: var(--muted); }
+
+.umc-card--lavender .umc-card__text,
+.umc-card--peach .umc-card__text,
+.umc-card--lilac .umc-card__text,
+.umc-card--mint .umc-card__text { color: var(--on-pastel-muted); }
+
+.umc-card__list { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; }
+
+/* ── TariffCard ── */
+.umc-tariff {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 26px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-22);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.umc-tariff--featured { border-color: transparent; background: var(--lavender); color: var(--on-pastel); }
+.umc-tariff__name { color: var(--muted); font-weight: 600; }
+.umc-tariff--featured .umc-tariff__name { color: var(--on-pastel-muted); }
+.umc-tariff__qty { font-size: 18px; font-weight: 600; }
+
+.umc-tariff__price {
+  margin-top: 20px;
+  font: 700 43px/1 var(--font-display);
+  white-space: nowrap;
+}
+
+.umc-tariff__cur { font: 500 16px var(--font-body); }
+.umc-tariff__unit { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+.umc-tariff--featured .umc-tariff__unit { color: var(--on-pastel-muted); }
+
+/* ── Chip и статус ── */
+.umc-chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+
+.umc-chip {
+  padding: 10px 18px;
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.umc-pill {
+  display: inline-block;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  color: var(--on-pastel);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.umc-pill--ok { background: var(--mint); }
+.umc-pill--wait { background: var(--peach); }
+.umc-pill--new { background: var(--lavender); }
+
+/* ── FAQ ── */
+.umc-faq { display: grid; }
+.umc-faq details { border-bottom: 1px solid var(--line); }
+.umc-faq details:first-child { border-top: 1px solid var(--line); }
+
+.umc-faq summary {
+  position: relative;
+  padding: 22px 40px 22px 4px;
+  font: 600 18px/1.3 var(--font-body);
+  list-style: none;
+  cursor: pointer;
+}
+
+.umc-faq summary::-webkit-details-marker { display: none; }
+
+.umc-faq summary::after {
+  content: "+";
+  position: absolute;
+  right: 6px;
+  top: 16px;
+  font-size: 26px;
+  font-weight: 400;
+}
+
+.umc-faq details[open] summary::after { content: "−"; }
+.umc-faq details p { margin: 0 4px 22px; color: var(--muted); }
+
+/* ── Steps ── */
+.umc-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+
+.umc-steps li {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 16px;
+  align-items: start;
+  padding: 12px 0;
+}
+
+.umc-steps__num {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--on-ink);
+  font: 700 15px/1 var(--font-display);
+}
+
+.umc-steps__title { margin: 8px 0 4px; font: 600 18px/1.25 var(--font-body); }
+.umc-steps__text { margin: 0; font-size: 15px; color: var(--muted); }
+
+/* ── BotChat ── */
+.umc-chat {
+  padding: 18px 16px 22px;
+  border-radius: var(--radius-20);
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: var(--shadow-float);
+}
+
+.umc-chat__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.umc-chat__ava { width: 36px; height: 36px; border-radius: 50%; background: var(--pastel-surface); }
+.umc-chat__name { font-size: 14px; font-weight: 600; line-height: 1.2; }
+.umc-chat__name small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+.umc-chat__thread { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+
+.umc-chat__msg {
+  max-width: 88%;
+  padding: 10px 13px;
+  border-radius: 14px 14px 14px 4px;
+  background: var(--card);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.umc-chat__msg b { display: block; font-size: 12px; font-weight: 600; color: var(--muted); }
+.umc-chat__msg--out { margin-left: auto; border-radius: 14px 14px 4px 14px; background: var(--ink); color: var(--on-ink); }
+.umc-chat__msg--out b { color: var(--on-ink-muted); }
+.umc-chat__msg--hit { background: var(--mint); color: var(--on-pastel); }
+.umc-chat__msg--hit b { color: var(--on-pastel-muted); }
+
+/* ── Hero: пастельный экран с пиксельным краем ── */
+.umc-hero {
+  --hero: var(--lavender);
+  position: relative;
+  padding: 40px 20px 110px;
+  background: var(--hero);
+  color: var(--on-pastel);
+}
+
+.umc-hero--peach { --hero: var(--peach); }
+.umc-hero--lilac { --hero: var(--lilac); }
+.umc-hero--mint { --hero: var(--mint); }
+
+.umc-hero::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 72px;
+  background: var(--bg);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 72' preserveAspectRatio='none'%3E%3Cg fill='black'%3E%3Crect x='0' y='48' width='24' height='24'/%3E%3Crect x='0' y='24' width='24' height='24'/%3E%3Crect x='24' y='48' width='24' height='24'/%3E%3Crect x='24' y='24' width='24' height='24'/%3E%3Crect x='48' y='48' width='24' height='24'/%3E%3Crect x='72' y='48' width='24' height='24'/%3E%3Crect x='96' y='48' width='24' height='24'/%3E%3Crect x='120' y='48' width='24' height='24'/%3E%3Crect x='120' y='0' width='24' height='24'/%3E%3Crect x='144' y='48' width='24' height='24'/%3E%3Crect x='144' y='24' width='24' height='24'/%3E%3Crect x='168' y='48' width='24' height='24'/%3E%3Crect x='168' y='0' width='24' height='24'/%3E%3Crect x='192' y='48' width='24' height='24'/%3E%3Crect x='192' y='24' width='24' height='24'/%3E%3Crect x='192' y='-24' width='24' height='24'/%3E%3Crect x='216' y='48' width='24' height='24'/%3E%3Crect x='216' y='24' width='24' height='24'/%3E%3Crect x='216' y='-24' width='24' height='24'/%3E%3Crect x='240' y='48' width='24' height='24'/%3E%3Crect x='264' y='48' width='24' height='24'/%3E%3Crect x='264' y='24' width='24' height='24'/%3E%3Crect x='288' y='48' width='24' height='24'/%3E%3Crect x='288' y='24' width='24' height='24'/%3E%3Crect x='312' y='48' width='24' height='24'/%3E%3Crect x='336' y='48' width='24' height='24'/%3E%3Crect x='360' y='48' width='24' height='24'/%3E%3Crect x='384' y='48' width='24' height='24'/%3E%3Crect x='408' y='48' width='24' height='24'/%3E%3Crect x='408' y='24' width='24' height='24'/%3E%3Crect x='432' y='48' width='24' height='24'/%3E%3Crect x='432' y='24' width='24' height='24'/%3E%3Crect x='432' y='0' width='24' height='24'/%3E%3Crect x='432' y='-48' width='24' height='24'/%3E%3Crect x='456' y='48' width='24' height='24'/%3E%3Crect x='456' y='24' width='24' height='24'/%3E%3Crect x='480' y='48' width='24' height='24'/%3E%3Crect x='504' y='48' width='24' height='24'/%3E%3Crect x='504' y='24' width='24' height='24'/%3E%3Crect x='528' y='48' width='24' height='24'/%3E%3Crect x='528' y='24' width='24' height='24'/%3E%3Crect x='528' y='-24' width='24' height='24'/%3E%3Crect x='552' y='48' width='24' height='24'/%3E%3Crect x='576' y='48' width='24' height='24'/%3E%3Crect x='576' y='24' width='24' height='24'/%3E%3Crect x='600' y='48' width='24' height='24'/%3E%3Crect x='600' y='24' width='24' height='24'/%3E%3Crect x='624' y='48' width='24' height='24'/%3E%3Crect x='624' y='24' width='24' height='24'/%3E%3Crect x='648' y='48' width='24' height='24'/%3E%3Crect x='672' y='48' width='24' height='24'/%3E%3Crect x='672' y='24' width='24' height='24'/%3E%3Crect x='672' y='0' width='24' height='24'/%3E%3Crect x='696' y='48' width='24' height='24'/%3E%3Crect x='720' y='48' width='24' height='24'/%3E%3Crect x='720' y='24' width='24' height='24'/%3E%3Crect x='744' y='48' width='24' height='24'/%3E%3Crect x='744' y='24' width='24' height='24'/%3E%3Crect x='768' y='48' width='24' height='24'/%3E%3Crect x='768' y='24' width='24' height='24'/%3E%3Crect x='792' y='48' width='24' height='24'/%3E%3Crect x='792' y='0' width='24' height='24'/%3E%3Crect x='816' y='48' width='24' height='24'/%3E%3Crect x='816' y='24' width='24' height='24'/%3E%3Crect x='816' y='-24' width='24' height='24'/%3E%3Crect x='840' y='48' width='24' height='24'/%3E%3Crect x='840' y='24' width='24' height='24'/%3E%3Crect x='840' y='-24' width='24' height='24'/%3E%3Crect x='864' y='48' width='24' height='24'/%3E%3Crect x='864' y='24' width='24' height='24'/%3E%3Crect x='888' y='48' width='24' height='24'/%3E%3Crect x='888' y='24' width='24' height='24'/%3E%3Crect x='888' y='0' width='24' height='24'/%3E%3Crect x='888' y='-48' width='24' height='24'/%3E%3Crect x='912' y='48' width='24' height='24'/%3E%3Crect x='912' y='24' width='24' height='24'/%3E%3Crect x='936' y='48' width='24' height='24'/%3E%3Crect x='936' y='24' width='24' height='24'/%3E%3Crect x='960' y='48' width='24' height='24'/%3E%3Crect x='960' y='24' width='24' height='24'/%3E%3Crect x='984' y='48' width='24' height='24'/%3E%3Crect x='984' y='24' width='24' height='24'/%3E%3Crect x='1008' y='48' width='24' height='24'/%3E%3Crect x='1032' y='48' width='24' height='24'/%3E%3Crect x='1032' y='24' width='24' height='24'/%3E%3Crect x='1056' y='48' width='24' height='24'/%3E%3Crect x='1056' y='24' width='24' height='24'/%3E%3Crect x='1056' y='0' width='24' height='24'/%3E%3Crect x='1056' y='-48' width='24' height='24'/%3E%3Crect x='1080' y='48' width='24' height='24'/%3E%3Crect x='1080' y='24' width='24' height='24'/%3E%3Crect x='1080' y='0' width='24' height='24'/%3E%3Crect x='1104' y='48' width='24' height='24'/%3E%3Crect x='1104' y='24' width='24' height='24'/%3E%3Crect x='1104' y='0' width='24' height='24'/%3E%3Crect x='1128' y='48' width='24' height='24'/%3E%3Crect x='1128' y='24' width='24' height='24'/%3E%3Crect x='1128' y='0' width='24' height='24'/%3E%3Crect x='1152' y='48' width='24' height='24'/%3E%3Crect x='1152' y='24' width='24' height='24'/%3E%3Crect x='1176' y='48' width='24' height='24'/%3E%3Crect x='1176' y='24' width='24' height='24'/%3E%3Crect x='1176' y='0' width='24' height='24'/%3E%3Crect x='1200' y='48' width='24' height='24'/%3E%3Crect x='1200' y='24' width='24' height='24'/%3E%3Crect x='1224' y='48' width='24' height='24'/%3E%3Crect x='1224' y='24' width='24' height='24'/%3E%3Crect x='1224' y='-24' width='24' height='24'/%3E%3Crect x='1248' y='48' width='24' height='24'/%3E%3Crect x='1248' y='0' width='24' height='24'/%3E%3Crect x='1272' y='48' width='24' height='24'/%3E%3Crect x='1272' y='24' width='24' height='24'/%3E%3Crect x='1272' y='-24' width='24' height='24'/%3E%3Crect x='1296' y='48' width='24' height='24'/%3E%3Crect x='1320' y='48' width='24' height='24'/%3E%3Crect x='1320' y='24' width='24' height='24'/%3E%3Crect x='1320' y='-24' width='24' height='24'/%3E%3Crect x='1344' y='48' width='24' height='24'/%3E%3Crect x='1344' y='24' width='24' height='24'/%3E%3Crect x='1368' y='48' width='24' height='24'/%3E%3Crect x='1368' y='24' width='24' height='24'/%3E%3Crect x='1392' y='48' width='24' height='24'/%3E%3Crect x='1392' y='24' width='24' height='24'/%3E%3Crect x='1416' y='48' width='24' height='24'/%3E%3Crect x='1416' y='24' width='24' height='24'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 72' preserveAspectRatio='none'%3E%3Cg fill='black'%3E%3Crect x='0' y='48' width='24' height='24'/%3E%3Crect x='0' y='24' width='24' height='24'/%3E%3Crect x='24' y='48' width='24' height='24'/%3E%3Crect x='24' y='24' width='24' height='24'/%3E%3Crect x='48' y='48' width='24' height='24'/%3E%3Crect x='72' y='48' width='24' height='24'/%3E%3Crect x='96' y='48' width='24' height='24'/%3E%3Crect x='120' y='48' width='24' height='24'/%3E%3Crect x='120' y='0' width='24' height='24'/%3E%3Crect x='144' y='48' width='24' height='24'/%3E%3Crect x='144' y='24' width='24' height='24'/%3E%3Crect x='168' y='48' width='24' height='24'/%3E%3Crect x='168' y='0' width='24' height='24'/%3E%3Crect x='192' y='48' width='24' height='24'/%3E%3Crect x='192' y='24' width='24' height='24'/%3E%3Crect x='192' y='-24' width='24' height='24'/%3E%3Crect x='216' y='48' width='24' height='24'/%3E%3Crect x='216' y='24' width='24' height='24'/%3E%3Crect x='216' y='-24' width='24' height='24'/%3E%3Crect x='240' y='48' width='24' height='24'/%3E%3Crect x='264' y='48' width='24' height='24'/%3E%3Crect x='264' y='24' width='24' height='24'/%3E%3Crect x='288' y='48' width='24' height='24'/%3E%3Crect x='288' y='24' width='24' height='24'/%3E%3Crect x='312' y='48' width='24' height='24'/%3E%3Crect x='336' y='48' width='24' height='24'/%3E%3Crect x='360' y='48' width='24' height='24'/%3E%3Crect x='384' y='48' width='24' height='24'/%3E%3Crect x='408' y='48' width='24' height='24'/%3E%3Crect x='408' y='24' width='24' height='24'/%3E%3Crect x='432' y='48' width='24' height='24'/%3E%3Crect x='432' y='24' width='24' height='24'/%3E%3Crect x='432' y='0' width='24' height='24'/%3E%3Crect x='432' y='-48' width='24' height='24'/%3E%3Crect x='456' y='48' width='24' height='24'/%3E%3Crect x='456' y='24' width='24' height='24'/%3E%3Crect x='480' y='48' width='24' height='24'/%3E%3Crect x='504' y='48' width='24' height='24'/%3E%3Crect x='504' y='24' width='24' height='24'/%3E%3Crect x='528' y='48' width='24' height='24'/%3E%3Crect x='528' y='24' width='24' height='24'/%3E%3Crect x='528' y='-24' width='24' height='24'/%3E%3Crect x='552' y='48' width='24' height='24'/%3E%3Crect x='576' y='48' width='24' height='24'/%3E%3Crect x='576' y='24' width='24' height='24'/%3E%3Crect x='600' y='48' width='24' height='24'/%3E%3Crect x='600' y='24' width='24' height='24'/%3E%3Crect x='624' y='48' width='24' height='24'/%3E%3Crect x='624' y='24' width='24' height='24'/%3E%3Crect x='648' y='48' width='24' height='24'/%3E%3Crect x='672' y='48' width='24' height='24'/%3E%3Crect x='672' y='24' width='24' height='24'/%3E%3Crect x='672' y='0' width='24' height='24'/%3E%3Crect x='696' y='48' width='24' height='24'/%3E%3Crect x='720' y='48' width='24' height='24'/%3E%3Crect x='720' y='24' width='24' height='24'/%3E%3Crect x='744' y='48' width='24' height='24'/%3E%3Crect x='744' y='24' width='24' height='24'/%3E%3Crect x='768' y='48' width='24' height='24'/%3E%3Crect x='768' y='24' width='24' height='24'/%3E%3Crect x='792' y='48' width='24' height='24'/%3E%3Crect x='792' y='0' width='24' height='24'/%3E%3Crect x='816' y='48' width='24' height='24'/%3E%3Crect x='816' y='24' width='24' height='24'/%3E%3Crect x='816' y='-24' width='24' height='24'/%3E%3Crect x='840' y='48' width='24' height='24'/%3E%3Crect x='840' y='24' width='24' height='24'/%3E%3Crect x='840' y='-24' width='24' height='24'/%3E%3Crect x='864' y='48' width='24' height='24'/%3E%3Crect x='864' y='24' width='24' height='24'/%3E%3Crect x='888' y='48' width='24' height='24'/%3E%3Crect x='888' y='24' width='24' height='24'/%3E%3Crect x='888' y='0' width='24' height='24'/%3E%3Crect x='888' y='-48' width='24' height='24'/%3E%3Crect x='912' y='48' width='24' height='24'/%3E%3Crect x='912' y='24' width='24' height='24'/%3E%3Crect x='936' y='48' width='24' height='24'/%3E%3Crect x='936' y='24' width='24' height='24'/%3E%3Crect x='960' y='48' width='24' height='24'/%3E%3Crect x='960' y='24' width='24' height='24'/%3E%3Crect x='984' y='48' width='24' height='24'/%3E%3Crect x='984' y='24' width='24' height='24'/%3E%3Crect x='1008' y='48' width='24' height='24'/%3E%3Crect x='1032' y='48' width='24' height='24'/%3E%3Crect x='1032' y='24' width='24' height='24'/%3E%3Crect x='1056' y='48' width='24' height='24'/%3E%3Crect x='1056' y='24' width='24' height='24'/%3E%3Crect x='1056' y='0' width='24' height='24'/%3E%3Crect x='1056' y='-48' width='24' height='24'/%3E%3Crect x='1080' y='48' width='24' height='24'/%3E%3Crect x='1080' y='24' width='24' height='24'/%3E%3Crect x='1080' y='0' width='24' height='24'/%3E%3Crect x='1104' y='48' width='24' height='24'/%3E%3Crect x='1104' y='24' width='24' height='24'/%3E%3Crect x='1104' y='0' width='24' height='24'/%3E%3Crect x='1128' y='48' width='24' height='24'/%3E%3Crect x='1128' y='24' width='24' height='24'/%3E%3Crect x='1128' y='0' width='24' height='24'/%3E%3Crect x='1152' y='48' width='24' height='24'/%3E%3Crect x='1152' y='24' width='24' height='24'/%3E%3Crect x='1176' y='48' width='24' height='24'/%3E%3Crect x='1176' y='24' width='24' height='24'/%3E%3Crect x='1176' y='0' width='24' height='24'/%3E%3Crect x='1200' y='48' width='24' height='24'/%3E%3Crect x='1200' y='24' width='24' height='24'/%3E%3Crect x='1224' y='48' width='24' height='24'/%3E%3Crect x='1224' y='24' width='24' height='24'/%3E%3Crect x='1224' y='-24' width='24' height='24'/%3E%3Crect x='1248' y='48' width='24' height='24'/%3E%3Crect x='1248' y='0' width='24' height='24'/%3E%3Crect x='1272' y='48' width='24' height='24'/%3E%3Crect x='1272' y='24' width='24' height='24'/%3E%3Crect x='1272' y='-24' width='24' height='24'/%3E%3Crect x='1296' y='48' width='24' height='24'/%3E%3Crect x='1320' y='48' width='24' height='24'/%3E%3Crect x='1320' y='24' width='24' height='24'/%3E%3Crect x='1320' y='-24' width='24' height='24'/%3E%3Crect x='1344' y='48' width='24' height='24'/%3E%3Crect x='1344' y='24' width='24' height='24'/%3E%3Crect x='1368' y='48' width='24' height='24'/%3E%3Crect x='1368' y='24' width='24' height='24'/%3E%3Crect x='1392' y='48' width='24' height='24'/%3E%3Crect x='1392' y='24' width='24' height='24'/%3E%3Crect x='1416' y='48' width='24' height='24'/%3E%3Crect x='1416' y='24' width='24' height='24'/%3E%3C/g%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+.umc-hero__kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font: 600 13px/1.3 var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.umc-hero__kicker::before { content: ""; width: 28px; height: 2px; background: currentColor; }
+.umc-hero__title { font-size: 42px; line-height: 0.92; }
+.umc-hero__lead { margin: 16px 0 0; max-width: 560px; font-size: 18px; color: var(--on-pastel-muted); }
+.umc-hero__cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+.umc-hero__hint { margin: 12px 0 0; font-size: 13px; color: var(--on-pastel-muted); }
+
+/* На пастели ghost-кнопка белая без рамки */
+.umc-hero .umc-btn--ghost { background: var(--pastel-surface); color: var(--on-pastel); border-color: transparent; }
+
+/* ── FinalBlock: тёмный финал ── */
+.umc-final {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 64px 20px 56px;
+  background: var(--ink);
+  color: var(--on-ink);
+  text-align: center;
+}
+
+.umc-final__title { font-size: 42px; line-height: 0.92; max-width: 14ch; }
+.umc-final__text { margin: 0; max-width: 46ch; color: var(--on-ink-muted); }
+.umc-final__cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: 100%; }
+.umc-final__hint { margin: 0; font-size: 13px; color: var(--on-ink-muted); }
+
+/* ── Field ── */
+.umc-field { display: grid; gap: var(--space-6); min-width: 0; }
+.umc-field__label { font-size: 13px; font-weight: 600; color: var(--ink); }
+
+.umc-field__control {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-12);
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 16px/1.4 var(--font-body);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+textarea.umc-field__control { min-height: 92px; resize: vertical; }
+.umc-field__control:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px var(--line); }
+.umc-field__control[aria-invalid="true"] { border-color: var(--error); }
+.umc-field__error { margin: 0; font-size: 13px; color: var(--error); }
+
+.umc-form {
+  display: grid;
+  gap: 14px;
+  padding: var(--space-24);
+  border-radius: var(--radius-22);
+  background: var(--card);
+}
+
+.umc-consent { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.umc-consent input { width: 18px; height: 18px; flex: none; margin-top: 1px; accent-color: var(--ink); }
+.umc-consent a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Topbar ── */
+.umc-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 0 16px;
+  background: var(--lavender);
+  color: var(--on-pastel);
+}
+
+.umc-topbar__logo { width: 34px; height: 34px; }
+.umc-topbar__name { font: 700 20px/1 var(--font-display); text-transform: lowercase; letter-spacing: -0.01em; }
+.umc-topbar__cta { margin-left: auto; }
+/* На пастели кнопки не инвертируются вместе с темой: главная тёмная, вторичная белая */
+.umc-topbar .umc-btn--primary,
+.umc-hero .umc-btn--primary,
+.umc-card--lavender .umc-btn--primary,
+.umc-card--peach .umc-btn--primary,
+.umc-card--lilac .umc-btn--primary,
+.umc-card--mint .umc-btn--primary { background: var(--on-pastel); color: var(--pastel-surface); }
+
+.umc-card--lavender .umc-btn--ghost,
+.umc-card--peach .umc-btn--ghost,
+.umc-card--lilac .umc-btn--ghost,
+.umc-card--mint .umc-btn--ghost { background: var(--pastel-surface); color: var(--on-pastel); border-color: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .umc-btn, .umc-tab, .umc-field__control { transition: none; }
+  .umc-btn:hover { transform: none; }
+}
