@@ -53,7 +53,7 @@ async def process_until_published(
 ) -> None:
     """Drain earlier shared fixtures without retrying a broken target.
 
-    The session-scoped PG schema intentionally keeps immutable prior facts.
+    The module-scoped PG schema keeps immutable facts from prior test cases.
     One production pass claims a bounded global batch, not a test's event.
     The finite budget allows every initially active event its normal retry
     allowance; unchanged progress and any target error fail immediately.
