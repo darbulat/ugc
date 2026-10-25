@@ -57,11 +57,11 @@ Owned by root: intake targeting, lead acceptance, subscription domain/service/SQ
 
 ## Integration and acceptance
 
-- [x] Assemble single migration chain: existing head →00f0_campaign_runtime→00e0_financial_completion→0110_commercial_completion→0111_lead_review→0112_referral_binding_audit→0113_campaign_analytics→0114_refund_replacements→0115_debt_recovery→0116_manual_grants→0117_financial_reviews.
+- [x] Assemble single migration chain: existing head →00f0_campaign_runtime→00e0_financial_completion→0110_commercial_completion→0111_lead_review→0112_referral_binding_audit→0113_campaign_analytics→0114_refund_replacements→0115_debt_recovery→0116_manual_grants→0117_financial_reviews→0118_financial_review_restore→0119_accompaniment_prior.
 - [x] Mount real routers, builders and scheduler/worker hooks; no capability claims backed only by dormant contracts.
 - [x] Run focused tests, isolated PostgreSQL migrations/races, browser journeys, full `make fix` with unchanged 98% floor and independent final review.
 - [x] Update requirement evidence honestly, separate code completion from external pilot/legal/device acceptance, commit verified changes on the existing feature branch.
 
-Final verification: full `make fix` passed with required isolated PostgreSQL: 9239 passed, 19 skipped, 98.25% coverage. Ruff, format checks and mypy (613 source files) passed. Chromium cohort: 197 passed. Independent review findings were resolved and rechecked. Final code and tests remained frozen throughout the complete gate.
+Final verification: full `make fix` passed with required isolated PostgreSQL: 9260 passed, 19 skipped, 98.26% coverage. Ruff, format checks and mypy (615 source files) passed. Chromium cohort: 197 passed. Independent review findings were resolved and rechecked. Final code and tests remained frozen throughout the complete gate.
 
 Operational instructions and external acceptance boundaries: `../../operations/umc-sprint-completion.md`. Automatic bank transfers remain excluded; paid pilots, legal/accounting decisions and physical-device acceptance require real external evidence.

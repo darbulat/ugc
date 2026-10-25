@@ -29,7 +29,12 @@ class Repository:
                 client_id=self.issued.basis.referred_user_id
             ),
             user_ids=(self.issued.basis.recipient_id,),
-            source_document={},
+            source_document={
+                "journal": [
+                    {"operation_key": m.operation_key}
+                    for m in self.ledger.movements.values()
+                ]
+            },
             source_hash=correction_payload_hash(
                 tuple(self.ledger.movements.values())
             ),
@@ -295,3 +300,102 @@ def test_available_restore_waits_for_authoritative_maturity():
     assert FinancialReviewService._restores(
         fact, 1500, START + timedelta(days=14), START
     ) == dict(pending=0, hold=4500, available=0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("external_bucket", ["available", "blocked"])
+@pytest.mark.parametrize("old_cancelled", [0, 500])
+async def test_external_cancellation_preserves_other_case_block_and_ownership(
+    external_bucket, old_cancelled
+):
+    from dataclasses import replace
+    from uuid import UUID
+
+    from ugc_bot.application.financial_ports import JournalMovement
+
+    app, memory, repo, issued, command, ports = await service_scenario(
+        "available"
+    )
+    at = app.clock.now()
+    request_id, allocation_id = uuid4(), uuid4()
+
+    async def move(before, after, amount, key, db):
+        # Declared prior journal, as in the original issue fixture.
+        movement = JournalMovement(
+            obligation_id=issued.obligation_id,
+            operation_key=key,
+            event_id="declared-independent-prior-journal",
+            movement_type="transfer",
+            amount_minor=amount,
+            currency="RUB",
+            effective_at=at,
+            recorded_at=at,
+            actor_id=repo.actor_id,
+            actor_kind="admin",
+            reason="Explicit independent journal ownership control",
+            bucket_from=before,
+            bucket_to=after,
+            case_id=uuid4(),
+            request_id=request_id if "reserved" in (before, after) else None,
+            allocation_id=allocation_id
+            if "reserved" in (before, after)
+            else None,
+        )
+        await memory.append(movement, session=db)
+        await memory.apply_projection(movement, session=db)
+
+    async def cancel(target, prior, db):
+        await app.compensation.cancel(
+            issued,
+            target_minor=target,
+            already_cancelled_minor=prior,
+            case_id=uuid4(),
+            refund_id=uuid4(),
+            actor_id=repo.actor_id,
+            now=at,
+            session=db,
+        )
+
+    async with memory.transaction() as db:
+        if old_cancelled:
+            await move("available", "blocked", 5000, "old-block", db)
+            await cancel(old_cancelled, 0, db)
+            await move(
+                "blocked", "available", 5000 - old_cancelled, "old-clear", db
+            )
+        await move("available", "blocked", 1000, "other-active-block", db)
+        if external_bucket == "available":
+            await move("available", "reserved", 2000, "partial-reservation", db)
+        scope = await repo.load_scope(issued.basis.business_key, session=db)
+        opened = await app.open(
+            replace(command, expected_source_hash=scope.source_hash), session=db
+        )
+        if external_bucket == "available":
+            await move(
+                "reserved", "available", 2000, "explicit-payout-reject", db
+            )
+        await cancel(old_cancelled + 1000, old_cancelled, db)
+        current = await app.view(
+            repo.actor_id, UUID(opened["case_id"]), session=db
+        )
+        result = await app.resolve(
+            ports.ResolveFinancialReview(
+                actor_id=repo.actor_id,
+                operation_key="resolve-owned-block",
+                case_id=UUID(opened["case_id"]),
+                expected_version=1,
+                expected_source_hash=current["current_source_hash"],
+                decision="no_adjustment",
+                target_minor=None,
+                reason=(
+                    "Review confirms remaining liability "
+                    "after independent cancellation"
+                ),
+                evidence_reference="support:reviewed-journal",
+                evidence_hash="b" * 64,
+            ),
+            session=db,
+        )
+    assert result["buckets"]["cancelled"] == old_cancelled + 1000
+    assert result["buckets"]["blocked"] == 1000
+    assert result["buckets"]["available"] == 3000 - old_cancelled

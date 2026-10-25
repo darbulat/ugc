@@ -61,7 +61,10 @@ class Repo:
     async def totals(self, item_id, *, session):
         return (
             sum(a["customer_delta_minor"] for a in self.applications),
-            sum(a["manager_delta_minor"] for a in self.applications),
+            max(
+                (a["manager_target_minor"] for a in self.applications),
+                default=0,
+            ),
         )
 
     async def application(self, identity, *, session):
@@ -240,6 +243,74 @@ async def test_success_original_is_assessed_once_before_compensation(
     original = next(iter(ledger.records.values()))
     assert original.basis.base_minor == original.movement.amount_minor == 60000
     assert original.basis.snapshot_at == capture.captured_at
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prior,increment", [(10000, 20000), (40000, 0)])
+async def test_refund_manager_target_uses_all_original_cancellations(
+    prior, increment
+):
+    from ugc_bot.application.services.obligation_compensation_service import (
+        ObligationCompensationService,
+    )
+
+    work_repo, ledger, _, clock, _, _, _ = setup(final=True)
+    snap = work_repo.snapshot
+    rules = RefundRules(
+        3600,
+        "item_delivered",
+        "all_positions_resolved",
+        (("success_final", 5000),),
+        "proportional",
+    )
+    capture = replace(
+        snap.capture, policy=replace(snap.capture.policy, refund_rules=rules)
+    )
+    actor = uuid4()
+    repo = Repo(
+        AccompanimentRefundScope(capture, snap.record, "real-original", True),
+        actor,
+        60000,
+    )
+    financial = FinancialLedgerService(ledger)
+    compensation = ObligationCompensationService(financial)
+    service = AccompanimentRefundService(
+        repo, financial, None, compensation, clock
+    )
+    command = ApplyAccompanimentRefund(
+        actor_id=actor,
+        operation_key="refund-after-review",
+        observation_id=repo.observation_id,
+        paid_item_id=snap.record.paid_item_id,
+        expected_work_version=snap.record.version,
+        reason="Actual refund after an independent liability cancellation",
+        evidence_reference="private:actual-refund-review",
+        evidence_hash="e" * 64,
+    )
+    async with ledger.transaction() as session:
+        original = await service._assess_original_management(
+            repo.scope, clock.now(), session
+        )
+        await compensation.cancel(
+            original,
+            target_minor=prior,
+            already_cancelled_minor=0,
+            case_id=uuid4(),
+            refund_id=uuid4(),
+            actor_id=actor,
+            now=clock.now(),
+            session=session,
+        )
+        result = await service.apply(command, session=session)
+        assert result["manager_adjustment_minor"] == increment
+        assert result["customer_refund_minor"] == 60000
+        assert await service.apply(command, session=session) == result
+        wallet = await ledger.read_projection(
+            snap.scope.manager_id, "RUB", session=session
+        )
+    assert wallet["cancelled"] == max(prior, 30000)
+    assert repo.applications[0]["manager_target_minor"] == 30000
+    assert repo.applications[0]["manager_delta_minor"] == increment
 
 
 @pytest.mark.asyncio

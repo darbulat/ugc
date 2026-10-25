@@ -202,13 +202,13 @@ direction='outgoing'
  IF NOT FOUND THEN RAISE EXCEPTION 'accompaniment_refund_proof_missing'
 USING ERRCODE='23514'; END
 IF;
- SELECT
-COALESCE(sum(customer_delta_minor),0),COALESCE(sum(manager_delta_minor),0)
+ SELECT COALESCE(sum(customer_delta_minor),0),
+ COALESCE(max(manager_target_minor),0)
  INTO prior_customer,prior_manager FROM
 financial_accompaniment_refund_applications
  WHERE paid_item_id=NEW.paid_item_id AND application_id<>NEW.application_id;
  IF NEW.customer_delta_minor<>NEW.customer_target_minor-prior_customer
- OR NEW.manager_delta_minor<>NEW.manager_target_minor-prior_manager
+ OR NEW.manager_target_minor<prior_manager
  THEN RAISE EXCEPTION 'accompaniment_refund_cumulative_mismatch' USING
 ERRCODE='23514'; END IF;
  IF NEW.stage<>'disputed' AND NEW.rules->'accompaniment_refund_rates_bps' ?
@@ -233,6 +233,14 @@ expected_manager:=0;
  IF NEW.manager_target_minor<>expected_manager THEN
   RAISE EXCEPTION 'accompaniment_manager_policy_mismatch' USING
 ERRCODE='23514'; END IF;
+ SELECT COALESCE(sum(m.amount_minor),0) INTO prior_manager
+ FROM financial_movements m WHERE m.obligation_id=manager.id
+ AND m.movement_type IN ('reversal','debt')
+ AND m.refund_id IS DISTINCT FROM NEW.application_id;
+ IF NEW.manager_delta_minor<>
+ greatest(0,NEW.manager_target_minor-prior_manager) THEN
+  RAISE EXCEPTION 'accompaniment_refund_cumulative_mismatch' USING
+ ERRCODE='23514'; END IF;
  SELECT COALESCE(sum(m.amount_minor),0) INTO actual FROM financial_movements m
  WHERE m.refund_id=NEW.application_id AND m.case_id=NEW.application_id
  AND m.obligation_id=manager.id AND m.movement_type IN ('reversal','debt');

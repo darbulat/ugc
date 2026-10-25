@@ -190,9 +190,22 @@ BEGIN
  RAISE EXCEPTION 'financial_review_no_liability' USING ERRCODE='23514'; END IF;
  RETURN NEW;
 END $$;
+"""
+
+
+RESTORATION_SQL = """
+CREATE OR REPLACE FUNCTION financial_review_blocked_cancelled(
+ ground uuid, opening jsonb) RETURNS bigint LANGUAGE sql STABLE AS $$
+ SELECT COALESCE(sum(m.amount_minor),0) FROM financial_movements m
+ WHERE m.obligation_id=ground AND m.movement_type='reversal'
+ AND m.bucket_from='blocked' AND NOT EXISTS(
+  SELECT 1 FROM jsonb_array_elements(opening->'journal') old
+  WHERE old->>'operation_key'=m.operation_key)
+$$;
 CREATE OR REPLACE FUNCTION financial_review_before_resolution() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE c record; o record; prior bigint; maturity timestamptz;
+ liquid bigint; blocked_balance bigint; removed bigint;
 BEGIN
  SELECT * INTO c FROM financial_review_cases WHERE case_id=NEW.case_id;
  SELECT * INTO o FROM financial_obligations WHERE id=c.obligation_id;
@@ -228,10 +241,20 @@ BEGIN
   WHERE obligation_id=o.id;
  END IF;
  IF maturity IS NULL THEN maturity:=o.available_at; END IF;
+ SELECT COALESCE(sum(
+  CASE WHEN bucket_to IN ('pending','hold','available')
+   THEN amount_minor ELSE 0 END-
+  CASE WHEN bucket_from IN ('pending','hold','available')
+   THEN amount_minor ELSE 0 END),0),
+  COALESCE(sum(CASE WHEN bucket_to='blocked' THEN amount_minor ELSE 0 END-
+   CASE WHEN bucket_from='blocked' THEN amount_minor ELSE 0 END),0)
+ INTO liquid,blocked_balance FROM financial_movements
+ WHERE obligation_id=c.obligation_id;
+ removed:=financial_review_blocked_cancelled(c.obligation_id,c.source_document)
+  +LEAST(blocked_balance,GREATEST(0,NEW.target_minor-prior-liquid));
  IF NEW.release_at IS DISTINCT FROM maturity
  OR NEW.restored_buckets IS DISTINCT FROM financial_review_restores(
- c.blocked_buckets,NEW.target_minor-c.prior_cancelled_minor,maturity,
- NEW.resolved_at) THEN
+ c.blocked_buckets,removed,maturity,NEW.resolved_at) THEN
  RAISE EXCEPTION 'financial_review_restore_maturity_mismatch'
  USING ERRCODE='23514'; END IF;
  RETURN NEW;
@@ -298,6 +321,11 @@ BEGIN
  OR movement_type NOT IN ('reversal','debt'))) THEN
  RAISE EXCEPTION 'financial_review_debt_application_mismatch'
  USING ERRCODE='23514'; END IF;
+ IF r.restored_buckets IS DISTINCT FROM financial_review_restores(
+ c.blocked_buckets,financial_review_blocked_cancelled(
+ c.obligation_id,c.source_document),r.release_at,r.resolved_at) THEN
+ RAISE EXCEPTION 'financial_review_restore_application_mismatch'
+ USING ERRCODE='23514'; END IF;
  FOREACH bucket IN ARRAY ARRAY['pending','hold','available'] LOOP
   SELECT count(*),COALESCE(sum(amount_minor),0) INTO row_count,actual
   FROM financial_movements WHERE operation_key=
@@ -318,7 +346,7 @@ END $$;
 
 
 def financial_review_guards(tables):
-    sql = [REVIEW_SQL, MOVEMENT_SQL]
+    sql = [REVIEW_SQL, RESTORATION_SQL, MOVEMENT_SQL]
     for table in tables.values():
         sql.append(
             "CREATE TRIGGER financial_review_immutable "

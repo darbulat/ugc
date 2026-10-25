@@ -198,8 +198,8 @@ class SqlAlchemyAccompanimentRefundRepository:
             .mappings()
             .all()
         )
-        return sum(r["customer_delta_minor"] for r in rows), sum(
-            r["manager_delta_minor"] for r in rows
+        return sum(r["customer_delta_minor"] for r in rows), max(
+            (r["manager_target_minor"] for r in rows), default=0
         )
 
     async def application(self, identity, *, session):

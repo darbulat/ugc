@@ -26,6 +26,20 @@ def cancelled_minor(journal, obligation_id):
     )
 
 
+def blocked_cancelled_minor(journal, fact):
+    prior_keys = {
+        m["operation_key"] for m in fact["source_document"]["journal"]
+    }
+    return sum(
+        m.amount_minor
+        for m in journal
+        if m.obligation_id == fact["obligation_id"]
+        and m.movement_type == "reversal"
+        and m.bucket_from == "blocked"
+        and m.operation_key not in prior_keys
+    )
+
+
 class FinancialReviewService:
     def __init__(self, repository, ledger, compensation, clock):
         self.repository, self.ledger = repository, ledger
@@ -189,6 +203,7 @@ class FinancialReviewService:
             target,
             now,
             release_at,
+            journal,
         ) = await self._resolution_values(command, scope, session)
         resolution = dict(
             case_id=command.case_id,
@@ -216,7 +231,8 @@ class FinancialReviewService:
         resolution["debt_created_minor"] = max(
             0, delta - liquid_before_blocked - balances["blocked"]
         )
-        restores = self._restores(fact, target, release_at, now)
+        removed = blocked_cancelled_minor(journal, fact) + blocked_cancelled
+        restores = self._restores(fact, removed, release_at, now)
         if sum(restores.values()) > balances["blocked"] - blocked_cancelled:
             raise ValueError("financial_review_blocked_source_changed")
         resolution["restored_buckets"] = restores
@@ -281,11 +297,10 @@ class FinancialReviewService:
         release_at = await self.ledger._release_time(
             scope.original, session=session
         )
-        return balances, prior, target, now, release_at
+        return balances, prior, target, now, release_at, journal
 
     @staticmethod
-    def _restores(fact, target, release_at, now):
-        removed = target - fact["prior_cancelled_minor"]
+    def _restores(fact, removed, release_at, now):
         result = dict.fromkeys(LIQUID, 0)
         for bucket in LIQUID:
             original = fact["blocked_buckets"][bucket]

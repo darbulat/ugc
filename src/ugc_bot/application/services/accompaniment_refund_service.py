@@ -175,10 +175,10 @@ class AccompanimentRefundService:
         originals, rules, customer, manager = await self._assessment(
             scope, grounds, command, session=session
         )
-        prior_customer, prior_manager = await self.repository.totals(
+        prior_customer, previous_manager_target = await self.repository.totals(
             command.paid_item_id, session=session
         )
-        if customer <= prior_customer or manager < prior_manager:
+        if customer <= prior_customer or manager < previous_manager_target:
             raise ValueError("accompaniment_cumulative_target_conflict")
         observation = await self.repository.observation(
             command.observation_id, session=session
@@ -189,7 +189,9 @@ class AccompanimentRefundService:
             originals = [
                 await self._assess_original_management(scope, now, session)
             ]
-        if manager > prior_manager:
+        prior_manager = await self._manager_cancelled(originals, session)
+        manager_delta = max(0, manager - prior_manager)
+        if manager_delta:
             await self.compensation.cancel(
                 originals[0],
                 target_minor=manager,
@@ -215,7 +217,7 @@ class AccompanimentRefundService:
             customer_target_minor=customer,
             customer_delta_minor=customer - prior_customer,
             manager_target_minor=manager,
-            manager_delta_minor=manager - prior_manager,
+            manager_delta_minor=manager_delta,
             actor_id=command.actor_id,
             reason=command.reason,
             evidence_reference=command.evidence_reference,
@@ -224,6 +226,24 @@ class AccompanimentRefundService:
         )
         await self.repository.append_application(fact, session=session)
         return await self._save(command, self._result(fact), session)
+
+    async def _manager_cancelled(self, originals, session):
+        if not originals:
+            return 0
+        original = originals[0]
+        journal = await self.ledger.repository.list_for_recipient(
+            original.basis.recipient_id,
+            original.basis.currency,
+            session=session,
+        )
+        # Debt recovery settles cash owed; it never reinstates the cancelled
+        # liability. Independent reviews and earlier refunds share this total.
+        return sum(
+            entry.amount_minor
+            for entry in journal
+            if entry.obligation_id == original.obligation_id
+            and entry.movement_type in ("reversal", "debt")
+        )
 
     async def _assessment(self, scope, grounds, command, *, session):
         item = next(
