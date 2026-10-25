@@ -52,6 +52,9 @@ from ugc_bot.infrastructure.db import (
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.financial_schema import TRIGGER_SQL
 from ugc_bot.infrastructure.db.journal_order_schema import add_journal_order
+from ugc_bot.infrastructure.db.manual_grant_schema import (
+    extend_manual_grant_metadata,
+)
 from ugc_bot.infrastructure.db.social_models import (
     SocialAccountModel,  # noqa: F401
 )
@@ -1406,6 +1409,7 @@ from ugc_bot.infrastructure.db.financial_lifecycle_schema import (  # noqa: E402
 )
 
 extend_ledger_metadata(Base.metadata)
+extend_manual_grant_metadata(Base.metadata)
 
 
 class FinancialWalletModel(Base):
@@ -1439,6 +1443,12 @@ sa.event.listen(
 
 # Register canonical identity history with the full metadata.
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    accompaniment_refund_models as _accompaniment_refund_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    campaign_analytics_models as _campaign_analytics_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     campaign_digest_models as _campaign_digest_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
@@ -1448,22 +1458,37 @@ from ugc_bot.infrastructure.db import (  # noqa: E402
     campaign_review_models as _campaign_review_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    campaign_runtime_models as _campaign_runtime_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     correction_approval_models as _correction_approval_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     correction_models as _correction_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    debt_recovery_models as _debt_recovery_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     entitlement_models as _entitlement_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    financial_review_models as _financial_review_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     identity_history_models as _identity_history_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    manual_grant_models as _manual_grant_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     messenger_linking_models as _messenger_linking_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     notice_delivery_models as _notice_delivery_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    order_funnel_models as _order_funnel_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     order_intake_models as _order_intake_models,  # noqa: F401
@@ -1475,13 +1500,28 @@ from ugc_bot.infrastructure.db import (  # noqa: E402
     paid_selection_models as _paid_selection_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    partner_admin_models as _partner_admin_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     payout_contract_models as _payout_contract_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     payout_models as _payout_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    refund_original_models as _refund_original_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    replacement_models as _replacement_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     selection_delivery_models as _selection_delivery_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    selection_maturity_models as _selection_maturity_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    subscription_models as _subscription_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     work_entitlement_models as _work_entitlement_models,  # noqa: F401

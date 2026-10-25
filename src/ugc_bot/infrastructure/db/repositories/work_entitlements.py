@@ -1,6 +1,6 @@
 """Actual lifecycle and captured funding, never money from an outbox payload."""
 
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -170,6 +170,9 @@ class SqlAlchemyWorkEntitlementRepository:
             .one_or_none()
         )
         manager_linked = await self._manager_proof(db, scope, record, schedule)
+        resolution_case = await self._resolution_case(
+            db, scope, current, schedule
+        )
         return WorkEntitlementSnapshot(
             scope,
             record,
@@ -178,7 +181,45 @@ class SqlAlchemyWorkEntitlementRepository:
             manager_linked,
             schedule["schedule_id"] if schedule else None,
             current["event_id"],
+            resolution_case,
         )
+
+    @staticmethod
+    async def _resolution_case(db, scope, current, schedule):
+        resolution = current
+        if current["parameters"].get("action") not in (
+            "resolve_success",
+            "resolve_failure",
+        ):
+            if schedule is None:
+                return None
+            resolution = await _row(
+                db,
+                "financial_collaboration_events",
+                "event_id",
+                schedule["source_event_id"],
+            )
+            if resolution["parameters"].get("action") != "resolve_success":
+                return None
+        original_id = UUID(resolution["parameters"]["source_dispute_event_id"])
+        original = await _row(
+            db, "financial_collaboration_events", "event_id", original_id
+        )
+        expected_case = uuid5(
+            NAMESPACE_URL, f"ugc:collaboration-case:{original_id}"
+        )
+        _require(
+            original["assignment_id"]
+            == resolution["assignment_id"]
+            == scope.assignment_id
+            and original["event_type"] == "financial.collaboration.disputed"
+            and original["version"] + 1
+            == resolution["version"]
+            <= current["version"]
+            and resolution["parameters"].get("case_id") == str(expected_case),
+            "work_resolution_source_mismatch",
+        )
+        return expected_case
 
     @staticmethod
     async def _manager_proof(db, scope, record, schedule):

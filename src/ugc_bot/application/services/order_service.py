@@ -32,6 +32,7 @@ from ugc_bot.application.services.paid_item_service import (
 )
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
+from ugc_bot.domain.order_targeting import OrderTargeting
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
@@ -306,6 +307,7 @@ class OrderService:
         client_contact_reference: str,
         idempotency_key: str,
         session: object | None = None,
+        targeting: OrderTargeting | None = None,
     ) -> tuple[Order, FinancialQuote]:
         """Explicit opt-in: validate first, commit order and quote together.
 
@@ -346,6 +348,11 @@ class OrderService:
                 order_id, session=session
             )
             if existing is not None:
+                if targeting is not None and any(
+                    getattr(existing, k) != v
+                    for k, v in targeting.order_fields().items()
+                ):
+                    raise ValueError("idempotency_payload_conflict")
                 if (
                     existing.advertiser_id,
                     existing.order_type,
@@ -398,6 +405,13 @@ class OrderService:
                 order_id, session=session
             )
             assert persisted is not None
+            if targeting is not None:
+                persisted = replace(persisted, **targeting.order_fields())
+            persisted = replace(
+                persisted,
+                filter_by_placement=order_type == OrderType.UGC_PLUS_PLACEMENT,
+            )
+            await self.order_repo.save(persisted, session=session)
             return persisted, saved
 
         if session is not None:
@@ -432,6 +446,8 @@ class OrderService:
                 raise OrderNotFoundError("Order not found.")
             if order.advertiser_id != advertiser_id:
                 raise OrderNotFoundError("Order not found.")
+            if order.financial_version is not None:
+                raise OrderCreationError("financial_order_intake_immutable")
             if order.status not in self._EDITABLE_ORDER_STATUSES:
                 raise OrderCreationError(
                     "Order cannot be edited in current status."

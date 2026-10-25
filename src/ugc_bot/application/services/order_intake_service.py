@@ -1,6 +1,6 @@
 """One caller transaction persists the requested service before any send."""
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import timedelta
 from uuid import UUID, uuid5
 
@@ -99,7 +99,12 @@ class OrderIntakeService:
                         int(approved.selection_refund_window.total_seconds()),
                     )
                 )
-            return EligibleOrderPolicies(client.currency, paused, tuple(result))
+            return EligibleOrderPolicies(
+                client.currency,
+                paused,
+                tuple(result),
+                funnel_tracking=True if result else None,
+            )
 
     async def create(
         self,
@@ -161,6 +166,11 @@ class OrderIntakeService:
                 client_contact_reference=command.contact_reference,
                 idempotency_key=command.operation_key,
                 session=session,
+                **(
+                    {"targeting": command.targeting}
+                    if command.targeting is not None
+                    else {}
+                ),
             )
             lead_id = (
                 uuid5(command.request_id, "accompaniment")
@@ -185,6 +195,12 @@ class OrderIntakeService:
                     for i in quote.items
                 ),
                 lead_id,
+                targeting=(
+                    asdict(command.targeting)
+                    | {"platforms": list(command.targeting.platforms)}
+                    if command.targeting
+                    else None
+                ),
             )
             lead = (
                 AccompanimentLead(
@@ -209,4 +225,55 @@ class OrderIntakeService:
                 lead,
                 session=session,
             )
+            if command.funnel_id is not None:
+                await repo.record_funnel(
+                    command.client_id,
+                    command.funnel_id,
+                    "created",
+                    now,
+                    order_id=result.order_id,
+                    session=session,
+                )
             return result
+
+    async def _funnel_actor(self, actor_id, principal, session):
+        actor = await self.repository.lock_client(actor_id, session=session)
+        require_current_principal(
+            principal,
+            actor_id,
+            actor.client_id if actor else None,
+            actor.telegram_id if actor else None,
+            actor.max_id if actor else None,
+        )
+        if actor is None or actor.status != "active":
+            raise PermissionError("active_advertiser_required")
+        return actor
+
+    async def record_funnel(
+        self, actor_id, funnel_id, stage, *, principal=None
+    ):
+        if (
+            not isinstance(funnel_id, UUID)
+            or not funnel_id.int
+            or stage not in {"opened", "brief", "filters", "package"}
+        ):
+            raise ValueError("invalid_intake_funnel_stage")
+        async with self.transactions.transaction() as session:
+            actor = await self._funnel_actor(actor_id, principal, session)
+            if not actor.is_advertiser:
+                raise PermissionError("active_advertiser_required")
+            await self.repository.record_funnel(
+                actor_id,
+                funnel_id,
+                stage,
+                utc(self.clock.now()),
+                session=session,
+            )
+            return {"recorded": True}
+
+    async def funnel_report(self, actor_id, *, principal=None):
+        async with self.transactions.transaction() as session:
+            actor = await self._funnel_actor(actor_id, principal, session)
+            if not actor.is_admin:
+                raise PermissionError("intake_admin_required")
+            return await self.repository.funnel_report(session=session)

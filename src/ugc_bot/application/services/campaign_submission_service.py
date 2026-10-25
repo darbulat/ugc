@@ -24,6 +24,7 @@ from ugc_bot.application.campaign_moderation_ports import (
     CampaignSubmissionRecord,
     CampaignWriteContext,
 )
+from ugc_bot.application.campaign_runtime_ports import CampaignAccess
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -227,6 +228,7 @@ class CampaignSubmissionService:
     clock: Clock
     miniapp_url: str
     templates: CampaignMessageTemplates = CAMPAIGN_TEMPLATES
+    access: CampaignAccess | None = None
 
     async def submit(
         self,
@@ -245,6 +247,13 @@ class CampaignSubmissionService:
         )
         if replay is not None:
             return replay
+        if self.access is not None:
+            await self.access.require_access(
+                command.actor_id,
+                action="submit",
+                at=utc(self.clock.now()),
+                session=session,
+            )
         if not callable(getattr(self.capacity, "admission", None)):
             raise ValueError("campaign_capacity_unavailable")
         state = await command_state(self.repository, command, context, session)

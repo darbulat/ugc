@@ -41,6 +41,48 @@ from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
 class SqlAlchemyCollaborationRepository:
+    async def lock_admin_actor(self, actor_id, *, session):
+        await _session(session).execute(
+            select(UserModel.user_id)
+            .where(UserModel.user_id == actor_id)
+            .with_for_update(key_share=True)
+        )
+        return await self.load_actor(actor_id, session=session)
+
+    async def list_disputes(self, limit, cursor, *, session):
+        statement = select(CollaborationModel.__table__).where(
+            CollaborationModel.state == "disputed"
+        )
+        if cursor is not None:
+            statement = statement.where(
+                CollaborationModel.assignment_id > cursor
+            )
+        rows = (
+            (
+                await _session(session).execute(
+                    statement.order_by(CollaborationModel.assignment_id).limit(
+                        limit
+                    )
+                )
+            )
+            .mappings()
+            .all()
+        )
+        result = []
+        for row in rows:
+            event = await self.get_event_for_version(
+                row["assignment_id"], row["version"], session=session
+            )
+            record = record_from_payload(row["record_payload"])
+            if (
+                event is None
+                or event.result != record
+                or record.collaboration.state != "disputed"
+            ):
+                raise ValueError("work_dispute_source_missing")
+            result.append(record)
+        return tuple(result)
+
     @staticmethod
     def _root_transaction(db, *, allow_nested=True):
         root = db.sync_session.get_transaction()
@@ -342,6 +384,19 @@ class SqlAlchemyCollaborationRepository:
             row["parameters"],
             record_from_payload(row["result_payload"]),
             row["occurred_at"],
+        )
+
+    async def get_event_for_version(self, assignment_id, version, *, session):
+        key = await _session(session).scalar(
+            select(CollaborationEventModel.operation_key).where(
+                CollaborationEventModel.assignment_id == assignment_id,
+                CollaborationEventModel.version == version,
+            )
+        )
+        return (
+            await self.get_command(assignment_id, key, session=session)
+            if key is not None
+            else None
         )
 
     async def get_notice(self, notice_id, *, session):

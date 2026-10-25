@@ -9,6 +9,7 @@ from aiogram import Bot
 from ugc_bot.accompaniment_lead_scheduler import run_enabled as lead_loop
 from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.campaign_digest_scheduler import run_enabled as feedback_loop
+from ugc_bot.campaign_scheduler import run_loop as campaign_loop
 from ugc_bot.collaboration_scheduler import run_loop as collaboration_loop
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
@@ -21,6 +22,7 @@ from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.manual_grant_scheduler import run_loop as manual_grant_loop
 from ugc_bot.notice_delivery_scheduler import run_enabled as notice_loop
 from ugc_bot.paid_selection_delivery_scheduler import (
     run_enabled as selection_loop,
@@ -29,6 +31,9 @@ from ugc_bot.referral_reconciliation_scheduler import (
     run_loop as referral_loop,
 )
 from ugc_bot.role_reminder_scheduler import run_loop as role_reminder_loop
+from ugc_bot.selection_maturity_scheduler import (
+    run_loop as selection_maturity_loop,
+)
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -53,6 +58,20 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
         logger.info("Collaboration deadline scheduler enabled")
         tasks.append(
             asyncio.create_task(
+                manual_grant_loop(container.build_manual_grant_sweep()),
+                name="manual-grant-maturity-scheduler",
+            )
+        )
+        tasks.append(
+            asyncio.create_task(
+                selection_maturity_loop(
+                    container.build_selection_maturity_sweep()
+                ),
+                name="selection-maturity-scheduler",
+            )
+        )
+        tasks.append(
+            asyncio.create_task(
                 notice_loop(config, container, bot),
                 name="collaboration-notice-delivery",
             )
@@ -72,6 +91,19 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
             )
         )
         logger.info("Paid selection contact delivery enabled")
+
+    if getattr(getattr(config, "campaign", None), "delivery_enabled", False):
+        campaign = container.build_campaign_runtime(bot)
+        tasks.append(
+            asyncio.create_task(
+                campaign_loop(
+                    campaign["campaign_delivery_service"],
+                    interval_seconds=config.campaign.interval_seconds,
+                ),
+                name="own-network-campaign-delivery",
+            )
+        )
+        logger.info("Own-network campaign delivery enabled")
 
     if digest_enabled(config):
         tasks.append(

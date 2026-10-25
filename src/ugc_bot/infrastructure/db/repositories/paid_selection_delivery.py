@@ -26,6 +26,9 @@ from ugc_bot.infrastructure.db.models import (
     PaymentModel,
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
+from ugc_bot.infrastructure.db.repositories.correction_funding import (
+    require_forward_clear,
+)
 from ugc_bot.infrastructure.db.repositories.entitlements import _require, _row
 from ugc_bot.infrastructure.db.repositories.financial_items import (
     SqlAlchemyFinancialItemRepository,
@@ -221,6 +224,7 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             and capture.captured_at <= interest["confirmed_at"] <= at,
             "selection_delivery_scope_invalid",
         )
+        await require_forward_clear(item["paid_item_id"], session=db)
         profile = (
             (
                 await db.execute(

@@ -76,6 +76,32 @@ def _state(value):
 
 
 class SqlAlchemyCorrectionRepository:
+    async def refund_application(self, match_id, *, session):
+        result = await _rows(
+            _session(session), TABLE_MAP["applications"].name, match_id=match_id
+        )
+        return result[0] if result else None
+
+    async def component_refund_total(self, allocation_key, *, session):
+        return sum(
+            row["refund_minor"]
+            for row in await _rows(
+                _session(session),
+                TABLE_MAP["components"].name,
+                allocation_key=allocation_key,
+            )
+        )
+
+    async def liability_refund_total(self, obligation_id, *, session):
+        return sum(
+            row["delta_minor"]
+            for row in await _rows(
+                _session(session),
+                TABLE_MAP["liabilities"].name,
+                obligation_id=obligation_id,
+            )
+        )
+
     async def read_authority(self, scope, *, operation_key=None, session):
         db, bindings, action = _session(session), {}, None
         current_client_id = None
@@ -647,7 +673,7 @@ class SqlAlchemyCorrectionRepository:
             table = Base.metadata.tables["order_items"]
             await db.execute(
                 select(table)
-                .where(table.c.paid_item_id.in_(scope.selected_paid_item_ids))
+                .where(table.c.order_id == scope.order_id)
                 .order_by(table.c.paid_item_id)
                 .with_for_update()
             )
@@ -659,6 +685,99 @@ class SqlAlchemyCorrectionRepository:
                 .with_for_update()
             )
         await self.load_scope(scope, session=db)
+
+    async def original_capture_event(self, scope, *, session):
+        from ugc_bot.infrastructure.db.models import OutboxEventModel
+        from ugc_bot.infrastructure.db.repositories.outbox import (
+            _to_outbox_event_entity,
+        )
+
+        event = await _session(session).scalar(
+            select(OutboxEventModel).where(
+                OutboxEventModel.event_id == scope.capture_id
+            )
+        )
+        if (
+            event is None
+            or event.aggregate_id != str(scope.order_id)
+            or event.payload.get("payment_id") != str(scope.payment_id)
+        ):
+            raise ValueError("correction_original_capture_mismatch")
+        return _to_outbox_event_entity(event)
+
+    async def covered_potential(self, scope, item, *, session):
+        event = await self.original_capture_event(scope, session=session)
+        history = event.payload.get("attribution_history", {})
+        fact = history.get("fact", {})
+        if (
+            history.get("status") != "assessed"
+            or fact.get("referrer_user_id") is not None
+            or fact.get("reason")
+            not in ("unbound", "revoked", "self_referral", "not_yet_effective")
+            or not fact.get("coverage_version")
+            or event.payload.get("client_referrer_id") is not None
+        ):
+            return None
+        records = await _rows(
+            _session(session),
+            "financial_audit_events",
+            operation_key=f"potential:client-selection:{scope.payment_id}:{item.paid_item_id}",
+        )
+        if len(records) != 1:
+            return None
+        record = records[0]
+        expected = dict(
+            kind="client_referral",
+            paid_item_id=str(item.paid_item_id),
+            payment_id=str(scope.payment_id),
+            order_id=str(scope.order_id),
+            currency="RUB",
+            base_minor=item.gross_minor,
+            referred_user_id=str(scope.client_id),
+            event_id=str(scope.capture_id),
+            recipient_id=None,
+        )
+        if record["action"] != "potential_basis" or any(
+            record["details"].get(k) != v for k, v in expected.items()
+        ):
+            return None
+        return record["id"]
+
+    async def record_original_assessment(
+        self, scope, matched, command_id, now, *, session
+    ):
+        from uuid import uuid4
+
+        table = Base.metadata.tables["financial_obligations"]
+        db = _session(session)
+        actual = tuple(
+            await db.scalars(
+                select(table.c.id).where(table.c.order_id == scope.order_id)
+            )
+        )
+        added = sorted(set(actual) - set(scope.ground_ids), key=str)
+        if not added:
+            return
+        if command_id is None:
+            raise ValueError(
+                "correction_original_assessment_authority_required"
+            )
+        await db.execute(
+            insert(
+                Base.metadata.tables["financial_refund_original_assessments"]
+            ).values(
+                assessment_id=uuid4(),
+                match_id=UUID(matched["match_id"]),
+                command_id=command_id,
+                case_id=UUID(matched["case_id"]),
+                capture_id=scope.capture_id,
+                payment_id=scope.payment_id,
+                order_id=scope.order_id,
+                source_hash=scope.source_hash,
+                new_ground_ids=[str(i) for i in added],
+                recorded_at=now,
+            )
+        )
 
     async def command(self, actor_id, operation_key, *, session):
         rows = await _rows(
@@ -768,26 +887,53 @@ class SqlAlchemyCorrectionRepository:
             .on_conflict_do_update(index_elements=["case_id"], set_=values)
         )
 
-    async def live_funding(self, paid_item_id, *, session):
+    async def live_funding(
+        self,
+        paid_item_id,
+        *,
+        session,
+        include_economic_reviews=True,
+        include_accompaniment_observations=True,
+    ):
         db = _session(session)
+        installed = await self._correction_schema_present(db)
+        (
+            accompaniment_refunded,
+            accompaniment_pending,
+        ) = await self._accompaniment_funding(db, paid_item_id)
+        if not include_accompaniment_observations:
+            accompaniment_pending = ()
+        economic_cases = (
+            await self._economic_review_cases(db, paid_item_id)
+            if include_economic_reviews
+            else ()
+        )
         allocations = await _rows(
             db, "payment_item_allocations", paid_item_id=paid_item_id
         )
         result = []
         blockers = {}
         for allocation in allocations:
-            applied = await _rows(
-                db,
-                TABLE_MAP["components"].name,
-                allocation_key=allocation["allocation_key"],
+            applied = (
+                await _rows(
+                    db,
+                    TABLE_MAP["components"].name,
+                    allocation_key=allocation["allocation_key"],
+                )
+                if installed
+                else ()
             )
             order_id = allocation["order_id"]
             if order_id not in blockers:
-                blockers[order_id] = await self._funding_blockers(
-                    order_id, paid_item_id, db
+                blockers[order_id] = (
+                    await self._funding_blockers(order_id, paid_item_id, db)
+                    if installed
+                    else ((), (), True)
                 )
             unresolved, cases, consistent = blockers[order_id]
             refunded = sum(row["refund_minor"] for row in applied)
+            if allocation["component"] == "accompaniment":
+                refunded += accompaniment_refunded
             result.append(
                 ComponentFunding(
                     allocation_key=allocation["allocation_key"],
@@ -800,12 +946,118 @@ class SqlAlchemyCorrectionRepository:
                     net_minor=allocation["amount_minor"] - refunded
                     if consistent
                     else None,
-                    unresolved_observation_ids=tuple(unresolved),
-                    unresolved_case_ids=tuple(cases),
+                    unresolved_observation_ids=tuple(
+                        sorted(
+                            set(unresolved) | set(accompaniment_pending),
+                            key=str,
+                        )
+                    ),
+                    unresolved_case_ids=tuple(
+                        sorted(set(cases) | set(economic_cases), key=str)
+                    ),
                     state_consistent=consistent,
                 )
             )
         return tuple(result)
+
+    async def reservation_release_funding(self, paid_item_id, *, session):
+        return await self.live_funding(
+            paid_item_id,
+            session=session,
+            include_economic_reviews=False,
+            include_accompaniment_observations=False,
+        )
+
+    @staticmethod
+    async def _economic_review_cases(db, paid_item_id):
+        installed = await db.scalar(
+            text(
+                "SELECT to_regclass(current_schema() || "
+                "'.financial_review_cases')"
+            )
+        )
+        if installed is None:
+            return ()
+        return tuple(
+            await db.scalars(
+                text(
+                    "SELECT c.case_id FROM financial_review_cases c "
+                    "WHERE c.paid_item_id=:item AND NOT EXISTS(SELECT 1 "
+                    "FROM financial_review_resolutions r "
+                    "WHERE r.case_id=c.case_id)"
+                ),
+                {"item": paid_item_id},
+            )
+        )
+
+    @staticmethod
+    async def _correction_schema_present(db):
+        names = tuple(table.name for table in TABLE_MAP.values())
+        present = tuple(
+            await db.scalars(
+                text(
+                    "SELECT relname FROM pg_class WHERE relnamespace="
+                    "(SELECT oid FROM pg_namespace "
+                    "WHERE nspname=current_schema()) "
+                    "AND relname=ANY(:names)"
+                ),
+                {"names": list(names)},
+            )
+        )
+        if set(present) == set(names):
+            return True
+        if present:
+            raise ValueError("correction_funding_unavailable")
+        # These immutable migration boundaries predate every correction table.
+        # A current/unknown revision with missing history must fail closed.
+        revisions = tuple(
+            await db.scalars(text("SELECT version_num FROM alembic_version"))
+        )
+        historical = {
+            "campaign_foundation_v1",
+            "financial_payout_v1",
+            "campaign_digest_v1",
+            "financial_payout_contracts_v1",
+            "campaign_drafts_v1",
+        }
+        if len(revisions) != 1 or revisions[0] not in historical:
+            raise ValueError("correction_funding_unavailable")
+        extra = await db.scalar(
+            text(
+                "SELECT to_regclass(current_schema() || "
+                "'.financial_accompaniment_refund_observations')"
+            )
+        )
+        if extra is not None:
+            raise ValueError("correction_funding_unavailable")
+        return False
+
+    @staticmethod
+    async def _accompaniment_funding(db, paid_item_id):
+        present = await db.scalar(
+            text(
+                "SELECT to_regclass(current_schema() || "
+                "'.financial_accompaniment_refund_observations')"
+            )
+        )
+        if present is None:
+            return 0, ()
+        reports = await _rows(
+            db,
+            "financial_accompaniment_refund_observations",
+            paid_item_id=paid_item_id,
+        )
+        applied = await _rows(
+            db,
+            "financial_accompaniment_refund_applications",
+            paid_item_id=paid_item_id,
+        )
+        applied_ids = {a["observation_id"] for a in applied}
+        return sum(a["customer_delta_minor"] for a in applied), tuple(
+            r["observation_id"]
+            for r in reports
+            if r["observation_id"] not in applied_ids
+        )
 
     async def _funding_blockers(self, order_id, paid_item_id, db):
         """A retained request narrows routing; report hints cannot widen it.
@@ -941,6 +1193,33 @@ class SqlAlchemyCorrectionRepository:
             or row["known_capture_intent_id"] in invoices,
             True,
         )
+
+    async def management_refund_disposition(self, paid_item_id, *, session):
+        db = _session(session)
+        present = await db.scalar(
+            text(
+                "SELECT to_regclass(current_schema() || "
+                "'.financial_accompaniment_management_reviews')"
+            )
+        )
+        if present is None:
+            return None
+        applications = await _rows(
+            db,
+            "financial_accompaniment_refund_applications",
+            paid_item_id=paid_item_id,
+        )
+        if not applications:
+            return None
+        latest = max(applications, key=lambda a: a["customer_target_minor"])
+        reviews = await _rows(
+            db,
+            "financial_accompaniment_management_reviews",
+            application_id=latest["application_id"],
+        )
+        if not reviews:
+            return None
+        return max(reviews, key=lambda r: r["work_version"])["decision"]
 
     @staticmethod
     def _funding_selection(values, item_ids):

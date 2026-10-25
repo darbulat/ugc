@@ -5,7 +5,8 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import insert, select, text
+from sqlalchemy import func, insert, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ugc_bot.domain.order_intake import (
     AccompanimentLead,
@@ -14,18 +15,22 @@ from ugc_bot.domain.order_intake import (
     OrderIntakeReceipt,
     OrderIntakeResult,
 )
+from ugc_bot.domain.order_targeting import OrderTargeting
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    BloggerProfileModel,
     CountryModel,
     FinancialPolicyVersionModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
 from ugc_bot.infrastructure.db.order_intake_models import (
     ACCOMPANIMENT_LEADS,
     INTAKE_RECEIPTS,
     LEAD_OUTBOX,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
 def canonical(value: Any) -> Any:
@@ -60,10 +65,43 @@ def result_from_payload(payload: dict[str, Any]) -> OrderIntakeResult:
         ),
         UUID(payload["lead_id"]) if payload["lead_id"] else None,
         payload["honorarium_payment"],
+        payload.get("targeting"),
     )
 
 
 class SqlAlchemyOrderIntakeRepository:
+    async def filter_candidates(self, order_id, creator_ids, *, session):
+        db = _session(session)
+        result = await db.scalar(
+            select(INTAKE_RECEIPTS.c.result).where(
+                INTAKE_RECEIPTS.c.order_id == order_id
+            )
+        )
+        if not result or not result.get("targeting"):
+            return creator_ids
+        values = dict(result["targeting"])
+        values["platforms"] = tuple(values.get("platforms", ()))
+        criteria = OrderTargeting(**values)
+        statement = select(BloggerProfileModel.user_id).where(
+            BloggerProfileModel.user_id.in_(creator_ids)
+        )
+        if criteria.city:
+            statement = statement.where(
+                func.lower(func.trim(BloggerProfileModel.city))
+                == criteria.city.casefold()
+            )
+        if criteria.platforms:
+            statement = statement.where(
+                select(SocialAccountModel.account_id)
+                .where(
+                    SocialAccountModel.user_id == BloggerProfileModel.user_id,
+                    SocialAccountModel.platform.in_(criteria.platforms),
+                )
+                .exists()
+            )
+        matched = set(await db.scalars(statement))
+        return [identity for identity in creator_ids if identity in matched]
+
     async def policy_versions(
         self, at: datetime, *, session: object
     ) -> tuple[str, ...]:
@@ -96,6 +134,7 @@ class SqlAlchemyOrderIntakeRepository:
                     UserModel.country,
                     UserModel.telegram_id,
                     UserModel.max_id,
+                    UserModel.admin,
                 )
                 .where(UserModel.user_id == client_id)
                 .with_for_update(key_share=True)
@@ -126,6 +165,7 @@ class SqlAlchemyOrderIntakeRepository:
             currency or "",
             user.telegram_id,
             user.max_id,
+            user.admin,
         )
 
     async def lock_operation(
@@ -191,3 +231,42 @@ class SqlAlchemyOrderIntakeRepository:
                     created_at=lead.requested_at,
                 )
             )
+
+    async def record_funnel(
+        self, client_id, funnel_id, stage, at, *, order_id=None, session
+    ):
+        await _session(session).execute(
+            pg_insert(FUNNEL)
+            .values(
+                client_id=client_id,
+                funnel_id=funnel_id,
+                stage=stage,
+                recorded_at=at,
+                order_id=order_id,
+            )
+            .on_conflict_do_nothing(
+                index_elements=["client_id", "funnel_id", "stage"]
+            )
+        )
+
+    async def funnel_report(self, *, session):
+        db = _session(session)
+        rows = await db.execute(
+            select(FUNNEL.c.stage, func.count()).group_by(FUNNEL.c.stage)
+        )
+        actual = await db.scalar(
+            select(func.count()).select_from(INTAKE_RECEIPTS)
+        )
+        captured = await db.scalar(
+            text(
+                "SELECT count(*) FROM order_intake_receipts r "
+                "JOIN payments p ON p.order_id=r.order_id "
+                "WHERE p.status='paid' AND p.financial_version IS NOT NULL"
+            )
+        )
+        return dict(
+            stages={stage: count for stage, count in rows},
+            actual_orders=int(actual or 0),
+            captured_orders=int(captured or 0),
+            client_stages_are_observations=True,
+        )

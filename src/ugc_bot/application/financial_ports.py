@@ -193,7 +193,9 @@ class IssueBasis:
     """
 
     business_key: str
-    kind: Literal["client_referral", "creator_referral", "management"]
+    kind: Literal[
+        "client_referral", "creator_referral", "management", "manual_adjustment"
+    ]
     recipient_id: UUID | None
     paid_item_id: UUID
     order_id: UUID
@@ -248,7 +250,10 @@ class IssueBasis:
             raise ValueError("invalid_rate_provenance")
         if (self.rate_source == "override") != (self.override_id is not None):
             raise ValueError("override_reference_required")
-        if self.kind == "management" and self.rate_source != "standard":
+        if (
+            self.kind in ("management", "manual_adjustment")
+            and self.rate_source != "standard"
+        ):
             raise ValueError("management_override_not_applicable")
 
     def _validate_actor(self) -> None:
@@ -266,7 +271,7 @@ class IssueBasis:
             raise ValueError("basis_actor_provenance_required")
 
     def _validate_values(self) -> None:
-        if self.kind == "management" and any(
+        if self.kind in ("management", "manual_adjustment") and any(
             value is not None
             for value in (
                 self.registered_at,
@@ -279,12 +284,20 @@ class IssueBasis:
             "client_referral",
             "creator_referral",
             "management",
+            "manual_adjustment",
         ):
             raise ValueError("invalid_referral_kind")
         if self.kind == "creator_referral" and self.assignment_id is None:
             raise ValueError("creator_assignment_required")
         if self.kind == "management" and self.assignment_id is None:
             raise ValueError("management_assignment_required")
+        if self.kind == "manual_adjustment" and (
+            self.actor_kind != "admin"
+            or self.recipient_id is None
+            or self.policy_version is None
+            or self.assignment_id is not None
+        ):
+            raise ValueError("manual_grant_approval_required")
         if self.currency != "RUB":
             raise ValueError("unpublished_currency")
         if (
@@ -293,7 +306,7 @@ class IssueBasis:
         ):
             raise ValueError("positive_base_required")
         count_unknown = self.verified_count is None and (
-            self.kind in ("client_referral", "management")
+            self.kind in ("client_referral", "management", "manual_adjustment")
             or (self.kind == "creator_referral" and self.rate_bps is None)
         )
         if not count_unknown and (
@@ -460,6 +473,7 @@ class ObligationMaturity:
 
 
 class LedgerRepository(JournalRepository, FinancialLocks, Protocol):
+    async def load_manual_grant(self, grant_id: UUID, *, session: object): ...
     async def get_rate_override(
         self,
         override_id: UUID,
@@ -491,6 +505,10 @@ class LedgerRepository(JournalRepository, FinancialLocks, Protocol):
     async def load_maturity_source(
         self, source_id: UUID, *, session: object
     ) -> WorkMaturitySource | None: ...
+
+    async def load_selection_maturity(
+        self, obligation_id: UUID, *, session: object
+    ): ...
 
     async def get_maturity(
         self, obligation_id: UUID, *, session: object

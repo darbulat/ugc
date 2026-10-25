@@ -26,11 +26,19 @@
     document.querySelectorAll('[data-intake-copy]').forEach(function(el) { el.textContent=words()[el.dataset.intakeCopy] || ''; });
     var entry=id('btn-umc-intake'); if(entry) entry.textContent=words().entry;
     document.querySelectorAll('[data-selection-open]').forEach(function(el) { el.textContent=words().viewSelection; });
-    dueLabel();
+    dueLabel(); targetLocalize();
   }
   function dueLabel() { var d=new Date(id('intake-due').value || Date.now()); var offset=-d.getTimezoneOffset(), sign=offset>=0?'+':'-'; var zone=Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; text('intake-due-label',words().due+' ('+zone+', UTC'+sign+String(Math.floor(Math.abs(offset)/60)).padStart(2,'0')+':'+String(Math.abs(offset)%60).padStart(2,'0')+')'); }
   function row(parent, label, value, valueId, minor) { var line=node('div'), dt=node('dt',label), dd=node('dd',value); if(valueId) dd.id=valueId; if(minor != null) dd.dataset.minor=String(minor); line.append(dt,dd); parent.appendChild(line); }
   function link(parent, value, label) { var url=safeUrl(value), el=node(url?'a':'span',url?(label || value):value); if(url) { el.href=url; el.target='_blank'; el.rel='noopener noreferrer'; } parent.appendChild(el); }
+  var targetLabels={ru:['Фильтры авторов','Подписчиков от','Подписчиков до','Возраст от','Возраст до','Пол автора','Любой','Мужской','Женский'],en:['Creator filters','Followers from','Followers to','Age from','Age to','Creator gender','Any','Male','Female'],kk:['Автор сүзгілері','Жазылушылар саны бастап','Жазылушылар саны дейін','Жасы бастап','Жасы дейін','Автор жынысы','Кез келген','Ер','Әйел'],be:['Фільтры аўтараў','Падпісчыкі ад','Падпісчыкі да','Узрост ад','Узрост да','Пол аўтара','Любы','Мужчынскі','Жаночы'],uz:['Muallif filtrlari','Obunachilar kamida','Obunachilar ko‘pi bilan','Yosh kamida','Yosh ko‘pi bilan','Muallif jinsi','Istalgan','Erkak','Ayol']};
+  var briefLabels={ru:['Город автора (точное совпадение)','Площадки (хотя бы одна)','Использование и формат контента','Ссылка на подробный бриф','Тип работы','Только UGC','UGC с размещением'],en:['Creator city (exact match)','Platforms (at least one)','Content use and format','Detailed brief link','Work type','UGC only','UGC with placement'],kk:['Автор қаласы (дәл сәйкестік)','Платформалар (кемінде біреу)','Контентті пайдалану және пішімі','Толық бриф сілтемесі','Жұмыс түрі','Тек UGC','Жарияланатын UGC'],be:['Горад аўтара (дакладнае супадзенне)','Пляцоўкі (хаця б адна)','Выкарыстанне і фармат кантэнту','Спасылка на падрабязны брыф','Тып працы','Толькі UGC','UGC з размяшчэннем'],uz:['Muallif shahri (aniq moslik)','Platformalar (kamida bittasi)','Kontentdan foydalanish va format','Batafsil brif havolasi','Ish turi','Faqat UGC','Joylashtirish bilan UGC']};
+  Object.keys(targetLabels).forEach(function(locale){targetLabels[locale]=targetLabels[locale].concat(briefLabels[locale]);});
+  var targetFields=['min_followers','max_followers','min_age','max_age'];
+  function targeting() { var result={}, any=false;targetFields.forEach(function(name){var value=id('intake-'+name).value;result[name]=value===''?null:Number(value);if(value!=='')any=true;});result.gender=id('intake-gender').value||null;['city','content_usage','brief_link'].forEach(function(name){var value=id('intake-'+name).value.trim();if(value){result[name]=value;any=true;}});var platforms=Array.from(document.querySelectorAll('[data-intake-platform]:checked')).map(function(el){return el.value;});if(platforms.length){result.platforms=platforms;any=true;}return any||result.gender?result:null; }
+  function targetLocalize(){var c=targetLabels[(window._me||{}).locale]||targetLabels.en;document.querySelectorAll('[data-target-copy]').forEach(function(el){el.textContent=c[Number(el.dataset.targetCopy)];});}
+  function targetControls(){var box=node('fieldset'),title=node('legend');title.dataset.targetCopy='0';box.appendChild(title);targetFields.forEach(function(name,index){var label=node('label'),span=node('span'),input=document.createElement('input');span.dataset.targetCopy=String(index+1);input.id='intake-'+name;input.type='number';input.min='0';input.max=index<2?'2147483647':'120';input.step='1';input.inputMode='numeric';label.append(span,input);box.appendChild(label);});var label=node('label'),span=node('span'),select=document.createElement('select');span.dataset.targetCopy='5';select.id='intake-gender';['','m','f'].forEach(function(value,index){var option=node('option');option.value=value;option.dataset.targetCopy=String(index+6);select.appendChild(option);});label.append(span,select);box.appendChild(label);[['city',9,'text'],['content_usage',11,'text'],['brief_link',12,'url']].forEach(function(row){var label=node('label'),span=node('span'),input=document.createElement('input');span.dataset.targetCopy=String(row[1]);input.id='intake-'+row[0];input.type=row[2];input.maxLength=row[0]==='city'?200:row[0]==='brief_link'?2048:4000;label.append(span,input);box.appendChild(label);});var platforms=node('fieldset'),platformTitle=node('legend');platformTitle.dataset.targetCopy='10';platforms.appendChild(platformTitle);['instagram','tiktok','youtube','telegram','vk'].forEach(function(value){var label=node('label'),input=document.createElement('input');input.type='checkbox';input.id='intake-platform-'+value;input.value=value;input.dataset.intakePlatform='';label.append(input,node('span',value));platforms.appendChild(label);});box.appendChild(platforms);var formatLabel=node('label'),formatTitle=node('span'),format=document.createElement('select');formatTitle.dataset.targetCopy='13';format.id='intake-order-type';['ugc_only','ugc_plus_placement'].forEach(function(value,index){var option=node('option');option.value=value;option.dataset.targetCopy=String(14+index);format.appendChild(option);});formatLabel.append(formatTitle,format);box.appendChild(formatLabel);id('intake-contact').insertAdjacentElement('afterend',box);targetLocalize();}
+  targetControls();
   function selectedPolicy() { return state.policies.find(function(p) { return p.version===id('intake-policy').value; }); }
   function selectedPositions() { if(document.querySelector('input[name="intake-mode"]:checked').value==='self_service') return []; if(id('intake-all-manager').checked) return null; return Array.from(id('intake-position-options').querySelectorAll('input:checked')).map(function(el) { return Number(el.value); }); }
   function preview() {
@@ -54,6 +62,7 @@
   function failure(error, target) { var c=words(); text(target,error.status===401?c.session:error.status===403?c.forbidden:error.status===404?c.missing:error.status===409?c.conflict:c.error); }
   function pendingView() { id('form-umc-intake').hidden=true; id('intake-result').hidden=true; id('intake-uncertain').hidden=false; sync(); }
   function renderResult(result) {
+    document.dispatchEvent(new CustomEvent("umc:intake-created"));
     state.result=result; state.pending=null;
     document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:result.order_id,target:'intake-result'}}));
     try { sessionStorage.removeItem(storageKey()); } catch(_) { /* Retained same-key retry remains safe if browser storage changed. */ }
@@ -94,6 +103,7 @@
       var select=id('intake-policy'), old=select.value; select.replaceChildren(); var placeholder=node('option',words().choose); placeholder.value=''; select.appendChild(placeholder);
       state.policies.forEach(function(p) { var option=node('option',p.terms_reference+' · '+date(p.effective_from)); option.value=p.version; select.appendChild(option); }); if(state.policies.some(function(p) { return p.version===old; })) select.value=old;
       if(state.pending) pendingView(); else if(!state.result) id('form-umc-intake').hidden=data.writes_paused || !state.policies.length;
+      document.dispatchEvent(new CustomEvent("umc:intake-policy-ready",{detail:{tracking:data.funnel_tracking===true}}));
       preview();
     }).catch(function(error) { if(state.pending) pendingView(); failure(error,'intake-error'); }).finally(function() { text('intake-loading',''); busy(false,intake); });
   }
@@ -104,6 +114,8 @@
     var p=selectedPolicy(), positions=selectedPositions(), due=new Date(id('intake-due').value), op=key();
     if(!p || !op || isNaN(due.getTime()) || due<=new Date() || (positions!==null && document.querySelector('input[name="intake-mode"]:checked').value==='with_manager' && !positions.length)) { text('intake-error',words().invalid); return; }
     var payload={ operation_key:'miniapp:intake:'+op, policy_version:p.version, product_link:id('intake-product').value.trim(), offer_text:id('intake-brief').value.trim(), honorarium:Number(id('intake-honorarium').value).toFixed(2), selection_due_at:due.toISOString(), contact_reference:id('intake-contact').value.trim(), service_mode:document.querySelector('input[name="intake-mode"]:checked').value, accompaniment_ordinals:positions };
+    payload.order_type=id('intake-order-type').value;var filters=targeting();if(filters)payload.targeting=filters;
+    if(window.UMCIntakeProgress&&window.UMCIntakeProgress.funnel())payload.funnel_id=window.UMCIntakeProgress.funnel();
     try { savePending(payload); } catch(_) { text('intake-error',words().storage); return; }
     send(payload);
   });
@@ -139,6 +151,7 @@
       if(position.assignment_id && position.current && window.UMCCollaboration) { var button=node('button',c.openWork,'btn btn-secondary'); button.type='button'; button.addEventListener('click',function() { window.UMCCollaboration.open(position.assignment_id); }); article.appendChild(button); }
       parent.appendChild(article);
     });
+    document.dispatchEvent(new CustomEvent("umc:selection-view",{detail:data}));
   }
   function loadSelection() {
     if(state.busy || !state.order) return; localize(); text('selection-error',''); text('selection-loading',words().loading); id('selection-positions').replaceChildren(); text('selection-waitlist',''); id('selection-paused').hidden=true; busy(true,selection);

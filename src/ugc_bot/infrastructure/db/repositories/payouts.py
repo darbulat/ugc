@@ -253,6 +253,28 @@ class SqlAlchemyPayoutRepository:
 
     async def item_clear(self, item_id, *, session):
         """Read current correction projection under the held item barrier."""
+        from ugc_bot.infrastructure.db.repositories.correction_funding import (
+            require_forward_clear,
+        )
+
+        await require_forward_clear(item_id, session=session)
+        await self._selection_state_clear(item_id, session)
+
+    async def item_clear_for_release(self, item_id, *, session):
+        from ugc_bot.application.services.correction_funding_guard import (
+            LiveCorrectionFundingGuard,
+        )
+        from ugc_bot.infrastructure.db.repositories.corrections import (
+            SqlAlchemyCorrectionRepository,
+        )
+
+        await LiveCorrectionFundingGuard(
+            SqlAlchemyCorrectionRepository()
+        ).require_reservation_release_clear(item_id, session=session)
+        await self._selection_state_clear(item_id, session)
+
+    @staticmethod
+    async def _selection_state_clear(item_id, session):
         table = Base.metadata.tables["order_items"]
         state = await _session(session).scalar(
             select(table.c.selection_state).where(

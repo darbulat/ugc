@@ -15,6 +15,21 @@ KINDS = ("client_referral", "creator_referral", "management")
 
 
 @dataclass(frozen=True, slots=True)
+class PartnerWaitingParty:
+    role: str
+    display_name: str | None = None
+    telegram_username: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PartnerPendingContext:
+    reason: str
+    state: str | None = None
+    due_at: datetime | None = None
+    waiting_for: tuple[PartnerWaitingParty, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PartnerObligation:
     obligation_id: UUID
     kind: str
@@ -29,6 +44,7 @@ class PartnerObligation:
     snapshot_at: datetime
     registered_at: datetime | None
     verified_count: int | None
+    pending_context: PartnerPendingContext | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +72,7 @@ class PartnerReadFacts:
     overrides: tuple[dict, ...] | None
     assignments: tuple[dict, ...] | None
     assignment_total: int | None
+    is_admin: bool = False
 
 
 class PartnerViewRepository(Protocol):

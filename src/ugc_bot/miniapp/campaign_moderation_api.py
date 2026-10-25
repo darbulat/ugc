@@ -1,4 +1,4 @@
-"""Unmounted signed moderation HTTP; no transport or runtime registration."""
+"""Signed moderation HTTP; delivery runs separately after committed approval."""
 
 from types import MappingProxyType
 from typing import Any
@@ -36,6 +36,9 @@ PUBLIC_ERRORS = MappingProxyType(
                 "campaign_current_policy_required",
                 "campaign_distinct_admin_required",
                 "campaign_owner_required",
+                "campaign_recipient_no_longer_eligible",
+                "campaign_subscription_required",
+                "campaign_subscription_quota_exceeded",
             ),
             403,
         ),

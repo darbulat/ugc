@@ -93,9 +93,23 @@ class BotServices(TypedDict):
     metrics_collector: Any
     content_moderation_service: ContentModerationService
     user_role_service: UserRoleService
+    financial_review_service: NotRequired[Any]
+    manual_grant_service: NotRequired[Any]
+    manual_grant_sweep: NotRequired[Any]
+    debt_recovery_service: NotRequired[Any]
+    partner_admin_service: NotRequired[Any]
+    replacement_service: NotRequired[Any]
     partner_view_service: PartnerViewService | None
+    selection_maturity_service: NotRequired[Any]
     selection_view_service: SelectionViewService | None
     campaign_summary_service: CampaignSummaryService | None
+    campaign_analytics_service: NotRequired[Any]
+    accompaniment_refund_service: NotRequired[Any]
+    campaign_submission_service: NotRequired[Any]
+    campaign_moderation_service: NotRequired[Any]
+    campaign_response_service: NotRequired[Any]
+    campaign_capacity_service: NotRequired[Any]
+    campaign_delivery_service: NotRequired[Any]
     campaign_service: CampaignFoundationService | None
     campaign_review_service: CampaignReviewService | None
     campaign_audience_service: CampaignAudienceService | None
@@ -111,6 +125,7 @@ class BotServices(TypedDict):
     social_account_service: SocialAccountService | None
     collaboration_service: CollaborationService | None
     creator_identity_history_service: CreatorIdentityHistoryService | None
+    subscription_service: NotRequired[Any]
     order_intake_service: OrderIntakeService | None
     order_service: OrderService
     offer_dispatch_service: OfferDispatchService

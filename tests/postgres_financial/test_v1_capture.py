@@ -31,10 +31,15 @@ from ugc_bot.infrastructure.db.session import SessionTransactionManager
 
 
 @pytest_asyncio.fixture
-async def capture_env(financial_pg_engine, user_repo, advertiser_repo):
+async def capture_env(financial_pg_engine, user_repo, advertiser_repo, request):
     client = await create_test_advertiser(user_repo, advertiser_repo)
     now = datetime.now(timezone.utc) - timedelta(minutes=10)
     order, version = uuid4(), str(uuid4())
+    refund_rules = (
+        {"refund_rules": request.param.to_document()}
+        if getattr(request, "param", None) is not None
+        else {}
+    )
     with Session(financial_pg_engine) as db, db.begin():
         db.add(
             UserModel(
@@ -55,6 +60,7 @@ async def capture_env(financial_pg_engine, user_repo, advertiser_repo):
                 rules={
                     "terms_reference": "terms:test",
                     "allowed_clients": [str(client)],
+                    **refund_rules,
                 },
             )
         )
@@ -95,6 +101,7 @@ async def capture_env(financial_pg_engine, user_repo, advertiser_repo):
                     quote_payload={
                         "client_id": str(client),
                         "terms_reference": "terms:test",
+                        **refund_rules,
                     },
                 )
             )

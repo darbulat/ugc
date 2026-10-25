@@ -55,10 +55,10 @@ class CampaignModerationService:
     clock: Clock
 
     async def _read(self, actor_id, principal, session):
-        await require_capabilities(self.repository, session)
         context = await self.repository.begin_read(
             actor_id, principal=principal, session=session
         )
+        await require_capabilities(self.repository, session)
         if (
             not isinstance(context, CampaignReadContext)
             or context.actor_id != actor_id
@@ -402,9 +402,7 @@ class CampaignModerationService:
             "decision": command.decision,
             "reason": command.reason,
             "approved_count": len(jobs),
-            "delivery_state": "waiting_delivery_implementation"
-            if jobs
-            else "not_applicable",
+            "delivery_state": "queued" if jobs else "not_applicable",
         }
         return await commit_result(
             self.repository,

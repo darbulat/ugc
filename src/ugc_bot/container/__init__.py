@@ -111,6 +111,62 @@ class Container:
             currency_symbol=self._config.market.currency_symbol,
         )
 
+    def build_campaign_runtime(self, bot=None):
+        from ugc_bot.container.campaign_runtime_factory import (
+            build_campaign_runtime,
+        )
+        from ugc_bot.container.subscription_factory import (
+            build_subscription_access,
+        )
+
+        return build_campaign_runtime(
+            self._config,
+            self._transaction_manager,
+            bot=bot,
+            delivery_enabled=self._config.campaign.delivery_enabled,
+            access=build_subscription_access(self._config),
+        )
+
+    def build_financial_review(self):
+        from ugc_bot.container.financial_review_factory import (
+            build_financial_review,
+        )
+
+        return build_financial_review(self._config)
+
+    def build_manual_grant_sweep(self):
+        from ugc_bot.container.manual_grant_factory import build_manual_grants
+
+        if self._transaction_manager is None:
+            raise ValueError("manual_grant_database_required")
+        return build_manual_grants(self._config, self._transaction_manager)[1]
+
+    def build_selection_maturity_sweep(self):
+        from ugc_bot.application.services import (
+            selection_maturity_sweep_service,
+        )
+        from ugc_bot.application.services.financial_ledger_service import (
+            FinancialLedgerService,
+        )
+        from ugc_bot.application.services.selection_maturity_service import (
+            SelectionMaturityService,
+        )
+        from ugc_bot.infrastructure.clock import SystemClock
+        from ugc_bot.infrastructure.db.repositories.selection_maturity import (
+            SqlAlchemySelectionMaturityRepository,
+        )
+
+        if self._transaction_manager is None:
+            raise ValueError("selection_maturity_database_required")
+        maturity = SelectionMaturityService(
+            SqlAlchemySelectionMaturityRepository(),
+            FinancialLedgerService(self.build_repos()["financial_ledger_repo"]),
+            SystemClock(),
+        )
+        return selection_maturity_sweep_service.SelectionMaturitySweepService(
+            maturity, self._transaction_manager
+        )
+
     def build_collaboration_sweep(self) -> CollaborationSweepService:
         if self._transaction_manager is None:
             raise ValueError(

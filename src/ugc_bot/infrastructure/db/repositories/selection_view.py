@@ -3,6 +3,8 @@
 from sqlalchemy import exists, select, text
 
 from ugc_bot.application.native_principal_ports import require_current_principal
+from ugc_bot.domain.refund_rules import RefundRules
+from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     ItemAssignmentModel,
@@ -13,6 +15,9 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
+from ugc_bot.infrastructure.db.selection_maturity_models import (
+    TABLES as MATURITY_TABLES,
+)
 
 
 async def _rows(db, statement):
@@ -150,12 +155,78 @@ class SqlAlchemySelectionViewRepository:
             )
             for item in items
         ]
+        closure_policy = await self._closure_policy(
+            db, order_id, items, deliveries, positions
+        )
         return dict(
             order_id=order_id,
             policy_version=order["financial_version"],
+            **(
+                {"closure_policy": closure_policy}
+                if closure_policy is not None
+                else {}
+            ),
             positions=positions,
             waitlist_count=sum(not row["accepted"] for row in interests),
         )
+
+    @staticmethod
+    async def _closure_policy(db, order_id, items, deliveries, positions):
+        raw_rules = (
+            items[0]["quote_payload"].get("refund_rules") if items else None
+        )
+        closure_policy = None
+        if raw_rules is not None:
+            rules = RefundRules.from_document(raw_rules)
+            closures = MATURITY_TABLES["closures"]
+            closed_at = await db.scalar(
+                select(closures.c.closed_at).where(
+                    closures.c.order_id == order_id
+                )
+            )
+            components = Base.metadata.tables[
+                "financial_refund_component_applications"
+            ]
+            refunds = await _rows(
+                db,
+                select(components).where(
+                    components.c.paid_item_id.in_(
+                        [item["paid_item_id"] for item in items]
+                    ),
+                    components.c.component == "selection",
+                ),
+            )
+            refunded = {
+                item["paid_item_id"]
+                for item in items
+                if sum(
+                    row["refund_minor"]
+                    for row in refunds
+                    if row["paid_item_id"] == item["paid_item_id"]
+                )
+                == item["selection_minor"]
+            }
+            for position in positions:
+                if position["paid_item_id"] in refunded:
+                    position["delivery_state"] = "refunded"
+            resolved = all(
+                item["paid_item_id"] in refunded
+                or any(
+                    fact["paid_item_id"] == item["paid_item_id"]
+                    for fact in deliveries
+                )
+                for item in items
+            )
+            closure_policy = dict(
+                mode=rules.selection_closure_mode,
+                refund_window_seconds=rules.selection_refund_window_seconds,
+                anchor=rules.selection_refund_window_anchor,
+                closed_at=closed_at,
+                can_close=rules.selection_closure_mode == "manual"
+                and closed_at is None
+                and resolved,
+            )
+        return closure_policy
 
     @staticmethod
     def _position(

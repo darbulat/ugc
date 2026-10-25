@@ -9,6 +9,7 @@ import binascii
 import json
 import re
 from typing import Any, Literal, Self
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -132,6 +133,11 @@ _FLAT_KEYS = {
         "MAX_ORDER_PRICE",
         "ORDER_RADIUS_KM",
     ],
+    "campaign": [
+        "CAMPAIGN_DELIVERY_ENABLED",
+        "CAMPAIGN_REQUIRE_PAID_SUBSCRIPTION",
+        "CAMPAIGN_DELIVERY_INTERVAL_SECONDS",
+    ],
     "financial": [
         "FINANCIAL_CORE_ENABLED",
         "FINANCIAL_NEW_ORDERS_ENABLED",
@@ -140,6 +146,7 @@ _FLAT_KEYS = {
         "FINANCIAL_REQUISITES_KEY_ID",
         "FINANCIAL_MANUAL_BANK_ACCOUNT_ID",
         "FINANCIAL_MANUAL_BANK_SOURCE_ID",
+        "FINANCIAL_SUPERADMIN_USER_IDS",
         "FINANCIAL_SELECTION_REFUND_WINDOW_SECONDS",
         "FINANCIAL_SELECTION_REFUND_WINDOW_ANCHOR",
         "FINANCIAL_SELECTION_CLOSURE_MODE",
@@ -673,6 +680,29 @@ class FinancialConfig(BaseSettings):
     """Independent emergency gates; policy/order parameters have no defaults."""
 
     model_config = _ENV
+    superadmin_user_ids_raw: str = Field(
+        default="", alias="FINANCIAL_SUPERADMIN_USER_IDS", max_length=16384
+    )
+
+    def superadmin_user_ids(self) -> frozenset[UUID]:
+        raw = self.superadmin_user_ids_raw.strip()
+        if not raw:
+            return frozenset()
+        values = json.loads(raw) if raw.startswith("[") else raw.split(",")
+        if type(values) is not list or any(
+            type(v) is not str or not v.strip() for v in values
+        ):
+            raise ValueError("financial_superadmin_uuid_list_required")
+        try:
+            result = tuple(UUID(v.strip()) for v in values)
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError(
+                "financial_superadmin_uuid_list_required"
+            ) from None
+        if any(not v.int for v in result) or len(set(result)) != len(result):
+            raise ValueError("financial_superadmin_uuid_list_required")
+        return frozenset(result)
+
     core_enabled: bool = Field(default=False, alias="FINANCIAL_CORE_ENABLED")
     new_orders_enabled: bool = Field(
         default=False, alias="FINANCIAL_NEW_ORDERS_ENABLED"
@@ -754,6 +784,7 @@ class FinancialConfig(BaseSettings):
     @model_validator(mode="after")
     def _complete_refund_configuration(self) -> Self:
         self.refund_rules()
+        self.superadmin_user_ids()
         return self
 
     def refund_rules(self) -> RefundRules | None:
@@ -829,6 +860,19 @@ class MessengerLinkingConfig(BaseSettings):
         return value
 
 
+class CampaignRuntimeConfig(BaseSettings):
+    model_config = _ENV
+    delivery_enabled: bool = Field(
+        default=False, alias="CAMPAIGN_DELIVERY_ENABLED"
+    )
+    require_paid_subscription: bool = Field(
+        default=False, alias="CAMPAIGN_REQUIRE_PAID_SUBSCRIPTION"
+    )
+    interval_seconds: int = Field(
+        default=5, ge=1, le=3600, alias="CAMPAIGN_DELIVERY_INTERVAL_SECONDS"
+    )
+
+
 class AppConfig(BaseModel):
     """Application configuration."""
 
@@ -850,6 +894,9 @@ class AppConfig(BaseModel):
     order: OrderConfig
     market: MarketConfig
     referral: ReferralConfig
+    campaign: CampaignRuntimeConfig = Field(
+        default_factory=CampaignRuntimeConfig
+    )
     financial: FinancialConfig = Field(default_factory=FinancialConfig)
     messenger_linking: MessengerLinkingConfig = Field(
         default_factory=MessengerLinkingConfig
@@ -881,6 +928,9 @@ class AppConfig(BaseModel):
             "order": OrderConfig.model_validate(nested["order"]),
             "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
+            "campaign": CampaignRuntimeConfig.model_validate(
+                nested["campaign"]
+            ),
             "financial": FinancialConfig.model_validate(nested["financial"]),
             "messenger_linking": MessengerLinkingConfig.model_validate(
                 nested["messenger_linking"]

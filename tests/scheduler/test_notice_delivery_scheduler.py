@@ -169,6 +169,8 @@ async def test_combined_core_gate_starts_actual_notice_loop(monkeypatch):
     )
     container = SimpleNamespace(
         build_collaboration_sweep=Mock(return_value=object()),
+        build_selection_maturity_sweep=Mock(return_value=object()),
+        build_manual_grant_sweep=Mock(return_value=object()),
         build_collaboration_notice_delivery=Mock(return_value=worker),
         build_accompaniment_lead_delivery=Mock(return_value=None),
     )
@@ -194,6 +196,12 @@ async def test_combined_core_gate_starts_actual_notice_loop(monkeypatch):
         combined_scheduler, "selection_loop", independent_delivery
     )
     monkeypatch.setattr(combined_scheduler, "lead_loop", independent_delivery)
+    monkeypatch.setattr(
+        combined_scheduler, "selection_maturity_loop", independent_delivery
+    )
+    monkeypatch.setattr(
+        combined_scheduler, "manual_grant_loop", independent_delivery
+    )
     await combined_scheduler._run_all(config, container, object())
     assert len(transport.sent) == 1
     assert (

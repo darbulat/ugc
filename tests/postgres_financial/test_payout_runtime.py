@@ -1037,7 +1037,7 @@ async def test_existing_case_debt_blocks_reserve_without_offset(payout_env):
 
 @pytest.mark.asyncio
 async def test_unapplied_bank_reference_cannot_pay_a_different_recipient(
-    payout_env, user_repo, advertiser_repo, monkeypatch
+    payout_env, user_repo, advertiser_repo, monkeypatch, request
 ):
     from contextlib import asynccontextmanager
 
@@ -1060,7 +1060,7 @@ async def test_unapplied_bank_reference_cannot_pay_a_different_recipient(
     )["applied"]
     async with (
         asynccontextmanager(capture_env.__wrapped__)(
-            env["pg"], user_repo, advertiser_repo
+            env["pg"], user_repo, advertiser_repo, request
         ) as second_capture,
         asynccontextmanager(globals()["payout_env"].__wrapped__)(
             second_capture, monkeypatch

@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import RowMapping, Table, select
+from sqlalchemy import RowMapping, Table, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -241,6 +241,38 @@ class SqlAlchemyFinancialLedgerRepository:
         )
         return WorkMaturitySource(**row) if row is not None else None
 
+    async def load_selection_maturity(self, obligation_id, *, session):
+        from ugc_bot.application.selection_maturity_ports import (
+            SelectionMaturitySource,
+        )
+
+        db = _session(session)
+        available = await db.scalar(
+            text(
+                "SELECT to_regclass(current_schema() || "
+                "'.financial_selection_schedules')"
+            )
+        )
+        if available is None:
+            return None
+        schedules = Base.metadata.tables["financial_selection_schedules"]
+        obligations = Base.metadata.tables["financial_obligations"]
+        row = (
+            (
+                await db.execute(
+                    select(schedules)
+                    .join(
+                        obligations,
+                        obligations.c.paid_item_id == schedules.c.paid_item_id,
+                    )
+                    .where(obligations.c.id == obligation_id)
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        return SelectionMaturitySource(**row) if row else None
+
     async def get_maturity(self, obligation_id, *, session):
         row = (
             (
@@ -388,6 +420,8 @@ class SqlAlchemyFinancialLedgerRepository:
 
     @staticmethod
     def _snapshot_age_rule(basis: IssueBasis) -> str:
+        if basis.kind == "manual_adjustment":
+            return "manual_adjustment"
         if basis.kind == "management":
             return "management"
         assert basis.registered_at is not None
@@ -419,6 +453,7 @@ class SqlAlchemyFinancialLedgerRepository:
                     "client_referral": "client",
                     "creator_referral": "creator",
                     "management": "management",
+                    "manual_adjustment": "manual_adjustment",
                 }[basis.kind],
                 effective_at=basis.snapshot_at,
                 registered_at=basis.registered_at,
@@ -447,6 +482,15 @@ class SqlAlchemyFinancialLedgerRepository:
         )
         return record
 
+    async def load_manual_grant(self, grant_id, *, session):
+        from ugc_bot.infrastructure.db.repositories.manual_grants import (
+            SqlAlchemyManualGrantRepository,
+        )
+
+        return await SqlAlchemyManualGrantRepository().source(
+            grant_id, session=session
+        )
+
     async def apply_projection(
         self, movement: JournalMovement, *, session: object
     ) -> None:
@@ -460,6 +504,13 @@ class SqlAlchemyFinancialLedgerRepository:
             )
         )
         values: dict[str, Any] = {"version": wallet.c.version + 1}
+        if movement.movement_type == "debt":
+            values["debt_minor"] = wallet.c.debt_minor + movement.amount_minor
+            values["cancelled_minor"] = (
+                wallet.c.cancelled_minor + movement.amount_minor
+            )
+        elif movement.movement_type == "recovery":
+            values["debt_minor"] = wallet.c.debt_minor - movement.amount_minor
         if movement.bucket_from:
             name = movement.bucket_from + "_minor"
             values[name] = wallet.c[name] - movement.amount_minor

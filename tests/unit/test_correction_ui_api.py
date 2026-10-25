@@ -311,7 +311,24 @@ async def test_complete_ui_evidence_flow_never_claims_money_applied(platform):
         "record_observation",
         "review",
         "match",
+        "apply",
     ]
+    assert len(private.json()["applicable_matches"]) == 1
+    original_source = repo.rows["matches"][0]["source_hash"]
+    repo.rows["matches"][0]["source_hash"] = "b" * 64
+    stale = await post(app, admin, requested["case_id"] + "/detail")
+    assert stale.json()["applicable_matches"] == []
+    assert "apply" not in stale.json()["allowed_actions"]
+    repo.rows["matches"][0]["source_hash"] = original_source
+    receipt = next(
+        r
+        for r in repo.rows["commands"]
+        if r["action"] == "MatchSelectionRefund"
+    )
+    receipt["result"]["match_id"] = str(U[29])
+    damaged = await post(app, admin, requested["case_id"] + "/detail")
+    assert damaged.json()["applicable_matches"] == []
+    assert "apply" not in damaged.json()["allowed_actions"]
     status = await post(
         app, own, "operations/status", operation_key="ui-request"
     )

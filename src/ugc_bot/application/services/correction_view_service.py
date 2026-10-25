@@ -76,6 +76,7 @@ class CorrectionViewService:
                     review=admin and not self.paused,
                     record_observation=admin,
                     match=admin and not self.paused,
+                    apply=admin and not self.paused,
                 ),
             )
         )
@@ -261,7 +262,47 @@ class CorrectionViewService:
         if actor.admin:
             for kind in ("intents", "observations", "matches"):
                 result[kind] = facts.rows(kind)
+            applicable = self._applicable_matches(facts, scope, state, request)
+            result["applicable_matches"] = applicable
+            if (
+                applicable
+                and valid
+                and not self.paused
+                and state is not None
+                and state.review_status == "approved"
+                and state.match_status == "matched"
+                and state.application_status != "applied"
+            ):
+                result["allowed_actions"].append("apply")
         return canonical(result)
+
+    def _applicable_matches(self, facts, scope, state, request):
+        """Expose matches backed by their retained reviewed command receipt."""
+        if (
+            state is None
+            or request is None
+            or state.source_hash != scope.source_hash
+        ):
+            return []
+        result = []
+        for match in facts.rows("matches"):
+            if match.get("source_hash") != scope.source_hash:
+                continue
+            try:
+                intent = facts.one("intents", "intent_id", match["intent_id"])
+                self.commands._match_links(facts, intent, request)
+                receipt = facts.one(
+                    "commands", "command_id", match["command_id"]
+                )
+                if (
+                    receipt.get("action") == "MatchSelectionRefund"
+                    and receipt.get("result", {}).get("match_id")
+                    == match["match_id"]
+                ):
+                    result.append(match)
+            except (ValueError, KeyError, LookupError):
+                continue
+        return result
 
     def _actions(self, result, scope, actor, state, valid, request):
         actions = result["allowed_actions"]

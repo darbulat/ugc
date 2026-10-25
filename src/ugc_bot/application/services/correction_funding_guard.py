@@ -15,6 +15,13 @@ class LiveCorrectionFundingGuard:
     def __init__(self, repository: CorrectionRepository) -> None:
         self.repository = repository
 
+    async def management_refund_disposition(
+        self, paid_item_id: UUID, *, session: object
+    ):
+        return await self.repository.management_refund_disposition(
+            paid_item_id, session=session
+        )
+
     async def load_item(
         self, paid_item_id: UUID, *, session: object
     ) -> tuple[ComponentFunding, ...]:
@@ -22,6 +29,10 @@ class LiveCorrectionFundingGuard:
         funding = await self.repository.live_funding(
             paid_item_id, session=session
         )
+        return self._validate_item(paid_item_id, funding)
+
+    @staticmethod
+    def _validate_item(paid_item_id, funding):
         if (
             type(funding) is not tuple
             or not funding
@@ -45,9 +56,27 @@ class LiveCorrectionFundingGuard:
         return funding
 
     async def require_forward_clear(
-        self, paid_item_id: UUID, *, session: object
+        self,
+        paid_item_id: UUID,
+        *,
+        session: object,
+        components: tuple[str, ...] = ("selection", "accompaniment"),
     ) -> None:
         funding = await self.load_item(paid_item_id, session=session)
+        self._require_clear(funding, components)
+
+    async def require_reservation_release_clear(self, paid_item_id, *, session):
+        require_uuid(paid_item_id)
+        funding = self._validate_item(
+            paid_item_id,
+            await self.repository.reservation_release_funding(
+                paid_item_id, session=session
+            ),
+        )
+        self._require_clear(funding, ("selection",))
+
+    @staticmethod
+    def _require_clear(funding, components):
         if not all(line.state_consistent for line in funding):
             raise ValueError("correction_funding_unavailable")
         if any(
@@ -55,5 +84,13 @@ class LiveCorrectionFundingGuard:
             for line in funding
         ):
             raise ValueError("correction_unresolved")
-        if any(line.cumulative_refund_minor for line in funding):
+        if not components or any(
+            c not in ("selection", "accompaniment") for c in components
+        ):
+            raise ValueError("correction_funding_component_invalid")
+        if any(
+            line.cumulative_refund_minor
+            for line in funding
+            if line.component in components
+        ):
             raise ValueError("correction_component_refunded")

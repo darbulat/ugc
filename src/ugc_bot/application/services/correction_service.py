@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from ugc_bot.application.collaboration_ports import canonical
 from ugc_bot.application.correction_ports import (
+    ApplySelectionRefund,
     CorrectionApplicationRefused,
     RecordManualRefundObservation,
     RequestSelectionRefund,
@@ -34,10 +35,11 @@ def _require(value, code):
 
 
 class CorrectionService:
-    def __init__(self, repository, physical_proofs, clock):
+    def __init__(self, repository, physical_proofs, clock, compensation=None):
         self.repository = repository
         self.physical_proofs = physical_proofs
         self.clock = clock
+        self.compensation = compensation
 
     async def _authority(
         self, scope, principal, *, action, session, operation_key=None
@@ -189,6 +191,8 @@ class CorrectionService:
             result = await self._review(command, context)
         elif isinstance(command, RecordManualRefundObservation):
             result = await self._observe(command, context)
+        elif isinstance(command, ApplySelectionRefund):
+            result = await self._apply_refund(command, context)
         else:
             result = await self._match(command, context)
         result = canonical(result)
@@ -933,6 +937,52 @@ class CorrectionService:
                 else {}
             ),
         )
+
+    async def _apply_refund(self, command, c):
+        from ugc_bot.application.services.refund_compensation_service import (
+            RefundAssessmentUnavailable,
+        )
+
+        _require(
+            self.compensation is not None, "correction_compensation_unavailable"
+        )
+        await self._verify_match(command, c)
+        matched = c["facts"].one("matches", "match_id", command.match_id)
+        _require(
+            matched["intent_id"] == str(command.intent_id)
+            and matched["observation_id"] == str(command.observation_id),
+            "correction_application_scope_conflict",
+        )
+        try:
+            async with self.repository.application_savepoint(
+                session=c["session"]
+            ):
+                applied = await self.compensation.apply(
+                    c["scope"],
+                    matched,
+                    actor_id=command.actor_id,
+                    command_id=c["command_id"],
+                    now=c["now"],
+                    session=c["session"],
+                )
+        except RefundAssessmentUnavailable as exc:
+            return await self._event(
+                command,
+                c,
+                command.case_id,
+                command.match_id,
+                application_status="awaiting_assessment",
+                blockers=(str(exc),),
+            ) | {"applied": False}
+        result = await self._event(
+            command,
+            c,
+            command.case_id,
+            UUID(applied["application_id"]),
+            application_status="applied",
+            blockers=(),
+        )
+        return result | applied
 
     async def get_for_actor(
         self, case_id, actor_id, *, session, principal=None

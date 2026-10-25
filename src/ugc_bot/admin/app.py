@@ -3,6 +3,7 @@
 import asyncio
 import dataclasses
 import logging
+from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import Any, Optional, TypeVar, cast
@@ -1373,10 +1374,8 @@ class UserAdmin(ModelView, model=UserModel):
         UserModel.issue_count: "Кол-во проблем",
         UserModel.created_at: "Дата создания",
     }
-    form_columns = [
-        UserModel.admin,
-        UserModel.referral_payout_rate,
-    ]
+    # Side/period/reason overrides are managed in the signed partner cabinet.
+    form_columns = [UserModel.admin]
 
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update user model with status change handling."""
@@ -1608,6 +1607,25 @@ def _order_duplicate_insert_data(source: OrderModel) -> dict[str, Any]:
     return data
 
 
+def _financial_order_admin_data(order, data):
+    if order is None or getattr(order, "financial_version", None) is None:
+        return data
+    for name, value in data.items():
+        if name == "status":
+            continue
+        current = getattr(order, name, object())
+        if current == value or current in (None, "") and value in (None, ""):
+            continue
+        if name in ("price", "price_filter_delta", "min_rating"):
+            try:
+                if Decimal(str(current)) == Decimal(str(value)):
+                    continue
+            except (ArithmeticError, ValueError):
+                pass
+        raise ValueError("financial_order_intake_immutable")
+    return {"status": data["status"]} if "status" in data else {}
+
+
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
@@ -1714,6 +1732,22 @@ class OrderAdmin(ModelView, model=OrderModel):
         managers_raw = str(form_data.get("managers", "") or "")
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
+        submitted = data
+        data = _financial_order_admin_data(obj, data)
+        if (
+            obj is not None
+            and getattr(obj, "financial_version", None) is not None
+        ):
+            submitted = {
+                key: getattr(obj, key, None)
+                for key in (
+                    "product_link",
+                    "offer_text",
+                    "barter_description",
+                    "content_usage",
+                    "geography",
+                )
+            }
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
         new_status_active = (
@@ -1725,18 +1759,18 @@ class OrderAdmin(ModelView, model=OrderModel):
             if container:
                 content_moderation, _, _ = _get_order_moderation_deps(container)
                 if content_moderation.order_contains_banned_content(
-                    product_link=data.get("product_link"),
-                    offer_text=data.get("offer_text"),
-                    barter_description=data.get("barter_description"),
-                    content_usage=data.get("content_usage"),
-                    geography=data.get("geography"),
+                    product_link=submitted.get("product_link"),
+                    offer_text=submitted.get("offer_text"),
+                    barter_description=submitted.get("barter_description"),
+                    content_usage=submitted.get("content_usage"),
+                    geography=submitted.get("geography"),
                 ):
                     matches = content_moderation.get_order_banned_matches(
-                        product_link=data.get("product_link"),
-                        offer_text=data.get("offer_text"),
-                        barter_description=data.get("barter_description"),
-                        content_usage=data.get("content_usage"),
-                        geography=data.get("geography"),
+                        product_link=submitted.get("product_link"),
+                        offer_text=submitted.get("offer_text"),
+                        barter_description=submitted.get("barter_description"),
+                        content_usage=submitted.get("content_usage"),
+                        geography=submitted.get("geography"),
                     )
                     raise ValueError(
                         f"Запрещённый контент. Найдено: {', '.join(matches)}. "

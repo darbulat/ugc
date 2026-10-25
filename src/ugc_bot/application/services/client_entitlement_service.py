@@ -14,6 +14,9 @@ from ugc_bot.application.financial_ports import (
     IssuedObligation,
     JournalMovement,
 )
+from ugc_bot.application.services.correction_funding_guard import (
+    LiveCorrectionFundingGuard,
+)
 from ugc_bot.application.services.creator_identity_history_service import (
     CreatorIdentityHistoryService,
 )
@@ -38,6 +41,7 @@ class ClientEntitlementService:
         overrides: EffectiveRateOverrides,
         clock: Clock,
         work_guard: WorkFinancialGuard | None = None,
+        funding_guard: LiveCorrectionFundingGuard | None = None,
     ) -> None:
         self.repository = repository
         self.ledger = ledger
@@ -45,8 +49,11 @@ class ClientEntitlementService:
         self.overrides = overrides
         self.clock = clock
         self.work_guard = work_guard
+        self.funding_guard = funding_guard
 
-    async def handle(self, event: OutboxEvent, *, session: object) -> None:
+    async def handle(
+        self, event: OutboxEvent, *, session: object, recorded_at=None
+    ) -> None:
         repo = self.repository
         completed = await repo.get_receipt(event.event_id, session=session)
         if completed is not None:
@@ -102,7 +109,10 @@ class ClientEntitlementService:
             if previous["source_hash"] != capture.source_hash:
                 raise ValueError("idempotency_payload_conflict")
             return
-        results = await self._issue(capture, attribution, session=session)
+        assessed_at = self._assessment_time(recorded_at, capture)
+        results = await self._issue(
+            capture, attribution, session=session, recorded_at=assessed_at
+        )
         assessment = {
             "kind": "client_selection",
             "basis_keys": results,
@@ -112,9 +122,15 @@ class ClientEntitlementService:
         await repo.save_receipt(
             capture,
             assessment,
-            recorded_at=utc(self.clock.now()),
+            recorded_at=assessed_at,
             session=session,
         )
+
+    def _assessment_time(self, recorded_at, capture):
+        at = utc(recorded_at if recorded_at is not None else self.clock.now())
+        if at < capture.captured_at or at > utc(self.clock.now()):
+            raise ValueError("client_assessment_time_conflict")
+        return at
 
     @staticmethod
     def _require_attribution(
@@ -133,6 +149,7 @@ class ClientEntitlementService:
         attribution: HistoricalDirectAttribution,
         *,
         session: object,
+        recorded_at,
     ) -> list[str]:
         recipient = attribution.referrer_user_id
         assert capture.policy.version
@@ -164,6 +181,12 @@ class ClientEntitlementService:
             )
         results = []
         for item in capture.items:
+            if self.funding_guard is not None:
+                await self.funding_guard.require_forward_clear(
+                    item.paid_item_id,
+                    session=session,
+                    components=("selection",),
+                )
             key = f"client-selection:{capture.payment_id}:{item.paid_item_id}"
             grounds = await self.ledger.repository.list_item_grounds(
                 item.paid_item_id, "client_referral", session=session
@@ -193,11 +216,13 @@ class ClientEntitlementService:
                     rate_source="override" if override else "standard",
                     override_id=override.override_id if override else None,
                 ),
-                recorded_at=utc(self.clock.now()),
+                recorded_at=recorded_at,
                 session=session,
             )
             if isinstance(issued, IssuedObligation):
-                await self._block_disputed(issued, session=session)
+                await self._block_disputed(
+                    issued, session=session, recorded_at=recorded_at
+                )
             results.append(key)
         return results
 
@@ -206,6 +231,7 @@ class ClientEntitlementService:
         issued: IssuedObligation,
         *,
         session: object,
+        recorded_at=None,
     ) -> None:
         if self.work_guard is None:
             return
@@ -215,7 +241,7 @@ class ClientEntitlementService:
         )
         if case is None:
             return
-        now = utc(self.clock.now())
+        now = utc(recorded_at if recorded_at is not None else self.clock.now())
         if utc(case.occurred_at) > now:
             raise ValueError("work_case_time_conflict")
         assert basis.recipient_id is not None

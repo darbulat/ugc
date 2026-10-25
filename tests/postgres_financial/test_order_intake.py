@@ -365,3 +365,55 @@ async def test_requested_facts_cannot_be_rewritten_or_deleted(
                 text(sql),
                 {"order": source.order_id, "client": env["admin"].user_id},
             )
+
+
+@pytest.mark.asyncio
+async def test_requested_targeting_reaches_real_order_matcher_and_replay(
+    intake_env,
+):
+    from ugc_bot.domain.order_targeting import OrderTargeting
+
+    env = intake_env
+    intake_service = service(env)
+    request = command(
+        env,
+        targeting=OrderTargeting(
+            min_followers=1000,
+            max_followers=20000,
+            min_age=18,
+            max_age=40,
+            gender="f",
+        ),
+    )
+    result = await intake_service.create(request)
+    assert await intake_service.create(request) == result
+    saved = await env["repos"]["order_repo"].get_by_id(result.order_id)
+    assert saved.min_followers == 1000
+    assert saved.max_followers == 20000
+    assert saved.required_blogger_gender.value == "f"
+    with pytest.raises(ValueError, match="idempotency"):
+        await intake_service.create(
+            replace(request, targeting=OrderTargeting(min_followers=5000))
+        )
+
+
+@pytest.mark.asyncio
+async def test_funnel_separates_actual_orders_from_client_events(
+    intake_env,
+):
+    env = intake_env
+    intake_service = service(env)
+    funnel = uuid4()
+    await intake_service.record_funnel(env["user"].user_id, funnel, "opened")
+    await intake_service.record_funnel(env["user"].user_id, funnel, "opened")
+    await intake_service.record_funnel(env["user"].user_id, funnel, "filters")
+    result = await intake_service.create(command(env, funnel_id=funnel))
+    summary = await intake_service.funnel_report(env["admin"].user_id)
+    assert summary["stages"]["opened"] >= 1
+    assert summary["stages"]["created"] >= 1
+    assert summary["captured_orders"] == 0
+    assert result.order_id is not None
+    with pytest.raises(PermissionError):
+        await intake_service.funnel_report(env["user"].user_id)
+    with pytest.raises(ValueError, match="stage"):
+        await intake_service.record_funnel(env["user"].user_id, funnel, "paid")

@@ -69,28 +69,48 @@ from ugc_bot.domain.enums import (
     RaterRole,
     WorkFormat,
 )
+from ugc_bot.miniapp.accompaniment_refund_api import (
+    create_accompaniment_refund_router,
+)
 from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
     validate_init_data_for_platform,
 )
+from ugc_bot.miniapp.campaign_analytics_api import (
+    create_campaign_analytics_router,
+)
 from ugc_bot.miniapp.campaign_api import create_campaign_router
+from ugc_bot.miniapp.campaign_moderation_api import (
+    create_campaign_moderation_router,
+)
+from ugc_bot.miniapp.campaign_principal import resolve_campaign_principal
 from ugc_bot.miniapp.campaign_review_api import create_campaign_review_router
+from ugc_bot.miniapp.campaign_runtime_api import create_campaign_runtime_router
 from ugc_bot.miniapp.campaign_summary_api import create_campaign_summary_router
 from ugc_bot.miniapp.checkout_api import create_checkout_router
 from ugc_bot.miniapp.collaboration_api import create_collaboration_router
 from ugc_bot.miniapp.correction_api import create_correction_router
+from ugc_bot.miniapp.debt_recovery_api import create_debt_recovery_router
 from ugc_bot.miniapp.financial_principal import resolve_financial_principal
+from ugc_bot.miniapp.financial_review_api import create_financial_review_router
+from ugc_bot.miniapp.manual_grant_api import create_manual_grant_router
 from ugc_bot.miniapp.messenger_linking_api import (
     create_messenger_linking_router,
 )
 from ugc_bot.miniapp.order_intake_api import create_order_intake_router
 from ugc_bot.miniapp.override_api import create_override_router
+from ugc_bot.miniapp.partner_admin_api import create_partner_admin_router
 from ugc_bot.miniapp.partner_api import create_partner_router
 from ugc_bot.miniapp.payout_api import create_payout_router
 from ugc_bot.miniapp.payout_view_api import create_payout_view_router
 from ugc_bot.miniapp.principal import with_recent_init_data
+from ugc_bot.miniapp.replacement_api import create_replacement_router
 from ugc_bot.miniapp.selection_api import create_selection_router
+from ugc_bot.miniapp.selection_maturity_api import (
+    create_selection_maturity_router,
+)
 from ugc_bot.miniapp.social_api import create_social_router
+from ugc_bot.miniapp.subscription_api import create_subscription_router
 
 logger = logging.getLogger(__name__)
 
@@ -570,6 +590,34 @@ async def _checkout_actor(
     return CheckoutActor(actor_id, platform, external_id)
 
 
+router.include_router(
+    create_campaign_moderation_router(resolve_campaign_principal)
+)
+router.include_router(
+    create_campaign_runtime_router(resolve_campaign_principal)
+)
+
+router.include_router(
+    create_selection_maturity_router(resolve_financial_principal)
+)
+
+router.include_router(create_partner_admin_router(resolve_financial_principal))
+
+router.include_router(create_replacement_router(resolve_financial_principal))
+
+router.include_router(
+    create_campaign_analytics_router(resolve_campaign_principal)
+)
+router.include_router(
+    create_accompaniment_refund_router(resolve_financial_principal)
+)
+
+router.include_router(
+    create_financial_review_router(resolve_financial_principal)
+)
+router.include_router(create_manual_grant_router(resolve_financial_principal))
+router.include_router(create_debt_recovery_router(resolve_financial_principal))
+router.include_router(create_subscription_router(resolve_financial_principal))
 router.include_router(create_checkout_router(_checkout_actor))
 router.include_router(create_order_intake_router(resolve_financial_principal))
 router.include_router(create_social_router(resolve_financial_principal))

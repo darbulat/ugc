@@ -27,6 +27,8 @@ WORK_EVENT_TYPES = frozenset(
         "notice_failed",
         "due_extended",
         "confirmation_requested",
+        "rejected",
+        "management_reviewed",
     )
 )
 
@@ -40,6 +42,7 @@ class WorkEntitlementSnapshot:
     manager_linked: bool
     schedule_id: UUID | None = None
     current_event_id: UUID | None = None
+    resolution_case_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)

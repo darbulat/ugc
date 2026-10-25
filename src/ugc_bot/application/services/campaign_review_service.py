@@ -31,7 +31,7 @@ def draft_view(row):
         "campaign_id": str(row["campaign_id"]),
         "version": row["version"],
         "revision_digest": row["revision_digest"],
-        "state": "draft",
+        "state": row.get("state", "draft"),
         "content": row["content"],
         "segment": row["segment"],
         "policy_version": row["policy_version"],

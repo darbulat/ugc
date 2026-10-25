@@ -17,6 +17,35 @@ from ugc_bot.domain.enums import OutboxEventStatus
 
 
 class InMemoryCollaborationRepository:
+    async def lock_admin_actor(self, actor_id, *, session):
+        self._session(session)
+        return self.actors.get(actor_id)
+
+    async def list_disputes(self, limit, cursor, *, session):
+        records = self._session(session)["records"].values()
+        return tuple(
+            sorted(
+                (
+                    r
+                    for r in records
+                    if r.collaboration.state == "disputed"
+                    and (
+                        cursor is None or r.collaboration.assignment_id > cursor
+                    )
+                ),
+                key=lambda r: r.collaboration.assignment_id,
+            )
+        )[:limit]
+
+    async def get_event_for_version(self, assignment_id, version, *, session):
+        for event in self._session(session)["events"].values():
+            if (
+                event.assignment_id == assignment_id
+                and event.result.version == version
+            ):
+                return event
+        return None
+
     def __init__(self, scopes=None, actors=None):
         self.scopes = dict(scopes or {})
         self.actors = dict(actors or {})

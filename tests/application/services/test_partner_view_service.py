@@ -182,6 +182,104 @@ async def test_separate_kinds_and_new_grade_cannot_reprice_snapshots():
 
 
 @pytest.mark.asyncio
+async def test_home_rates_keep_both_sides_and_policy_specific_overrides():
+    override = {
+        "side": "creator",
+        "rate_bps": 2000,
+        "policy_version": "agreed-v2",
+        "effective_from": NOW,
+        "effective_until": NOW,
+    }
+    result = await view(
+        replace(facts(), verified_creators=100, overrides=(override,))
+    )
+    assert result["current_rates"] == {
+        "client_bps": 1000,
+        "creator_bps": 1200,
+        "overrides": (override,),
+    }
+
+
+@pytest.mark.asyncio
+async def test_pending_details_keep_source_links_without_private_evidence():
+    from ugc_bot.application.partner_view_ports import (
+        PartnerPendingContext,
+        PartnerWaitingParty,
+    )
+
+    money = financial()
+    obligation = replace(
+        money.obligations[1],
+        pending_context=PartnerPendingContext(
+            "awaiting_confirmation",
+            "in_progress",
+            NOW,
+            (
+                PartnerWaitingParty(
+                    "creator", "Invited author", "author_handle"
+                ),
+                PartnerWaitingParty("client"),
+            ),
+        ),
+    )
+    result = await view(
+        replace(
+            facts(),
+            financial=replace(
+                money,
+                obligations=(
+                    money.obligations[0],
+                    obligation,
+                    money.obligations[2],
+                ),
+            ),
+        )
+    )
+    pending = result["financial"]["pending"]["entries"]
+    entry = next(row for row in pending if row["kind"] == "creator_referral")
+    assert entry["amount_minor"] == "10000"
+    assert entry["reason"] == "awaiting_confirmation"
+    assert entry["waiting_for"] == [
+        {
+            "role": "creator",
+            "display_name": "Invited author",
+            "telegram_username": "author_handle",
+        },
+        {"role": "client", "display_name": None, "telegram_username": None},
+    ]
+    assert "PRIVATE CASE" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_manager_summary_requires_success_and_earned_money():
+    from ugc_bot.application.partner_view_ports import PartnerPendingContext
+
+    money = financial()
+    result = await view(replace(facts(), financial=money))
+    assert result["financial"]["management_summary"]["successful_works"] == 0
+    management = replace(
+        money.obligations[2],
+        assignment_id=UUID(int=501),
+        pending_context=PartnerPendingContext(
+            "processing", "success_final", NOW
+        ),
+    )
+    result = await view(
+        replace(
+            facts(),
+            financial=replace(
+                money, obligations=(*money.obligations[:2], management)
+            ),
+        )
+    )
+    assert result["financial"]["management_summary"] == {
+        "successful_works": 1,
+        "unit_minor": "60000",
+        "gross_minor": "60000",
+    }
+
+
+@pytest.mark.asyncio
 async def test_missing_wallet_with_journal_is_a_reconciliation_problem():
     result = await view(
         replace(facts(), financial=replace(financial(), projection=None))
