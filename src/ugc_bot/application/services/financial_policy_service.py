@@ -8,6 +8,7 @@ from uuid import UUID
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.config import FinancialConfig
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.refund_rules import RefundRules
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,11 +20,20 @@ class FinancialPolicy:
     selection_refund_window: timedelta | None
     allowed_clients: frozenset[UUID]
     terms_reference: str | None
+    refund_rules: RefundRules | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "allowed_clients", frozenset(self.allowed_clients)
         )
+        if self.refund_rules is not None and (
+            not isinstance(self.refund_rules, RefundRules)
+            or self.selection_refund_window
+            != timedelta(
+                seconds=self.refund_rules.selection_refund_window_seconds
+            )
+        ):
+            raise ValueError("refund_rules_window_mismatch")
 
 
 class FinancialPolicyReader(Protocol):

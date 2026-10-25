@@ -52,6 +52,9 @@ from ugc_bot.application.services.contact_pricing_service import (
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
 )
+from ugc_bot.application.services.correction_funding_guard import (
+    LiveCorrectionFundingGuard,
+)
 from ugc_bot.application.services.creator_identity_history_service import (
     CreatorIdentityHistoryService,
 )
@@ -105,6 +108,9 @@ from ugc_bot.application.services.paid_item_service import PaidItemService
 from ugc_bot.application.services.paid_selection_interest import (
     PaidSelectionInterestService,
 )
+from ugc_bot.application.services.partner_admin_service import (
+    PartnerAdminService,
+)
 from ugc_bot.application.services.partner_view_service import PartnerViewService
 from ugc_bot.application.services.payment_service import PaymentService
 from ugc_bot.application.services.profile_service import ProfileService
@@ -118,11 +124,17 @@ from ugc_bot.application.services.referral_income_service import (
     ReferralIncomeService,
 )
 from ugc_bot.application.services.referral_service import ReferralService
+from ugc_bot.application.services.selection_maturity_service import (
+    SelectionMaturityService,
+)
 from ugc_bot.application.services.selection_view_service import (
     SelectionViewService,
 )
 from ugc_bot.application.services.social_account_service import (
     SocialAccountService,
+)
+from ugc_bot.application.services.subscription_service import (
+    SubscriptionService,
 )
 from ugc_bot.application.services.support_service import SupportService
 from ugc_bot.application.services.user_role_service import UserRoleService
@@ -132,17 +144,41 @@ from ugc_bot.application.services.work_entitlement_service import (
 from ugc_bot.application.services.work_financial_guard import WorkFinancialGuard
 from ugc_bot.application.work_entitlement_ports import WORK_EVENT_TYPES
 from ugc_bot.config import AppConfig
+from ugc_bot.container.campaign_analytics_factory import (
+    build_campaign_analytics,
+)
+from ugc_bot.container.campaign_runtime_factory import build_campaign_runtime
 from ugc_bot.container.checkout_factory import build_checkout_service
-from ugc_bot.container.correction_factory import build_correction_services
+from ugc_bot.container.correction_factory import (
+    build_accompaniment_refund_service,
+    build_correction_services,
+)
+from ugc_bot.container.debt_recovery_factory import build_debt_recovery
+from ugc_bot.container.financial_review_factory import build_financial_review
+from ugc_bot.container.manual_grant_factory import build_manual_grants
 from ugc_bot.container.messenger_linking_factory import (
     build_messenger_linking_service,
 )
 from ugc_bot.container.payout_factory import build_payout_service
 from ugc_bot.container.payout_view_factory import build_payout_view_service
+from ugc_bot.container.replacement_factory import build_replacement_service
+from ugc_bot.container.subscription_factory import build_subscription_access
 from ugc_bot.container.types import BotServices
 from ugc_bot.infrastructure.clock import SystemClock
+from ugc_bot.infrastructure.db.repositories.corrections import (
+    SqlAlchemyCorrectionRepository,
+)
 from ugc_bot.infrastructure.db.repositories.financial_capture import (
     SqlAlchemyFinancialCaptureRepository,
+)
+from ugc_bot.infrastructure.db.repositories.partner_admin import (
+    SqlAlchemyPartnerAdminRepository,
+)
+from ugc_bot.infrastructure.db.repositories.selection_maturity import (
+    SqlAlchemySelectionMaturityRepository,
+)
+from ugc_bot.infrastructure.db.repositories.subscriptions import (
+    SqlAlchemySubscriptionRepository,
 )
 from ugc_bot.infrastructure.geocoder_cache_memory import GeocoderCacheMemory
 from ugc_bot.infrastructure.geocoder_cache_redis import (
@@ -224,6 +260,7 @@ def build_offer_dispatch_service(
         manager_order_repo=repos.get("manager_order_repo"),
         transaction_manager=transaction_manager,
         currency_symbol=currency_symbol,
+        intake_repository=repos.get("order_intake_repo"),
     )
 
 
@@ -293,6 +330,9 @@ def build_outbox_deps(config: AppConfig, repos, transaction_manager):
                     repos["rate_override_repo"],
                     SystemClock(),
                     work_guard=work_guard,
+                    funding_guard=LiveCorrectionFundingGuard(
+                        SqlAlchemyCorrectionRepository()
+                    ),
                 )
             )
             if work_repo is not None:
@@ -305,6 +345,9 @@ def build_outbox_deps(config: AppConfig, repos, transaction_manager):
                     repos["rate_override_repo"],
                     SystemClock(),
                     guard=work_guard,
+                    funding_guard=LiveCorrectionFundingGuard(
+                        SqlAlchemyCorrectionRepository()
+                    ),
                 )
                 handlers.update(
                     {kind: work_handler for kind in WORK_EVENT_TYPES}
@@ -607,7 +650,31 @@ def build_bot_services(
         if session_factory is not None
         else (None, None)
     )
+    manual_grant_service, manual_grant_sweep = (
+        build_manual_grants(config, transaction_manager)
+        if transaction_manager is not None
+        else (None, None)
+    )
     return {
+        "financial_review_service": build_financial_review(config),
+        "manual_grant_service": manual_grant_service,
+        "manual_grant_sweep": manual_grant_sweep,
+        **build_campaign_runtime(
+            config,
+            transaction_manager,
+            access=build_subscription_access(config),
+        ),
+        **build_campaign_analytics(transaction_manager),
+        "accompaniment_refund_service": build_accompaniment_refund_service(
+            config, transaction_manager, session_factory
+        )
+        if transaction_manager is not None and session_factory is not None
+        else None,
+        "debt_recovery_service": build_debt_recovery(config),
+        "partner_admin_service": PartnerAdminService(
+            SqlAlchemyPartnerAdminRepository(), SystemClock()
+        ),
+        "replacement_service": build_replacement_service(config),
         "metrics_collector": metrics_collector,
         "messenger_linking_service": build_messenger_linking_service(
             config, transaction_manager
@@ -630,6 +697,11 @@ def build_bot_services(
         if repos.get("campaign_summary_repo") is not None
         else None,
         "content_moderation_service": ContentModerationService(),
+        "selection_maturity_service": SelectionMaturityService(
+            SqlAlchemySelectionMaturityRepository(),
+            FinancialLedgerService(repos["financial_ledger_repo"]),
+            SystemClock(),
+        ),
         "selection_view_service": SelectionViewService(
             repos["selection_view_repo"],
             transaction_manager,
@@ -715,6 +787,11 @@ def build_bot_services(
             social_repo=repos.get("social_account_repo"),
         ),
         "order_service": order_service,
+        "subscription_service": SubscriptionService(
+            SqlAlchemySubscriptionRepository(),
+            transaction_manager,
+            SystemClock(),
+        ),
         "order_intake_service": OrderIntakeService(
             repos["order_intake_repo"],
             order_service,
@@ -726,6 +803,7 @@ def build_bot_services(
         if repos.get("order_intake_repo") is not None
         else None,
         "offer_dispatch_service": OfferDispatchService(
+            intake_repository=repos.get("order_intake_repo"),
             user_repo=repos["user_repo"],
             blogger_repo=repos["blogger_repo"],
             order_repo=repos["order_repo"],

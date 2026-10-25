@@ -33,7 +33,7 @@ class CollaborationModel(Base):
         sa.CheckConstraint("version > 0", name="ck_collaboration_version"),
         sa.CheckConstraint(
             "state IN ('assigned','in_progress','success_claimed','disputed',"
-            "'success_final','unconfirmed_expired','available')",
+            "'success_final','unconfirmed_expired','available','rejected')",
             name="ck_collaboration_state",
         ),
         sa.CheckConstraint(

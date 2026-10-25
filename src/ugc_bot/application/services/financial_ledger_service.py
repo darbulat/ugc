@@ -45,7 +45,10 @@ class FinancialLedgerService:
         if (
             basis.recipient_id is None
             or basis.policy_version is None
-            or (basis.rate_bps is None and basis.kind != "management")
+            or (
+                basis.rate_bps is None
+                and basis.kind not in ("management", "manual_adjustment")
+            )
         ):
             reason = (
                 "recipient_unresolved_or_absent"
@@ -161,6 +164,14 @@ class FinancialLedgerService:
     async def _assessed_amount(
         self, basis: IssueBasis, *, session: object
     ) -> int:
+        if basis.kind == "manual_adjustment":
+            source = await self.repository.load_manual_grant(
+                UUID(basis.event_id), session=session
+            )
+            if source is None:
+                raise ValueError("manual_grant_approval_required")
+            source.require_for(basis)
+            return source.amount_minor
         if basis.kind == "management":
             if basis.base_minor != MANAGEMENT_REWARD_MINOR:
                 raise ValueError("unapproved_management_reward")
@@ -252,6 +263,24 @@ class FinancialLedgerService:
     async def _release_time(
         self, original: IssuedObligation, *, session: object
     ) -> datetime | None:
+        if original.basis.kind == "manual_adjustment":
+            source = await self.repository.load_manual_grant(
+                UUID(original.basis.event_id), session=session
+            )
+            if source is None:
+                raise ValueError("manual_grant_approval_required")
+            source.require_for(original.basis)
+            return source.release_at
+        if original.basis.kind == "client_referral":
+            loader = getattr(self.repository, "load_selection_maturity", None)
+            source = (
+                await loader(original.obligation_id, session=session)
+                if loader is not None
+                else None
+            )
+            if source is not None:
+                source.require_for(original.basis)
+                return source.release_at
         fact = await self.repository.get_maturity(
             original.obligation_id, session=session
         )

@@ -13,6 +13,9 @@ from ugc_bot.application.financial_ports import (
     IssuedObligation,
     JournalMovement,
 )
+from ugc_bot.application.services.correction_funding_guard import (
+    LiveCorrectionFundingGuard,
+)
 from ugc_bot.application.services.creator_identity_history_service import (
     CreatorIdentityHistoryService,
 )
@@ -46,10 +49,12 @@ class WorkEntitlementService:
         overrides: EffectiveRateOverrides,
         clock: Clock,
         guard: WorkFinancialGuard | None = None,
+        funding_guard: LiveCorrectionFundingGuard | None = None,
     ) -> None:
         self.repository, self.ledger, self.history = repository, ledger, history
         self.overrides, self.clock = overrides, clock
         self.guard = guard or WorkFinancialGuard(repository)
+        self.funding_guard = funding_guard
 
     async def handle(self, event: OutboxEvent, *, session: object) -> None:
         if event.event_type not in WORK_EVENT_TYPES:
@@ -174,10 +179,13 @@ class WorkEntitlementService:
         issued: list[IssuedObligation] = []
         if current.scope.valid_to is not None:
             assessment["result"] = "historical_assignment_closed"
-        elif current.record.collaboration.state == "unconfirmed_expired":
+        elif current.record.collaboration.state in (
+            "unconfirmed_expired",
+            "rejected",
+        ):
             if case is None:
                 await self._expire(current, current_grounds, session=session)
-            assessment["result"] = "unconfirmed_expired"
+            assessment["result"] = current.record.collaboration.state.value
         else:
             issued = await self._issue(
                 current, fresh, assessment, session=session
@@ -194,7 +202,22 @@ class WorkEntitlementService:
         ):
             for obligation in issued:
                 await self._settle(current, obligation, session=session)
+        if case is None and current.resolution_case_id is not None:
+            await self._resume_client_grounds(
+                current, current_grounds, session=session
+            )
         return assessment
+
+    async def _resume_client_grounds(self, current, grounds, *, session):
+        for ground in grounds:
+            if ground.kind != "client_referral":
+                continue
+            original = await self.ledger.repository.get_issue(
+                ground.business_key, session=session
+            )
+            if original is None:
+                raise ValueError("work_ground_source_missing")
+            await self._resume(current, original, session=session)
 
     async def _grounds(
         self, item_id: UUID, *, session: object
@@ -277,6 +300,10 @@ class WorkEntitlementService:
         session: object,
     ) -> list[IssuedObligation]:
         scope, capture = snapshot.scope, snapshot.capture
+        if self.funding_guard is not None:
+            await self.funding_guard.require_forward_clear(
+                scope.paid_item_id, session=session, components=("selection",)
+            )
         recipient = attribution.referrer_user_id
         grade, override, rate = None, None, None
         if recipient is not None:
@@ -345,15 +372,11 @@ class WorkEntitlementService:
             "available",
         ):
             return results
-        if item.accompaniment_minor != 120000:
-            assessment["manager"] = "accompaniment_not_purchased"
-        elif scope.manager_id is None:
-            assessment["manager"] = "actual_manager_not_assigned"
-        elif not snapshot.manager_linked:
-            assessment["manager"] = "manager_membership_at_success_unproven"
-            assessment.setdefault("potential_reasons", []).append(
-                "manager_membership_at_success_unproven"
-            )
+        reason = await self._management_deferral(
+            snapshot, item, assessment, session=session
+        )
+        if reason is not None:
+            assessment["manager"] = reason
         else:
             management = IssueBasis(
                 business_key=f"management:{capture.payment_id}:{scope.paid_item_id}:{scope.assignment_id}",
@@ -392,6 +415,55 @@ class WorkEntitlementService:
             assert success_at is not None
             assessment["manager_success_at"] = success_at.isoformat()
         return results
+
+    async def _management_deferral(
+        self, snapshot, item, assessment, *, session
+    ):
+        if item.accompaniment_minor != 120000:
+            return "accompaniment_not_purchased"
+        if snapshot.scope.manager_id is None:
+            return "actual_manager_not_assigned"
+        reason = None
+        if not snapshot.manager_linked:
+            reason = "manager_membership_at_success_unproven"
+        else:
+            reason = await self._management_refund_deferral(
+                snapshot, session=session
+            )
+        if reason is not None:
+            assessment.setdefault("potential_reasons", []).append(reason)
+        return reason
+
+    async def _management_refund_deferral(self, snapshot, *, session):
+        if self.funding_guard is None:
+            return None
+        funding = await self.funding_guard.load_item(
+            snapshot.scope.paid_item_id, session=session
+        )
+        if not any(
+            line.component == "accompaniment" and line.cumulative_refund_minor
+            for line in funding
+        ):
+            return None
+        key = (
+            f"management:{snapshot.capture.payment_id}:"
+            f"{snapshot.scope.paid_item_id}:{snapshot.scope.assignment_id}"
+        )
+        if (
+            await self.ledger.repository.get_issue(key, session=session)
+            is not None
+        ):
+            return None
+        disposition = await self.funding_guard.management_refund_disposition(
+            snapshot.scope.paid_item_id, session=session
+        )
+        if disposition == "continue":
+            return None
+        return (
+            "accompaniment_management_cancelled"
+            if disposition == "cancel"
+            else "accompaniment_management_review_required"
+        )
 
     async def _balances(
         self, obligation: IssuedObligation, *, session: object
@@ -442,6 +514,12 @@ class WorkEntitlementService:
         *,
         session: object,
     ) -> None:
+        if self.funding_guard is not None:
+            await self.funding_guard.require_forward_clear(
+                snapshot.scope.paid_item_id,
+                session=session,
+                components=("selection",),
+            )
         if snapshot.schedule_id is None:
             raise ValueError("work_maturity_schedule_missing")
         basis = obligation.basis
@@ -452,6 +530,7 @@ class WorkEntitlementService:
             recorded_at=utc(self.clock.now()),
             session=session,
         )
+        await self._resume(snapshot, obligation, session=session)
         transitions: tuple[tuple[Bucket, Bucket], ...] = (
             ("pending", "hold"),
             ("hold", "available"),
@@ -478,6 +557,28 @@ class WorkEntitlementService:
                     now=utc(self.clock.now()),
                     session=session,
                 )
+
+    async def _resume(self, snapshot, obligation, *, session):
+        balances = await self._balances(obligation, session=session)
+        if not balances["blocked"]:
+            return
+        if snapshot.resolution_case_id is None:
+            raise ValueError("work_resolution_evidence_required")
+        movement = self._movement(
+            snapshot,
+            obligation,
+            balances["blocked"],
+            "blocked",
+            "hold",
+            f"work-resume:{snapshot.resolution_case_id}:{obligation.obligation_id}",
+            case=snapshot.resolution_case_id,
+        )
+        await self.ledger.transfer(
+            obligation.basis.business_key,
+            movement,
+            now=utc(self.clock.now()),
+            session=session,
+        )
 
     async def _block(
         self,
@@ -538,7 +639,12 @@ class WorkEntitlementService:
             if obligation.basis.assignment_id != snapshot.scope.assignment_id:
                 continue
             balances = await self._balances(obligation, session=session)
-            sources: tuple[Bucket, ...] = ("pending", "hold", "available")
+            sources: tuple[Bucket, ...] = (
+                "pending",
+                "hold",
+                "available",
+                "blocked",
+            )
             for source in sources:
                 if not balances[source]:
                     continue
@@ -554,7 +660,11 @@ class WorkEntitlementService:
                     movement_type="reversal",
                     amount_minor=balances[source],
                     currency="RUB",
-                    effective_at=snapshot.record.collaboration.first_claim_deadline,
+                    effective_at=(
+                        snapshot.record.updated_at
+                        if snapshot.record.collaboration.state == "rejected"
+                        else snapshot.record.collaboration.first_claim_deadline
+                    ),
                     recorded_at=utc(self.clock.now()),
                     actor_kind="system",
                     actor_id=None,
@@ -563,6 +673,7 @@ class WorkEntitlementService:
                     bucket_from=source,
                     bucket_to="cancelled",
                     source_entry_id=entry,
+                    case_id=snapshot.resolution_case_id,
                 )
                 await repo.append(movement, session=session)
                 await repo.apply_projection(movement, session=session)

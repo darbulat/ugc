@@ -18,6 +18,7 @@ class CollaborationState(StrEnum):
     IN_PROGRESS = "in_progress"
     SUCCESS_CLAIMED = "success_claimed"
     DISPUTED = "disputed"
+    REJECTED = "rejected"
     SUCCESS_FINAL = "success_final"
     UNCONFIRMED_EXPIRED = "unconfirmed_expired"
     AVAILABLE = "available"
@@ -206,6 +207,25 @@ class Collaboration:
         ):
             return replace(self, state=CollaborationState.AVAILABLE)
         return self
+
+    def resolve_dispute(
+        self, *, success: bool, reason: str, evidence: str, at: datetime
+    ) -> "Collaboration":
+        """An administrative decision starts a fresh success hold."""
+        at = self._time(at)
+        self._require_state(CollaborationState.DISPUTED)
+        if type(success) is not bool or not all(
+            isinstance(value, str) and value.strip()
+            for value in (reason, evidence)
+        ):
+            raise ValueError("resolution_evidence_required")
+        if self.disputed_at is None or at < self.disputed_at:
+            raise ValueError("collaboration_time_conflict")
+        return (
+            self._finalize(at)
+            if success
+            else replace(self, state=CollaborationState.REJECTED)
+        )
 
     def extend_due(
         self,

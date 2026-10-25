@@ -30,6 +30,7 @@ PUBLIC_ERRORS = {
     "campaign_audience_integrity_unavailable": 503,
     UNAVAILABLE: 503,
     "campaign_request_invalid": 422,
+    "campaign_not_editable": 409,
 }
 
 

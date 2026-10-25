@@ -233,7 +233,7 @@ async def test_signed_endpoints_use_actual_dormant_services(action, platform):
         assert receipt.actor_id == roles.user.user_id
     if action == "approve":
         assert result["state"] == "approved_waiting"
-        assert result["delivery_state"] == "waiting_delivery_implementation"
+        assert result["delivery_state"] == "queued"
         assert len(repository.jobs) == 1
     elif action == "reject":
         assert result["state"] == "rejected" and not repository.jobs

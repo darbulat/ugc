@@ -140,6 +140,8 @@ async def test_combined_runtime_starts_dedicated_lead_owner(monkeypatch):
 
     monkeypatch.setattr(combined_scheduler, "collaboration_loop", empty)
     monkeypatch.setattr(combined_scheduler, "notice_loop", empty)
+    monkeypatch.setattr(combined_scheduler, "selection_maturity_loop", empty)
+    monkeypatch.setattr(combined_scheduler, "manual_grant_loop", empty)
     monkeypatch.setattr(combined_scheduler, "lead_loop", lead, raising=False)
     current = SimpleNamespace(
         financial=SimpleNamespace(core_enabled=True),
@@ -147,7 +149,11 @@ async def test_combined_runtime_starts_dedicated_lead_owner(monkeypatch):
         role_reminder=SimpleNamespace(role_reminder_enabled=False),
         referral=SimpleNamespace(referral_reconciliation_enabled=False),
     )
-    container = SimpleNamespace(build_collaboration_sweep=lambda: object())
+    container = SimpleNamespace(
+        build_collaboration_sweep=lambda: object(),
+        build_selection_maturity_sweep=lambda: object(),
+        build_manual_grant_sweep=lambda: object(),
+    )
     bot = object()
     await combined_scheduler._run_all(current, container, bot)
     assert started == [(current, container, bot)]

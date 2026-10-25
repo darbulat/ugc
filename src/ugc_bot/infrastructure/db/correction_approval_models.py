@@ -47,6 +47,11 @@ def install_final_guard(metadata, connection, **kw):
     }
     if required <= names:
         connection.exec_driver_sql(correction_approval_trigger_sql(TABLE_MAP))
+        from ugc_bot.infrastructure.db.financial_completion_metadata import (
+            install_financial_completion_guards,
+        )
+
+        install_financial_completion_guards(connection, names)
 
 
 sa.event.listen(Base.metadata, "after_create", install_final_guard)

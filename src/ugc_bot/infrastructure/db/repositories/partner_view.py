@@ -1,6 +1,6 @@
 """Own-only nonlocking reads under one explicit read-only MVCC snapshot."""
 
-from dataclasses import fields
+from dataclasses import fields, replace
 
 from sqlalchemy import func, or_, select, text
 
@@ -11,6 +11,7 @@ from ugc_bot.application.partner_view_ports import (
     PartnerFinancialFacts,
     PartnerMovement,
     PartnerObligation,
+    PartnerPendingContext,
     PartnerReadFacts,
 )
 from ugc_bot.application.services.financial_reconciliation_service import (
@@ -19,6 +20,11 @@ from ugc_bot.application.services.financial_reconciliation_service import (
 from ugc_bot.infrastructure.db import models as m
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.partner_pending import (
+    network_work_counts,
+    public_identity,
+    read_pending_contexts,
+)
 from ugc_bot.infrastructure.db.repositories.rate_overrides import (
     SqlAlchemyRateOverrideRepository,
 )
@@ -55,6 +61,8 @@ def _network(actor_id, at):
         select(
             users.c.user_id,
             users.c.created_at,
+            users.c.username,
+            users.c.telegram,
             users.c.status,
             creator.c.user_id.label("creator_id"),
             client.c.user_id.label("client_id"),
@@ -85,6 +93,7 @@ def _network(actor_id, at):
 
 async def _members(db, rows):
     ids = [r["user_id"] for r in rows]
+    counts = await _work_counts(db, ids)
     socials = {}
     if ids and await _installed(db, ("creator_social_accounts",)):
         for social in (
@@ -208,13 +217,30 @@ async def _members(db, rows):
                 "registered_at": row["created_at"],
                 "status": str(row["status"]),
                 "roles": roles,
+                "display_name": public_identity(
+                    row["username"], row["telegram"]
+                )[0],
+                "telegram_username": public_identity(
+                    row["username"], row["telegram"]
+                )[1],
+                "work": counts.get(
+                    uid, {"active_orders": 0, "completed_works": 0}
+                )
+                if counts is not None
+                else None,
                 "socials": accounts,
             }
         )
     return tuple(members)
 
 
-async def _financial(db, actor_id):
+async def _work_counts(db, ids):
+    if ids and await _installed(db, ("financial_collaborations",)):
+        return await network_work_counts(db, ids)
+    return None
+
+
+async def _financial(db, actor_id, at):
     names = (
         "financial_obligations",
         "rate_snapshots",
@@ -263,6 +289,18 @@ async def _financial(db, actor_id):
             r["verified_count"],
         )
         for r in rows
+    )
+    contexts = {}
+    if await _installed(db, ("financial_collaborations",)):
+        contexts = await read_pending_contexts(db, actor_id, obligations, at)
+    obligations = tuple(
+        replace(
+            o,
+            pending_context=contexts.get(o.assignment_id)
+            if o.assignment_id
+            else PartnerPendingContext("selection_completion"),
+        )
+        for o in obligations
     )
     rows = (
         await db.execute(
@@ -416,6 +454,7 @@ class SqlAlchemyPartnerViewRepository:
                         m.UserModel.referral_code,
                         m.UserModel.telegram_id,
                         m.UserModel.max_id,
+                        m.UserModel.admin,
                     )
                     .where(m.UserModel.user_id == actor_id)
                     .execution_options(autoflush=False)
@@ -458,7 +497,7 @@ class SqlAlchemyPartnerViewRepository:
             .all()
         )
         members = await _members(db, rows)
-        financial = await _financial(db, actor_id)
+        financial = await _financial(db, actor_id, at)
         overrides = await _overrides(db, actor_id, at)
         assignments, assignment_total = await _assignments(
             db, actor_id, assignment_page
@@ -474,4 +513,5 @@ class SqlAlchemyPartnerViewRepository:
             overrides,
             assignments,
             assignment_total,
+            bool(actor["admin"]),
         )

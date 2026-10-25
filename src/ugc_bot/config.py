@@ -6,8 +6,10 @@ maintenance and testing. AppConfig composes them.
 
 import base64
 import binascii
+import json
 import re
-from typing import Any, Literal
+from typing import Any, Literal, Self
+from uuid import UUID
 
 from pydantic import (
     BaseModel,
@@ -17,6 +19,8 @@ from pydantic import (
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from ugc_bot.domain.refund_rules import RefundRules
 
 _ENV = SettingsConfigDict(
     env_file=".env",
@@ -129,6 +133,11 @@ _FLAT_KEYS = {
         "MAX_ORDER_PRICE",
         "ORDER_RADIUS_KM",
     ],
+    "campaign": [
+        "CAMPAIGN_DELIVERY_ENABLED",
+        "CAMPAIGN_REQUIRE_PAID_SUBSCRIPTION",
+        "CAMPAIGN_DELIVERY_INTERVAL_SECONDS",
+    ],
     "financial": [
         "FINANCIAL_CORE_ENABLED",
         "FINANCIAL_NEW_ORDERS_ENABLED",
@@ -137,6 +146,12 @@ _FLAT_KEYS = {
         "FINANCIAL_REQUISITES_KEY_ID",
         "FINANCIAL_MANUAL_BANK_ACCOUNT_ID",
         "FINANCIAL_MANUAL_BANK_SOURCE_ID",
+        "FINANCIAL_SUPERADMIN_USER_IDS",
+        "FINANCIAL_SELECTION_REFUND_WINDOW_SECONDS",
+        "FINANCIAL_SELECTION_REFUND_WINDOW_ANCHOR",
+        "FINANCIAL_SELECTION_CLOSURE_MODE",
+        "FINANCIAL_ACCOMPANIMENT_REFUND_RATES_BPS",
+        "FINANCIAL_ACCOMPANIMENT_MANAGER_REFUND_MODE",
     ],
     "messenger_linking": [
         "MESSENGER_LINKING_ENABLED",
@@ -665,6 +680,29 @@ class FinancialConfig(BaseSettings):
     """Independent emergency gates; policy/order parameters have no defaults."""
 
     model_config = _ENV
+    superadmin_user_ids_raw: str = Field(
+        default="", alias="FINANCIAL_SUPERADMIN_USER_IDS", max_length=16384
+    )
+
+    def superadmin_user_ids(self) -> frozenset[UUID]:
+        raw = self.superadmin_user_ids_raw.strip()
+        if not raw:
+            return frozenset()
+        values = json.loads(raw) if raw.startswith("[") else raw.split(",")
+        if type(values) is not list or any(
+            type(v) is not str or not v.strip() for v in values
+        ):
+            raise ValueError("financial_superadmin_uuid_list_required")
+        try:
+            result = tuple(UUID(v.strip()) for v in values)
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError(
+                "financial_superadmin_uuid_list_required"
+            ) from None
+        if any(not v.int for v in result) or len(set(result)) != len(result):
+            raise ValueError("financial_superadmin_uuid_list_required")
+        return frozenset(result)
+
     core_enabled: bool = Field(default=False, alias="FINANCIAL_CORE_ENABLED")
     new_orders_enabled: bool = Field(
         default=False, alias="FINANCIAL_NEW_ORDERS_ENABLED"
@@ -684,6 +722,99 @@ class FinancialConfig(BaseSettings):
     manual_bank_source_id: str = Field(
         default="", alias="FINANCIAL_MANUAL_BANK_SOURCE_ID", max_length=256
     )
+    selection_refund_window_seconds: int | None = Field(
+        default=None,
+        alias="FINANCIAL_SELECTION_REFUND_WINDOW_SECONDS",
+        ge=1,
+        le=31536000,
+    )
+    selection_refund_window_anchor: (
+        Literal["item_delivered", "order_closed"] | None
+    ) = Field(default=None, alias="FINANCIAL_SELECTION_REFUND_WINDOW_ANCHOR")
+    selection_closure_mode: (
+        Literal["all_positions_resolved", "manual"] | None
+    ) = Field(default=None, alias="FINANCIAL_SELECTION_CLOSURE_MODE")
+    # Keep raw env JSON for duplicate-key validation on older settings versions.
+    accompaniment_refund_rates_bps: object | None = Field(
+        default=None, alias="FINANCIAL_ACCOMPANIMENT_REFUND_RATES_BPS"
+    )
+    accompaniment_manager_refund_mode: (
+        Literal["retain_earned", "proportional", "manual_review"] | None
+    ) = Field(default=None, alias="FINANCIAL_ACCOMPANIMENT_MANAGER_REFUND_MODE")
+
+    @field_validator("selection_refund_window_seconds", mode="before")
+    @classmethod
+    def _strict_refund_window(cls, value: Any) -> int | None:
+        if value is None or type(value) is int:
+            return value
+        if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+            return int(value)
+        raise ValueError("refund_window_integer_required")
+
+    @staticmethod
+    def _unique_refund_rates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate_refund_stage")
+            result[key] = value
+        return result
+
+    @field_validator("accompaniment_refund_rates_bps", mode="before")
+    @classmethod
+    def _strict_refund_rates(cls, value: Any) -> dict[str, int] | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            try:
+                value = json.loads(
+                    value, object_pairs_hook=cls._unique_refund_rates
+                )
+            except (ValueError, TypeError):
+                raise ValueError("refund_rates_json_object_required") from None
+        if not isinstance(value, dict) or any(
+            type(key) is not str
+            or type(rate) is not int
+            or not 0 <= rate <= 10000
+            for key, rate in value.items()
+        ):
+            raise ValueError("refund_rates_integer_basis_points_required")
+        return value
+
+    @model_validator(mode="after")
+    def _complete_refund_configuration(self) -> Self:
+        self.refund_rules()
+        self.superadmin_user_ids()
+        return self
+
+    def refund_rules(self) -> RefundRules | None:
+        values = (
+            self.selection_refund_window_seconds,
+            self.selection_refund_window_anchor,
+            self.selection_closure_mode,
+            self.accompaniment_refund_rates_bps,
+            self.accompaniment_manager_refund_mode,
+        )
+        if all(value is None for value in values):
+            return None
+        if any(value is None for value in values):
+            raise ValueError("refund_rules_configuration_incomplete")
+        assert self.selection_refund_window_seconds is not None
+        assert self.selection_refund_window_anchor is not None
+        assert self.selection_closure_mode is not None
+        assert isinstance(self.accompaniment_refund_rates_bps, dict)
+        assert self.accompaniment_manager_refund_mode is not None
+        return RefundRules(
+            selection_refund_window_seconds=self.selection_refund_window_seconds,
+            selection_refund_window_anchor=self.selection_refund_window_anchor,
+            selection_closure_mode=self.selection_closure_mode,
+            accompaniment_refund_rates_bps=tuple(
+                sorted(self.accompaniment_refund_rates_bps.items())
+            ),
+            accompaniment_manager_refund_mode=(
+                self.accompaniment_manager_refund_mode
+            ),
+        )
 
 
 class MessengerLinkingConfig(BaseSettings):
@@ -729,6 +860,19 @@ class MessengerLinkingConfig(BaseSettings):
         return value
 
 
+class CampaignRuntimeConfig(BaseSettings):
+    model_config = _ENV
+    delivery_enabled: bool = Field(
+        default=False, alias="CAMPAIGN_DELIVERY_ENABLED"
+    )
+    require_paid_subscription: bool = Field(
+        default=False, alias="CAMPAIGN_REQUIRE_PAID_SUBSCRIPTION"
+    )
+    interval_seconds: int = Field(
+        default=5, ge=1, le=3600, alias="CAMPAIGN_DELIVERY_INTERVAL_SECONDS"
+    )
+
+
 class AppConfig(BaseModel):
     """Application configuration."""
 
@@ -750,6 +894,9 @@ class AppConfig(BaseModel):
     order: OrderConfig
     market: MarketConfig
     referral: ReferralConfig
+    campaign: CampaignRuntimeConfig = Field(
+        default_factory=CampaignRuntimeConfig
+    )
     financial: FinancialConfig = Field(default_factory=FinancialConfig)
     messenger_linking: MessengerLinkingConfig = Field(
         default_factory=MessengerLinkingConfig
@@ -781,6 +928,9 @@ class AppConfig(BaseModel):
             "order": OrderConfig.model_validate(nested["order"]),
             "market": MarketConfig.model_validate(nested["market"]),
             "referral": ReferralConfig.model_validate(nested["referral"]),
+            "campaign": CampaignRuntimeConfig.model_validate(
+                nested["campaign"]
+            ),
             "financial": FinancialConfig.model_validate(nested["financial"]),
             "messenger_linking": MessengerLinkingConfig.model_validate(
                 nested["messenger_linking"]

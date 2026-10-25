@@ -63,11 +63,29 @@ def _workbench_capabilities(dispatcher, view):
         "preview_audience": readable
         and writable
         and callable(getattr(audience, "preview", None)),
-        # These contracts are dormant and have no mounted production adapter.
-        "submit_campaign": False,
-        "cancel_campaign": False,
-        "read_admin_queue": False,
-        "review_campaign": False,
+        "submit_campaign": writable
+        and callable(
+            getattr(
+                dispatcher.get("campaign_submission_service"), "submit", None
+            )
+        ),
+        "cancel_campaign": callable(
+            getattr(
+                dispatcher.get("campaign_moderation_service"), "cancel", None
+            )
+        ),
+        "read_admin_queue": view.get("can_admin") is True
+        and callable(
+            getattr(
+                dispatcher.get("campaign_moderation_service"), "queue", None
+            )
+        ),
+        "review_campaign": view.get("can_admin") is True
+        and callable(
+            getattr(
+                dispatcher.get("campaign_moderation_service"), "decide", None
+            )
+        ),
     }
 
 

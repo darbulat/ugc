@@ -24,6 +24,24 @@ from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 class SqlAlchemyCampaignReviewRepository:
     foundation: CampaignRepository
 
+    async def _runtime(self, row, db):
+        if row is None or not await db.scalar(
+            text("SELECT to_regclass('campaign_runtime_states') IS NOT NULL")
+        ):
+            return row
+        from ugc_bot.infrastructure.db.campaign_runtime_models import STATES
+
+        state = await mapping(
+            db,
+            select(STATES.c.version, STATES.c.state)
+            .where(STATES.c.campaign_id == row["campaign_id"])
+            .order_by(STATES.c.version.desc())
+            .limit(1),
+        )
+        if state and state["version"] >= row["version"]:
+            return {**row, "version": state["version"], "state": state["state"]}
+        return row
+
     async def _installed(self, db):
         ready = await db.scalar(
             text(
@@ -39,7 +57,7 @@ class SqlAlchemyCampaignReviewRepository:
     async def draft(self, owner_id, campaign_id, *, session):
         db = _session(session)
         await self._installed(db)
-        return await mapping(
+        row = await mapping(
             db,
             select(REVISIONS)
             .where(
@@ -49,6 +67,7 @@ class SqlAlchemyCampaignReviewRepository:
             .order_by(REVISIONS.c.version.desc())
             .limit(1),
         )
+        return await self._runtime(row, db)
 
     async def command(self, actor_id, key, *, session):
         db = _session(session)
@@ -63,6 +82,14 @@ class SqlAlchemyCampaignReviewRepository:
     async def save(self, values, receipt, *, session):
         db = _session(session)
         await self._installed(db)
+        current = await self.draft(
+            values["owner_id"], values["campaign_id"], session=session
+        )
+        if current and current.get("state") in (
+            "submitted",
+            "approved_waiting",
+        ):
+            raise ValueError("campaign_not_editable")
         await db.execute(insert(COMMANDS).values(**receipt))
         if values["version"] == 1:
             await db.execute(
@@ -99,7 +126,10 @@ class SqlAlchemyCampaignReviewRepository:
             .offset(page * 25)
             .limit(26)
         )
-        return [dict(row) for row in (await db.execute(statement)).mappings()]
+        return [
+            await self._runtime(dict(row), db)
+            for row in (await db.execute(statement)).mappings()
+        ]
 
     async def candidates(self, owner_id, *, session):
         db = _session(session)

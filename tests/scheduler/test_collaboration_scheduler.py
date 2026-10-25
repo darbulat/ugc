@@ -111,6 +111,12 @@ async def test_combined_scheduler_starts_enabled_lifecycle_loop(monkeypatch):
         combined_scheduler, "selection_loop", independent_delivery
     )
     monkeypatch.setattr(combined_scheduler, "lead_loop", independent_delivery)
+    monkeypatch.setattr(
+        combined_scheduler, "selection_maturity_loop", independent_delivery
+    )
+    monkeypatch.setattr(
+        combined_scheduler, "manual_grant_loop", independent_delivery
+    )
     await combined_scheduler._run_all(config, container, object())
     assert (
         repo.records[scope.assignment_id].collaboration.state

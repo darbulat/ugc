@@ -1,7 +1,7 @@
 """Partner reads preserve snapshot economics and never create a wallet."""
 
 import re
-from dataclasses import replace
+from dataclasses import asdict, replace
 from typing import Any
 from uuid import UUID
 
@@ -34,6 +34,8 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
         "balances": None,
         "projection": None,
         "groups": [],
+        "pending": {"entries": [], "total": 0},
+        "management_summary": None,
         "history": {"entries": [], "page": page, "has_more": False},
     }
     if facts is None:
@@ -59,8 +61,58 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
     )
     ready = replay.balanced and facts.projection == replay.balances
     by_id = {row.obligation_id: row for row in facts.obligations}
+    pending = []
+    successful = set()
+    for basis in facts.obligations:
+        amounts = replay.by_obligation.get(basis.obligation_id, {})
+        context = basis.pending_context
+        if amounts.get("pending", 0) > 0:
+            pending.append(
+                {
+                    "obligation_id": str(basis.obligation_id),
+                    "order_id": str(basis.order_id),
+                    "kind": basis.kind,
+                    "amount_minor": str(amounts["pending"]),
+                    "reason": context.reason
+                    if context
+                    else "assessment_pending",
+                    "state": context.state if context else None,
+                    "due_at": context.due_at if context else None,
+                    "waiting_for": [
+                        asdict(party) for party in context.waiting_for
+                    ]
+                    if context
+                    else [],
+                }
+            )
+        if (
+            basis.kind == "management"
+            and basis.amount_minor == 60000
+            and context is not None
+            and context.state in ("success_final", "available")
+            and amounts.get("cancelled", 0) < basis.amount_minor
+            and sum(
+                amounts.get(b, 0)
+                for b in (
+                    "pending",
+                    "hold",
+                    "available",
+                    "reserved",
+                    "paid",
+                    "blocked",
+                )
+            )
+            > 0
+            and basis.assignment_id is not None
+        ):
+            successful.add(basis.assignment_id)
     groups = []
-    for kind in KINDS:
+    kinds = KINDS + (
+        ("manual_adjustment",)
+        if any(o.kind == "manual_adjustment" for o in facts.obligations)
+        else ()
+    )
+    for kind in kinds:
         own = [o for o in facts.obligations if o.kind == kind]
         balances = {
             key: sum(
@@ -116,6 +168,15 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
         if facts.projection is not None
         else None,
         "groups": groups,
+        "pending": {
+            "entries": pending[page * PAGE_SIZE : (page + 1) * PAGE_SIZE],
+            "total": len(pending),
+        },
+        "management_summary": {
+            "successful_works": len(successful),
+            "unit_minor": "60000",
+            "gross_minor": str(len(successful) * 60000),
+        },
         "history": {
             "entries": history,
             "page": page,
@@ -198,6 +259,16 @@ class PartnerViewService:
             "account_status": facts.account_status,
             "writes_paused": writes_paused,
             "referral": {"link": self._link(platform, facts.referral_code)},
+            "current_rates": {
+                "client_bps": 1000,
+                "creator_bps": rate,
+                "overrides": facts.overrides,
+            },
+            "capabilities": {
+                "manage_overrides": facts.is_admin
+                and facts.account_status == "active"
+                and not writes_paused,
+            },
             "grade": {
                 "verified_creators": count,
                 "source": "canonical_current_instagram",

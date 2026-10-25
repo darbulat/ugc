@@ -9,6 +9,7 @@ from ugc_bot.application.errors import (
     OrderNotActiveError,
     OrderNotFoundError,
 )
+from ugc_bot.application.order_intake_ports import OrderIntakeRepository
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     BloggerRatingRepository,
@@ -296,6 +297,7 @@ class OfferDispatchService:
     manager_order_repo: ManagerOrderRepository | None = None
     transaction_manager: TransactionManager | None = None
     currency_symbol: str = "₽"
+    intake_repository: OrderIntakeRepository | None = None
 
     async def get_order_and_advertiser(
         self, order_id: UUID
@@ -389,6 +391,10 @@ class OfferDispatchService:
             session=session,
             location_geometry_wkt=order.location_geometry,
         )
+        if self.intake_repository is not None and order.financial_version:
+            confirmed_ids = await self.intake_repository.filter_candidates(
+                order.order_id, confirmed_ids, session=session
+            )
         if not confirmed_ids:
             return order, [], frozenset(), frozenset()
         already_sent = (

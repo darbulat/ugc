@@ -19,13 +19,13 @@ from ugc_bot.application.services.creator_identity_history_service import (
     CreatorIdentityHistoryService,
 )
 from ugc_bot.application.services.financial_policy_service import (
-    FinancialPolicy,
     FinancialPolicyService,
 )
 from ugc_bot.domain.entities import Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.domain.financial import utc
 from ugc_bot.domain.identity_history import IdentityHistoryUnavailable
+from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.models import (
     FinancialPolicyVersionModel,
     OrderItemModel,
@@ -41,6 +41,9 @@ from ugc_bot.infrastructure.db.repositories.financial_items import (
     _session,
 )
 from ugc_bot.infrastructure.db.repositories.financial_ledger import _canonical
+from ugc_bot.infrastructure.db.repositories.financial_policy import (
+    decode_policy_version,
+)
 from ugc_bot.infrastructure.db.repositories.orders import _to_payment_entity
 from ugc_bot.infrastructure.db.repositories.payment_allocations import (
     SqlAlchemyPaymentAllocationRepository,
@@ -124,19 +127,10 @@ class SqlAlchemyFinancialCaptureRepository:
         )
         if stored is None:
             raise OrderCreationError("approved_policy_required")
-        rules = stored.rules
-        policy = FinancialPolicy(
-            stored.version,
-            stored.approved_by,
-            stored.approved_at,
-            stored.effective_from,
-            timedelta(seconds=stored.refund_window_seconds),
-            frozenset(UUID(c) for c in rules.get("allowed_clients", [])),
-            rules.get("terms_reference"),
-        )
         # Issued invoices must finish even if sales are paused.
         # No feature flags are modified, including in this path.
         try:
+            policy = decode_policy_version(stored)
             if issuing:
                 self.policy_service.validate_for_capture(
                     policy=policy,
@@ -165,6 +159,12 @@ class SqlAlchemyFinancialCaptureRepository:
                 i.quote_payload.get("client_id") != str(order.advertiser_id)
                 or i.quote_payload.get("terms_reference")
                 != policy.terms_reference
+                or (
+                    RefundRules.from_document(i.quote_payload["refund_rules"])
+                    if "refund_rules" in i.quote_payload
+                    else None
+                )
+                != policy.refund_rules
                 for i in items
             ):
                 raise ValueError("quote_policy_mismatch")

@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.domain.financial import utc
 from ugc_bot.infrastructure.db.models import ItemAssignmentModel, OrderItemModel
+from ugc_bot.infrastructure.db.repositories.correction_funding import (
+    require_forward_clear,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
@@ -40,6 +43,8 @@ class SqlAlchemyItemAssignmentRepository:
         )
         if version != expected_version:
             raise ValueError("assignment_version_conflict")
+        if item.captured_at is not None:
+            await require_forward_clear(paid_item_id, session=db)
         current = await db.scalar(
             select(ItemAssignmentModel)
             .where(

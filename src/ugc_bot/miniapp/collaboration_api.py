@@ -32,6 +32,8 @@ class WorkCommandRequest(SignedMiniAppRequest):
         "dispute",
         "extend_due",
         "request_confirmation",
+        "resolve_success",
+        "resolve_failure",
     ]
     operation_key: str = Field(min_length=1, max_length=200)
     expected_version: int = Field(ge=0, strict=True)
@@ -42,6 +44,11 @@ class WorkCommandRequest(SignedMiniAppRequest):
     )
     evidence: str | None = Field(default=None, min_length=1, max_length=4000)
     reason: str | None = Field(default=None, min_length=1, max_length=4000)
+
+
+class DisputePage(SignedMiniAppRequest):
+    limit: int = Field(default=25, ge=1, le=100, strict=True)
+    cursor: UUID | None = None
 
 
 class WorkResponse(BaseModel):
@@ -109,6 +116,41 @@ def create_collaboration_router(
         prefix="/collaborations",
         route_class=NoStoreCollaborationRoute,
     )
+
+    @router.post("/admin/disputes")
+    async def disputes(request: Request, body: DisputePage):
+        principal, service, transactions = await _work_context(
+            request, body, resolve_principal
+        )
+        async with transactions.transaction() as session:
+            return await service.list_disputes(
+                principal.user_id,
+                principal=principal,
+                limit=body.limit,
+                cursor=body.cursor,
+                session=session,
+            )
+
+    @router.post("/admin/{assignment_id}/view")
+    async def admin_view(
+        request: Request, assignment_id: UUID, body: SignedMiniAppRequest
+    ) -> WorkResponse:
+        principal, service, transactions = await _work_context(
+            request, body, resolve_principal
+        )
+        async with transactions.transaction() as session:
+            result = await service.get_for_admin(
+                principal.user_id,
+                assignment_id,
+                principal=principal,
+                session=session,
+            )
+            if result is None:
+                raise HTTPException(404, "collaboration_not_found")
+            record, is_current, actions = result
+            return WorkResponse.from_record(
+                record, principal.user_id, is_current, actions
+            )
 
     @router.post("/{assignment_id}/status")
     async def status(

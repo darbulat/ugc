@@ -21,7 +21,7 @@
     be:{assigned:'Прызначана',in_progress:'У працы',success_claimed:'Заяўлены поспех',disputed:'Ёсць пярэчанне',success_final:'Поспех пацверджаны',unconfirmed_expired:'Тэрмін пацверджання мінуў',available:'Утрыманне скончылася'},
     uz:{assigned:'Tayinlangan',in_progress:'Jarayonda',success_claimed:'Muvaffaqiyat bildirildi',disputed:'E’tiroz bor',success_final:'Muvaffaqiyat tasdiqlandi',unconfirmed_expired:'Tasdiqlash muddati o‘tdi',available:'Ushlab turish tugadi'}
   };
-  var state = { busy:false, opened:false, returnScreen:'screen-role-choice', network_page:0, history_page:0, assignment_page:0, link:null };
+  var state = { busy:false, opened:false, returnScreen:'screen-role-choice', network_page:0, history_page:0, assignment_page:0, link:null, bound:null, actor:null, data:null };
   function id(value) { return document.getElementById(value); }
   function words() { return Object.assign({}, copy.ru, copy[(window._me || {}).locale] || {}); }
   function text(key, value) { id(key).textContent = value == null ? '' : String(value); }
@@ -29,6 +29,11 @@
   function safeUrl(value) { try { var url = new URL(value); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; } catch (_) { return null; } }
   function date(value) { var parsed = new Date(value); return value && !isNaN(parsed.getTime()) ? parsed.toISOString().replace('T', ' ').slice(0,16) + ' UTC' : words().unknown; }
   function money(value, currency) { var raw = String(value); if (!/^\d+$/.test(raw)) return words().unknown; raw = raw.padStart(3,'0'); return raw.slice(0,-2).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0') + ',' + raw.slice(-2) + '\u00a0' + currency; }
+  Object.assign(copy.ru,{manual_adjustment:'Ручное доначисление',manualRate:'Ставка не применяется'});
+  Object.assign(copy.en,{manual_adjustment:'Manual grant',manualRate:'Rate does not apply'});
+  Object.assign(copy.kk,{manual_adjustment:'Қолмен қосымша есептеу',manualRate:'Мөлшерлеме қолданылмайды'});
+  Object.assign(copy.be,{manual_adjustment:'Ручное даналічэнне',manualRate:'Стаўка не ўжываецца'});
+  Object.assign(copy.uz,{manual_adjustment:'Qo‘lda qo‘shimcha hisoblash',manualRate:'Stavka qo‘llanilmaydi'});
   function percentage(value) { return typeof value === 'number' ? String(value / 100) + '%' : words().unknown; }
   function localize() { var c = words(); ['link','grade','network','finance','history','assignments','overrides'].forEach(function (key) { text('partner-' + key + '-title', c[key]); }); text('partner-title',c.title); text('partner-rules',c.rules); text('btn-partner-copy',c.copy); text('btn-partner-reload',c.reload); text('btn-partner-back',c.back); id('partner-link-value').setAttribute('aria-label',c.link); document.querySelectorAll('[data-partner-open]').forEach(function (button) { button.textContent = c.entry; }); }
   function busy(value) { state.busy = value; screen.setAttribute('aria-busy',String(value)); text('partner-loading',value ? words().loading : ''); screen.querySelectorAll('button:not([data-payouts-open])').forEach(function (button) { button.disabled = value; }); id('btn-partner-copy').disabled = value || !state.link; }
@@ -37,16 +42,159 @@
   function pages(parent, key, page, more) { var c = words(); var controls = node('div','','pagination-btns'); [[c.previous,page-1,page>0],[c.more,page+1,more]].forEach(function (item) { if (!item[2]) return; var button = node('button',item[0],'btn btn-secondary'); button.type='button'; button.addEventListener('click',function () { state[key]=item[1]; load(); }); controls.appendChild(button); }); parent.appendChild(controls); }
   function network(data) { var c=words(), parent=id('partner-network'); parent.replaceChildren(); if (!data.members.length) listEmpty(parent,c.emptyNetwork); data.members.forEach(function (member) { var article=node('article','','umc-partner-row'); article.appendChild(node('h3',member.roles.map(function (role) { return c[role] || role; }).join(' / ') || c.registered)); article.appendChild(node('p',c.registered + ': ' + date(member.registered_at) + ' · ' + (c[member.status] || member.status),'hint')); member.socials.forEach(function (social) { var url=safeUrl(social.url), line=node('div','','umc-partner-social'); var link=node(url ? 'a' : 'span',social.url); if (url) { link.href=url; link.target='_blank'; link.rel='noopener noreferrer'; } line.appendChild(link); line.appendChild(node('span',social.verified ? c.badge : c.unverified,'umc-partner-badge')); line.appendChild(node('p',c.followers + ': ' + (social.followers_count == null ? c.unknown : String(social.followers_count)),'hint')); if (social.metrics_source && social.metrics_fetched_at) line.appendChild(node('p',c.source + ': ' + social.metrics_source + ' · ' + c.checked + ': ' + date(social.metrics_fetched_at),'hint')); if (social.verification_source) line.appendChild(node('p',c.badge + ': ' + (['canonical_profile','canonical_verification','instagram_verification'].indexOf(social.verification_source)>=0 ? c.instagramVerification : social.verification_source),'hint')); article.appendChild(line); }); parent.appendChild(article); }); pages(parent,'network_page',data.page,data.has_more); }
   function balances(parent, values, currency) { var c=words(), list=node('dl','','umc-partner-balances'); ['pending','hold','available','reserved','paid','blocked','cancelled','debt'].forEach(function (key) { if (values[key] == null || (['blocked','cancelled','debt'].indexOf(key) >= 0 && values[key] === '0')) return; var row=node('div'); row.dataset.bucket=key; row.appendChild(node('dt',c[key])); var value=node('dd',money(values[key],currency)); value.dataset.money=values[key]; row.appendChild(value); list.appendChild(row); }); parent.appendChild(list); }
-  function finance(data) { var c=words(), parent=id('partner-balances'), history=id('partner-history'); parent.replaceChildren(); history.replaceChildren(); id('partner-financial-status').dataset.state=data.state; text('partner-financial-status',c[data.state] || c.unavailable); if (data.balances) { balances(parent,data.balances,data.currency); data.groups.forEach(function (group) { var section=node('details','','umc-partner-kind'); section.appendChild(node('summary',c[group.kind] || group.kind)); balances(section,group.balances,data.currency); parent.appendChild(section); }); } if (!data.history.entries.length) listEmpty(history,c.emptyHistory); data.history.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.kind] || entry.kind) + ' · ' + money(entry.amount_minor,data.currency))); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); var details=node('dl'); definition(details,c.snapshot,date(entry.snapshot_at)); definition(details,c.base,money(entry.base_minor,data.currency)); definition(details,c.rate,entry.kind === 'management' ? c.fixed : percentage(entry.rate_bps) + ' · ' + (c[entry.rate_source] || entry.rate_source)); definition(details,c.policy,entry.policy_version); definition(details,c[entry.movement_type] || entry.movement_type,(entry.bucket_from ? c[entry.bucket_from] + ' → ' : '') + (c[entry.bucket_to] || '') + ' · ' + date(entry.effective_at)); row.appendChild(details); history.appendChild(row); }); pages(history,'history_page',data.history.page,data.history.has_more); }
+  function finance(data) { var c=words(), parent=id('partner-balances'), history=id('partner-history'); parent.replaceChildren(); history.replaceChildren(); id('partner-financial-status').dataset.state=data.state; text('partner-financial-status',c[data.state] || c.unavailable); if (data.balances) { balances(parent,data.balances,data.currency); data.groups.forEach(function (group) { var section=node('details','','umc-partner-kind'); section.appendChild(node('summary',c[group.kind] || group.kind)); balances(section,group.balances,data.currency); parent.appendChild(section); }); } if (!data.history.entries.length) listEmpty(history,c.emptyHistory); data.history.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.kind] || entry.kind) + ' · ' + money(entry.amount_minor,data.currency))); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); var details=node('dl'); definition(details,c.snapshot,date(entry.snapshot_at)); definition(details,c.base,money(entry.base_minor,data.currency)); definition(details,c.rate,entry.kind === 'manual_adjustment' ? c.manualRate : entry.kind === 'management' ? c.fixed : percentage(entry.rate_bps) + ' · ' + (c[entry.rate_source] || entry.rate_source)); definition(details,c.policy,entry.policy_version); definition(details,c[entry.movement_type] || entry.movement_type,(entry.bucket_from ? c[entry.bucket_from] + ' → ' : '') + (c[entry.bucket_to] || '') + ' · ' + date(entry.effective_at)); row.appendChild(details); history.appendChild(row); }); pages(history,'history_page',data.history.page,data.history.has_more); }
   function overrides(data) { var c=words(), parent=id('partner-overrides'); parent.replaceChildren(); if (data.state !== 'available') { listEmpty(parent,c.unavailable); return; } if (!data.entries.length) listEmpty(parent,c.noOverrides); data.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.side] || entry.side) + ' ' + percentage(entry.rate_bps))); row.appendChild(node('p',c.policy + ': ' + entry.policy_version)); row.appendChild(node('p',date(entry.effective_from) + ' — ' + date(entry.effective_until),'hint')); parent.appendChild(row); }); }
   function assignments(data) { var c=words(), parent=id('partner-assignments'); parent.replaceChildren(); if (data.state !== 'available') { listEmpty(parent,c.unavailable); return; } if (!data.entries.length) listEmpty(parent,c.emptyAssignments); data.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); row.appendChild(node('p',((workStates[(window._me || {}).locale] || workStates.ru)[entry.state] || c.unknown) + ' · ' + c.due + ': ' + date(entry.due_at),'hint')); if (window.UMCCollaboration) { var button=node('button',c.openWork,'btn btn-secondary'); button.type='button'; button.addEventListener('click',function () { window.UMCCollaboration.open(entry.assignment_id); }); row.appendChild(button); } parent.appendChild(row); }); pages(parent,'assignment_page',data.page,data.has_more); }
   function render(data) { var c=words(); state.link=safeUrl(data.referral.link); id('partner-link').hidden=!state.link; id('partner-link-value').hidden=!state.link; id('btn-partner-copy').hidden=!state.link; if (state.link) { id('partner-link').href=state.link; text('partner-link',state.link); id('partner-link-value').value=state.link; } text('partner-link-unavailable',state.link ? '' : c.noLink); text('partner-paused',data.writes_paused ? c.paused : ''); text('partner-status',c[data.account_status] || data.account_status); text('partner-grade-value',percentage(data.grade.tier_rate_bps)); text('partner-grade-count',c.verified + ': ' + data.grade.verified_creators); text('partner-grade-next',data.grade.next_threshold == null ? c.top : c.next + ': ' + data.grade.remaining + ' (' + data.grade.next_threshold + ')'); network(data.network); finance(data.financial); overrides(data.overrides); assignments(data.assignments); id('partner-content').hidden=false; }
-  function load() { if (state.busy) return; localize(); text('partner-error',''); text('partner-copy-status',''); id('partner-content').hidden=true; busy(true); bridge.request('/partner/view',{network_page:state.network_page,history_page:state.history_page,assignment_page:state.assignment_page}).then(render).catch(function (error) { text('partner-error',error.status===401 ? words().session : error.status===403 ? words().forbidden : words().error); state.link=null; }).finally(function () { busy(false); }); }
+
+  Object.assign(copy.ru, {activeOrders:'Активные заказы', completedWorks:'Завершённые работы', waiting:'Что ожидается', successful:'Успешно завершено', beforeAdjustments:'До корректировок; выплата зависит от состояния журнала', awaiting_confirmation:'Успех не подтверждён', awaiting_counterparty:'Ожидается ответ второй стороны', confirmation_notice_pending:'Ожидается доставка запроса подтверждения', expiry_processing:'Срок подтверждения истёк; отмена обрабатывается', dispute_review:'Требуется рассмотрение спора', financial_processing:'Подтверждено; финансовая обработка', selection_completion:'Ожидается закрытие подбора и окончание периода возврата', assessment_pending:'Уточняется основание начисления'});
+  Object.assign(copy.en, {activeOrders:'Active orders', completedWorks:'Completed works', waiting:'Pending requirements', successful:'Successfully completed', beforeAdjustments:'Before adjustments; payout depends on journal status', awaiting_confirmation:'Success has not been confirmed', awaiting_counterparty:'Awaiting the other party', confirmation_notice_pending:'Awaiting confirmation notice delivery', expiry_processing:'Confirmation expired; cancellation is being processed', dispute_review:'Dispute requires review', financial_processing:'Confirmed; financial processing', selection_completion:'Awaiting selection closure and refund period', assessment_pending:'Earning basis is being assessed'});
+  var homes=[];
+  function clearPrivate() {
+    if(state.bound) state.bound.dispose();
+    state.bound=null; state.actor=null; state.data=null; state.link=null; adminState={pending:null,review:null,busy:false};
+    id('partner-content').hidden=true;
+    homes.forEach(function(card){card.replaceChildren(node('p',words().session,'hint'));});
+    var admin=id('partner-override-admin'); if(admin) admin.remove();
+  }
+  function current() {
+    if(!state.bound || !state.bound.isCurrent()) { clearPrivate(); return false; }
+    return true;
+  }
+  function bind() {
+    if(!state.bound) state.bound=bridge.createRequestContext();
+    return current();
+  }
+  function home(data) {
+    if(!current()) return;
+    var c=words(), rates=data.current_rates||{client_bps:1000,creator_bps:data.grade.tier_rate_bps,overrides:[]};
+    state.actor=data.actor_id;
+    homes.forEach(function(card){
+      card.replaceChildren();
+      var url=safeUrl(data.referral.link);
+      if(url){var link=node('a',url,'umc-partner-reference');link.href=url;link.dataset.partnerLink='';card.appendChild(link);}
+      else card.appendChild(node('p',c.noLink,'hint'));
+      var rate=node('button',c.creator+': '+percentage(rates.creator_bps)+' · '+c.client+': '+percentage(rates.client_bps),'btn btn-secondary');
+      rate.type='button'; rate.dataset.partnerRate=''; rate.addEventListener('click',open);card.appendChild(rate);
+      (rates.overrides||[]).forEach(function(entry){card.appendChild(node('p',(c[entry.side]||entry.side)+': '+percentage(entry.rate_bps)+' · '+c.override+' · '+entry.policy_version,'hint'));});
+    });
+  }
+  function partnerDetails(data) {
+    var c=words(), rows=id('partner-network').querySelectorAll('.umc-partner-row');
+    data.network.members.forEach(function(member,index){
+      var row=rows[index];if(!row)return;
+      if(member.display_name)row.querySelector('h3').textContent=member.display_name;
+      if(member.telegram_username){var handle=member.telegram_username.replace(/^@/,'');var el=node(/^[a-zA-Z0-9_]{5,32}$/.test(handle)?'a':'span','@'+handle);if(el.tagName==='A'){el.href='https://t.me/'+handle;el.target='_blank';el.rel='noopener noreferrer';}row.appendChild(el);}
+      if(member.work)row.appendChild(node('p',c.activeOrders+': '+member.work.active_orders+' · '+c.completedWorks+': '+member.work.completed_works,'hint'));
+    });
+    var parent=id('partner-balances');
+    var summary=node('p','','umc-partner-notice');summary.id='partner-management-summary';
+    var manager=data.financial.management_summary;
+    if(manager)summary.textContent=c.successful+': '+manager.successful_works+' × '+money(manager.unit_minor,'RUB')+' = '+money(manager.gross_minor,'RUB')+'. '+c.beforeAdjustments;
+    parent.appendChild(summary);
+    var pending=node('section');pending.id='partner-pending';
+    if(data.financial.pending && data.financial.pending.entries.length){pending.appendChild(node('h3',c.waiting));data.financial.pending.entries.forEach(function(entry){
+      var row=node('article','','umc-partner-row');row.appendChild(node('p',(c[entry.kind]||entry.kind)+' · '+money(entry.amount_minor,'RUB')));row.appendChild(node('p',entry.order_id,'umc-partner-reference'));row.appendChild(node('p',c[entry.reason]||c.assessment_pending));
+      (entry.waiting_for||[]).forEach(function(party){row.appendChild(node('p',(c[party.role]||party.role)+(party.display_name?' · '+party.display_name:'')+(party.telegram_username?' · @'+party.telegram_username.replace(/^@/,''):'')));});
+      if(entry.due_at)row.appendChild(node('p',c.due+': '+date(entry.due_at),'hint'));pending.appendChild(row);
+    });}
+    parent.appendChild(pending);
+  }
+
+  var adminState={pending:null,review:null,busy:false};
+  function adminWords(){return (window._me||{}).locale==='en'?{
+    title:'Individual referral rates',recipient:'Partner ID',policy:'Published policy version',side:'Transaction side',action:'Action',create:'Create',supersede:'Replace',revoke:'Revoke',rate:'Rate, %',from:'Effective from · ISO with timezone',until:'Effective until · ISO with timezone',reason:'Agreement / reason',oid:'Existing override ID',version:'Current version',review:'Review decision',confirm:'Confirm decision',cancel:'Cancel review',list:'Load history for this scope',saved:'Saved',unknown:'Result unknown. Retry the original operation.',retry:'Retry original operation',invalid:'Check identity, dates, rate and reason.',storage:'Safe operation storage is unavailable. Reopen this section.',author:'Approved by',history:'History',notice:'Only future operations use these terms. Historical payment snapshots are preserved.'
+  }:{
+    title:'Индивидуальные реферальные ставки',recipient:'ID партнёра',policy:'Версия опубликованных условий',side:'Сторона сделки',action:'Действие',create:'Создать',supersede:'Заменить',revoke:'Отозвать',rate:'Ставка, %',from:'Действует с · ISO с часовым поясом',until:'Действует до · ISO с часовым поясом',reason:'Соглашение / причина',oid:'ID существующей ставки',version:'Текущая версия',review:'Проверить решение',confirm:'Подтвердить решение',cancel:'Отменить проверку',list:'Загрузить историю этих условий',saved:'Сохранено',unknown:'Результат неизвестен. Повторите исходную операцию.',retry:'Повторить исходную операцию',invalid:'Проверьте ID, даты, ставку и причину.',storage:'Безопасное сохранение операции недоступно. Откройте раздел заново.',author:'Утвердил',history:'История',notice:'Условия применяются к будущим операциям. Снимки уже оплаченных заказов сохраняются.'
+  };}
+  function adminKey(){return 'umc:partner-overrides:v1:'+(window.__miniapp_platform||'telegram')+':'+state.actor;}
+  function adminStatus(message){var el=id('override-status');if(el)el.textContent=message;}
+  function adminButton(parent,label,name,action){var button=node('button',label,'btn btn-secondary');button.type='button';button.id=name;button.addEventListener('click',action);parent.appendChild(button);return button;}
+  function adminField(form,label,name,type,choices){
+    var title=node('label',label);title.htmlFor=name;form.appendChild(title);
+    var input=node(choices?'select':type==='textarea'?'textarea':'input');input.id=name;
+    if(choices)choices.forEach(function(choice){var option=node('option',choice[1]);option.value=choice[0];input.appendChild(option);});
+    else if(type!=='textarea')input.type=type||'text';
+    input.maxLength=name==='override-reason'?4000:256;form.appendChild(input);return input;
+  }
+  function adminAllowed(){return current()&&state.data&&state.data.capabilities&&state.data.capabilities.manage_overrides===true&&!adminState.busy;}
+  function validPending(value){
+    return value&&['create','supersede','revoke'].indexOf(value.action)>=0&&typeof value.operation_key==='string'&&typeof value.reason==='string'&&typeof value.recipient_id==='string'&&['client','creator'].indexOf(value.side)>=0&&typeof value.policy_version==='string';
+  }
+  function renderAdmin(data){
+    var old=id('partner-override-admin');if(old)old.remove();
+    if(!data.capabilities||data.capabilities.manage_overrides!==true)return;
+    var c=adminWords(),panel=node('section','','umc-partner-row');panel.id='partner-override-admin';panel.appendChild(node('h2',c.title));panel.appendChild(node('p',c.notice,'hint'));
+    var status=node('p');status.id='override-status';status.setAttribute('role','status');panel.appendChild(status);
+    try{var retained=sessionStorage.getItem(adminKey());if(retained){var parsed=JSON.parse(retained);if(!validPending(parsed))throw new Error();adminState.pending=parsed;}}
+    catch(_){status.textContent=c.storage;id('partner-content').appendChild(panel);return;}
+    var form=node('form');form.id='override-form';
+    adminField(form,c.recipient,'override-recipient');adminField(form,c.policy,'override-policy');
+    adminField(form,c.side,'override-side',null,[['client',words().client],['creator',words().creator]]);
+    adminField(form,c.action,'override-action',null,[['create',c.create],['supersede',c.supersede],['revoke',c.revoke]]);
+    adminField(form,c.rate,'override-rate');adminField(form,c.from,'override-from');adminField(form,c.until,'override-until');
+    adminField(form,c.reason,'override-reason','textarea');adminField(form,c.oid,'override-id');adminField(form,c.version,'override-version');
+    var review=adminButton(form,c.review,'override-review',function(){form.requestSubmit();});
+    form.addEventListener('submit',reviewOverride);
+    adminButton(form,c.list,'override-list',listOverrides);panel.appendChild(form);
+    var decision=node('section');decision.id='override-decision';decision.hidden=true;panel.appendChild(decision);
+    var historyPanel=node('section');historyPanel.id='override-history';panel.appendChild(historyPanel);
+    id('partner-content').appendChild(panel);
+    if(adminState.pending){form.hidden=true;adminStatus(c.unknown);adminButton(panel,c.retry,'override-retry',sendOverride);}
+  }
+  function overrideValue(name){return id('override-'+name).value.trim();}
+  function overrideTime(value){if(!/(Z|[+-]\d{2}:\d{2})$/.test(value))throw new Error();var dateValue=new Date(value);if(isNaN(dateValue.getTime()))throw new Error();return dateValue.toISOString();}
+  function overrideScope(){
+    var recipient=overrideValue('recipient'),policy=overrideValue('policy'),side=overrideValue('side');
+    if(!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(recipient)||!policy)throw new Error();
+    return {recipient_id:recipient,policy_version:policy,side:side};
+  }
+  function reviewOverride(event){
+    event.preventDefault();if(!adminAllowed()||adminState.pending)return;
+    var c=adminWords(),command;
+    try{
+      command=overrideScope();command.action=overrideValue('action');command.reason=overrideValue('reason');if(!command.reason)throw new Error();
+      if(!window.crypto||!crypto.getRandomValues)throw new Error();var random=new Uint8Array(16);crypto.getRandomValues(random);command.operation_key='override:'+Array.from(random).map(function(n){return n.toString(16).padStart(2,'0');}).join('');
+      if(command.action!=='create'){command.override_id=overrideValue('id');command.expected_version=Number(overrideValue('version'));if(!command.override_id||!Number.isSafeInteger(command.expected_version)||command.expected_version<1)throw new Error();}
+      if(command.action==='revoke'){command.effective_at=overrideTime(overrideValue('from'));}
+      else{var rate=overrideValue('rate');if(!/^\d{1,3}(\.\d{1,2})?$/.test(rate))throw new Error();command.rate_bps=Math.round(Number(rate)*100);if(command.rate_bps<1||command.rate_bps>10000)throw new Error();command.effective_from=overrideTime(overrideValue('from'));command.effective_until=overrideTime(overrideValue('until'));if(command.effective_from>=command.effective_until)throw new Error();}
+    }catch(_){adminStatus(c.invalid);return;}
+    adminState.review=command;var panel=id('override-decision');panel.hidden=false;panel.replaceChildren(node('p',(c[command.action]||command.action)+' · '+command.recipient_id+' · '+words()[command.side]+' · '+(command.rate_bps?percentage(command.rate_bps):'')+' · '+command.policy_version));
+    panel.appendChild(node('p',(command.effective_at||command.effective_from)+(command.effective_until?' — '+command.effective_until:'')));panel.appendChild(node('p',command.reason));
+    adminButton(panel,c.confirm,'override-confirm',function(){if(!adminAllowed()||adminState.pending)return;try{sessionStorage.setItem(adminKey(),JSON.stringify(adminState.review));}catch(_){adminStatus(c.storage);return;}adminState.pending=adminState.review;adminState.review=null;id('override-form').hidden=true;panel.hidden=true;sendOverride();});
+    adminButton(panel,c.cancel,'override-cancel',function(){adminState.review=null;panel.hidden=true;});
+  }
+  function sendOverride(){
+    if(!adminAllowed()||!adminState.pending)return;
+    var command=adminState.pending,bound=state.bound;adminState.busy=true;adminStatus(words().loading);
+    bound.request('/admin/rate-overrides/command',command).then(function(result){
+      if(bound!==state.bound||!current())return;
+      if(result.operation_key!==command.operation_key)throw new Error('unconfirmed');
+      sessionStorage.removeItem(adminKey());adminState.pending=null;adminState.busy=false;
+      var retry=id('override-retry');if(retry)retry.remove();id('override-form').hidden=false;adminStatus(adminWords().saved);listOverrides();
+    }).catch(function(error){
+      if(bound!==state.bound||!current())return;adminState.busy=false;
+      if(error.status===401||error.status===403){clearPrivate();text('partner-error',words().forbidden);return;}
+      adminStatus(adminWords().unknown);if(!id('override-retry'))adminButton(id('partner-override-admin'),adminWords().retry,'override-retry',sendOverride);
+    });
+  }
+  function listOverrides(){
+    if(!adminAllowed()||adminState.pending)return;var scope;try{scope=overrideScope();}catch(_){adminStatus(adminWords().invalid);return;}
+    var bound=state.bound;adminState.busy=true;
+    bound.request('/admin/rate-overrides/list',scope).then(function(rows){
+      if(bound!==state.bound||!current())return;
+      var parent=id('override-history');parent.replaceChildren(node('h3',adminWords().history));
+      rows.forEach(function(value){var a=value.approval,row=node('article','','umc-partner-row');row.appendChild(node('p',percentage(a.rate_bps)+' · '+date(a.effective_from)+' — '+date(a.effective_until)));row.appendChild(node('p',a.reason));row.appendChild(node('p',adminWords().author+': '+a.approved_by,'umc-partner-reference'));row.appendChild(node('p',(value.revoked_at?date(value.revoked_at):'')+' · v'+value.version,'hint'));adminButton(row,adminWords().supersede,'override-select-'+a.override_id,function(){id('override-id').value=a.override_id;id('override-version').value=value.version;id('override-action').value='supersede';});parent.appendChild(row);});
+    }).catch(function(error){if(bound===state.bound&&current()){if(error.status===401||error.status===403)clearPrivate();else adminStatus(words().error);}}).finally(function(){adminState.busy=false;});
+  }
+
+  function load() { if (state.busy || !bind()) return; var bound=state.bound; localize(); text('partner-error',''); text('partner-copy-status',''); id('partner-content').hidden=true; busy(true); bound.request('/partner/view',{network_page:state.network_page,history_page:state.history_page,assignment_page:state.assignment_page}).then(function(data){if(bound!==state.bound||!current())return;state.data=data;render(data);home(data);partnerDetails(data);renderAdmin(data);}).catch(function (error) { text('partner-error',error.status===401 ? words().session : error.status===403 ? words().forbidden : words().error); state.link=null; }).finally(function () { busy(false); }); }
   function open() { if (state.busy) return; var current=document.querySelector('.screen.active'); if (current && current!==screen) state.returnScreen=current.id; var url=new URL(location.href); url.searchParams.set('view','partner'); history.replaceState(null,'',url.href); bridge.showScreen(screen.id); state.opened=true; load(); }
-  ['screen-role-choice','screen-advertiser-dashboard','screen-blogger-dashboard','screen-manager-orders'].forEach(function (name) { var parent=id(name); if (!parent) return; var button=node('button',words().entry,'btn btn-secondary umc-partner-entry'); button.type='button'; button.dataset.partnerOpen=''; button.addEventListener('click',open); var heading=parent.querySelector('h1'); heading.insertAdjacentElement('afterend',button); });
+  ['screen-role-choice','screen-advertiser-dashboard','screen-blogger-dashboard','screen-manager-orders'].forEach(function (name) { var parent=id(name); if (!parent) return; var button=node('button',words().entry,'btn btn-secondary umc-partner-entry'); button.type='button'; button.dataset.partnerOpen=''; button.addEventListener('click',open); var heading=parent.querySelector('h1'); heading.insertAdjacentElement('afterend',button); var card=node('section','','umc-partner-notice');card.dataset.partnerHome='';button.insertAdjacentElement('afterend',card);homes.push(card); });
   id('btn-partner-copy').addEventListener('click',function () { if (!state.link || state.busy) return; var pending=navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(state.link) : Promise.reject(); pending.then(function () { text('partner-copy-status',words().copied); }).catch(function () { var input=id('partner-link-value'); input.focus(); input.select(); text('partner-copy-status',words().manual); }); });
   id('btn-partner-reload').addEventListener('click',load);
   id('btn-partner-back').addEventListener('click',function () { if (state.busy) return; var url=new URL(location.href); url.searchParams.delete('view'); history.replaceState(null,'',url.href); bridge.showScreen(state.returnScreen); });
-  function ready() { localize(); var params=new URLSearchParams(location.search); if (!state.opened && params.get('view')==='partner' && !params.has('assignment') && !params.has('assignment_id')) open(); }
+  function ready() { localize(); if(!bind())return;var bound=state.bound;bound.request('/partner/view',{network_page:0,history_page:0,assignment_page:0}).then(function(data){if(bound===state.bound&&current())home(data);}).catch(function(error){if(error.status===401||error.status===403)clearPrivate();}); var params=new URLSearchParams(location.search); if (!state.opened && params.get('view')==='partner' && !params.has('assignment') && !params.has('assignment_id')) open(); }
+  document.addEventListener('visibilitychange',function(){if(state.bound)current();}); window.addEventListener('focus',function(){if(state.bound)current();});
   document.addEventListener('umc:app-ready',ready); if (window.__umcAppReady) ready();
 })();

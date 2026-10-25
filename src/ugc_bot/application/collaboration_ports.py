@@ -218,6 +218,13 @@ def next_transition_at(work: Collaboration) -> datetime | None:
 
 
 class CollaborationRepository(Protocol):
+    async def lock_admin_actor(
+        self, actor_id: UUID, *, session: object
+    ) -> CollaborationActor | None: ...
+    async def list_disputes(
+        self, limit: int, cursor: UUID | None, *, session: object
+    ) -> tuple[CollaborationRecord, ...]: ...
+
     async def prepare_principal_scope(
         self,
         assignment_id: UUID,
@@ -245,6 +252,10 @@ class CollaborationRepository(Protocol):
 
     async def get_command(
         self, assignment_id: UUID, operation_key: str, *, session: object
+    ) -> CollaborationEvent | None: ...
+
+    async def get_event_for_version(
+        self, assignment_id: UUID, version: int, *, session: object
     ) -> CollaborationEvent | None: ...
 
     async def get_notice(

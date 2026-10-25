@@ -367,8 +367,16 @@ class PayoutService:
             raise ValueError("payout_debt_manual_review_required")
         if await repo.unmatched_bank(recipient, matching, session=session):
             raise ValueError("payout_bank_reconciliation_required")
+        release_check = (
+            getattr(repo, "item_clear_for_release", None)
+            if for_release
+            else None
+        )
         for row in rows:
-            await repo.item_clear(row["paid_item_id"], session=session)
+            if release_check is not None:
+                await release_check(row["paid_item_id"], session=session)
+            else:
+                await repo.item_clear(row["paid_item_id"], session=session)
             await self.work_guard.require_clear(
                 row["paid_item_id"], session=session
             )

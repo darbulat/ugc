@@ -17,12 +17,17 @@ SHARED_CODES = {
 }
 INTAKE_CODES = SHARED_CODES | {
     "active_advertiser_required": 403,
+    "intake_admin_required": 403,
+    "invalid_intake_funnel_stage": 422,
+    "invalid_intake_funnel_identity": 422,
     "client_not_allowlisted": 403,
     **dict.fromkeys(
         (
             "client_identity_required",
             "intake_provenance_required",
             "invalid_direct_honorarium",
+            "invalid_order_targeting",
+            "invalid_targeting_range",
             "invalid_service_mode",
             "self_service_has_no_accompaniment",
             "invalid_accompaniment_ordinals",
@@ -54,11 +59,13 @@ COLLABORATION_CODES = SHARED_CODES | {
     **dict.fromkeys(
         (
             "active_actor_required",
+            "active_admin_required",
             "collaboration_party_required",
             "assignment_actor_required",
             "client_consent_required",
             "collaboration_view_forbidden",
             "authenticated_actor_required",
+            "collaboration_resolution_admin_required",
             "ambiguous_actor",
             "trusted_collaboration_producer_required",
         ),
@@ -91,6 +98,10 @@ COLLABORATION_CODES = SHARED_CODES | {
             "evidence_required",
             "objection_window_closed",
             "dispute_reason_required",
+            "dispute_resolution_evidence_required",
+            "resolution_evidence_required",
+            "invalid_dispute_page",
+            "dispute_resolution_reason_required",
             "due_version_conflict",
             "aware_timestamp_required",
         ),
@@ -181,6 +192,11 @@ PARTNER_CODES = _SNAPSHOT_NATIVE_CODES | {
     "partner_not_found": 404,
 }
 SELECTION_CODES = _SNAPSHOT_NATIVE_CODES | {
+    "selection_close_forbidden": 403,
+    "selection_refund_rules_required": 409,
+    "selection_closure_evidence_required": 422,
+    "selection_fact_in_future": 409,
+    "financial_scope_changed_retry_required": 409,
     "selection_client_inactive": 403,
     "selection_client_role_required": 403,
     "selection_order_not_found": 404,

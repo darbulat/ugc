@@ -293,11 +293,21 @@ class MatchSelectionRefund(_CorrectionCommand):
         require_hash(self.evidence_hash)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ApplySelectionRefund(MatchSelectionRefund):
+    match_id: UUID
+
+    def __post_init__(self) -> None:
+        MatchSelectionRefund.__post_init__(self)
+        require_uuid(self.match_id)
+
+
 CorrectionCommand = (
     RequestSelectionRefund
     | ReviewSelectionRefund
     | RecordManualRefundObservation
     | MatchSelectionRefund
+    | ApplySelectionRefund
 )
 
 
@@ -573,6 +583,9 @@ class OriginalGrossAssessment:
 
 
 class CorrectionRepository(Protocol):
+    async def management_refund_disposition(
+        self, paid_item_id: UUID, *, session: object
+    ) -> str | None: ...
     async def prepare_users(
         self, scope: CorrectionScope, *, session: object
     ) -> None:
@@ -651,6 +664,10 @@ class CorrectionRepository(Protocol):
     async def append_event(
         self, event: CorrectionEvent, *, session: object
     ) -> None: ...
+
+    async def reservation_release_funding(
+        self, paid_item_id: UUID, *, session: object
+    ) -> tuple[ComponentFunding, ...]: ...
 
     async def live_funding(
         self, paid_item_id: UUID, *, session: object

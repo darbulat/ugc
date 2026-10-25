@@ -35,7 +35,16 @@ class InMemoryFinancialLedgerRepository:
         self.maturities = {}
         self.overrides = {}
         self.maturity_sources = {}
+        self.selection_maturity_sources = {}
+        self.manual_grant_sources = {}
         self._lock = asyncio.Lock()
+
+    async def load_selection_maturity(self, obligation_id, *, session):
+        return self.selection_maturity_sources.get(obligation_id)
+
+    async def load_manual_grant(self, grant_id, *, session):
+        self._session(session)
+        return self.manual_grant_sources.get(grant_id)
 
     @asynccontextmanager
     async def transaction(self):

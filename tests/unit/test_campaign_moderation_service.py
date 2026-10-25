@@ -51,7 +51,7 @@ async def test_approval_retains_context_subset_envelope_and_waiting_jobs():
         job.envelope_digest
         == next(iter(repository.submissions.values())).seal.envelope.digest
     )
-    assert result["delivery_state"] == "waiting_delivery_implementation"
+    assert result["delivery_state"] == "queued"
     assert len(repository.decisions) == len(repository.facts.reservations) == 1
     assert (await service.decide(intent, session=SESSION))[
         "review_id"

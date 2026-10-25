@@ -354,6 +354,32 @@ async def test_archived_writer_upgrade_preserves_history_without_backfill(
             assert rt.approval_rows("match_approvals") == []
 
 
+def repayment_guard_signature(engine):
+    from sqlalchemy import text
+
+    with engine.connect() as db:
+        return dict(
+            functions=db.execute(
+                text(
+                    "SELECT proname,prosrc FROM pg_proc "
+                    "WHERE pronamespace=current_schema()::regnamespace "
+                    "AND strpos(proname,'repayment_')=1 ORDER BY proname"
+                )
+            ).all(),
+            triggers=db.execute(
+                text(
+                    "SELECT c.relname,t.tgname,t.tgdeferrable,"
+                    "t.tginitdeferred,t.tgtype FROM pg_trigger t "
+                    "JOIN pg_class c ON c.oid=t.tgrelid "
+                    "WHERE c.relnamespace=current_schema()::regnamespace "
+                    "AND NOT t.tgisinternal "
+                    "AND strpos(t.tgname,'repayment_')=1 "
+                    "ORDER BY c.relname,t.tgname"
+                )
+            ).all(),
+        )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("construction", ["full", "old_then_companion"])
 async def test_metadata_final_guard_matches_migration_and_repeated_creation(
@@ -375,6 +401,13 @@ async def test_metadata_final_guard_matches_migration_and_repeated_creation(
     url = os.environ["FINANCIAL_TEST_DATABASE_URL"]
     with isolated_financial_database(url) as migrated:
         expected = installed_approval_guard(migrated)
+        repayment_expected = repayment_guard_signature(migrated)
+        assert repayment_expected["functions"]
+        assert len(repayment_expected["triggers"]) == 6
+    with isolated_financial_database(
+        url, target_revision="financial_refund_approvals_a1"
+    ) as companion:
+        historical_boundary = installed_approval_guard(companion)
     with isolated_financial_database(
         url, target_revision="campaign_drafts_v1"
     ) as engine:
@@ -391,8 +424,15 @@ async def test_metadata_final_guard_matches_migration_and_repeated_creation(
                 )
             Base.metadata.create_all(engine, tables=NEW)
         first = installed_approval_guard(engine)
+        assert first == (
+            expected if construction == "full" else historical_boundary
+        )
         Base.metadata.create_all(engine)
-        assert installed_approval_guard(engine) == first == expected
+        assert installed_approval_guard(engine) == expected
+        assert repayment_guard_signature(engine) == repayment_expected
+        Base.metadata.create_all(engine)
+        assert installed_approval_guard(engine) == expected
+        assert repayment_guard_signature(engine) == repayment_expected
         async for env in intake_env.__wrapped__(engine):
             rt = await runtime(env)
             with pytest.raises(

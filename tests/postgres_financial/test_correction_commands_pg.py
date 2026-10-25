@@ -8,6 +8,8 @@ from uuid import UUID
 
 import pytest
 import pytest_asyncio
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -44,7 +46,9 @@ async def test_actual_captured_writer_retains_genuine_approval_proof_and_match(
     with Session(rt.env["pg"]) as db:
         assert (
             db.scalar(text("SELECT version_num FROM alembic_version"))
-            == "financial_refund_approvals_a1"
+            == ScriptDirectory.from_config(
+                Config("alembic.ini")
+            ).get_current_head()
         )
     requested = await rt.execute(await rt.request())
     approved = await rt.execute(rt.review(requested))

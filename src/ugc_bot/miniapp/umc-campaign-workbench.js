@@ -31,7 +31,7 @@
   function active() { return screen.classList.contains('active'); }
   function valid(generation,bound) { if(generation!==state.generation||bound!==state.bound||!bound)return false;if(!bound.isCurrent()){invalidate();return false;}return active(); }
   function can(name) { return !!(state.context&&state.context.capabilities&&state.context.capabilities[name]===true); }
-  function writable(name) { return can(name)&&!state.busy&&!state.pending&&!state.storageBlocked&&!state.conflict&&state.bound&&state.bound.isCurrent(); }
+  function writable(name) { if(['save_draft','preview_audience','submit_campaign'].includes(name)&&state.saved&&['submitted','approved_waiting'].includes(state.saved.state))return false;return can(name)&&!state.busy&&!state.pending&&!state.storageBlocked&&!state.conflict&&state.bound&&state.bound.isCurrent(); }
   function fail(error) { return error&&error.status===401?c().session:error&&error.status===403?c().forbidden:error&&error.status===409?c().conflict:c().error; }
   function disposeBound() { if(state.bound)state.bound.dispose();state.bound=null;state.generation++;state.request++;state.busy=false;state.preview=null;state.confirmed=false; }
   function invalidate() { disposeBound();if(state.witness)state.witness.dispose();state.witness=null;state.context=null;state.saved=null;state.raw={};state.review=null;state.rows=[];state.queue=[];state.listStatus='idle';state.mode='list';state.pending=null;state.storageBlocked=false;state.notice='';state.error=c().session;render(); }
@@ -166,6 +166,7 @@
     if(!can('save_draft'))list.appendChild(node('p',c().notGranted,'hint'));
     if(!state.rows.length&&state.listStatus==='loaded')list.appendChild(node('p',c().empty,'hint','campaign-workbench-empty'));
     state.rows.forEach(function(row){var article=node('article',null,'umc-campaign-card');article.append(node('h3',row.content.title),node('p',c().draft+' · '+c().revision+' '+row.version,'hint'),node('p',row.recorded_at,'hint'));var open=button(article,c().open,'',function(){loadDetail(row.campaign_id);});open.dataset.campaignDraftOpen=row.campaign_id;open.disabled=state.busy;list.appendChild(article);});
+    state.rows.forEach(function(row){if(window.UMCAnalytics)button(list,window.UMCAnalytics.label(),'campaign-analytics-'+row.campaign_id,function(){window.UMCAnalytics.open('campaign',row.campaign_id);});if(window.UMCCampaignRuntime){var report=button(list,window.UMCCampaignRuntime.reportLabel(),'campaign-report-'+row.campaign_id,function(){window.UMCCampaignRuntime.openReport(row.campaign_id);});report.disabled=state.busy;}});
     if(state.page)button(list,c().previous,'campaign-workbench-previous',function(){loadList(state.page-1);});if(state.hasMore)button(list,c().next,'campaign-workbench-next',function(){loadList(state.page+1);});
   }
   function loadQueue(page) { state.mode='admin';state.queuePage=page;if(!can('read_admin_queue')){render();return;}return startRead('/campaigns/admin/queue',{page:page},function(data){if(!data||!Array.isArray(data.submissions))throw new Error();state.queue=data.submissions;state.queueMore=data.has_more===true;state.review=null;}); }
@@ -197,4 +198,65 @@
   ['screen-role-choice','screen-advertiser-dashboard','screen-blogger-dashboard','screen-manager-orders','screen-partner','screen-campaign-settings'].forEach(function(name){var parent=id(name);if(parent){var entry=button(parent,c().entry,'',open);entry.dataset.campaignWorkbenchOpen='';}});
   document.addEventListener('umc:app-ready',ready);document.addEventListener('umc:screen-change',function(event){if(!event.detail)return;if(event.detail.screen!==screen.id&&state.bound)leave();else if(event.detail.screen===screen.id&&!state.bound){checkIdentity();state.bound=bridge.createRequestContext();if(!state.witness)state.witness=bridge.createRequestContext();state.generation++;markView();refresh();}});window.addEventListener('pagehide',invalidate);window.addEventListener('focus',checkIdentity);document.addEventListener('visibilitychange',checkIdentity);
   window.UMCCampaignWorkbench={open:open};if(window.__umcAppReady)ready();
+})();
+
+/* An approved invitation resolves only the signed recipient's own membership. */
+(function () {
+  'use strict';
+  var bridge=window.__umcAppBridge;
+  if(!bridge||!bridge.createRequestContext)return;
+  var labels={
+    ru:{title:'Задание от вашей сети',report:'Отчёт по рассылке',interested:'Интересно',declined:'Не подходит',withdrawn:'Отозвать отклик',settings:'Настройки и отписка',refresh:'Обновить',back:'Назад',loading:'Загружаем…',saved:'Отклик сохранён',error:'Не удалось получить подтверждённый результат. Обновите состояние.',unknown:'Результат неизвестен. Повторите тот же запрос.',retry:'Проверить запрос',delivery:'Доставка',responses:'Отклики',accepted:'Бот принял сообщение; это не подтверждение прочтения.',queued:'В очереди',preparing:'Отправляется',failed:'Ошибка отправки',skipped:'Пропущено'},
+    en:{title:'Task from your network',report:'Campaign report',interested:'Interested',declined:'Not interested',withdrawn:'Withdraw response',settings:'Settings and unsubscribe',refresh:'Refresh',back:'Back',loading:'Loading…',saved:'Response saved',error:'Could not obtain a confirmed result. Refresh the status.',unknown:'The result is unknown. Retry the same request.',retry:'Check request',delivery:'Delivery',responses:'Responses',accepted:'The bot accepted the message. This does not confirm reading.',queued:'Queued',preparing:'Sending',failed:'Send failed',skipped:'Skipped'},
+    kk:{title:'Желіңізден тапсырма',report:'Хабарлама есебі',interested:'Қызықты',declined:'Сәйкес емес',withdrawn:'Жауапты қайтару',settings:'Баптаулар және бас тарту',refresh:'Жаңарту',back:'Артқа',loading:'Жүктелуде…',saved:'Жауап сақталды',error:'Расталған нәтиже алынбады. Күйді жаңартыңыз.',unknown:'Нәтиже белгісіз. Сол сұрауды қайталаңыз.',retry:'Сұрауды тексеру',delivery:'Жеткізу',responses:'Жауаптар',accepted:'Бот хабарламаны қабылдады. Оқылғаны расталмайды.',queued:'Кезекте',preparing:'Жіберілуде',failed:'Жіберу қатесі',skipped:'Өткізілді'},
+    be:{title:'Заданне ад вашай сеткі',report:'Справаздача рассылкі',interested:'Цікава',declined:'Не падыходзіць',withdrawn:'Адклікаць адказ',settings:'Налады і адпіска',refresh:'Абнавіць',back:'Назад',loading:'Загружаем…',saved:'Адказ захаваны',error:'Пацверджаны вынік не атрыманы. Абнавіце стан.',unknown:'Вынік невядомы. Паўтарыце той самы запыт.',retry:'Праверыць запыт',delivery:'Дастаўка',responses:'Адказы',accepted:'Бот прыняў паведамленне. Чытанне не пацверджана.',queued:'У чарзе',preparing:'Адпраўляецца',failed:'Памылка адпраўкі',skipped:'Прапушчана'},
+    uz:{title:'Tarmog‘ingizdan topshiriq',report:'Xabar hisoboti',interested:'Qiziqaman',declined:'Mos emas',withdrawn:'Javobni qaytarish',settings:'Sozlamalar va obunani bekor qilish',refresh:'Yangilash',back:'Orqaga',loading:'Yuklanmoqda…',saved:'Javob saqlandi',error:'Tasdiqlangan natija olinmadi. Holatni yangilang.',unknown:'Natija noma’lum. Asl so‘rovni takrorlang.',retry:'So‘rovni tekshirish',delivery:'Yetkazish',responses:'Javoblar',accepted:'Bot xabarni qabul qildi. O‘qilganligi tasdiqlanmaydi.',queued:'Navbatda',preparing:'Yuborilmoqda',failed:'Yuborish xatosi',skipped:'O‘tkazildi'}
+  };
+  var screen=document.createElement('section');screen.id='screen-campaign-recipient';screen.className='screen umc-campaign-workbench';screen.dataset.umcSection='mint';
+  document.getElementById('screen-campaign-workbench').insertAdjacentElement('afterend',screen);
+  var state={bound:null,campaign:null,mode:'recipient',data:null,busy:false,pending:null,error:'',saved:false,back:'screen-role-choice'};
+  var uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  function words(){return labels[(window._me||{}).locale]||labels.ru;}
+  function node(tag,text,id){var el=document.createElement(tag);if(text!=null)el.textContent=text;if(id)el.id=id;return el;}
+  function button(text,id,action){var el=node('button',text,id);el.type='button';el.className='btn btn-secondary';el.disabled=state.busy;el.addEventListener('click',action);screen.appendChild(el);return el;}
+  function valid(bound){return bound===state.bound&&bound&&bound.isCurrent()&&screen.classList.contains('active');}
+  function render(){
+    var c=words();screen.replaceChildren();screen.setAttribute('aria-busy',String(state.busy));screen.appendChild(node('h1',state.mode==='report'?c.report:c.title));
+    var status=node('p',state.busy?c.loading:state.error||state.saved&&c.saved||'','campaign-recipient-status');status.setAttribute('role',state.error?'alert':'status');screen.appendChild(status);
+    if(state.data){
+      if(state.mode==='recipient'){
+        var task=node('article',null,'campaign-recipient-task');task.className='umc-campaign-card';task.append(node('h2',state.data.content.title),node('p',state.data.sender_label),node('p',state.data.content.text));screen.appendChild(task);
+        if(state.data.content.link){try{var url=new URL(state.data.content.link);if(url.protocol==='https:'&&!url.username&&!url.password){var link=node('a',url.href);link.href=url.href;link.target='_blank';link.rel='noopener noreferrer';task.appendChild(link);}}catch(_) { /* No unsafe link. */ }}
+        if(!state.pending)(state.data.allowed_choices||[]).forEach(function(choice){if(['interested','declined','withdrawn'].indexOf(choice)>=0)button(c[choice],'campaign-response-'+choice,function(){respond(choice);});});
+      }else{
+        ['delivery','responses'].forEach(function(kind){var panel=node('article');panel.className='umc-campaign-card';panel.appendChild(node('h2',c[kind]));Object.keys(state.data[kind]||{}).forEach(function(key){panel.appendChild(node('p',(c[key]||key)+': '+state.data[kind][key]));});screen.appendChild(panel);});screen.appendChild(node('p',c.accepted));
+      }
+    }
+    if(state.pending){screen.appendChild(node('p',c.unknown));button(c.retry,'campaign-response-retry',transmit);}
+    if(window.UMCCampaignSettings)button(c.settings,'campaign-recipient-settings',function(){window.UMCCampaignSettings.open();});
+    button(c.refresh,'campaign-recipient-refresh',load).disabled=state.busy||!!state.pending;
+    var back=button(c.back,'campaign-recipient-back',function(){if(state.busy)return;if(state.bound)state.bound.dispose();state.bound=null;var url=new URL(location.href);url.searchParams.delete('campaign');history.replaceState(null,'',url.href);bridge.showScreen(state.back);});back.dataset.umcBack='';
+    if(window.UMCShell)window.UMCShell.syncControls();
+  }
+  function load(){
+    if(state.busy||state.pending||!state.bound)return;var bound=state.bound;state.busy=true;state.error='';render();
+    bound.request(state.mode==='report'?'/campaigns/owned/report':'/campaigns/recipient/view',{campaign_id:state.campaign}).then(function(data){if(!valid(bound))return;if(data.campaign_id!==state.campaign)throw new Error();state.data=data;}).catch(function(){if(valid(bound))state.error=words().error;}).finally(function(){if(valid(bound)){state.busy=false;render();}});
+  }
+  function respond(choice){
+    if(state.busy||state.pending||!state.data||!state.bound||!state.bound.isCurrent())return;
+    try{var bytes=crypto.getRandomValues(new Uint8Array(16));state.pending={campaign_id:state.campaign,expected_version:state.data.version,choice:choice,operation_key:'campaign-response:'+Array.from(bytes).map(function(v){return v.toString(16).padStart(2,'0');}).join('')};}catch(_){state.error=words().error;render();return;}
+    transmit();
+  }
+  function transmit(){
+    if(state.busy||!state.pending||!state.bound)return;var bound=state.bound,pending=state.pending;state.busy=true;state.error='';render();
+    bound.request('/campaigns/recipient/respond',pending).then(function(data){if(!valid(bound))return;if(data.campaign_id!==state.campaign||!Number.isSafeInteger(data.version))throw new Error();state.pending=null;state.saved=true;state.data.version=data.version;state.data.choice=data.choice;state.data.allowed_choices=data.choice==='withdrawn'?['interested','declined']:['interested','declined','withdrawn'];}).catch(function(error){if(!valid(bound))return;if([400,403,404,409,422].indexOf(error.status)>=0){state.pending=null;state.data=null;}state.error=words().error;}).finally(function(){if(valid(bound)){state.busy=false;render();}});
+  }
+  function open(campaign,mode){
+    if(!uuid.test(campaign)||state.busy)return;var current=document.querySelector('.screen.active');if(current&&current!==screen)state.back=current.id;if(state.bound)state.bound.dispose();state.bound=bridge.createRequestContext();state.campaign=campaign;state.mode=mode;state.data=null;state.pending=null;state.error='';state.saved=false;bridge.showScreen(screen.id);load();
+  }
+  function ready(){var params=new URLSearchParams(location.search),values=params.getAll('campaign');if(values.length===1&&!params.has('assignment')&&!params.has('selection'))open(values[0],'recipient');}
+  window.UMCCampaignRuntime={openReport:function(id){open(id,'report');},reportLabel:function(){return words().report;}};
+  function checkContext(){if(state.bound&&!state.bound.isCurrent()){state.bound.dispose();state.bound=null;state.data=null;state.pending=null;state.busy=false;state.error=words().error;render();}}
+  window.addEventListener('focus',checkContext);document.addEventListener('visibilitychange',checkContext);
+  document.addEventListener('umc:app-ready',ready);if(window.__umcAppReady)ready();
 })();

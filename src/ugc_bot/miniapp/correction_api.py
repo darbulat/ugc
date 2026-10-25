@@ -11,6 +11,7 @@ from fastapi.routing import APIRoute
 from pydantic import AwareDatetime, BeforeValidator, Field
 
 from ugc_bot.application.correction_ports import (
+    ApplySelectionRefund,
     MatchSelectionRefund,
     RecordManualRefundObservation,
     RequestSelectionRefund,
@@ -129,6 +130,10 @@ class Match(Evidence):
     observation_id: UUID
     expected_version: int = Field(ge=1, le=MAX_MINOR, strict=True)
     expected_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class Apply(Match):
+    match_id: UUID
 
 
 def failure(error):
@@ -272,6 +277,9 @@ class CorrectionApi:
     async def match(self, request: Request, body: Match):
         return await self._execute(request, body, MatchSelectionRefund)
 
+    async def apply(self, request: Request, body: Apply):
+        return await self._execute(request, body, ApplySelectionRefund)
+
 
 def create_correction_router(resolve_principal: FinancialPrincipalResolver):
     router = APIRouter(
@@ -289,6 +297,7 @@ def create_correction_router(resolve_principal: FinancialPrincipalResolver):
         ("/admin/review", api.review),
         ("/admin/observation", api.observe),
         ("/admin/match", api.match),
+        ("/admin/apply", api.apply),
         ("/operations/status", api.operation),
     ):
         router.add_api_route(path, handler, methods=["POST"])

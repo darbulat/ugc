@@ -12,6 +12,10 @@ from ugc_bot.domain.order_intake import (
 
 
 class OrderIntakeRepository(Protocol):
+    async def filter_candidates(
+        self, order_id: UUID, creator_ids: list[UUID], *, session: object
+    ) -> list[UUID]: ...
+
     async def policy_versions(
         self, at: datetime, *, session: object
     ) -> tuple[str, ...]: ...
@@ -35,3 +39,16 @@ class OrderIntakeRepository(Protocol):
         *,
         session: object,
     ) -> None: ...
+
+    async def record_funnel(
+        self,
+        client_id: UUID,
+        funnel_id: UUID,
+        stage: str,
+        at: datetime,
+        *,
+        order_id: UUID | None = None,
+        session: object,
+    ) -> None: ...
+
+    async def funnel_report(self, *, session: object) -> dict: ...

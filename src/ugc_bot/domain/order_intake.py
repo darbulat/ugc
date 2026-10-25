@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Literal
@@ -10,6 +10,7 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from ugc_bot.domain.enums import OrderType
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.order_targeting import OrderTargeting
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -26,8 +27,18 @@ class OrderIntakeCommand:
     accompaniment_ordinals: frozenset[int] | None = None
     order_type: OrderType = OrderType.UGC_ONLY
     barter_description: str | None = None
+    targeting: OrderTargeting | None = None
+    funnel_id: UUID | None = None
 
     def __post_init__(self) -> None:
+        if self.funnel_id is not None and (
+            not isinstance(self.funnel_id, UUID) or not self.funnel_id.int
+        ):
+            raise ValueError("invalid_intake_funnel_identity")
+        if self.targeting is not None and not isinstance(
+            self.targeting, OrderTargeting
+        ):
+            raise ValueError("invalid_order_targeting")
         if not isinstance(self.client_id, UUID) or self.client_id.int == 0:
             raise ValueError("client_identity_required")
         for name, limit in (
@@ -96,7 +107,7 @@ class OrderIntakeCommand:
 
     @property
     def payload_hash(self) -> str:
-        payload = dict(
+        payload: dict[str, object] = dict(
             client_id=str(self.client_id),
             policy_version=self.policy_version,
             product_link=self.product_link,
@@ -109,6 +120,10 @@ class OrderIntakeCommand:
             service_mode=self.service_mode,
             accompaniment_ordinals=sorted(self.accompaniment_ordinals or ()),
         )
+        if self.funnel_id is not None:
+            payload["funnel_id"] = str(self.funnel_id)
+        if self.targeting is not None:
+            payload["targeting"] = asdict(self.targeting)
         return hashlib.sha256(
             json.dumps(
                 payload, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -136,6 +151,7 @@ class OrderIntakeResult:
     items: tuple[IntakeItem, ...]
     lead_id: UUID | None
     honorarium_payment: Literal["paid_direct"] = "paid_direct"
+    targeting: dict | None = None
 
     @property
     def total_minor(self) -> int:
@@ -156,6 +172,7 @@ class IntakeClient:
     currency: str
     telegram_id: str | None = None
     max_id: str | None = None
+    is_admin: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,3 +212,4 @@ class EligibleOrderPolicies:
     currency: str
     writes_paused: bool
     policies: tuple[EligibleOrderPolicy, ...]
+    funnel_tracking: bool | None = None

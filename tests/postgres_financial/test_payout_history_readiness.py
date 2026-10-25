@@ -254,7 +254,7 @@ async def test_true_legacy_only_payout_row_does_not_block_v1_readiness(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("target", ["reserved", "paid"])
 async def test_populated_foundation_upgrade_preserves_history_and_stops_money(
-    monkeypatch, target
+    monkeypatch, target, request
 ):
     """Actual old-schema history survives upgrade without fabricated parents."""
     repositories = create_in_memory_repositories()
@@ -263,7 +263,10 @@ async def test_populated_foundation_upgrade_preserves_history_and_stops_money(
         target_revision="campaign_foundation_v1",
     ) as engine:
         async with asynccontextmanager(capture_env.__wrapped__)(
-            engine, repositories.user_repo, repositories.advertiser_repo
+            engine,
+            repositories.user_repo,
+            repositories.advertiser_repo,
+            request,
         ) as capture:
             flow = await start_flow(capture, monkeypatch)
             try:

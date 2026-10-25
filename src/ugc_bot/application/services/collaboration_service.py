@@ -23,12 +23,56 @@ from ugc_bot.application.collaboration_ports import (
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
+    require_current_principal,
 )
 from ugc_bot.domain.collaboration import Collaboration, CollaborationState
 from ugc_bot.domain.financial import utc
 
 
 class CollaborationService:
+    async def list_disputes(
+        self, actor_id, *, principal=None, limit=25, cursor=None, session
+    ):
+        if (
+            type(limit) is not int
+            or not 1 <= limit <= 100
+            or (cursor is not None and not isinstance(cursor, UUID))
+        ):
+            raise ValueError("invalid_dispute_page")
+        actor = await self.repository.lock_admin_actor(
+            actor_id, session=session
+        )
+        require_current_principal(
+            principal,
+            actor_id,
+            actor.user_id if actor else None,
+            actor.telegram_id if actor else None,
+            actor.max_id if actor else None,
+        )
+        if actor is None or not actor.is_admin or actor.status != "active":
+            raise PermissionError("active_admin_required")
+        records = await self.repository.list_disputes(
+            limit + 1, cursor, session=session
+        )
+        items = tuple(
+            {
+                "assignment_id": str(r.collaboration.assignment_id),
+                "order_id": str(r.order_id),
+                "version": r.version,
+                "reason": r.collaboration.dispute_reason,
+                "evidence": r.collaboration.evidence,
+                "disputed_at": r.collaboration.disputed_at.isoformat(),
+            }
+            for r in records[:limit]
+        )
+        return {
+            "items": items,
+            "has_more": len(records) > limit,
+            "next_cursor": items[-1]["assignment_id"]
+            if len(records) > limit
+            else None,
+        }
+
     def __init__(self, repository: CollaborationRepository, clock: Clock):
         self.repository = repository
         self.clock = clock
@@ -98,6 +142,48 @@ class CollaborationService:
             principal.user_id,
             session=session,
             expected_scope=prepared,
+            admin_review=command.action
+            in ("resolve_success", "resolve_failure"),
+        )
+        return record, current, actions
+
+    async def get_for_admin(
+        self, actor_id, assignment_id, *, principal, session
+    ):
+        if (
+            not isinstance(principal, AuthenticatedMessengerPrincipal)
+            or principal.user_id != actor_id
+        ):
+            raise ValueError("financial_principal_changed")
+        prepared = await self.repository.prepare_principal_scope(
+            assignment_id, actor_id, principal, session=session
+        )
+        if prepared is None:
+            return None
+        scope = await self.repository.lock_scope(
+            assignment_id, session=session, expected_scope=prepared
+        )
+        actor = await self.repository.load_actor(actor_id, session=session)
+        self._authorize(
+            CollaborationCommand(
+                assignment_id=assignment_id,
+                action="admin_view",
+                actor_id=actor_id,
+                operation_key="dispute-review-view",
+                expected_version=0,
+            ),
+            scope,
+            actor,
+        )
+        record = await self.repository.get(assignment_id, session=session)
+        if record is None:
+            return None
+        current, actions = await self.actions_for_actor(
+            record,
+            actor_id,
+            session=session,
+            expected_scope=prepared,
+            admin_review=True,
         )
         return record, current, actions
 
@@ -108,6 +194,7 @@ class CollaborationService:
         *,
         session: object,
         expected_scope: CollaborationPrincipalScope | None = None,
+        admin_review: bool = False,
     ) -> tuple[bool, tuple[str, ...]]:
         """Current UI affordances assessed in the item's caller transaction.
 
@@ -121,7 +208,7 @@ class CollaborationService:
         actor = await self.repository.load_actor(actor_id, session=session)
         view = CollaborationCommand(
             assignment_id=work.assignment_id,
-            action="view",
+            action="admin_view" if admin_review else "view",
             actor_id=actor_id,
             operation_key="capabilities",
             expected_version=record.version,
@@ -143,6 +230,11 @@ class CollaborationService:
             return is_current, ()
         actions = []
         for action in self._candidate_actions(work, at):
+            if admin_review and action not in (
+                "resolve_success",
+                "resolve_failure",
+            ):
+                continue
             if action in ("agree", "dispute") and actor_id == work.claimant_id:
                 continue
             try:
@@ -172,6 +264,8 @@ class CollaborationService:
             if at < work.objection_deadline:
                 return (*actions, "agree", "dispute")
             return (*actions, "agree")
+        if work.state == CollaborationState.DISPUTED:
+            return ("resolve_success", "resolve_failure")
         return ()
 
     async def get_for_actor(
@@ -255,11 +349,9 @@ class CollaborationService:
             NAMESPACE_URL,
             f"ugc:collaboration:{scope.assignment_id}:{command.operation_key}",
         )
-        parameters = canonical(asdict(command))
-        if command.action == "dispute":
-            parameters["case_id"] = str(
-                uuid5(NAMESPACE_URL, f"ugc:collaboration-case:{event_id}")
-            )
+        parameters = await self._event_parameters(
+            command, current, event_id, session=session
+        )
         event = CollaborationEvent(
             event_id,
             scope.assignment_id,
@@ -279,6 +371,28 @@ class CollaborationService:
         )
         return result
 
+    async def _event_parameters(self, command, current, event_id, *, session):
+        parameters = canonical(asdict(command))
+        if command.action == "dispute":
+            parameters["case_id"] = str(
+                uuid5(NAMESPACE_URL, f"ugc:collaboration-case:{event_id}")
+            )
+        if command.action not in ("resolve_success", "resolve_failure"):
+            return parameters
+        original = await self.repository.get_event_for_version(
+            command.assignment_id, current.version, session=session
+        )
+        if (
+            original is None
+            or original.event_type != "financial.collaboration.disputed"
+            or original.result != current
+            or not original.parameters.get("case_id")
+        ):
+            raise ValueError("work_dispute_source_missing")
+        parameters["case_id"] = original.parameters["case_id"]
+        parameters["source_dispute_event_id"] = str(original.event_id)
+        return parameters
+
     @staticmethod
     def _validate_command(command):
         if command.action not in (
@@ -291,6 +405,9 @@ class CollaborationService:
             "extend_due",
             "notice",
             "advance",
+            "resolve_success",
+            "resolve_failure",
+            "review_management",
         ):
             raise ValueError("unsupported_collaboration_command")
         if not isinstance(command.operation_key, str) or not (
@@ -374,6 +491,22 @@ class CollaborationService:
         assigned = (is_client or is_manager, "assignment_actor_required")
         client = (is_client, "client_consent_required")
         rules = {
+            "admin_view": (
+                actor.is_admin and actor.status == "active",
+                "active_admin_required",
+            ),
+            "review_management": (
+                actor.is_admin and actor.status == "active",
+                "active_admin_required",
+            ),
+            "resolve_success": (
+                actor.is_admin and actor.status == "active",
+                "active_admin_required",
+            ),
+            "resolve_failure": (
+                actor.is_admin and actor.status == "active",
+                "active_admin_required",
+            ),
             "assign": client,
             "extend_due": client,
             "claim": party,
@@ -444,6 +577,21 @@ class CollaborationService:
     @staticmethod
     def _apply(command, work, at):
         actions = {
+            "review_management": lambda: (
+                CollaborationService._management_review(command, work)
+            ),
+            "resolve_success": lambda: work.resolve_dispute(
+                success=True,
+                reason=command.reason,
+                evidence=command.evidence,
+                at=at,
+            ),
+            "resolve_failure": lambda: work.resolve_dispute(
+                success=False,
+                reason=command.reason,
+                evidence=command.evidence,
+                at=at,
+            ),
             "start": lambda: work.start(actor_id=command.actor_id, at=at),
             "claim": lambda: work.claim_success(
                 actor_id=command.actor_id, evidence=command.evidence, at=at
@@ -464,6 +612,19 @@ class CollaborationService:
             ),
         }
         return actions[command.action]()
+
+    @staticmethod
+    def _management_review(command, work):
+        if (
+            not isinstance(command.reason, str)
+            or not command.reason.strip()
+            or not isinstance(command.evidence, str)
+            or not command.evidence.startswith(
+                "accompaniment-management-review:"
+            )
+        ):
+            raise ValueError("accompaniment_management_review_source_required")
+        return work
 
     @staticmethod
     def _extend(command, work, at):
@@ -511,6 +672,8 @@ class CollaborationService:
                 "start": "started",
                 "extend_due": "due_extended",
                 "request_confirmation": "confirmation_requested",
+                "resolve_failure": "rejected",
+                "review_management": "management_reviewed",
             }[command.action]
         return "financial.collaboration." + suffix
 

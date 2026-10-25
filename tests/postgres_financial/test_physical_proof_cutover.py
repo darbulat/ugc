@@ -217,7 +217,7 @@ async def test_missing_source_denies_start_without_implicit_origin(payout_env):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("conflicting", [False, True])
 async def test_real_old_parent_producer_survives_upgrade(
-    user_repo, advertiser_repo, monkeypatch, conflicting
+    user_repo, advertiser_repo, monkeypatch, conflicting, request
 ):
     old_factory = pre_cutover_factory()
     with isolated_financial_database(
@@ -229,7 +229,9 @@ async def test_real_old_parent_producer_survives_upgrade(
         with monkeypatch.context() as patch:
             patch.setattr(runtime, "build_payout_service", old_factory)
             async with (
-                capture(engine, user_repo, advertiser_repo) as captured,
+                capture(
+                    engine, user_repo, advertiser_repo, request
+                ) as captured,
                 payout(captured, patch) as env,
             ):
                 amount = 20000 if conflicting else 30000

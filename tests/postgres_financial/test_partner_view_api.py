@@ -218,6 +218,96 @@ async def test_partner_history_uses_actual_snapshot_and_excludes_private_reason(
 
 
 @pytest.mark.asyncio
+async def test_own_network_identity_counts_and_pending_only_name_owned_members(
+    collaboration_pg,
+):
+    from tests.postgres_financial.test_collaboration_persistence import (
+        command,
+        execute,
+        start,
+    )
+
+    container, config, body = await setup(
+        collaboration_pg, "client", "telegram"
+    )
+    factory, _, _, clock, data = collaboration_pg
+    current = await start(collaboration_pg)
+    async with factory.begin() as db:
+        await db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == data["creator"])
+            .values(
+                username="Own invited author", telegram="own_invited_author"
+            )
+        )
+        await FinancialLedgerService(
+            SqlAlchemyFinancialLedgerRepository()
+        ).issue(await basis(collaboration_pg), recorded_at=clock.at, session=db)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=application(container, config)),
+            base_url="http://testserver",
+        ) as client:
+            result = await client.post(PATH, json=body)
+            assert result.status_code == 200, result.text
+            member = result.json()["network"]["members"][0]
+            assert member["telegram_username"] == "own_invited_author"
+            assert member["work"] == {"active_orders": 1, "completed_works": 0}
+            pending = result.json()["financial"]["pending"]["entries"][0]
+            assert pending["reason"] == "awaiting_confirmation"
+            assert pending["waiting_for"] == [
+                {
+                    "role": "client",
+                    "display_name": None,
+                    "telegram_username": None,
+                },
+                {
+                    "role": "creator",
+                    "display_name": "Own invited author",
+                    "telegram_username": "own_invited_author",
+                },
+            ]
+            assert result.json()["capabilities"]["manage_overrides"] is False
+            await execute(
+                factory,
+                collaboration_pg[1],
+                command(
+                    data,
+                    "claim",
+                    "creator",
+                    current.version,
+                    evidence="https://example.test/private-proof",
+                ),
+            )
+            claimed = await client.post(PATH, json=body)
+            waiting = claimed.json()["financial"]["pending"]["entries"][0]
+            assert waiting["reason"] == "confirmation_notice_pending"
+            assert waiting["waiting_for"] == [
+                {
+                    "role": "client",
+                    "display_name": None,
+                    "telegram_username": None,
+                }
+            ]
+            assert "private-proof" not in claimed.text
+            from ugc_bot.infrastructure.db.models import ItemAssignmentModel
+
+            async with factory.begin() as db:
+                await db.execute(
+                    update(ItemAssignmentModel)
+                    .where(ItemAssignmentModel.creator_id == data["creator"])
+                    .values(valid_to=clock.at)
+                )
+            historical = await client.post(PATH, json=body)
+            assert historical.json()["network"]["members"][0]["work"] == {
+                "active_orders": 0,
+                "completed_works": 0,
+            }
+    finally:
+        await container.session_factory.kw["bind"].dispose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("observed", [None, 0])
 async def test_partner_public_metrics_keep_latest_known_canonical_provenance(
     collaboration_pg,

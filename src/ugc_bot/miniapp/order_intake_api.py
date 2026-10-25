@@ -7,7 +7,7 @@ from typing import Literal, Self, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, StrictInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -19,9 +19,34 @@ from ugc_bot.domain.order_intake import (
     IntakeItem,
     OrderIntakeCommand,
 )
+from ugc_bot.domain.order_targeting import OrderTargeting
 from ugc_bot.miniapp.financial_principal import FinancialPrincipalResolver
 from ugc_bot.miniapp.native_caller_errors import NoStoreIntakeRoute
 from ugc_bot.miniapp.principal import SignedMiniAppRequest
+
+
+class IntakeTargeting(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    min_followers: int | None = Field(default=None, ge=0, le=2147483647)
+    max_followers: int | None = Field(default=None, ge=0, le=2147483647)
+    min_age: int | None = Field(default=None, ge=0, le=120)
+    max_age: int | None = Field(default=None, ge=0, le=120)
+    gender: str | None = None
+    city: str | None = Field(default=None, min_length=1, max_length=200)
+    platforms: list[
+        Literal["instagram", "tiktok", "youtube", "telegram", "vk"]
+    ] = Field(default_factory=list, max_length=5)
+    content_usage: str | None = Field(
+        default=None, min_length=1, max_length=4000
+    )
+    brief_link: str | None = Field(default=None, min_length=1, max_length=2048)
+
+    @model_validator(mode="after")
+    def valid_targeting(self) -> Self:
+        values = self.model_dump()
+        values["platforms"] = tuple(values["platforms"])
+        OrderTargeting(**values)
+        return self
 
 
 class OrderIntakeRequest(SignedMiniAppRequest):
@@ -38,6 +63,8 @@ class OrderIntakeRequest(SignedMiniAppRequest):
     )
     order_type: OrderType = OrderType.UGC_ONLY
     barter_description: str | None = Field(default=None, max_length=4000)
+    targeting: IntakeTargeting | None = None
+    funnel_id: UUID | None = None
 
     @model_validator(mode="after")
     def unique_positions(self) -> Self:
@@ -45,6 +72,11 @@ class OrderIntakeRequest(SignedMiniAppRequest):
         if selected is not None and len(set(selected)) != len(selected):
             raise ValueError("duplicate_accompaniment_ordinals")
         return self
+
+
+class FunnelStage(SignedMiniAppRequest):
+    funnel_id: UUID
+    stage: Literal["opened", "brief", "filters", "package"]
 
 
 class OrderIntakeResponse(BaseModel):
@@ -58,6 +90,7 @@ class OrderIntakeResponse(BaseModel):
     items: tuple[IntakeItem, ...]
     lead_id: UUID | None
     honorarium_payment: Literal["paid_direct"]
+    targeting: dict | None = None
     total_minor: int
     selection_base_minor: int
 
@@ -85,7 +118,21 @@ def create_order_intake_router(
         route_class=NoStoreIntakeRoute,
     )
 
-    @router.post("/policies")
+    @router.post("/funnel/stage")
+    async def funnel_stage(request: Request, body: FunnelStage):
+        principal, service = await _context(request, body, resolve)
+        return await service.record_funnel(
+            principal.user_id, body.funnel_id, body.stage, principal=principal
+        )
+
+    @router.post("/funnel/report")
+    async def funnel_report(request: Request, body: SignedMiniAppRequest):
+        principal, service = await _context(request, body, resolve)
+        return await service.funnel_report(
+            principal.user_id, principal=principal
+        )
+
+    @router.post("/policies", response_model_exclude_none=True)
     async def policies(
         request: Request, body: SignedMiniAppRequest
     ) -> EligibleOrderPolicies:
@@ -102,6 +149,10 @@ def create_order_intake_router(
         principal, service = await _context(request, body, resolve)
         values = body.model_dump(exclude={"init_data", "platform"})
         selected = values.pop("accompaniment_ordinals")
+        targeting = values.pop("targeting")
+        if targeting is not None:
+            targeting["platforms"] = tuple(targeting["platforms"])
+            values["targeting"] = OrderTargeting(**targeting)
         result = await service.create(
             OrderIntakeCommand(
                 client_id=principal.user_id,
