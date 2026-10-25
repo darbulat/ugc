@@ -10,6 +10,7 @@ from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.refund_rules import RefundRules
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,7 @@ class FinancialQuote:
     idempotency_key: str
     items: tuple[QuotedItem, ...]
     client_id: UUID | None = None
+    refund_rules: RefundRules | None = None
 
     @property
     def total_minor(self) -> int:
@@ -100,6 +102,7 @@ class PaidItemService:
                 idempotency_key=idempotency_key,
             ),
             client_id=client_id,
+            refund_rules=approved.refund_rules,
         )
 
     async def quote_new_order(

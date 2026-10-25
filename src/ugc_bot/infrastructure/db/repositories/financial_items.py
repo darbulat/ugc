@@ -10,6 +10,7 @@ from ugc_bot.application.services.paid_item_service import (
     FinancialQuote,
     QuotedItem,
 )
+from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.models import (
     OrderItemModel,
     OrderModel,
@@ -25,7 +26,7 @@ def _session(session: object) -> AsyncSession:
 
 
 def _payload(quote: FinancialQuote) -> dict:
-    return {
+    payload: dict = {
         "client_id": str(quote.client_id) if quote.client_id else None,
         "currency": quote.currency,
         "policy_version": quote.policy_version,
@@ -37,6 +38,9 @@ def _payload(quote: FinancialQuote) -> dict:
             for item in quote.items
         ],
     }
+    if quote.refund_rules is not None:
+        payload["refund_rules"] = quote.refund_rules.to_document()
+    return payload
 
 
 class SqlAlchemyFinancialItemRepository:
@@ -190,4 +194,7 @@ class SqlAlchemyFinancialItemRepository:
                 for r in rows
             ),
             UUID(snapshot["client_id"]) if snapshot.get("client_id") else None,
+            RefundRules.from_document(snapshot["refund_rules"])
+            if "refund_rules" in snapshot
+            else None,
         )
