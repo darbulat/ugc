@@ -36,6 +36,48 @@ _IG_USERNAME_RE = re.compile(
 )
 
 
+async def _recover_committed_user_conflict(
+    user_repo: UserRepository,
+    transaction_manager: TransactionManager | None,
+    external_id: str,
+    messenger_type: MessengerType,
+    username: str,
+    role_chosen: bool,
+    telegram_username: str | None,
+    max_chat_id: str | None,
+    conflict: IntegrityError,
+) -> User:
+    """Reload and update a winner after an external-ID commit conflict."""
+
+    async def _recover(session: object | None) -> User:
+        concurrent = await user_repo.get_by_external(
+            external_id, messenger_type, session=session
+        )
+        if concurrent is None:
+            raise conflict
+        role_chosen_at = (
+            datetime.now(timezone.utc)
+            if role_chosen and concurrent.role_chosen_at is None
+            else concurrent.role_chosen_at
+        )
+        update_kwargs: dict[str, Any] = {
+            "username": username,
+            "role_chosen_at": role_chosen_at,
+            "telegram": (
+                telegram_username
+                if telegram_username is not None
+                else concurrent.telegram
+            ),
+        }
+        if max_chat_id is not None:
+            update_kwargs["max_chat_id"] = max_chat_id
+        updated = replace(concurrent, **update_kwargs)
+        await user_repo.save(updated, session=session)
+        return updated
+
+    return await with_optional_tx(transaction_manager, _recover)
+
+
 def _extract_instagram_username(url: str) -> str | None:
     """Extract the Instagram username from a URL."""
     m = _IG_USERNAME_RE.search(url)
@@ -166,7 +208,30 @@ class UserRoleService:
                 return retry_user
             return new_user
 
-        return await with_optional_tx(self.transaction_manager, _run)
+        try:
+            return await with_optional_tx(self.transaction_manager, _run)
+        except IntegrityError as error:
+            # SQLAlchemy may defer the INSERT until transaction commit, which
+            # occurs outside _run. Recover only the external-identity unique
+            # constraint; unrelated integrity failures must remain visible.
+            orig = getattr(error, "orig", None)
+            constraint = getattr(
+                getattr(orig, "diag", None), "constraint_name", None
+            )
+            if constraint not in {"uq_users_telegram_id", "uq_users_max_id"}:
+                raise
+
+            return await _recover_committed_user_conflict(
+                self.user_repo,
+                self.transaction_manager,
+                external_id,
+                messenger_type,
+                username,
+                role_chosen,
+                telegram_username,
+                max_chat_id,
+                error,
+            )
 
     async def _generate_unique_referral_code(
         self, session: object | None
