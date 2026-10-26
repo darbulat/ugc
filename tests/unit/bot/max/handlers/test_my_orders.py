@@ -60,8 +60,8 @@ def test_strip_pay_buttons_no_pay_unchanged():
     assert result.rows[0][0].text == "OK"
 
 
-def test_strip_pay_buttons_all_pay_returns_empty():
-    """All-pay keyboard should return empty rows."""
+def test_strip_pay_buttons_all_pay_returns_none():
+    """An all-pay keyboard should be omitted entirely on Max."""
     kb = Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
@@ -74,7 +74,7 @@ def test_strip_pay_buttons_all_pay_returns_empty():
         ],
     )
     result = _strip_pay_buttons(kb)
-    assert len(result.rows) == 0
+    assert result is None
 
 
 def test_strip_pay_buttons_preserves_non_pay_in_mixed_row():

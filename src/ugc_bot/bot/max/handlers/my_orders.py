@@ -42,8 +42,8 @@ _MY_ORDERS_CALLBACK_PREFIX = "my_orders:"
 _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
 
 
-def _strip_pay_buttons(keyboard: Keyboard) -> Keyboard:
-    """Return a copy of the keyboard with pay buttons removed."""
+def _strip_pay_buttons(keyboard: Keyboard) -> Keyboard | None:
+    """Return a copy without pay buttons, or None when no buttons remain."""
     filtered_rows = [
         [
             btn
@@ -57,7 +57,11 @@ def _strip_pay_buttons(keyboard: Keyboard) -> Keyboard:
     ]
     # Drop empty rows produced by filtering
     filtered_rows = [row for row in filtered_rows if row]
-    return Keyboard(kind=KeyboardKind.INLINE, rows=filtered_rows)
+    return (
+        Keyboard(kind=KeyboardKind.INLINE, rows=filtered_rows)
+        if filtered_rows
+        else None
+    )
 
 
 async def _send_advertiser_orders(
