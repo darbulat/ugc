@@ -224,6 +224,11 @@ class UserRoleService:
             # occurs outside _run. Recover only the external-identity unique
             # constraint; unrelated integrity failures must remain visible.
             constraint = _integrity_constraint_name(error)
+            if constraint == "uq_users_referral_code":
+                # A referral-code collision can also be deferred until commit.
+                # Re-run once in a fresh transaction; the generator will now
+                # observe the committed code and choose another candidate.
+                return await with_optional_tx(self.transaction_manager, _run)
             if constraint not in {"uq_users_telegram_id", "uq_users_max_id"}:
                 raise
 

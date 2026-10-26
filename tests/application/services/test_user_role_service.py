@@ -88,6 +88,44 @@ async def test_set_user_recovers_identity_conflict_raised_by_commit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_set_user_retries_referral_conflict_raised_by_commit() -> None:
+    """A commit-time referral collision gets one fresh bounded attempt."""
+
+    class CommitConflictManager:
+        attempts = 0
+
+        @asynccontextmanager
+        async def transaction(self):
+            self.attempts += 1
+            yield object()
+            if self.attempts == 1:
+                diagnostic = type(
+                    "Diagnostic",
+                    (),
+                    {"constraint_name": "uq_users_referral_code"},
+                )()
+                orig = type("DriverIntegrityError", (), {"diag": diagnostic})()
+                raise IntegrityError("commit", {}, orig)
+
+    repo = MagicMock()
+    repo.get_by_external = AsyncMock(return_value=None)
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    repo.save = AsyncMock()
+    manager = CommitConflictManager()
+    service = UserRoleService(user_repo=repo, transaction_manager=manager)
+
+    result = await service.set_user(
+        external_id="ref-commit-race",
+        messenger_type=MessengerType.TELEGRAM,
+        username="new-user",
+    )
+
+    assert result.telegram_id == "ref-commit-race"
+    assert manager.attempts == 2
+    assert repo.save.await_count == 2
+
+
+@pytest.mark.asyncio
 async def test_set_user_does_not_recover_unrelated_commit_integrity_error() -> (
     None
 ):
