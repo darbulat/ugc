@@ -61,8 +61,11 @@ async def test_set_user_recovers_identity_conflict_raised_by_commit() -> None:
             self.attempts += 1
             yield object()
             if self.attempts == 1:
-                orig = MagicMock()
-                orig.diag.constraint_name = "uq_users_telegram_id"
+                orig = type(
+                    "DriverIntegrityError",
+                    (),
+                    {"constraint_name": "uq_users_telegram_id"},
+                )()
                 raise IntegrityError("commit", {}, orig)
 
     repo = MagicMock()

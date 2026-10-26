@@ -36,6 +36,15 @@ _IG_USERNAME_RE = re.compile(
 )
 
 
+def _integrity_constraint_name(error: IntegrityError) -> str | None:
+    """Read the constraint name exposed by supported PostgreSQL drivers."""
+    orig = getattr(error, "orig", None)
+    diagnostic = getattr(orig, "diag", None)
+    return getattr(diagnostic, "constraint_name", None) or getattr(
+        orig, "constraint_name", None
+    )
+
+
 async def _recover_committed_user_conflict(
     user_repo: UserRepository,
     transaction_manager: TransactionManager | None,
@@ -214,10 +223,7 @@ class UserRoleService:
             # SQLAlchemy may defer the INSERT until transaction commit, which
             # occurs outside _run. Recover only the external-identity unique
             # constraint; unrelated integrity failures must remain visible.
-            orig = getattr(error, "orig", None)
-            constraint = getattr(
-                getattr(orig, "diag", None), "constraint_name", None
-            )
+            constraint = _integrity_constraint_name(error)
             if constraint not in {"uq_users_telegram_id", "uq_users_max_id"}:
                 raise
 
