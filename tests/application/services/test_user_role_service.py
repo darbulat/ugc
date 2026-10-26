@@ -40,6 +40,120 @@ class _FakeTransactionManager:
 
 
 @pytest.mark.asyncio
+async def test_set_user_recovers_identity_conflict_raised_by_commit() -> None:
+    """A unique violation raised while leaving the transaction is recovered."""
+    winner = User(
+        user_id=UUID("00000000-0000-0000-0000-000000000088"),
+        telegram_id="commit-race",
+        messenger_type=MessengerType.TELEGRAM,
+        username="winner",
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+        referral_code="winner1",
+    )
+
+    class CommitConflictManager:
+        attempts = 0
+
+        @asynccontextmanager
+        async def transaction(self):
+            self.attempts += 1
+            yield object()
+            if self.attempts == 1:
+                orig = type(
+                    "DriverIntegrityError",
+                    (),
+                    {"constraint_name": "uq_users_telegram_id"},
+                )()
+                raise IntegrityError("commit", {}, orig)
+
+    repo = MagicMock()
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    repo.get_by_external = AsyncMock(side_effect=[None, winner])
+    repo.save = AsyncMock()
+    manager = CommitConflictManager()
+    service = UserRoleService(user_repo=repo, transaction_manager=manager)
+
+    result = await service.set_user(
+        external_id="commit-race",
+        messenger_type=MessengerType.TELEGRAM,
+        username="updated",
+    )
+
+    assert result.user_id == winner.user_id
+    assert result.username == "updated"
+    assert manager.attempts == 2
+    assert repo.save.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_set_user_retries_referral_conflict_raised_by_commit() -> None:
+    """A commit-time referral collision gets one fresh bounded attempt."""
+
+    class CommitConflictManager:
+        attempts = 0
+
+        @asynccontextmanager
+        async def transaction(self):
+            self.attempts += 1
+            yield object()
+            if self.attempts == 1:
+                diagnostic = type(
+                    "Diagnostic",
+                    (),
+                    {"constraint_name": "uq_users_referral_code"},
+                )()
+                orig = type("DriverIntegrityError", (), {"diag": diagnostic})()
+                raise IntegrityError("commit", {}, orig)
+
+    repo = MagicMock()
+    repo.get_by_external = AsyncMock(return_value=None)
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    repo.save = AsyncMock()
+    manager = CommitConflictManager()
+    service = UserRoleService(user_repo=repo, transaction_manager=manager)
+
+    result = await service.set_user(
+        external_id="ref-commit-race",
+        messenger_type=MessengerType.TELEGRAM,
+        username="new-user",
+    )
+
+    assert result.telegram_id == "ref-commit-race"
+    assert manager.attempts == 2
+    assert repo.save.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_set_user_does_not_recover_unrelated_commit_integrity_error() -> (
+    None
+):
+    orig = MagicMock()
+    orig.diag.constraint_name = "uq_some_other_constraint"
+
+    class CommitConflictManager:
+        @asynccontextmanager
+        async def transaction(self):
+            yield object()
+            raise IntegrityError("commit", {}, orig)
+
+    repo = MagicMock()
+    repo.get_by_external = AsyncMock(return_value=None)
+    repo.get_by_referral_code = AsyncMock(return_value=None)
+    repo.save = AsyncMock()
+    service = UserRoleService(
+        user_repo=repo, transaction_manager=CommitConflictManager()
+    )
+    with pytest.raises(IntegrityError):
+        await service.set_user(
+            external_id="unrelated",
+            messenger_type=MessengerType.TELEGRAM,
+            username="user",
+        )
+
+
+@pytest.mark.asyncio
 async def test_rollback_async_session_noop() -> None:
     """No session or non-async rollback should not raise."""
     await _rollback_async_session(None)
