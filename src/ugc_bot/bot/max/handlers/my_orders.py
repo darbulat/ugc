@@ -42,8 +42,8 @@ _MY_ORDERS_CALLBACK_PREFIX = "my_orders:"
 _MY_ORDERS_BLOGGER_CALLBACK_PREFIX = "my_orders_blogger:"
 
 
-def _strip_pay_buttons(keyboard: Keyboard) -> Keyboard:
-    """Return a copy of the keyboard with pay buttons removed."""
+def _strip_pay_buttons(keyboard: Keyboard) -> Keyboard | None:
+    """Return a copy without pay buttons, or None when no buttons remain."""
     filtered_rows = [
         [
             btn
@@ -57,7 +57,11 @@ def _strip_pay_buttons(keyboard: Keyboard) -> Keyboard:
     ]
     # Drop empty rows produced by filtering
     filtered_rows = [row for row in filtered_rows if row]
-    return Keyboard(kind=KeyboardKind.INLINE, rows=filtered_rows)
+    return (
+        Keyboard(kind=KeyboardKind.INLINE, rows=filtered_rows)
+        if filtered_rows
+        else None
+    )
 
 
 async def _send_advertiser_orders(
@@ -87,9 +91,9 @@ async def _send_advertiser_orders(
             default_currency_symbol=currency_symbol,
             texts=order_texts,
         )
-        keyboard = _strip_pay_buttons(keyboard)
+        keyboard_without_pay = _strip_pay_buttons(keyboard)
         await messenger_client.send_text(
-            chat_id=incoming.chat_id, text=text, keyboard=keyboard
+            chat_id=incoming.chat_id, text=text, keyboard=keyboard_without_pay
         )
     else:
         msg_no_orders = await bot_texts_service.get("msg_no_orders", locale)
@@ -373,6 +377,7 @@ async def paginate_orders(
     )
 
     data = incoming.data or ""
+    keyboard_to_edit: Keyboard | None = None
     if data.startswith(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX):
         raw = data.split(_MY_ORDERS_BLOGGER_CALLBACK_PREFIX, 1)[-1]
         blogger = await profile_service.get_blogger_profile(user.user_id)
@@ -408,6 +413,7 @@ async def paginate_orders(
             default_currency_symbol=config.market.currency_symbol,
             texts=order_texts,
         )
+        keyboard_to_edit = keyboard
     else:
         raw = data.split(_MY_ORDERS_CALLBACK_PREFIX, 1)[-1]
         advertiser = await profile_service.get_advertiser_profile(user.user_id)
@@ -437,13 +443,13 @@ async def paginate_orders(
             default_currency_symbol=config.market.currency_symbol,
             texts=order_texts,
         )
-        keyboard = _strip_pay_buttons(keyboard)
+        keyboard_to_edit = _strip_pay_buttons(keyboard)
 
     if incoming.message_id:
         await messenger_client.edit_text(
             chat_id=incoming.chat_id,
             message_id=incoming.message_id,
             text=text,
-            keyboard=keyboard,
+            keyboard=keyboard_to_edit,
         )
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
