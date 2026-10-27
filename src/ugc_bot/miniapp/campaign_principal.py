@@ -1,4 +1,4 @@
-"""Dormant existing-only identity adapter, with no router or account writes."""
+"""Existing-only campaign identity and caller-transaction native validation."""
 
 from collections.abc import Awaitable
 from types import MappingProxyType
@@ -8,6 +8,7 @@ from fastapi import HTTPException, Request
 
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
+    require_current_principal,
 )
 from ugc_bot.miniapp.financial_principal import resolve_financial_principal
 from ugc_bot.miniapp.principal import Platform
@@ -29,6 +30,36 @@ class CampaignPrincipalResolver(Protocol):
     def __call__(
         self, request: Request, init_data: str, *, platform: Platform
     ) -> Awaitable[AuthenticatedMessengerPrincipal]: ...
+
+
+def campaign_actor(identity, *, platform):
+    """Retain UUID resolver compatibility for separately injected adapters."""
+    if isinstance(identity, AuthenticatedMessengerPrincipal):
+        if identity.platform != platform:
+            raise HTTPException(401, "campaign_session_invalid")
+        return identity.user_id
+    return identity
+
+
+async def verify_campaign_principal(identity, foundation, *, session):
+    if not isinstance(identity, AuthenticatedMessengerPrincipal):
+        return
+    # The operation already opened its snapshot or acquired its User barrier.
+    # A denial exits the caller transaction before staged writes commit.
+    context = await foundation.context(
+        identity.user_id, lock=False, session=session
+    )
+    actor = context["actor"]
+    try:
+        require_current_principal(
+            identity,
+            identity.user_id,
+            actor["user_id"],
+            actor.get("telegram_id"),
+            actor.get("max_id"),
+        )
+    except ValueError:
+        raise PermissionError("campaign_principal_changed") from None
 
 
 async def resolve_campaign_principal(

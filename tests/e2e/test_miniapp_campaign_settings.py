@@ -41,6 +41,8 @@ class CampaignNetwork(MiniAppNetwork):
             locale if locale in ("ru", "en", "kk") else "ru", registered=True
         )
         self.admin = admin
+        self.registered = False
+        self.blogger_registered = True
         self.ui_locale = locale
         self.failure_code = None
         self.fail_action = None
@@ -83,7 +85,7 @@ class CampaignNetwork(MiniAppNetwork):
             "can_consent": True,
             "consent_unavailable_reason": None,
             "can_unsubscribe": False,
-            "delivery_state": "not_implemented",
+            "delivery_state": "paused",
         }
 
     def route(self, route):  # noqa: PLR0912
@@ -93,8 +95,8 @@ class CampaignNetwork(MiniAppNetwork):
                 json={
                     "locale": self.ui_locale,
                     "country": "ru",
-                    "has_advertiser_profile": True,
-                    "has_blogger_profile": False,
+                    "has_advertiser_profile": self.registered,
+                    "has_blogger_profile": self.blogger_registered,
                     "is_manager": False,
                 }
             )
@@ -122,7 +124,22 @@ class CampaignNetwork(MiniAppNetwork):
             )
             return
         if suffix == "/settings":
-            data = self.settings
+            data = {
+                **self.settings,
+                "navigation": self.settings.get(
+                    "navigation",
+                    {
+                        "workbench": self.admin
+                        or self.settings["publisher"]["active"]
+                        or self.settings["publisher"]["version"] > 0,
+                        "settings": self.blogger_registered
+                        or self.admin
+                        or self.settings["publisher"]["active"],
+                        "consent": self.blogger_registered,
+                        "administration": self.admin,
+                    },
+                ),
+            }
         elif suffix == "/admin/accounts":
             data = {
                 "accounts": [self.account],
@@ -381,7 +398,7 @@ def test_native_current_consent_action_and_dark_keyboard_form(page, platform):
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("role", ["creator", "manager", "client"])
-def test_settings_entry_all_existing_roles_and_no_policy(page, platform, role):
+def test_settings_entry_only_relevant_roles_and_no_policy(page, platform, role):
     network = CampaignNetwork()
     network.registered = role == "client"
     network.blogger_registered = role == "creator"
@@ -390,6 +407,12 @@ def test_settings_entry_all_existing_roles_and_no_policy(page, platform, role):
     network.settings["can_consent"] = False
     network.settings["consent_unavailable_reason"] = "policy_missing"
     errors = open_app(page, network, platform)
+    if role != "creator":
+        expect(
+            page.locator("[data-campaign-settings-open]:visible")
+        ).to_have_count(0)
+        assert not errors
+        return
     page.locator(".screen.active [data-campaign-settings-open]").click()
     expect(page.locator("#campaign-terms")).to_contain_text("не опубликованы")
     expect(page.locator("#btn-campaign-consent")).to_be_hidden()

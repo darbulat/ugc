@@ -129,6 +129,7 @@ class SqlAlchemyCampaignRepository:
         epoch = await self._binding_epoch(db, binding)
         return {
             "actor": users[actor_id],
+            "has_creator_profile": profile is not None,
             "target": users.get(target_id),
             "inviter": inviter,
             "canonical_identity": (profile["instagram_user_id"] or "").strip()
