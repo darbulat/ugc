@@ -62,13 +62,14 @@ class Transport:
         return DeliveryReceipt("telegram", "synthetic:" + str(attempt.job_id))
 
 
-async def approved(env):
+async def approved(env, *, limits=None, recipients=("creator",)):
     from ugc_bot.container.campaign_runtime_factory import (
         build_campaign_runtime,
     )
 
     payload = policy_payload()
     payload["limits"] = dict.fromkeys(payload["limits"], 10000)
+    payload["limits"].update(limits or {})
     published = await execute(env, command(env, "publish", **payload))
     await execute(
         env,
@@ -79,18 +80,19 @@ async def approved(env):
             reason="Synthetic approval",
         ),
     )
-    settings = await view(env)
-    await execute(
-        env,
-        command(
+    for role in recipients:
+        settings = await view(env, role=role)
+        await execute(
             env,
-            "consent",
-            role="creator",
-            policy_version=published["version"],
-            terms_hash=settings["policy"]["terms_hash"],
-            consent_context=settings["consent_context"],
-        ),
-    )
+            command(
+                env,
+                "consent",
+                role=role,
+                policy_version=published["version"],
+                terms_hash=settings["policy"]["terms_hash"],
+                consent_context=settings["consent_context"],
+            ),
+        )
     container, transport = env["container"], Transport()
     services = build_campaign_runtime(
         container._config,

@@ -2,12 +2,13 @@
 
 from dataclasses import dataclass
 from datetime import timedelta
-from uuid import uuid5
+from uuid import uuid4, uuid5
 
 from sqlalchemy import exists, func, insert, select, text
 
 from ugc_bot.application.campaign_runtime_ports import CampaignAttempt
 from ugc_bot.application.financial_ports import Clock
+from ugc_bot.application.services.campaign_capacity_service import _settlement
 from ugc_bot.application.services.campaign_eligibility import revalidate_sources
 from ugc_bot.domain.campaign_capacity import (
     CampaignCapacityDelta,
@@ -27,6 +28,7 @@ from ugc_bot.infrastructure.db.campaign_runtime_models import (
     OBSERVATIONS,
     OUTCOMES,
     RESPONSES,
+    STATES,
 )
 from ugc_bot.infrastructure.db.models import UserModel
 from ugc_bot.infrastructure.db.repositories.campaign_moderation import (
@@ -58,7 +60,13 @@ class SqlAlchemyCampaignDeliveryRepository:
                         select(OUTCOMES.c.job_id).where(
                             OUTCOMES.c.job_id == JOBS.c.job_id
                         )
-                    )
+                    ),
+                    ~exists(
+                        select(ATTEMPTS.c.job_id).where(
+                            ATTEMPTS.c.job_id == JOBS.c.job_id,
+                            ATTEMPTS.c.deadline > at,
+                        )
+                    ),
                 )
                 .order_by(JOBS.c.recorded_at, JOBS.c.job_id)
                 .limit(limit)
@@ -175,6 +183,50 @@ class SqlAlchemyCampaignDeliveryRepository:
         )
         return CampaignCapacityDelta(releases=releases)
 
+    async def _settle_due(self, policy, context, at, *, session):
+        limit = policy.limits["claim_batch_size"]
+        batch = await self.moderation.due(
+            at=at, limit=limit, context=context, session=session
+        )
+        if batch.items:
+            facts = await self.moderation.capacity_facts(
+                None, (), at=at, context=context, session=session
+            )
+            settlement = _settlement(batch, facts, at, limit)
+            for state in settlement.states:
+                await _session(session).execute(
+                    insert(STATES).values(
+                        campaign_id=state.campaign_id,
+                        version=state.version.campaign_version,
+                        owner_id=state.owner_id,
+                        state=state.state,
+                        document=encode(state),
+                        recorded_at=at,
+                    )
+                )
+            await self.moderation.append_capacity(
+                settlement.capacity, uuid4(), at, session=session
+            )
+        return batch.has_more
+
+    async def _recover_attempt(self, job, context, at, *, session):
+        previous = await mapping(
+            _session(session),
+            select(ATTEMPTS).where(ATTEMPTS.c.job_id == job.job_id),
+        )
+        if previous is None:
+            return False
+        if previous["deadline"] <= at:
+            await self._outcome(
+                job.job_id,
+                "unknown",
+                at,
+                reason="campaign_attempt_interrupted",
+                session=session,
+            )
+            await self._close(job.campaign_id, context, at, session=session)
+        return True
+
     async def prepare(self, job_id, at, *, access, session):
         db = _session(session)
         row, job, record, context = await self._source(job_id, session=session)
@@ -183,19 +235,14 @@ class SqlAlchemyCampaignDeliveryRepository:
             select(OUTCOMES.c.job_id).where(OUTCOMES.c.job_id == job_id)
         ):
             return None
-        previous = await mapping(
-            db, select(ATTEMPTS).where(ATTEMPTS.c.job_id == job_id)
+        if await self._recover_attempt(job, context, at, session=session):
+            return None
+        authority = await self.moderation.authority(
+            record.seal.revision.owner_id, context=context, session=session
         )
-        if previous:
-            if previous["deadline"] <= at:
-                await self._outcome(
-                    job_id,
-                    "unknown",
-                    at,
-                    reason="campaign_attempt_interrupted",
-                    session=session,
-                )
-                await self._close(job.campaign_id, context, at, session=session)
+        if authority.policy and await self._settle_due(
+            authority.policy, context, at, session=session
+        ):
             return None
         member = await self._eligible(row, job, record, context, at, session)
         delta = await self._release(
@@ -203,9 +250,6 @@ class SqlAlchemyCampaignDeliveryRepository:
         )
         facts = await self.moderation.capacity_facts(
             None, (), at=at, context=context, session=session
-        )
-        authority = await self.moderation.authority(
-            record.seal.revision.owner_id, context=context, session=session
         )
         if access is not None and member is not None:
             try:
@@ -226,6 +270,8 @@ class SqlAlchemyCampaignDeliveryRepository:
                 at=at,
                 intent="approve",
             )
+            if "settlement_required" in observation.reasons:
+                return None
             if observation.reasons:
                 member = None
         if member is None:
@@ -241,7 +287,22 @@ class SqlAlchemyCampaignDeliveryRepository:
             )
             await self._close(job.campaign_id, context, at, session=session)
             return None
-        limits = authority.policy.limits
+        return await self._start(
+            job,
+            record,
+            member,
+            facts,
+            delta,
+            authority.policy.limits,
+            at,
+            session=session,
+        )
+
+    async def _start(
+        self, job, record, member, facts, delta, limits, at, *, session
+    ):
+        db = _session(session)
+        job_id = job.job_id
         inflight = await db.scalar(
             select(func.count())
             .select_from(ATTEMPTS)
@@ -347,6 +408,7 @@ class SqlAlchemyCampaignDeliveryRepository:
         db = _session(session)
         # Retaining a real transport result needs no renewed send permission.
         await db.execute(text(CAMPAIGN_LOCK))
+        at = utc(self.clock.now())
         row = await mapping(
             db, select(JOBS).where(JOBS.c.job_id == attempt.job_id)
         )
@@ -383,6 +445,12 @@ class SqlAlchemyCampaignDeliveryRepository:
             select(OUTCOMES.c.job_id).where(OUTCOMES.c.job_id == attempt.job_id)
         ):
             return
+        if attempt.deadline <= at:
+            status, reference, reason = (
+                "unknown",
+                None,
+                "campaign_attempt_interrupted",
+            )
         if reference and await db.scalar(
             select(OUTCOMES.c.job_id).where(
                 OUTCOMES.c.provider_reference == reference

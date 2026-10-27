@@ -37,7 +37,6 @@ def draft_view(row):
         "policy_version": row["policy_version"],
         "terms_hash": row["terms_hash"],
         "recorded_at": utc(row["recorded_at"]).isoformat(),
-        "submission_state": "not_implemented",
     }
 
 

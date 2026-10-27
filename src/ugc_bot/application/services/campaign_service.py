@@ -75,11 +75,25 @@ class CampaignFoundationService:
             ctx, policy, publisher, consent, proof
         )
         effective = effective_reason is None
+        admin = active_admin(ctx["actor"])
+        creator = ctx.get("has_creator_profile") is True
+        publisher_history = bool(own and own["version"] > 0)
+        active_consent = bool(consent and consent["active"])
         return {
             "actor_id": str(actor_id),
             "consent_context": consent_context(ctx),
             "as_of": utc(at).isoformat(),
-            "can_admin": active_admin(ctx["actor"]),
+            "can_admin": admin,
+            "has_creator_profile": creator,
+            "navigation": {
+                "workbench": publisher_history or admin,
+                "settings": creator
+                or active_consent
+                or publisher_history
+                or admin,
+                "consent": creator or active_consent,
+                "administration": admin,
+            },
             "policy": {
                 k: policy[k] for k in (*POLICY_FIELDS, "version", "recorded_at")
             }
@@ -102,7 +116,6 @@ class CampaignFoundationService:
             "consent_unavailable_reason": reason,
             "consent_effective_reason": effective_reason,
             "can_unsubscribe": bool(consent and consent["active"]),
-            "delivery_state": "not_implemented",
         }
 
     async def accounts(

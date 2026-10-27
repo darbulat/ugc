@@ -146,25 +146,30 @@ class SqlAlchemyCampaignModerationRepository:
             purpose=preflight.purpose,
             session=session,
         )
+        actor = await self._actor(preflight.actor_id, db)
+        self._require_principal(principal, preflight.actor_id, actor)
         if not set(current.user_ids).issubset(preflight.user_ids):
             raise CampaignConflict("campaign_scope_changed")
-        actor = await self._actor(preflight.actor_id, db)
-        require_current_principal(
-            principal,
-            preflight.actor_id,
-            actor.user_id,
-            actor.telegram_id,
-            actor.max_id,
-        )
         return CampaignWriteContext(preflight, session, db.get_transaction())
 
     async def begin_read(self, actor_id, *, principal, session):
         at = await self.foundation.begin_snapshot(session=session)
         actor = await self._actor(actor_id, _session(session))
-        require_current_principal(
-            principal, actor_id, actor.user_id, actor.telegram_id, actor.max_id
-        )
+        self._require_principal(principal, actor_id, actor)
         return CampaignReadContext(actor_id, utc(at))
+
+    @staticmethod
+    def _require_principal(principal, actor_id, actor):
+        try:
+            require_current_principal(
+                principal,
+                actor_id,
+                actor.user_id,
+                actor.telegram_id,
+                actor.max_id,
+            )
+        except ValueError:
+            raise PermissionError("campaign_principal_changed") from None
 
     async def _actor(self, actor_id, db):
         row = await mapping(

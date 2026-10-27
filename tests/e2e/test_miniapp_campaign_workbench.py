@@ -185,8 +185,9 @@ def bounded_actions(page):
 
 
 def enter(page, network, platform="telegram", native=False):
-    errors = open_app(page, network, platform, native=native)
-    page.locator(".screen.active [data-campaign-workbench-open]").click()
+    errors = open_app(
+        page, network, platform, native=native, query="?view=campaign-workbench"
+    )
     expect(page.locator("#campaign-workbench-list")).to_be_visible()
     return errors
 

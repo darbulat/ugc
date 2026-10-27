@@ -628,10 +628,8 @@ router.include_router(create_payout_router(resolve_financial_principal))
 router.include_router(create_correction_router(resolve_financial_principal))
 router.include_router(create_payout_view_router())
 router.include_router(create_messenger_linking_router())
-router.include_router(create_campaign_router(_ensure_recent_user_and_get_id))
-router.include_router(
-    create_campaign_review_router(_ensure_recent_user_and_get_id)
-)
+router.include_router(create_campaign_router(resolve_campaign_principal))
+router.include_router(create_campaign_review_router(resolve_campaign_principal))
 router.include_router(
     create_campaign_summary_router(resolve_financial_principal)
 )

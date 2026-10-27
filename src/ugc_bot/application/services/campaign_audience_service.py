@@ -73,6 +73,5 @@ class CampaignAudienceService:
             "within_campaign_limit": count
             <= policy["limits"]["recipients_per_campaign"],
             "metric_capability": "successful_observation_unavailable",
-            "submission_state": "not_implemented",
         }
         return {**result, "preview_fingerprint": digest(result)}

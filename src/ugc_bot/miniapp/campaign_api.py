@@ -7,6 +7,15 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field, StrictInt
 
 from ugc_bot.domain.campaigns import CampaignCommand, CampaignConflict
+from ugc_bot.miniapp.campaign_capabilities import (
+    delivery_state,
+    submission_available,
+)
+from ugc_bot.miniapp.campaign_principal import (
+    CampaignPrincipalResolver,
+    campaign_actor,
+    verify_campaign_principal,
+)
 from ugc_bot.miniapp.principal import PrincipalResolver, SignedMiniAppRequest
 
 
@@ -42,7 +51,7 @@ class AccountLookup(SignedMiniAppRequest):
     page: int = Field(default=0, ge=0, le=100000, strict=True)
 
 
-def _workbench_capabilities(dispatcher, view):
+def _workbench_capabilities(dispatcher, view, *, submission_ready=False):
     review = dispatcher.get("campaign_review_service")
     audience = dispatcher.get("campaign_audience_service")
     readable = all(
@@ -63,24 +72,28 @@ def _workbench_capabilities(dispatcher, view):
         "preview_audience": readable
         and writable
         and callable(getattr(audience, "preview", None)),
-        "submit_campaign": writable
+        "submit_campaign": submission_ready
+        and writable
         and callable(
             getattr(
                 dispatcher.get("campaign_submission_service"), "submit", None
             )
         ),
-        "cancel_campaign": callable(
+        "cancel_campaign": submission_ready
+        and callable(
             getattr(
                 dispatcher.get("campaign_moderation_service"), "cancel", None
             )
         ),
-        "read_admin_queue": view.get("can_admin") is True
+        "read_admin_queue": submission_ready
+        and view.get("can_admin") is True
         and callable(
             getattr(
                 dispatcher.get("campaign_moderation_service"), "queue", None
             )
         ),
-        "review_campaign": view.get("can_admin") is True
+        "review_campaign": submission_ready
+        and view.get("can_admin") is True
         and callable(
             getattr(
                 dispatcher.get("campaign_moderation_service"), "decide", None
@@ -92,7 +105,8 @@ def _workbench_capabilities(dispatcher, view):
 async def _invoke(resolve, request, body, *, action=None, accounts=False):
     if request.query_params:
         raise HTTPException(422, "Unexpected query parameters")
-    actor = await resolve(request, body.init_data, platform=body.platform)
+    identity = await resolve(request, body.init_data, platform=body.platform)
+    actor = campaign_actor(identity, platform=body.platform)
     dispatcher = request.app.state.dispatcher
     service = dispatcher.get("campaign_service")
     transactions = dispatcher.get("transaction_manager")
@@ -101,32 +115,45 @@ async def _invoke(resolve, request, body, *, action=None, accounts=False):
     try:
         async with transactions.transaction() as session:
             if accounts:
-                return await service.accounts(
+                result = await service.accounts(
                     actor, body.search, body.page, session=session
                 )
-            if action is None:
+            elif action is None:
                 view = await service.view(actor, session=session)
-                return {
+                ready = await submission_available(dispatcher, session=session)
+                result = {
                     **view,
-                    "capabilities": _workbench_capabilities(dispatcher, view),
+                    "delivery_state": delivery_state(
+                        getattr(request.app.state, "config", None),
+                        dispatcher,
+                        submission_ready=ready,
+                    ),
+                    "capabilities": _workbench_capabilities(
+                        dispatcher, view, submission_ready=ready
+                    ),
                 }
-            payload: dict[str, Any] = body.model_dump(
-                exclude={
-                    "init_data",
-                    "platform",
-                    "operation_key",
-                    "expected_version",
-                },
-                mode="json",
+            else:
+                payload: dict[str, Any] = body.model_dump(
+                    exclude={
+                        "init_data",
+                        "platform",
+                        "operation_key",
+                        "expected_version",
+                    },
+                    mode="json",
+                )
+                command = CampaignCommand(
+                    actor,
+                    body.operation_key,
+                    action,
+                    body.expected_version,
+                    payload,
+                )
+                result = await service.execute(command, session=session)
+            await verify_campaign_principal(
+                identity, getattr(service, "repository", None), session=session
             )
-            command = CampaignCommand(
-                actor,
-                body.operation_key,
-                action,
-                body.expected_version,
-                payload,
-            )
-            return await service.execute(command, session=session)
+            return result
     except PermissionError as exc:
         raise HTTPException(403, str(exc)) from exc
     except LookupError as exc:
@@ -138,7 +165,9 @@ async def _invoke(resolve, request, body, *, action=None, accounts=False):
         raise HTTPException(status, str(exc)) from exc
 
 
-def create_campaign_router(resolve: PrincipalResolver) -> APIRouter:
+def create_campaign_router(
+    resolve: PrincipalResolver | CampaignPrincipalResolver,
+) -> APIRouter:
     router = APIRouter(prefix="/campaigns")
 
     @router.post("/settings")
