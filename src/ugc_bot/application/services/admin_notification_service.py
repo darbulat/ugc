@@ -200,12 +200,6 @@ def _build_order_admin_text(
     )
 
 
-def _mask_phone_number(phone: str) -> str:
-    if len(phone) <= 8 or "*" in phone:
-        return phone
-    return f"{phone[:4]}{'*' * (len(phone) - 8)}{phone[-4:]}"
-
-
 async def _resolve_order_currency_symbol(
     order: Order,
     country_repo: CountryRepository | None,
@@ -253,11 +247,7 @@ async def notify_admins_about_order_created(
     advertiser_name = (
         advertiser.username if advertiser else str(order.advertiser_id)
     )
-    phone = (
-        _mask_phone_number(advertiser_profile.phone)
-        if advertiser_profile
-        else "—"
-    )
+    phone = advertiser_profile.phone if advertiser_profile else "—"
     if advertiser and advertiser.telegram:
         telegram = f"@{html.escape(advertiser.telegram)}"
     elif (
