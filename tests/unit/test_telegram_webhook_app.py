@@ -822,7 +822,7 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     mock_urs = MagicMock()
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_urs.get_user_by_id = AsyncMock(return_value=user)
-    mock_urs.list_admins = AsyncMock(return_value=[])
+    mock_urs.list_admins = AsyncMock(return_value=[user])
     mock_ps = MagicMock()
     mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
     mock_order_svc = MagicMock()
@@ -856,6 +856,11 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     assert data.get("order_id") == str(order_id)
     assert data.get("status") == OrderStatus.NEW.value
     assert "payment_link" in data
+    assert mock_messenger.send_text.await_count == 1
+    assert (
+        f"<b>Телефон:</b> {advertiser.phone}"
+        in mock_messenger.send_text.await_args.kwargs["text"]
+    )
 
 
 def test_miniapp_api_create_order_support_chat_notified(

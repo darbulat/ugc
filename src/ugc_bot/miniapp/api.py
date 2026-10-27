@@ -1415,6 +1415,7 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             admin_base_url=config.admin.admin_base_url,
             currency_symbol=config.market.currency_symbol,
             country_repo=country_repo,
+            advertiser_profile=advertiser,
         )
         support_chat_id = config.referral.referral_support_chat_id
         if support_chat_id.strip():

@@ -755,11 +755,13 @@ async def test_order_notification_shows_advertiser_contacts() -> None:
         messenger_client,
         user_service,
         ContentModerationService(),
-        advertiser_profile=_make_advertiser_profile(advertiser.user_id),
+        advertiser_profile=AdvertiserProfile(
+            user_id=advertiser.user_id, phone="+79001234567", brand="TestBrand"
+        ),
     )
 
     text = messenger_client.sent_text[0]["text"]
-    assert "<b>Телефон:</b> +790****4567" in text
+    assert "<b>Телефон:</b> +79001234567" in text
     assert "<b>Telegram:</b> @brand_tg" in text
 
 
