@@ -254,28 +254,24 @@ def short_actions(page):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-def test_manager_opens_cases_from_own_dashboard_and_returns(page, platform):
+def test_manager_dashboard_has_no_refund_entry_point(page, platform):
     network = CorrectionsNetwork()
     network.registered = False
     network.manager = True
     errors = open_app(page, network, platform)
     page.locator("#btn-manager-role").click()
     expect(page.locator("#screen-manager-orders")).to_be_visible()
-    page.locator("#screen-manager-orders [data-corrections-open]").click()
-    expect(page.locator("#screen-corrections")).to_be_visible()
-    expect(page.locator("#correction-list")).to_contain_text(
-        "Обращений пока нет."
-    )
-    page.locator("#correction-back").click()
+    expect(
+        page.locator("#screen-manager-orders [data-corrections-open]")
+    ).to_have_count(0)
     expect(page.locator("#screen-manager-orders")).to_be_visible()
     assert not errors
 
 
 def enter(page, network, platform="telegram", *, native=False):
     errors = open_app(page, network, platform, native=native)
-    page.locator("#screen-advertiser-dashboard [data-corrections-open]").click()
+    page.evaluate("window.UMCCorrections.open()")
     expect(page.locator("#screen-corrections")).to_be_visible()
-    expect(page.locator("#correction-new")).to_have_count(1)
     expect(page.locator("#screen-corrections")).to_have_attribute(
         "aria-busy", "false"
     )
@@ -335,7 +331,7 @@ def test_unknown_result_reuses_same_key_without_private_persistence(page):
     assert "PRIVATE REQUEST REASON" not in storage
     assert "synthetic-test-auth" not in storage
     page.reload()
-    page.locator("#screen-advertiser-dashboard [data-corrections-open]").click()
+    page.evaluate("window.UMCCorrections.open()")
     expect(page.locator("#correction-receipt")).to_be_visible()
     assert (
         len(
@@ -953,7 +949,7 @@ def test_restored_unrecorded_operation_stays_blocked(page, platform):
     expect(page.locator("#correction-retry")).to_be_enabled()
     before = page.evaluate("JSON.stringify({...sessionStorage})")
     page.reload()
-    page.locator("#screen-advertiser-dashboard [data-corrections-open]").click()
+    page.evaluate("window.UMCCorrections.open()")
     expect(page.locator("#correction-check")).to_be_enabled()
     expect(page.locator("#correction-pending")).to_be_visible()
     expect(page.locator("#correction-new")).to_have_count(0)
