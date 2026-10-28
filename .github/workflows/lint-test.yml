@@ -77,7 +77,7 @@ jobs:
 
       - name: Verify isolated PostgreSQL migrations
         env:
-          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
+          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports['5432'] }}/ugc_test
         run: uv run python -m tests.helpers.financial_environment
 
   test-shards:
@@ -101,7 +101,6 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
       PYTEST_ADDOPTS: --require-financial-postgres
-      FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
       COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
     steps:
       - uses: actions/checkout@v4
@@ -129,6 +128,8 @@ jobs:
             pytest-durations-main-
 
       - name: Run test shard with coverage
+        env:
+          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports['5432'] }}/ugc_test
         run: >-
           uv run pytest -m "not e2e"
           --splits 4
