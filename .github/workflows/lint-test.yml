@@ -11,18 +11,42 @@ permissions:
   contents: read
   pull-requests: write
 
+env:
+  DATABASE_URL: "sqlite:///:memory:"
+  BOT_TOKEN: test-token
+  ADMIN_USERNAME: test_admin
+  ADMIN_PASSWORD: test_pass
+  ADMIN_SECRET: test_secret
+  KAFKA_ENABLED: "false"
+  FEEDBACK_ENABLED: "false"
+  USE_REDIS_STORAGE: "false"
+
 jobs:
-  lint-and-test:
+  lint:
+    name: Static checks
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: "sqlite:///:memory:"
-      BOT_TOKEN: test-token
-      ADMIN_USERNAME: test_admin
-      ADMIN_PASSWORD: test_pass
-      ADMIN_SECRET: test_secret
-      KAFKA_ENABLED: "false"
-      FEEDBACK_ENABLED: "false"
-      USE_REDIS_STORAGE: "false"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv and cache dependencies
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
+
+      - name: Run linters (format check, lint, typecheck)
+        run: make format-check lint typecheck
+
+  migrations:
+    name: Verify PostgreSQL migrations
+    runs-on: ubuntu-latest
     services:
       db_test:
         image: postgis/postgis:16-3.4
@@ -35,42 +59,174 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U ugc -d ugc_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
-    
-    strategy:
-      matrix:
-        python-version: ['3.13']
-    
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
 
-      - name: Install uv
-        run: pip install uv
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv and cache dependencies
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install dependencies
-        run: uv sync --all-extras
-
-      - name: Run linters (format check, lint, typecheck)
-        run: make format-check lint typecheck
+        run: uv sync --all-extras --locked
 
       - name: Verify isolated PostgreSQL migrations
         env:
           FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
         run: uv run python -m tests.helpers.financial_environment
 
-      - name: Run tests with coverage (PostgreSQL required)
+  test-shards:
+    name: Test shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    services:
+      db_test:
+        image: postgis/postgis:16-3.4
         env:
-          PYTEST_ADDOPTS: --require-financial-postgres
-          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
-        run: make coverage
-      
-      - name: Upload coverage reports
+          POSTGRES_DB: ugc_test
+          POSTGRES_USER: ugc
+          POSTGRES_PASSWORD: ugc
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U ugc -d ugc_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      PYTEST_ADDOPTS: --require-financial-postgres
+      FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports[5432] }}/ugc_test
+      COVERAGE_FILE: .coverage.shard-${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv and cache dependencies
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
+
+      - name: Restore pytest durations
+        uses: actions/cache/restore@v4
+        with:
+          path: .test_durations
+          key: pytest-durations-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            pytest-durations-${{ github.event.pull_request.head.ref || github.ref_name }}-
+            pytest-durations-main-
+
+      - name: Run test shard with coverage
+        run: >-
+          uv run pytest -m "not e2e"
+          --splits 4
+          --group ${{ matrix.shard }}
+          --durations=30
+          --durations-path .test_durations
+          --store-durations
+          --clean-durations
+          --cov=ugc_bot
+          --cov-config=pyproject.toml
+          --cov-fail-under=0
+          --cov-report=
+
+      - name: Upload coverage data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-shard-${{ matrix.shard }}
+          path: |
+            .coverage.shard-${{ matrix.shard }}
+            .test_durations
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 1
+
+  lint-and-test:
+    name: lint-and-test (3.13)
+    if: always()
+    needs: [lint, migrations, test-shards]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all checks and test shards to pass
+        if: always()
+        env:
+          LINT_RESULT: ${{ needs.lint.result }}
+          MIGRATION_RESULT: ${{ needs.migrations.result }}
+          TEST_RESULT: ${{ needs.test-shards.result }}
+        run: |
+          if [[ "$LINT_RESULT" != "success" || \
+                "$MIGRATION_RESULT" != "success" || \
+                "$TEST_RESULT" != "success" ]]; then
+            echo "Lint: $LINT_RESULT"
+            echo "Migrations: $MIGRATION_RESULT"
+            echo "Test shards: $TEST_RESULT"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv and cache dependencies
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
+
+      - name: Download coverage data
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-shard-*
+          path: shard-data
+
+      - name: Merge pytest durations
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          merged = {}
+          for path in Path("shard-data").glob("test-shard-*/*.test_durations"):
+              merged.update(json.loads(path.read_text()))
+          if not merged:
+              raise SystemExit("No pytest duration data was uploaded")
+          Path(".test_durations").write_text(
+              json.dumps(merged, sort_keys=True, indent=2) + "\n"
+          )
+          print(f"Merged durations for {len(merged)} tests")
+          PY
+
+      - name: Combine coverage and enforce threshold
+        run: |
+          uv run coverage combine --keep shard-data/test-shard-*
+          uv run coverage report --fail-under=98
+          uv run coverage xml -o coverage.xml
+
+      - name: Cache updated pytest durations
+        uses: actions/cache/save@v4
+        with:
+          path: .test_durations
+          key: pytest-durations-${{ github.event.pull_request.head.ref || github.ref_name }}-${{ github.run_id }}
+
+      - name: Upload coverage report
         uses: codecov/codecov-action@v4
         if: always()
         env:
