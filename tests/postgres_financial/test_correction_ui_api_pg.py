@@ -117,9 +117,10 @@ async def test_mounted_sql_refund_ui_retains_exact_evidence_without_application(
         assert preview.status_code == 200, preview.text
         assert preview.json()["total_minor"] == "250000"
         assert preview.json()["source_hash"] == command.expected_source_hash
-        assert preview.json()["can_request"] is True
+        assert preview.json()["can_request"] is False
         assert len(rt.rows("cases")) == before["cases"]
         assert len(rt.rows("commands")) == before["commands"]
+        state = await rt.execute(command)
         requested = await post(
             client,
             own,
@@ -128,8 +129,7 @@ async def test_mounted_sql_refund_ui_retains_exact_evidence_without_application(
             operation_key="ui-sql-request",
             reason="Five expired undelivered positions",
         )
-        assert requested.status_code == 200, requested.text
-        state = requested.json()
+        assert requested.status_code == 404
         approved = await post(
             client,
             admin,
@@ -327,7 +327,7 @@ async def test_early_owned_case_offers_real_positions_without_invented_subset(
             str(item.paid_item_id) for item in rt.facts["order"].items
         }
         assert len(value["available_items"]) == 30
-        assert value["allowed_actions"] == ["request"]
+        assert "request" not in value["allowed_actions"]
         private = await post(client, admin, early["case_id"] + "/detail")
         assert private.json()["available_items"] == []
         chosen = [
@@ -343,5 +343,5 @@ async def test_early_owned_case_offers_real_positions_without_invented_subset(
         )
         assert preview.status_code == 200, preview.text
         assert preview.json()["total_minor"] == "250000"
-        assert preview.json()["can_request"] is True
+        assert preview.json()["can_request"] is False
         assert not rt.rows("requests", case_id=UUID(early["case_id"]))

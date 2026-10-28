@@ -41,6 +41,7 @@ dev = [
   "greenlet>=3.3.0",
   "pytest-timeout>=2.4.0",
   "pytest-playwright>=0.4.0",
+  "pytest-split>=0.10.0,<1.0.0",
 ]
 telegram-e2e = [
   "telethon>=1.36.0",
