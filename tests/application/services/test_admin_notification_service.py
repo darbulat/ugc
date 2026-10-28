@@ -899,6 +899,83 @@ async def test_notify_admins_about_order_created_with_product_photo() -> None:
 
 
 @pytest.mark.asyncio
+async def test_created_photo_caption_truncates_long_description_safely() -> (
+    None
+):
+    import re
+    from html import unescape
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=uuid4(),
+            telegram_id="111",
+            messenger_type=MessengerType.TELEGRAM,
+            username="admin",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+            admin=True,
+        )
+    )
+    messenger = FakeMessengerClient()
+    order = _make_order(offer_text="😀<&" * 1000, product_photo_file_id="photo")
+    await notify_admins_about_order_created(
+        order,
+        messenger,
+        UserRoleService(user_repo=user_repo),
+        ContentModerationService(),
+        admin_base_url="https://example.com",
+    )
+    caption = messenger.sent_photos[0]["caption"]
+    visible = unescape(re.sub(r"<[^>]+>", "", caption))
+    assert len(visible.encode("utf-16-le")) // 2 <= 1024
+    assert "…" in caption
+    assert "<b>Ссылка на продукт:</b>" in caption
+    assert messenger.sent_photos[0]["keyboard"] is not None
+    assert order.offer_text == "😀<&" * 1000
+
+
+@pytest.mark.asyncio
+async def test_created_photo_with_oversized_other_fields_keeps_warning() -> (
+    None
+):
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=uuid4(),
+            telegram_id="111",
+            messenger_type=MessengerType.TELEGRAM,
+            username="admin",
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+            admin=True,
+        )
+    )
+    messenger = FakeMessengerClient()
+    order = _make_order(
+        offer_text="ordinary",
+        geography="x" * 2000,
+        product_photo_file_id="photo",
+    )
+    from unittest.mock import Mock
+
+    moderation = Mock()
+    moderation.order_contains_banned_content.return_value = True
+    await notify_admins_about_order_created(
+        order,
+        messenger,
+        UserRoleService(user_repo=user_repo),
+        moderation,
+    )
+    caption = messenger.sent_photos[0]["caption"]
+    assert len(caption.encode("utf-16-le")) // 2 <= 1024
+    assert str(order.order_id) in caption
+    assert "запрещённый контент" in caption
+
+
+@pytest.mark.asyncio
 async def test_notify_admins_about_order_created_with_banned_content() -> None:
     """When order has banned content, creation notification includes warning."""
     user_repo = InMemoryUserRepository()

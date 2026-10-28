@@ -2,6 +2,7 @@
 
 import html
 import logging
+from html.parser import HTMLParser
 from typing import Any
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
@@ -200,6 +201,54 @@ def _build_order_admin_text(
     )
 
 
+class _VisibleTextParser(HTMLParser):
+    """Count rendered UTF-16 units, conservatively accounting for emoji."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.units = 0
+
+    def handle_data(self, data: str) -> None:
+        self.units += len(data.encode("utf-16-le")) // 2
+
+
+def _order_photo_caption(text: str, order: Order, banned_warning: str) -> str:
+    """Shorten the offer to fit a Telegram photo caption where possible."""
+
+    def fits(value: str) -> bool:
+        parser = _VisibleTextParser()
+        parser.feed(value)
+        return parser.units <= 1024
+
+    if fits(text):
+        return text
+    offer = order.offer_text or ""
+    marker = "<b>Задача:</b> "
+    prefix, separator, remainder = text.partition(marker)
+    escaped_offer = html.escape(offer)
+    if separator and remainder.startswith(escaped_offer):
+        suffix = remainder[len(escaped_offer) :]
+        prefix += separator
+        if fits(prefix + "…" + suffix):
+            low, high = 0, len(offer)
+            while low < high:
+                mid = (low + high + 1) // 2
+                if fits(prefix + html.escape(offer[:mid]) + "…" + suffix):
+                    low = mid
+                else:
+                    high = mid - 1
+            return prefix + html.escape(offer[:low]) + "…" + suffix
+
+    # Other fields alone exceed the caption limit. Keep the photo and order ID
+    # deliverable; full details remain in the order, accessible via the button.
+    return (
+        f"📋 <b>Заказ:</b> <code>{html.escape(str(order.order_id))}</code>\n"
+        "Подробности слишком длинные для подписи к фото. "
+        "Откройте заказ в админке."
+        f"{banned_warning}"
+    )
+
+
 async def _resolve_order_currency_symbol(
     order: Order,
     country_repo: CountryRepository | None,
@@ -277,6 +326,8 @@ async def notify_admins_about_order_created(
         f"<b>Телефон:</b> {html.escape(phone)}\n<b>Telegram:</b> {telegram}\n\n"
     )
     text = "📋 <b>Новый заказ</b>\n\n" + contact_details + body
+    if order.product_photo_file_id:
+        text = _order_photo_caption(text, order, banned_warning)
 
     buttons: list[list[Button]] = []
     if admin_base_url and admin_base_url.rstrip("/"):
