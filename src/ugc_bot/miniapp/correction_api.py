@@ -293,7 +293,6 @@ def create_correction_router(resolve_principal: FinancialPrincipalResolver):
         ("/orders", api.orders),
         ("/preview", api.preview),
         ("/{case_id}/detail", api.detail),
-        ("/request", api.refund_request),
         ("/admin/review", api.review),
         ("/admin/observation", api.observe),
         ("/admin/match", api.match),
