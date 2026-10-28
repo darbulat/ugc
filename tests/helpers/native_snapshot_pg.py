@@ -54,7 +54,11 @@ class ActorGate:
         if self.reached.done():
             return
         self.reached.set_result(snapshot)
-        await asyncio.wait_for(self.release.wait(), 5)
+        # The orchestrator owns this pause and releases it in finally. Its
+        # writer/reader waits and the overall test timeout bound failures.
+        # A separate short timer here can invalidate the reader while the
+        # orchestrator is still inspecting committed state on a slow CI host.
+        await self.release.wait()
 
 
 class SnapshotTrace:

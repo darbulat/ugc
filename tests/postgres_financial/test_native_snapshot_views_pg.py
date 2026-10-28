@@ -217,6 +217,28 @@ async def test_snapshot_first_keeps_native_and_private_facts_coherent(
 
 
 @pytest.mark.asyncio
+async def test_snapshot_survives_slow_state_observer(
+    partner_snapshot, native_snapshot_evidence, monkeypatch
+):
+    """A slow test observer must not abort the real read transaction."""
+    original = partner_snapshot.effects
+    first = True
+
+    async def slow_effects():
+        nonlocal first
+        if first:
+            first = False
+            # Exceed the old gate timeout without faking SQL or HTTP results.
+            await asyncio.sleep(5.2)
+        return await original()
+
+    monkeypatch.setattr(partner_snapshot, "effects", slow_effects)
+    await test_snapshot_first_keeps_native_and_private_facts_coherent(
+        partner_snapshot, "telegram", native_snapshot_evidence
+    )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize(
     "status", ["active", "pause", "bot_blocked", "blocked", "deleted"]
