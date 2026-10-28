@@ -254,6 +254,7 @@
   <div id="screen-order-detail" class="screen" data-umc-section="lavender">
     <h1 id="order-detail-title">Заказ</h1>
     <p class="hint" id="order-detail-status"></p>
+    <div id="order-detail-checkout"></div>
     <form id="form-order-detail">
       <label id="lbl-ord-detail-link" for="ord-detail-link">Ссылка на товар *</label>
       <input type="url" id="ord-detail-link" name="product_link" required>
@@ -2175,6 +2176,12 @@
           document.getElementById('ord-detail-error').textContent = '';
           document.getElementById('ord-detail-success').textContent = '';
           showScreen('screen-order-detail');
+          document.dispatchEvent(new CustomEvent('umc:checkout-order', {
+            detail: {
+              order_id: order.financial_version ? order.order_id : null,
+              target: order.financial_version ? 'order-detail-checkout' : null
+            }
+          }));
         }).catch(function(err) {
           var ul = document.getElementById('orders-list');
           if (ul) {

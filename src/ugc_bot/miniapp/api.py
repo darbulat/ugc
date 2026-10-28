@@ -284,6 +284,7 @@ class OrderDetailResponse(BaseModel):
     geography: str | None
     created_at: str
     payment_link: str = ""
+    financial_version: str | None = None
 
 
 class UpdateOrderRequest(BaseModel):
@@ -1703,7 +1704,7 @@ async def get_order(
     cfg = request.app.state.config
     payment_link = (
         _payment_link_for_order(str(order.order_id), cfg.bot.bot_username)
-        if order.status == OrderStatus.NEW
+        if order.status == OrderStatus.NEW and order.financial_version is None
         else ""
     )
     return OrderDetailResponse(
@@ -1720,6 +1721,7 @@ async def get_order(
         geography=order.geography,
         created_at=order.created_at.isoformat(),
         payment_link=payment_link,
+        financial_version=order.financial_version,
     )
 
 
