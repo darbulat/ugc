@@ -37,14 +37,18 @@ def principal_for(incoming, user_id):
     )
 
 
-async def record_activity(incoming, user_id, service, event, order_id=None):
+async def record_activity(
+    incoming, user_id, service, event, order_id=None, *, intent_id=None
+):
     if service is not None:
         try:
+            extra = {"intent_id": UUID(str(intent_id))} if intent_id else {}
             await service.record_activity(
                 user_id,
                 event,
                 order_id,
                 principal=principal_for(incoming, user_id),
+                **extra,
             )
         except Exception as exc:
             # Reminders are auxiliary; a transient failure must not block the
@@ -56,6 +60,14 @@ async def record_activity(incoming, user_id, service, event, order_id=None):
                     "error_type": type(exc).__name__,
                 },
             )
+
+
+async def begin_intake(incoming, user_id, state, followup):
+    intent_id = uuid4()
+    await state.update_data(intake_funnel_id=str(intent_id))
+    await record_activity(
+        incoming, user_id, followup, "brief_opened", intent_id=intent_id
+    )
 
 
 async def ask_platforms(incoming, state, messenger, intake):
@@ -157,6 +169,9 @@ def command_from_state(data, incoming):
         image_token=UUID(data["image_token"])
         if data.get("image_token")
         else None,
+        funnel_id=UUID(data["intake_funnel_id"])
+        if data.get("intake_funnel_id")
+        else None,
     )
 
 
@@ -194,7 +209,12 @@ async def complete_intake(incoming, state, messenger, intake, followup=None):
         return None
     await state.update_data(saved_order_id=str(result.order_id))
     await record_activity(
-        incoming, command.client_id, followup, "order_created", result.order_id
+        incoming,
+        command.client_id,
+        followup,
+        "order_created",
+        result.order_id,
+        intent_id=command.funnel_id,
     )
     await messenger.send_text(
         chat_id=incoming.chat_id,

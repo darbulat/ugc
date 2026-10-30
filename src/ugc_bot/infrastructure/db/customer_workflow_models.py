@@ -31,7 +31,7 @@ SERIES = sa.Table(
     "client_followup_series",
     metadata,
     sa.Column("series_id", UUID(as_uuid=True), primary_key=True),
-    sa.Column("user_id", UUID(as_uuid=True), nullable=False, unique=True),
+    sa.Column("user_id", UUID(as_uuid=True), nullable=False),
     sa.Column("generation", sa.Integer, nullable=False),
     sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     sa.Column("last_activity_at", sa.DateTime(timezone=True), nullable=False),
@@ -39,6 +39,28 @@ SERIES = sa.Table(
     sa.Column("channel", sa.String(20)),
     sa.Column("opted_out", sa.Boolean, nullable=False),
     sa.Column("stop_reason", sa.String(30)),
+    sa.Column("stopped_at", sa.DateTime(timezone=True)),
+    sa.Index("ix_client_followup_user_created", "user_id", "created_at"),
+    sa.Index(
+        "uq_client_followup_active_user",
+        "user_id",
+        unique=True,
+        postgresql_where=sa.text("stop_reason IS NULL"),
+        sqlite_where=sa.text("stop_reason IS NULL"),
+    ),
+)
+INTENTS = sa.Table(
+    "client_followup_intents",
+    metadata,
+    sa.Column("user_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("intent_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column(
+        "series_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("client_followup_series.series_id"),
+        nullable=False,
+    ),
+    sa.Column("recorded_at", sa.DateTime(timezone=True), nullable=False),
 )
 JOBS = sa.Table(
     "customer_workflow_deliveries",
@@ -75,4 +97,5 @@ JOBS = sa.Table(
     sa.CheckConstraint("stage is null or stage between 1 and 3"),
     sa.Index("ix_customer_delivery_due", "state", "due_at"),
 )
+# Revision 0121 creates only these tables; the intent table belongs to 0126.
 TABLES = (REQUESTS, SERIES, JOBS)

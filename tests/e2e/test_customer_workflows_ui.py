@@ -129,6 +129,52 @@ class CustomerNetwork(SelectionNetwork):
         super().route(route)
 
 
+class IntentTrackingNetwork(CustomerNetwork):
+    def route(self, route):
+        path = urlparse(route.request.url).path
+        if path.endswith("/financial/orders/policies"):
+            route.fulfill(
+                json={
+                    "writes_paused": False,
+                    "currency": "RUB",
+                    "policies": self.policies,
+                    "funnel_tracking": True,
+                }
+            )
+            return
+        if path.endswith("/financial/orders/funnel/stage"):
+            route.fulfill(json={"ok": True})
+            return
+        super().route(route)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_new_brief_and_created_order_share_followup_intent(page, platform):
+    network = IntentTrackingNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    with page.expect_request(
+        lambda request: (
+            request.url.endswith("/customer/followups/activity")
+            and request.post_data_json.get("event") == "brief_opened"
+            and request.post_data_json.get("intent_id")
+        ),
+        timeout=5000,
+    ) as opened:
+        page.locator("#btn-show-create-order").click()
+    intent = opened.value.post_data_json["intent_id"]
+    fill(page)
+    with page.expect_request(
+        lambda request: (
+            request.url.endswith("/customer/followups/activity")
+            and request.post_data_json.get("event") == "order_created"
+        )
+    ) as created:
+        page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert network.creates[0]["funnel_id"] == intent
+    assert created.value.post_data_json["intent_id"] == intent
+
+
 class FullServiceCatalogNetwork(CustomerNetwork):
     def route(self, route):
         if urlparse(route.request.url).path.endswith(

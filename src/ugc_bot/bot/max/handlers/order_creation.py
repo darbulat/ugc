@@ -22,6 +22,7 @@ from ugc_bot.application.services.admin_notification_service import (
 from ugc_bot.bot import customer_actions
 from ugc_bot.bot.customer_intake import (
     ask_platforms,
+    begin_intake,
     choose_platforms,
     complete_intake,
     record_activity,
@@ -222,11 +223,11 @@ async def _start_order_flow(
     if deps.get("order_intake_service") is not None:
         await state_store.clear()
     await state_store.update_data(user_id=str(user.user_id), locale=locale)
-    await record_activity(
+    await begin_intake(
         incoming,
         user.user_id,
+        state_store,
         deps.get("client_followup_service"),
-        "brief_opened",
     )
     order_type_texts = await bot_texts_service.get_many(
         [
@@ -314,6 +315,9 @@ async def handle_order_agree_callback(
         await state_store.clear()
         await state_store.update_data(user_id=str(user_id), locale=locale)
     await state_store.update_data(flow_type=None)
+    await begin_intake(
+        incoming, user_id, state_store, deps.get("client_followup_service")
+    )
 
     order_type_texts = await bot_texts_service.get_many(
         [
@@ -1012,6 +1016,7 @@ async def handle_geography(
             user_id,
             deps.get("client_followup_service"),
             "brief_changed",
+            intent_id=data.get("intake_funnel_id"),
         )
         await ask_platforms(
             incoming,

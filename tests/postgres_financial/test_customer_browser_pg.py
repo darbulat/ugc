@@ -38,6 +38,7 @@ from ugc_bot.config import MaxBotConfig
 from ugc_bot.domain.checkout import NativePaidReceipt
 from ugc_bot.infrastructure.db.customer_workflow_models import JOBS, REQUESTS
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
+from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
 from ugc_bot.infrastructure.db.order_image_models import IMAGES
 from ugc_bot.infrastructure.db.repositories.customer_workflows import (
     SqlAlchemyCustomerWorkflowRepository,
@@ -576,6 +577,43 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                         JOBS.c.request_id == request["request_id"]
                     )
                 ).first()
+            if platform == "telegram" and locale == "ru":
+                previous = await page.evaluate(
+                    "() => window.__umcAppBridge.request("
+                    "'/customer/followups/state', {})"
+                )
+                assert previous["stop_reason"] == "paid"
+                await page.evaluate("window.UMCSelection.create()")
+                await expect(page.locator("#intake-result")).to_be_visible()
+                async with page.expect_response(
+                    lambda response: (
+                        response.url.endswith("/customer/followups/activity")
+                        and response.request.post_data_json.get("event")
+                        == "brief_opened"
+                        and response.request.post_data_json.get("intent_id")
+                    )
+                ) as pending_brief:
+                    await page.locator("#btn-intake-new").click()
+                brief_response = await pending_brief.value
+                assert brief_response.status == 200, await brief_response.text()
+                next_series = await brief_response.json()
+                with Session(env["pg"]) as db:
+                    old_intent = db.scalar(
+                        select(FUNNEL.c.funnel_id).where(
+                            FUNNEL.c.order_id == UUID(body["order_id"])
+                        )
+                    )
+                assert brief_response.request.post_data_json[
+                    "intent_id"
+                ] != str(old_intent)
+                assert next_series["stop_reason"] is None
+                assert next_series["series_id"] != previous["series_id"]
+                assert next_series["order_id"] is None
+                followup = await page.evaluate(
+                    "() => window.__umcAppBridge.request("
+                    "'/customer/followups/state', {})"
+                )
+                assert followup["next_stage"] == 1
             await browser.close()
     finally:
         server.should_exit = True

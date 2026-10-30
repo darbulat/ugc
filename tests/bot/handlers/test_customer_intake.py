@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from decimal import localcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -74,6 +74,34 @@ async def test_activity_failure_does_not_block_customer_intake(
     await record_activity(incoming, user_id, followup, event)
     followup.record_activity.assert_awaited_once()
     assert "private details" not in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", [MessengerType.TELEGRAM, MessengerType.MAX]
+)
+async def test_bot_order_and_followup_share_brief_intent(flow, platform):
+    _, incoming, state, service, messenger = flow
+    intent = uuid4()
+    state._data["intake_funnel_id"] = str(intent)
+    incoming = IncomingMessage(
+        "12", IncomingUser("12", platform), text="telegram"
+    )
+    await ask_platforms(incoming, state, messenger, service)
+    await choose_platforms(incoming, state, messenger, service)
+    service.create.return_value = SimpleNamespace(
+        order_id=uuid4(), selection_base_minor=500000, total_minor=500000
+    )
+    followup = SimpleNamespace(record_activity=AsyncMock())
+    await complete_intake(
+        IncomingMessage("12", incoming.user, text="0"),
+        state,
+        messenger,
+        service,
+        followup,
+    )
+    assert service.create.call_args.args[0].funnel_id == intent
+    assert followup.record_activity.call_args.kwargs["intent_id"] == intent
 
 
 @pytest.mark.asyncio
@@ -1033,6 +1061,7 @@ async def test_new_canonical_brief_clears_previous_operation(
         )
     )
     registration = SimpleNamespace(confirm_advertiser_agreement=AsyncMock())
+    followup = SimpleNamespace(record_activity=AsyncMock())
     texts = SimpleNamespace(
         get=AsyncMock(return_value="Brief"), get_many=AsyncMock(return_value={})
     )
@@ -1049,6 +1078,7 @@ async def test_new_canonical_brief_clears_previous_operation(
             config=None,
             bot_texts_service=texts,
             advertiser_registration_service=registration,
+            client_followup_service=followup,
             locale="en",
         )
         if entry == "command":
@@ -1077,6 +1107,7 @@ async def test_new_canonical_brief_clears_previous_operation(
             messenger_client=messenger,
             event_adapter=TelegramEventAdapter(),
             order_intake_service=intake,
+            client_followup_service=followup,
             user_locale="en",
         )
         if entry == "command":
@@ -1112,3 +1143,5 @@ async def test_new_canonical_brief_clears_previous_operation(
     assert "intake_operation_key" not in state._data
     assert state._data["locale"] == "en"
     assert state.state == OrderCreationStates.order_type.state
+    intent_id = UUID(state._data["intake_funnel_id"])
+    assert followup.record_activity.call_args.kwargs["intent_id"] == intent_id

@@ -102,6 +102,29 @@ async def test_signed_routes_forward_trusted_principal_and_typed_body(api):
 
 
 @pytest.mark.asyncio
+async def test_followup_brief_preserves_its_purchase_intent(api):
+    app, actor, _ = api
+    intent_id = uuid4()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://test"
+    ) as client:
+        response = await client.post(
+            "/customer/followups/activity",
+            json={
+                "init_data": "signed",
+                "event": "brief_opened",
+                "intent_id": str(intent_id),
+            },
+        )
+    assert response.status_code == 200
+    call = app.state.dispatcher[
+        "client_followup_service"
+    ].record_activity.call_args
+    assert call.kwargs["principal"] == actor
+    assert call.kwargs["intent_id"] == intent_id
+
+
+@pytest.mark.asyncio
 async def test_error_boundary_missing_service_bad_identity_query_and_contract(
     api,
 ):

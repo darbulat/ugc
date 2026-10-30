@@ -134,7 +134,7 @@
   form.addEventListener('input',save);
   form.addEventListener('change',save);
   form.addEventListener('focusin',function(e){var id=e.target.id||'';observe(id.indexOf('intake-min_')===0||id.indexOf('intake-max_')===0||id==='intake-gender'?'filters':id==='intake-policy'||id==='intake-all-manager'||id.indexOf('intake-position-')===0?'package':'brief');});
-  document.addEventListener('umc:intake-policy-ready',function(e){bind();if(!binding)return;tracking=e.detail&&e.detail.tracking===true;restore(true);if(!flow)flow=operation();observe('opened');});
+  document.addEventListener('umc:intake-policy-ready',function(e){bind();if(!binding||form.hidden)return;tracking=e.detail&&e.detail.tracking===true;restore(true);if(!flow)flow=operation();observe('opened');});
   function submitted(){bind();submittedBinding=binding;}
   form.addEventListener('submit',submitted,true);
   var retry=document.getElementById('btn-intake-retry');if(retry)retry.addEventListener('click',submitted,true);

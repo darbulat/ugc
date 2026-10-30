@@ -36,6 +36,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot import customer_actions
 from ugc_bot.bot.customer_intake import (
     ask_platforms,
+    begin_intake,
     choose_platforms,
     complete_intake,
     record_activity,
@@ -287,8 +288,8 @@ async def start_order_creation(
         await state_store.clear()
         await state_store.update_data(canonical_intake=True)
     await state_store.update_data(user_id=str(user.user_id), locale=user_locale)
-    await record_activity(
-        incoming, user.user_id, client_followup_service, "brief_opened"
+    await begin_intake(
+        incoming, user.user_id, state_store, client_followup_service
     )
     order_type_texts = await bot_texts_service.get_many(
         [
@@ -397,8 +398,8 @@ async def start_order_creation_from_profile_callback(
         await state_store.clear()
         await state_store.update_data(canonical_intake=True)
     await state_store.update_data(user_id=str(user.user_id), locale=user_locale)
-    await record_activity(
-        incoming, user.user_id, client_followup_service, "brief_opened"
+    await begin_intake(
+        incoming, user.user_id, state_store, client_followup_service
     )
     order_type_texts = await bot_texts_service.get_many(
         [
@@ -427,6 +428,7 @@ async def handle_order_agree_callback(
     bot_texts_service: BotTextsService,
     advertiser_registration_service: AdvertiserRegistrationService,
     order_intake_service: Any = None,
+    client_followup_service: Any = None,
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
@@ -472,6 +474,7 @@ async def handle_order_agree_callback(
             user_id=str(user_id), locale=user_locale, canonical_intake=True
         )
     await state_store.update_data(flow_type=None)
+    await begin_intake(incoming, user_id, state_store, client_followup_service)
     locale = user_locale
     order_type_texts = await bot_texts_service.get_many(
         [
@@ -1586,7 +1589,11 @@ async def handle_geography(
     if order_intake_service is not None:
         await state_store.update_data(geography=geography)
         await record_activity(
-            incoming, user_id, client_followup_service, "brief_changed"
+            incoming,
+            user_id,
+            client_followup_service,
+            "brief_changed",
+            intent_id=data.get("intake_funnel_id"),
         )
         await ask_platforms(
             incoming, state_store, messenger_client, order_intake_service

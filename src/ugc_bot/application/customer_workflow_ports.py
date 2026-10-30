@@ -12,6 +12,9 @@ class CustomerWorkflowRepository(Protocol):
     async def owns_order(
         self, user_id: UUID, order_id: UUID, *, session: object
     ) -> bool: ...
+    async def order_created_at(
+        self, user_id: UUID, order_id: UUID, *, session: object
+    ) -> datetime | None: ...
     async def blogger_on_order(
         self, blogger_id: UUID, order_id: UUID, *, session: object
     ) -> bool: ...
@@ -28,6 +31,27 @@ class CustomerWorkflowRepository(Protocol):
     async def series(
         self, user_id: UUID, *, session: object
     ) -> dict | None: ...
+    async def has_older_paid_series(
+        self, user_id: UUID, since: datetime, *, session: object
+    ) -> bool: ...
+    async def intent_opened_at(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> datetime | None: ...
+    async def intent_series(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> UUID | None: ...
+    async def intent_order(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> UUID | None: ...
+    async def bind_intent(
+        self,
+        user_id: UUID,
+        intent_id: UUID,
+        series_id: UUID,
+        at: datetime,
+        *,
+        session: object,
+    ) -> None: ...
     async def next_followup(
         self, series_id: UUID, *, session: object
     ) -> dict | None: ...
@@ -39,6 +63,15 @@ class CustomerWorkflowRepository(Protocol):
         order_id: UUID | None = None,
         session: object,
     ) -> bool: ...
+    async def payment_observed_at(
+        self,
+        user_id: UUID,
+        since: datetime,
+        *,
+        order_id: UUID | None = None,
+        fallback: datetime,
+        session: object,
+    ) -> datetime | None: ...
 
     async def save_series(self, values: dict, *, session: object) -> None: ...
     async def schedule(self, series: dict, *, session: object) -> None: ...

@@ -21,11 +21,18 @@ from ugc_bot.application.services.customer_workflow_delivery import (
 from ugc_bot.container.customer_workflow_factory import build_customer_workflows
 from ugc_bot.domain.customer_workflows import ServiceLeadInput, SupportInput
 from ugc_bot.infrastructure.db.customer_workflow_models import (
+    INTENTS,
     JOBS,
     REQUESTS,
     SERIES,
 )
-from ugc_bot.infrastructure.db.models import PaymentModel, UserModel
+from ugc_bot.infrastructure.db.models import (
+    OrderModel,
+    OutboxEventModel,
+    PaymentModel,
+    UserModel,
+)
+from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
 from ugc_bot.infrastructure.db.repositories.customer_workflows import (
     SqlAlchemyCustomerWorkflowRepository,
 )
@@ -35,7 +42,7 @@ from ugc_bot.infrastructure.db.repositories.customer_workflows import (
 async def intake_env(financial_pg_engine):
     # Only this module's new operational tables in its private UUID schema.
     with Session(financial_pg_engine) as db, db.begin():
-        for table in (JOBS, SERIES, REQUESTS):
+        for table in (JOBS, INTENTS, SERIES, REQUESTS):
             db.execute(table.delete())
     async for env in _intake_env.__wrapped__(financial_pg_engine):
         yield env
@@ -437,6 +444,369 @@ async def test_payment_before_followup_series_does_not_cancel_new_activity(
     current = await follow.state(env["user"].user_id)
     assert current["stop_reason"] is None
     assert current["next_stage"] == 1
+
+
+@pytest.mark.asyncio
+async def test_new_unpaid_order_after_payment_has_its_own_followup_stages(
+    intake_env,
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    first = await order(env)
+    first_series = await follow.record_activity(
+        env["user"].user_id, "order_created", first.order_id
+    )
+    env["clock"].at += timedelta(hours=1)
+    receiver = Receiver(env)
+    assert await worker(env, receiver).run_once() == 1
+    env["clock"].at += timedelta(minutes=5)
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=first.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at,
+                created_at=env["clock"].at,
+            )
+        )
+    paid_state = await follow.state(env["user"].user_id)
+    assert paid_state["stop_reason"] == "paid"
+    env["clock"].at += timedelta(minutes=1)
+    second = await order(env)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == second.order_id)
+            .values(created_at=env["clock"].at)
+        )
+    env["clock"].at += timedelta(seconds=1)
+    await follow.record_paid(env["user"].user_id, first.order_id)
+    assert (await follow.state(env["user"].user_id))[
+        "stopped_at"
+    ] == paid_state["stopped_at"]
+    current, duplicate = await asyncio.gather(
+        follow.record_activity(
+            env["user"].user_id, "order_created", second.order_id
+        ),
+        follow.record_activity(
+            env["user"].user_id, "order_created", second.order_id
+        ),
+    )
+    assert current["stop_reason"] is None
+    assert current["series_id"] == duplicate["series_id"]
+    assert current["series_id"] != first_series["series_id"]
+    assert (await follow.state(env["user"].user_id))["next_stage"] == 1
+    for stale_event in (
+        "order_created",
+        "menu",
+        "brief_opened",
+        "brief_changed",
+    ):
+        await follow.record_activity(
+            env["user"].user_id, stale_event, first.order_id
+        )
+        state = await follow.state(env["user"].user_id)
+        assert state["stop_reason"] is None
+        assert state["order_id"] == second.order_id
+    # A replay of the old paid event must not stop the new purchase.
+    await follow.record_paid(env["user"].user_id, first.order_id)
+    assert (await follow.state(env["user"].user_id))["stop_reason"] is None
+    env["clock"].at += timedelta(hours=1)
+    assert await worker(env, receiver).run_once() == 1
+    assert len(receiver.messages) == 2
+    assert str(second.order_id) in receiver.messages[-1].action_url
+    assert len([row for row in rows(env, JOBS) if row["series_id"]]) == 6
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("capture_event", [False, True])
+async def test_new_order_after_payment_before_state_refresh_starts_followup(
+    intake_env, capture_event
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    first = await order(env)
+    delayed_payment_order = await order(env)
+    await follow.record_activity(
+        env["user"].user_id, "order_created", first.order_id
+    )
+    env["clock"].at += timedelta(minutes=5)
+    payment_id = uuid4()
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            PaymentModel(
+                payment_id=payment_id,
+                order_id=first.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at,
+                created_at=env["clock"].at,
+            )
+        )
+        if capture_event:
+            db.add(
+                OutboxEventModel(
+                    event_id=uuid4(),
+                    event_type="financial.client_snapshot_requested",
+                    aggregate_id=str(first.order_id),
+                    aggregate_type="order",
+                    payload={"payment_id": str(payment_id)},
+                    created_at=env["clock"].at,
+                )
+            )
+    env["clock"].at += timedelta(minutes=1)
+    second = await order(env)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == second.order_id)
+            .values(created_at=env["clock"].at)
+        )
+    # This is the first activity after capture; state() did not run in between.
+    current = await follow.record_activity(
+        env["user"].user_id, "order_created", second.order_id
+    )
+    assert current["stop_reason"] is None
+    assert current["order_id"] == second.order_id
+    assert (await follow.state(env["user"].user_id))["next_stage"] == 1
+    env["clock"].at += timedelta(minutes=1)
+    delayed_payment_id = uuid4()
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            PaymentModel(
+                payment_id=delayed_payment_id,
+                order_id=delayed_payment_order.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at - timedelta(minutes=2),
+                created_at=env["clock"].at - timedelta(minutes=2),
+            )
+        )
+        db.add(
+            OutboxEventModel(
+                event_id=uuid4(),
+                event_type="financial.client_snapshot_requested",
+                aggregate_id=str(delayed_payment_order.order_id),
+                aggregate_type="order",
+                payload={"payment_id": str(delayed_payment_id)},
+                created_at=env["clock"].at,
+            )
+        )
+    assert (await follow.state(env["user"].user_id))["stop_reason"] == "paid"
+
+
+@pytest.mark.asyncio
+async def test_new_brief_after_payment_starts_followups_without_old_replays(
+    intake_env,
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    old_intent, new_intent, delayed_intent = uuid4(), uuid4(), uuid4()
+    first = await order(env)
+    first_series = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=old_intent
+    )
+    await follow.record_activity(
+        env["user"].user_id,
+        "order_created",
+        first.order_id,
+        intent_id=old_intent,
+    )
+    env["clock"].at += timedelta(minutes=5)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            FUNNEL.insert().values(
+                client_id=env["user"].user_id,
+                funnel_id=delayed_intent,
+                stage="opened",
+                recorded_at=env["clock"].at - timedelta(minutes=1),
+            )
+        )
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=first.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at,
+                created_at=env["clock"].at,
+            )
+        )
+    assert (await follow.state(env["user"].user_id))["stop_reason"] == "paid"
+    env["clock"].at += timedelta(minutes=1)
+    replay = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=old_intent
+    )
+    assert replay["stop_reason"] == "paid"
+    delayed = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=delayed_intent
+    )
+    assert delayed["stop_reason"] == "paid"
+    second = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=new_intent
+    )
+    assert second["stop_reason"] is None
+    assert second["series_id"] != first_series["series_id"]
+    for event in ("order_created", "menu", "brief_opened", "brief_changed"):
+        current = await follow.record_activity(
+            env["user"].user_id, event, first.order_id
+        )
+        assert current["series_id"] == second["series_id"]
+        assert current["stop_reason"] is None
+        assert current["order_id"] is None
+    await follow.record_paid(env["user"].user_id, first.order_id)
+    assert (await follow.state(env["user"].user_id))["stop_reason"] is None
+    await follow.record_activity(
+        env["user"].user_id, "brief_changed", intent_id=old_intent
+    )
+    assert (await follow.state(env["user"].user_id))["series_id"] == second[
+        "series_id"
+    ]
+    env["clock"].at += timedelta(hours=1)
+    receiver = Receiver(env)
+    assert await worker(env, receiver).run_once() == 1
+    assert len(receiver.messages) == 1
+
+
+@pytest.mark.asyncio
+async def test_second_order_from_same_brief_has_new_followup(intake_env):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    intent = uuid4()
+    first = await order(env)
+    await follow.record_activity(
+        env["user"].user_id, "order_created", first.order_id, intent_id=intent
+    )
+    env["clock"].at += timedelta(minutes=5)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            FUNNEL.insert().values(
+                client_id=env["user"].user_id,
+                funnel_id=intent,
+                stage="created",
+                order_id=first.order_id,
+                recorded_at=env["clock"].at,
+            )
+        )
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=first.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at,
+                created_at=env["clock"].at,
+            )
+        )
+    assert (await follow.state(env["user"].user_id))["stop_reason"] == "paid"
+    env["clock"].at += timedelta(minutes=1)
+    second = await order(env)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == second.order_id)
+            .values(created_at=env["clock"].at)
+        )
+    current = await follow.record_activity(
+        env["user"].user_id, "order_created", second.order_id, intent_id=intent
+    )
+    assert current["stop_reason"] is None
+    assert current["order_id"] == second.order_id
+
+
+@pytest.mark.asyncio
+async def test_late_unrecorded_brief_for_paid_order_cannot_start_new_series(
+    intake_env,
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    intent = uuid4()
+    first = await order(env)
+    await follow.record_activity(
+        env["user"].user_id, "order_created", first.order_id
+    )
+    env["clock"].at += timedelta(minutes=5)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            FUNNEL.insert().values(
+                client_id=env["user"].user_id,
+                funnel_id=intent,
+                stage="created",
+                recorded_at=env["clock"].at - timedelta(minutes=1),
+                order_id=first.order_id,
+            )
+        )
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=first.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at,
+                created_at=env["clock"].at,
+            )
+        )
+    assert (await follow.state(env["user"].user_id))["stop_reason"] == "paid"
+    env["clock"].at += timedelta(minutes=1)
+    late = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=intent
+    )
+    assert late["stop_reason"] == "paid"
+    assert (await follow.state(env["user"].user_id))["next_stage"] is None
+
+
+@pytest.mark.asyncio
+async def test_paid_customer_optout_stays_in_force_for_new_orders(intake_env):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    first = await order(env)
+    await follow.record_activity(
+        env["user"].user_id, "order_created", first.order_id
+    )
+    await follow.optout(env["user"].user_id)
+    await follow.record_paid(env["user"].user_id, first.order_id)
+    env["clock"].at += timedelta(minutes=1)
+    second = await order(env)
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == second.order_id)
+            .values(created_at=env["clock"].at)
+        )
+    current = await follow.record_activity(
+        env["user"].user_id, "order_created", second.order_id
+    )
+    assert current["opted_out"] is True
+    assert (
+        await follow.record_activity(
+            env["user"].user_id, "brief_opened", intent_id=uuid4()
+        )
+    )["opted_out"] is True
+    assert (await follow.state(env["user"].user_id))["next_stage"] is None
+    env["clock"].at += timedelta(hours=72)
+    receiver = Receiver(env)
+    assert await worker(env, receiver).run_once() == 0
+    assert receiver.messages == []
 
 
 @pytest.mark.asyncio

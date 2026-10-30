@@ -13,6 +13,7 @@ from ugc_bot.miniapp.principal import SignedMiniAppRequest
 class FollowupActivity(SignedMiniAppRequest):
     event: Literal["menu", "brief_opened", "brief_changed", "order_created"]
     order_id: UUID | None = None
+    intent_id: UUID | None = None
 
 
 def create_client_followup_router(
@@ -28,7 +29,11 @@ def create_client_followup_router(
             request, body, resolve, "client_followup_service"
         )
         return await service.record_activity(
-            principal.user_id, body.event, body.order_id, principal=principal
+            principal.user_id,
+            body.event,
+            body.order_id,
+            principal=principal,
+            intent_id=body.intent_id,
         )
 
     @router.post("/state")

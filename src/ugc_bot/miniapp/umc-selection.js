@@ -103,7 +103,7 @@
   function failure(error, target) { var c=words(); text(target,error.status===401?c.session:error.status===403?c.forbidden:error.status===404?c.missing:error.status===409?c.conflict:c.error); }
   function pendingView() { id('form-umc-intake').hidden=true; id('intake-result').hidden=true; id('intake-uncertain').hidden=false; sync(); }
   function renderResult(result,entry) {
-    document.dispatchEvent(new CustomEvent("umc:intake-created",{detail:{order_id:result.order_id}}));
+    document.dispatchEvent(new CustomEvent("umc:intake-created",{detail:{order_id:result.order_id,intent_id:entry.payload.funnel_id||null}}));
     var request=entry.payload;state.result=result; state.pending=null;state.pendingEntry=null;state.completedEntry=entry;
     document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:result.order_id,target:'intake-result'}}));
     id('form-umc-intake').hidden=true; id('intake-uncertain').hidden=true; id('intake-result').hidden=false;

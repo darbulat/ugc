@@ -6,10 +6,12 @@ import json
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import and_, or_, select, true, update
+from sqlalchemy import String, and_, cast, func, or_, select, true, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.orm import aliased
 
 from ugc_bot.infrastructure.db.customer_workflow_models import (
+    INTENTS,
     JOBS,
     REQUESTS,
     SERIES,
@@ -18,9 +20,11 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     InteractionModel,
     OrderModel,
+    OutboxEventModel,
     PaymentModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
@@ -61,6 +65,16 @@ class SqlAlchemyCustomerWorkflowRepository:
                 )
             )
             is not None
+        )
+
+    async def order_created_at(
+        self, user_id: UUID, order_id: UUID, *, session: object
+    ) -> datetime | None:
+        return await _session(session).scalar(
+            select(OrderModel.created_at).where(
+                OrderModel.order_id == order_id,
+                OrderModel.advertiser_id == user_id,
+            )
         )
 
     async def blogger_on_order(
@@ -142,6 +156,8 @@ class SqlAlchemyCustomerWorkflowRepository:
                 await _session(session).execute(
                     select(SERIES)
                     .where(SERIES.c.user_id == user_id)
+                    .order_by(SERIES.c.created_at.desc())
+                    .limit(1)
                     .with_for_update()
                 )
             )
@@ -149,6 +165,77 @@ class SqlAlchemyCustomerWorkflowRepository:
             .one_or_none()
         )
         return dict(row) if row else None
+
+    async def intent_series(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> UUID | None:
+        return await _session(session).scalar(
+            select(INTENTS.c.series_id).where(
+                INTENTS.c.user_id == user_id,
+                INTENTS.c.intent_id == intent_id,
+            )
+        )
+
+    async def has_older_paid_series(
+        self, user_id: UUID, since: datetime, *, session: object
+    ) -> bool:
+        return (
+            await _session(session).scalar(
+                select(SERIES.c.series_id)
+                .where(
+                    SERIES.c.user_id == user_id,
+                    SERIES.c.created_at < since,
+                    SERIES.c.stop_reason == "paid",
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
+    async def intent_opened_at(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> datetime | None:
+        return await _session(session).scalar(
+            select(func.min(FUNNEL.c.recorded_at)).where(
+                FUNNEL.c.client_id == user_id,
+                FUNNEL.c.funnel_id == intent_id,
+                FUNNEL.c.stage == "opened",
+            )
+        )
+
+    async def intent_order(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> UUID | None:
+        return await _session(session).scalar(
+            select(FUNNEL.c.order_id).where(
+                FUNNEL.c.client_id == user_id,
+                FUNNEL.c.funnel_id == intent_id,
+                FUNNEL.c.stage == "created",
+            )
+        )
+
+    async def bind_intent(
+        self,
+        user_id: UUID,
+        intent_id: UUID,
+        series_id: UUID,
+        at: datetime,
+        *,
+        session: object,
+    ) -> None:
+        await _session(session).execute(
+            insert(INTENTS)
+            .values(
+                user_id=user_id,
+                intent_id=intent_id,
+                series_id=series_id,
+                recorded_at=at,
+            )
+            .on_conflict_do_update(
+                index_elements=["user_id", "intent_id"],
+                set_={"series_id": series_id},
+            )
+        )
 
     async def next_followup(
         self, series_id: UUID, *, session: object
@@ -169,6 +256,35 @@ class SqlAlchemyCustomerWorkflowRepository:
         )
         return dict(row) if row else None
 
+    @staticmethod
+    def _relevant_payment(since: datetime, order_id: UUID | None):
+        # A payment for this order or a payment during the current series.
+        # This operational snapshot never changes financial rights.
+        capture = aliased(OutboxEventModel)
+        observed_since = (
+            select(capture.event_id)
+            .where(
+                capture.aggregate_type == "order",
+                capture.aggregate_id == cast(OrderModel.order_id, String),
+                capture.event_type == "financial.client_snapshot_requested",
+                capture.payload["payment_id"].as_string()
+                == cast(PaymentModel.payment_id, String),
+                capture.created_at >= since,
+            )
+            .exists()
+        )
+        relevant_payment = [
+            PaymentModel.paid_at >= since,
+            and_(
+                PaymentModel.paid_at.is_(None),
+                PaymentModel.created_at >= since,
+            ),
+            observed_since,
+        ]
+        if order_id is not None:
+            relevant_payment.append(OrderModel.order_id == order_id)
+        return or_(*relevant_payment)
+
     async def has_relevant_payment(
         self,
         user_id: UUID,
@@ -177,17 +293,6 @@ class SqlAlchemyCustomerWorkflowRepository:
         order_id: UUID | None = None,
         session: object,
     ) -> bool:
-        # A payment for this order or a payment during the current series.
-        # This operational snapshot never changes financial rights.
-        relevant_payment = [
-            PaymentModel.paid_at >= since,
-            and_(
-                PaymentModel.paid_at.is_(None),
-                PaymentModel.created_at >= since,
-            ),
-        ]
-        if order_id is not None:
-            relevant_payment.append(OrderModel.order_id == order_id)
         return (
             await _session(session).scalar(
                 select(PaymentModel.payment_id)
@@ -195,11 +300,62 @@ class SqlAlchemyCustomerWorkflowRepository:
                 .where(
                     OrderModel.advertiser_id == user_id,
                     PaymentModel.status == "paid",
-                    or_(*relevant_payment),
+                    self._relevant_payment(since, order_id),
                 )
                 .limit(1)
             )
             is not None
+        )
+
+    async def payment_observed_at(
+        self,
+        user_id: UUID,
+        since: datetime,
+        *,
+        order_id: UUID | None = None,
+        fallback: datetime,
+        session: object,
+    ) -> datetime | None:
+        # V1 capture outbox creation uses the database clock, unlike its
+        # provider timestamp. Legacy payments use the server's paid_at.
+        rows = (
+            await _session(session).execute(
+                select(
+                    PaymentModel.payment_id,
+                    PaymentModel.financial_version,
+                    PaymentModel.paid_at,
+                    func.max(OutboxEventModel.created_at),
+                )
+                .join(OrderModel, OrderModel.order_id == PaymentModel.order_id)
+                .outerjoin(
+                    OutboxEventModel,
+                    and_(
+                        OutboxEventModel.aggregate_type == "order",
+                        OutboxEventModel.aggregate_id
+                        == cast(OrderModel.order_id, String),
+                        OutboxEventModel.event_type
+                        == "financial.client_snapshot_requested",
+                        OutboxEventModel.payload["payment_id"].as_string()
+                        == cast(PaymentModel.payment_id, String),
+                    ),
+                )
+                .where(
+                    OrderModel.advertiser_id == user_id,
+                    PaymentModel.status == "paid",
+                    self._relevant_payment(since, order_id),
+                )
+                .group_by(
+                    PaymentModel.payment_id,
+                    PaymentModel.financial_version,
+                    PaymentModel.paid_at,
+                )
+            )
+        ).all()
+        if not rows:
+            return None
+        return max(
+            row[3] or (row[2] if row[1] is None else None) or fallback
+            for row in rows
         )
 
     async def save_series(self, values: dict, *, session: object) -> None:
@@ -207,7 +363,7 @@ class SqlAlchemyCustomerWorkflowRepository:
             insert(SERIES)
             .values(**values)
             .on_conflict_do_update(
-                index_elements=["user_id"],
+                index_elements=["series_id"],
                 set_={
                     key: value
                     for key, value in values.items()
@@ -393,16 +549,18 @@ class SqlAlchemyCustomerWorkflowRepository:
             or series["generation"] != job["generation"]
         ):
             return None
-        if await self.has_relevant_payment(
+        paid_at = await self.payment_observed_at(
             series["user_id"],
             series["created_at"],
             order_id=series["order_id"],
+            fallback=at,
             session=session,
-        ):
+        )
+        if paid_at is not None:
             await db.execute(
                 update(SERIES)
                 .where(SERIES.c.series_id == series["series_id"])
-                .values(stop_reason="paid")
+                .values(stop_reason="paid", stopped_at=paid_at)
             )
             return None
         profile = await db.scalar(
