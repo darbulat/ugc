@@ -87,10 +87,14 @@ async def test_actual_container_loads_approval_using_its_transaction_manager(
     from ugc_bot.config import AppConfig, FinancialConfig
     from ugc_bot.container import Container
     from ugc_bot.domain.enums import OrderType
-    from ugc_bot.infrastructure.db.models import AdvertiserProfileModel
+    from ugc_bot.infrastructure.db.models import (
+        AdvertiserProfileModel,
+        UserModel,
+    )
 
     version = str(uuid4())
     with Session(financial_pg_engine) as db, db.begin():
+        db.get(UserModel, seed["user"]).country = "ru"
         db.add(
             AdvertiserProfileModel(
                 user_id=seed["user"], contact="synthetic-test-contact"

@@ -95,7 +95,7 @@ class OrderIntakeService:
                 not self.config.core_enabled
                 or not self.config.new_orders_enabled
             )
-            if paused or client.currency != "RUB":
+            if paused or client.country != "ru" or client.currency != "RUB":
                 return EligibleOrderPolicies(client.currency, paused, ())
             now = utc(self.clock.now())
             gate = FinancialPolicyService(self.config)
@@ -185,7 +185,7 @@ class OrderIntakeService:
                 return previous.result
             if not self.config.new_orders_enabled:
                 raise ValueError("financial_disabled")
-            if client.currency != "RUB":
+            if client.country != "ru" or client.currency != "RUB":
                 raise ValueError("unpublished_currency")
             if command.policy_version == PILOT_POLICY_VERSION:
                 # Coordinate with publication of the replacement version.

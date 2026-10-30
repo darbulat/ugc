@@ -39,6 +39,7 @@ def seed(financial_pg_engine, request):
     data = schema_tests.seed.__wrapped__(financial_pg_engine, request)
     with Session(financial_pg_engine) as db, db.begin():
         db.get(UserModel, data["user"]).admin = True
+        db.get(UserModel, data["user"]).country = "ru"
         db.add(AdvertiserProfileModel(user_id=data["user"], contact="test"))
     return data
 

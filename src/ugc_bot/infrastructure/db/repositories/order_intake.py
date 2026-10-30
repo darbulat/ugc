@@ -181,6 +181,7 @@ class SqlAlchemyOrderIntakeRepository:
             user.telegram_id,
             user.max_id,
             user.admin,
+            user.country,
         )
 
     async def lock_operation(
