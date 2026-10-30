@@ -43,6 +43,8 @@
     filtered.slice(0,state.paged?filtered.length:state.limit).forEach(function(order){
       var card=element('article',null,'umc-customer-order');
       var unpaid=['unpaid','pending','failed'].includes(order.payment_state),canResume=order.status==='new'&&unpaid;
+      var completed=order.progress&&typeof order.progress.completed==='number'?order.progress.completed:null;
+      var canRate=order.status==='closed'||(completed!==null&&completed>0);
       var statusText=word(order.customer_status||order.status);
       var paymentText=word(unpaid?(canResume?'unpaid':'notPaid'):order.payment_state);
       card.dataset.orderId=order.order_id;
@@ -52,7 +54,7 @@
       if(order.deadlines)card.appendChild(element('p',word('deadline')+': '+order.deadlines));
       if(order.payment_state&&paymentText!==statusText)card.appendChild(element('p',paymentText));
       if(order.progress)card.appendChild(element('p',word('progress')+': '+order.progress.completed+' / '+order.progress.total+' · '+word('assigned')+': '+order.progress.assigned));
-      card.append(button(word(canResume?'returnOrder':'open'),function(){state.scroll=window.scrollY;state.current=order.order_id;if(order.financial_version)window.UMCSelection.open(order.order_id);else bridge.openOrder(order.order_id);}),button(word('problem'),function(){openSupport(order.order_id);}),...(order.status==='closed'?[button(word('rating'),function(){openRatings(order.order_id);})]:[]));
+      card.append(button(word(canResume?'returnOrder':'open'),function(){state.scroll=window.scrollY;state.current=order.order_id;if(order.financial_version)window.UMCSelection.open(order.order_id);else bridge.openOrder(order.order_id);}),button(word('problem'),function(){openSupport(order.order_id);}),...(canRate?[button(word('rating'),function(){openRatings(order.order_id);})]:[]));
       var item=element('li');item.appendChild(card);orderList.appendChild(item);
     });
     if(!filtered.length)orderList.appendChild(element('li',word('empty'),'hint'));

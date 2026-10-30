@@ -311,6 +311,111 @@ class InitialMenuFollowupNetwork(CreatedOrderFollowupNetwork):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("financial_version", [None, "v1"])
+def test_completed_author_can_be_rated_before_order_closes(
+    page, platform, financial_version
+):
+    network = CustomerNetwork()
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "Active order",
+            "status": "active",
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": financial_version,
+            "progress": {"completed": 1, "assigned": 2, "total": 10},
+        }
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card.get_by_role("button", name="Оценить автора")).to_be_visible()
+    card.get_by_role("button", name="Оценить автора").click()
+    ratings = page.locator("#screen-customer-ratings")
+    expect(ratings).to_be_visible()
+    expect(ratings.locator("form")).to_have_count(1)
+    ratings.locator("select").select_option("4")
+    ratings.locator('button[type="submit"]').click()
+    expect(ratings).to_contain_text("Оценка сохранена")
+    posted = [
+        body
+        for path, body in network.customer_posts
+        if path.endswith("/ratings")
+    ]
+    assert any(body.get("order_id") == ORDER for body in posted)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("status", ["new", "active"])
+def test_order_without_completed_work_does_not_offer_rating(
+    page, platform, status
+):
+    network = CustomerNetwork()
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "Order without completed work",
+            "status": status,
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": None,
+            "progress": {"completed": 0, "assigned": 2, "total": 10},
+        }
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card).to_be_visible()
+    expect(card.get_by_role("button", name="Оценить автора")).to_have_count(0)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_closed_legacy_order_keeps_manager_rating_visible(page, platform):
+    class HistoricalRatingNetwork(CustomerNetwork):
+        def route(self, route):
+            if urlparse(route.request.url).path.endswith(
+                "/customer/orders/ratings"
+            ):
+                route.fulfill(
+                    json={
+                        "authors": [
+                            {
+                                "blogger_id": ORDER,
+                                "display_name": "Автор Анна",
+                                "rating_eligible": False,
+                                "ratings": [
+                                    {
+                                        "rater_role": "manager",
+                                        "score": 4,
+                                        "comment": "Историческая оценка",
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                )
+                return
+            super().route(route)
+
+    network = HistoricalRatingNetwork()
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "Closed legacy order",
+            "status": "closed",
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": None,
+            "progress": {"completed": 0, "assigned": 1, "total": 10},
+        }
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card.get_by_role("button", name="Оценить автора")).to_be_visible()
+    card.get_by_role("button", name="Оценить автора").click()
+    ratings = page.locator("#screen-customer-ratings")
+    expect(ratings).to_contain_text("Оценка менеджера")
+    expect(ratings).to_contain_text("Историческая оценка")
+    expect(ratings.locator("form")).to_have_count(0)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("payment_state", ["unpaid", "pending", "failed"])
 def test_unpaid_order_offers_payment_continuation(
     page, platform, payment_state

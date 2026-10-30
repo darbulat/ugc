@@ -23,9 +23,11 @@ from tests.e2e.miniapp_helpers import generate_init_data
 from tests.postgres_financial.test_v1_capture import capture_env as capture_env
 from tests.postgres_financial.test_work_entitlement_runtime import start_flow
 from ugc_bot.config import MaxBotConfig
+from ugc_bot.domain.enums import InteractionStatus, OrderStatus, RaterRole
 from ugc_bot.infrastructure.db.customer_workflow_models import REQUESTS
 from ugc_bot.infrastructure.db.models import (
     BloggerRatingModel,
+    InteractionModel,
     OrderModel,
     UserModel,
 )
@@ -226,6 +228,111 @@ async def test_completed_work_enables_rating_and_ambassador_request(
                     4,
                     "Хорошая работа",
                 )
+
+            legacy_order, legacy_interaction = uuid4(), uuid4()
+            with Session(env["pg"]) as db, db.begin():
+                db.add(
+                    OrderModel(
+                        order_id=legacy_order,
+                        advertiser_id=env["client"],
+                        product_link="https://example.test/legacy-product",
+                        offer_text="Active legacy order",
+                        price=1000,
+                        bloggers_needed=10,
+                        status=OrderStatus.ACTIVE,
+                    )
+                )
+                db.flush()
+                db.add(
+                    InteractionModel(
+                        interaction_id=legacy_interaction,
+                        order_id=legacy_order,
+                        blogger_id=flow["creator"],
+                        advertiser_id=env["client"],
+                        status=InteractionStatus.PENDING,
+                    )
+                )
+            await page.evaluate("UMCCustomer.orders()")
+            card = page.locator(f'[data-order-id="{legacy_order}"]')
+            await expect(card).to_be_visible()
+            await expect(
+                card.get_by_role("button", name="Оценить автора")
+            ).to_have_count(0)
+            with Session(env["pg"]) as db, db.begin():
+                db.execute(
+                    update(InteractionModel)
+                    .where(
+                        InteractionModel.interaction_id == legacy_interaction
+                    )
+                    .values(status=InteractionStatus.OK)
+                )
+            await (
+                page.locator("#screen-customer-orders")
+                .get_by_role("button", name="Обновить статусы")
+                .click()
+            )
+            await expect(
+                card.get_by_role("button", name="Оценить автора")
+            ).to_be_visible()
+            await card.get_by_role("button", name="Оценить автора").click()
+            await expect(ratings.locator("form")).to_have_count(1)
+            await ratings.locator("select").select_option("3")
+            await ratings.locator('button[type="submit"]').click()
+            await expect(ratings).to_contain_text("Оценка сохранена")
+            with Session(env["pg"]) as db:
+                legacy_rating = db.scalar(
+                    select(BloggerRatingModel).where(
+                        BloggerRatingModel.order_id == legacy_order,
+                        BloggerRatingModel.blogger_id == flow["creator"],
+                    )
+                )
+                assert legacy_rating is not None
+                assert legacy_rating.rater_id == env["client"]
+                assert legacy_rating.score == 3
+
+            closed_order = uuid4()
+            with Session(env["pg"]) as db, db.begin():
+                db.add(
+                    OrderModel(
+                        order_id=closed_order,
+                        advertiser_id=env["client"],
+                        product_link="https://example.test/closed-legacy",
+                        offer_text="Closed legacy order",
+                        price=1000,
+                        bloggers_needed=10,
+                        status=OrderStatus.CLOSED,
+                    )
+                )
+                db.flush()
+                db.add(
+                    InteractionModel(
+                        interaction_id=uuid4(),
+                        order_id=closed_order,
+                        blogger_id=flow["creator"],
+                        advertiser_id=env["client"],
+                        status=InteractionStatus.PENDING,
+                    )
+                )
+                db.add(
+                    BloggerRatingModel(
+                        rating_id=uuid4(),
+                        order_id=closed_order,
+                        blogger_id=flow["creator"],
+                        rater_id=flow["manager"],
+                        rater_role=RaterRole.MANAGER,
+                        score=4,
+                        comment="Сохранённая оценка менеджера",
+                    )
+                )
+            await page.evaluate("UMCCustomer.orders()")
+            closed = page.locator(f'[data-order-id="{closed_order}"]')
+            await expect(closed).to_be_visible()
+            await closed.get_by_role("button", name="Оценить автора").click()
+            await expect(ratings).to_contain_text("Оценка менеджера")
+            await expect(ratings).to_contain_text(
+                "Сохранённая оценка менеджера"
+            )
+            await expect(ratings.locator("form")).to_have_count(0)
             assert not errors
             await browser.close()
     finally:
