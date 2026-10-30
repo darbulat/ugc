@@ -182,6 +182,7 @@
   }
   id('btn-selection-refresh').addEventListener('click',loadSelection);
   id('btn-selection-back').addEventListener('click',function() { if(state.busy) return; var url=new URL(location.href); url.searchParams.delete('selection'); history.replaceState(null,'',url.href); bridge.showScreen(state.selectionBack); });
+  document.addEventListener('umc:screen-change',function(event) { if(!event.detail || event.detail.screen!==intake.id || !state.result) return; var panel=id('umc-checkout');if(!panel || panel.parentElement!==id('intake-result')) document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:state.result.order_id,target:'intake-result'}})); });
   id('btn-show-create-order').textContent=words().entry;
   var list=id('orders-list');
   function orderLinks() { list.querySelectorAll('[data-order-id]').forEach(function(row) { if(!row.dataset.financialVersion || row.querySelector('[data-selection-open]')) return; var button=node('button',words().viewSelection,'btn btn-secondary'); button.type='button'; button.dataset.selectionOpen=''; button.addEventListener('click',function(event) { event.preventDefault(); event.stopPropagation(); openSelection(row.dataset.orderId); }); row.appendChild(button); }); }

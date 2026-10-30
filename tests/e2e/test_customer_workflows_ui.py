@@ -228,6 +228,181 @@ class PaidFollowupNetwork(CustomerNetwork):
         super().route(route)
 
 
+class CreatedOrderFollowupNetwork(CustomerNetwork):
+    def __init__(self):
+        super().__init__()
+        self.followup_order = None
+        self.pending_creation_activity = []
+
+    def route(self, route):
+        path = urlparse(route.request.url).path
+        if path.endswith("/customer/followups/state"):
+            route.fulfill(
+                json={
+                    "order_id": self.followup_order,
+                    "next_action": "orders",
+                    "opted_out": False,
+                    "stop_reason": None,
+                }
+            )
+            return
+        if path.endswith("/customer/followups/activity"):
+            body = route.request.post_data_json
+            if body["event"] == "order_created":
+                self.pending_creation_activity.append(route)
+                return
+            route.fulfill(json={"ok": True})
+            return
+        super().route(route)
+
+
+class NewOrderDashboardNetwork(CustomerNetwork):
+    def __init__(self):
+        super().__init__()
+        self.orders = []
+
+    def route(self, route):
+        if urlparse(route.request.url).path == "/miniapp/api/financial/orders":
+            self.orders = [
+                {
+                    "order_id": ORDER,
+                    "public_title": "New order",
+                    "status": "new",
+                    "created_at": "2026-10-30T10:00:00Z",
+                    "financial_version": "v1",
+                }
+            ]
+        super().route(route)
+
+
+class DelayedDashboardCountNetwork(NewOrderDashboardNetwork):
+    def __init__(self):
+        super().__init__()
+        self.pending_old_count = []
+
+    def route(self, route):
+        if (
+            urlparse(route.request.url).path.endswith("/orders/list")
+            and not self.orders
+        ):
+            self.pending_old_count.append(route)
+            return
+        super().route(route)
+
+
+class InitialMenuFollowupNetwork(CreatedOrderFollowupNetwork):
+    def __init__(self):
+        super().__init__()
+        self.menu_saved = False
+        self.pending_menu = []
+
+    def route(self, route):
+        path = urlparse(route.request.url).path
+        if (
+            path.endswith("/customer/followups/activity")
+            and route.request.post_data_json["event"] == "menu"
+        ):
+            self.pending_menu.append(route)
+            return
+        if path.endswith("/customer/followups/state") and not self.menu_saved:
+            route.fulfill(body="null", content_type="application/json")
+            return
+        super().route(route)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_initial_followup_appears_after_menu_activity_is_saved(page, platform):
+    network = InitialMenuFollowupNetwork()
+    with page.expect_request(
+        lambda request: (
+            request.url.endswith("/customer/followups/activity")
+            and request.post_data_json["event"] == "menu"
+        )
+    ):
+        open_app(page, network, platform, init_data=SIGNED)
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    assert len(network.pending_menu) == 1
+    network.menu_saved = True
+    with page.expect_response("**/customer/followups/activity"):
+        network.pending_menu.pop().fulfill(json={"ok": True})
+    expect(page.locator("#customer-followup")).to_have_count(1)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_dashboard_order_count_updates_after_creation(page, platform):
+    network = NewOrderDashboardNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    orders = page.locator("#btn-show-orders-list")
+    expect(orders).to_have_text("Мои заказы · 0")
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    page.locator("#btn-intake-back").click()
+    expect(orders).to_have_text("Мои заказы · 1")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_late_old_dashboard_count_cannot_replace_new_count(page, platform):
+    network = DelayedDashboardCountNetwork()
+    with page.expect_request("**/orders/list"):
+        open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    page.locator("#btn-intake-back").click()
+    orders = page.locator("#btn-show-orders-list")
+    expect(orders).to_have_text("Мои заказы · 1")
+    assert len(network.pending_old_count) == 1
+    with page.expect_response("**/orders/list"):
+        network.pending_old_count.pop().fulfill(
+            json={"orders": [], "total": 0, "has_more": False}
+        )
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame("
+        "() => requestAnimationFrame(resolve)))"
+    )
+    expect(orders).to_have_text("Мои заказы · 1")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_followup_resumes_new_order_after_activity_is_saved(page, platform):
+    network = CreatedOrderFollowupNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    expect(page.locator("#customer-followup")).to_have_count(1)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    with page.expect_request(
+        lambda request: (
+            request.url.endswith("/customer/followups/activity")
+            and request.post_data_json["event"] == "order_created"
+        )
+    ):
+        page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    page.locator("#btn-intake-back").click()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    # Until the saved order reaches the server-side series, an old button
+    # must not start an unrelated order when it says to continue.
+    expect(page.locator("#customer-followup")).to_have_count(0)
+    assert len(network.pending_creation_activity) == 1
+    network.followup_order = ORDER
+    with page.expect_response("**/customer/followups/activity"):
+        network.pending_creation_activity.pop().fulfill(json={"ok": True})
+    expect(page.locator("#customer-followup")).to_have_count(1)
+    with page.expect_response(
+        lambda response: response.url.endswith(
+            f"/financial/orders/{ORDER}/selection"
+        )
+    ) as selection:
+        page.locator("#customer-followup").get_by_role(
+            "button", name="Продолжить оформление"
+        ).click()
+    assert selection.value.status == 200
+    expect(page.locator("#screen-selection")).to_be_visible()
+
+
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_confirmed_checkout_removes_pending_followup_from_dashboard(
     page, platform

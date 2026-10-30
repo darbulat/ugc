@@ -308,6 +308,29 @@ def test_uncertain_create_keeps_same_payload_and_key_until_explicit_retry(page):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_checkout_returns_to_saved_order_after_viewing_selection(
+    page, platform
+):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result #umc-checkout")).to_be_visible()
+    page.locator("#btn-intake-selection").click()
+    expect(page.locator("#screen-selection #umc-checkout")).to_be_visible()
+    page.locator("#btn-selection-back").click()
+    expect(page.locator("#intake-result #umc-checkout")).to_be_visible()
+    expect(
+        page.locator("#intake-result #umc-checkout-status")
+    ).to_have_attribute("data-state", "not_requested")
+    assert any(
+        path.endswith(f"/financial/orders/{ORDER}/checkout-status")
+        for path, _ in network.requests
+    )
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
     page, platform
 ):

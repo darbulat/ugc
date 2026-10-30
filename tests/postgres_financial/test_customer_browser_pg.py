@@ -343,6 +343,30 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             )
             assert body["total_minor"] == 1700000
             assert len(body["items"]) == 10
+            if locale == "ru":
+                # The dashboard must resume this saved order, even when its
+                # first followup was rendered before the order existed.
+                await expect(page.locator("#customer-followup")).to_have_count(
+                    1
+                )
+                await page.locator("#btn-intake-back").click()
+                await expect(
+                    page.locator("#btn-show-orders-list")
+                ).to_have_text("Мои заказы · 1")
+                async with page.expect_response(
+                    lambda r: r.url.endswith(
+                        f"/financial/orders/{body['order_id']}/selection"
+                    )
+                ) as pending_selection:
+                    await page.locator(
+                        "#customer-followup button"
+                    ).first.click()
+                selection = await pending_selection.value
+                assert selection.status == 200, await selection.text()
+                assert (await selection.json())["order_id"] == body["order_id"]
+                await page.locator("#btn-selection-back").click()
+                await page.locator("#btn-show-create-order").click()
+                await expect(page.locator("#intake-result")).to_be_visible()
             if platform == "telegram":
                 action = page.locator("#umc-checkout-action")
                 await expect(action).to_have_text(_CHECKOUT[locale][0])
