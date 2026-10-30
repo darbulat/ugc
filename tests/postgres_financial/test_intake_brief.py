@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
@@ -20,6 +20,73 @@ from ugc_bot.domain.order_targeting import OrderTargeting
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 intake_env = _intake_env
+
+
+@pytest.mark.asyncio
+async def test_paid_city_activation_keeps_creator_without_coordinates(
+    intake_env,
+):
+    from ugc_bot.admin.app import _finish_order_geography_and_activation
+    from ugc_bot.domain.entities import Payment
+    from ugc_bot.domain.enums import OrderStatus, PaymentStatus
+
+    env = intake_env
+    requested = replace(command(env), targeting=OrderTargeting(city="Москва"))
+    receipt = await service(env).create(requested)
+    creator = await create_test_user(
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        country="ru",
+    )
+    profile = await create_test_blogger_profile(
+        env["repos"]["blogger_repo"], creator.user_id, city="Москва"
+    )
+    assert profile.location_geometry is None
+    tm = env["container"].transaction_manager
+    async with tm.transaction() as session:
+        order = await env["repos"]["order_repo"].get_by_id(
+            receipt.order_id, session=session
+        )
+        await env["repos"]["order_repo"].save(
+            replace(order, status=OrderStatus.PENDING_MODERATION),
+            session=session,
+        )
+        await env["repos"]["payment_repo"].save(
+            Payment(
+                payment_id=uuid4(),
+                order_id=order.order_id,
+                provider="test",
+                status=PaymentStatus.PAID,
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                created_at=env["clock"].at,
+            ),
+            session=session,
+        )
+    geocoder = AsyncMock(
+        side_effect=AssertionError("exact city needs no geocoder")
+    )
+    with (
+        patch(
+            "ugc_bot.admin.app._get_admin_container",
+            return_value=env["container"],
+        ),
+        patch("ugc_bot.admin.app._resolve_order_location_geometry", geocoder),
+    ):
+        await _finish_order_geography_and_activation(
+            receipt.order_id,
+            {},
+            activating=True,
+            saved_geography="Москва",
+            financial_version=env["policy"],
+        )
+    saved = await env["repos"]["order_repo"].get_by_id(receipt.order_id)
+    assert saved.status == OrderStatus.ACTIVE
+    assert saved.location_geometry is None
+    geocoder.assert_not_awaited()
+    dispatcher = env["container"].build_bot_services()["offer_dispatch_service"]
+    assert await dispatcher.count_eligible_bloggers(receipt.order_id) == 1
 
 
 @pytest.mark.asyncio

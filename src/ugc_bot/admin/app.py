@@ -212,10 +212,34 @@ async def _resolve_order_location_geometry(geography_raw: Any) -> str | None:
     return geometry
 
 
+async def _checked_activation_geography(
+    order, container, geography_update, exact_city, session
+):
+    if geography_update is None:
+        return order
+    geography, geometry = geography_update
+    if (order.geography or "").strip() != (geography or "").strip():
+        raise ValueError("order_geography_changed")
+    if order.financial_version is not None:
+        intake = container.build_repos().get("order_intake_repo")
+        if intake is None:
+            raise ValueError("order_geography_update_failed")
+        stored_city = await intake.exact_city_for_order(
+            order.order_id, session=session, for_update=True
+        )
+        if stored_city != exact_city or (
+            stored_city is not None
+            and stored_city != (order.geography or "").strip()
+        ):
+            raise ValueError("order_geography_changed")
+    return dataclasses.replace(order, location_geometry=geometry)
+
+
 async def _activate_paid_order(
     order_id: UUID,
     *,
     geography_update: tuple[str | None, str | None] | None = None,
+    exact_city: str | None = None,
 ) -> None:
     """Commit approval and activation delivery intent as one transaction."""
     container = _get_admin_container()
@@ -233,11 +257,9 @@ async def _activate_paid_order(
             return
         if order.status != OrderStatus.PENDING_MODERATION:
             raise ValueError("paid_pending_moderation_required")
-        if geography_update is not None:
-            geography, geometry = geography_update
-            if (order.geography or "").strip() != (geography or "").strip():
-                raise ValueError("order_geography_changed")
-            order = dataclasses.replace(order, location_geometry=geometry)
+        order = await _checked_activation_geography(
+            order, container, geography_update, exact_city, session
+        )
         payment = await payments.get_by_order(order_id, session=session)
         if payment is None or payment.status != PaymentStatus.PAID:
             raise ValueError("paid_pending_moderation_required")
@@ -255,13 +277,37 @@ async def _activate_paid_order(
 
 
 async def _finish_order_geography_and_activation(
-    order_id: UUID, data: dict, *, activating: bool, saved_geography: str | None
+    order_id: UUID,
+    data: dict,
+    *,
+    activating: bool,
+    saved_geography: str | None,
+    financial_version: str | None = None,
 ) -> None:
     if activating:
         geography = data.get("geography", saved_geography)
-        geometry = await _resolve_order_location_geometry(geography)
+        exact_city = None
+        if financial_version is not None:
+            container = _get_admin_container()
+            if container is None or container.transaction_manager is None:
+                raise ValueError("order_activation_unavailable")
+            intake = container.build_repos().get("order_intake_repo")
+            if intake is None:
+                raise ValueError("order_geography_update_failed")
+            async with container.transaction_manager.transaction() as session:
+                exact_city = await intake.exact_city_for_order(
+                    order_id, session=session
+                )
+        geometry = (
+            None
+            if exact_city
+            else await _resolve_order_location_geometry(geography)
+        )
+        kwargs = (
+            {"exact_city": exact_city} if financial_version is not None else {}
+        )
         await _activate_paid_order(
-            order_id, geography_update=(geography, geometry)
+            order_id, geography_update=(geography, geometry), **kwargs
         )
     elif "geography" in data:
         await _update_order_location_geometry_after_geography_change(
@@ -1882,6 +1928,7 @@ class OrderAdmin(ModelView, model=OrderModel):
             data,
             activating=activating,
             saved_geography=getattr(obj, "geography", None),
+            financial_version=getattr(obj, "financial_version", None),
         )
 
         try:

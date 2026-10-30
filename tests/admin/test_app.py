@@ -1311,6 +1311,125 @@ async def test_activation_waits_for_geography_update(geometry_updated):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "city,city_after", [("Москва", "Москва"), (None, None), ("Москва", None)]
+)
+async def test_financial_activation_respects_stored_exact_city(
+    city, city_after
+):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
+    )
+
+    order_id = UUID(int=901)
+    orders = InMemoryOrderRepository()
+    await orders.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID(int=902),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Brief",
+            barter_description=None,
+            price=100,
+            bloggers_needed=10,
+            status=OrderStatus.PENDING_MODERATION,
+            created_at=datetime.now(timezone.utc),
+            geography="Москва",
+            location_geometry="OLD",
+            financial_version="v1",
+        )
+    )
+
+    @asynccontextmanager
+    async def transaction():
+        yield object()
+
+    intake = SimpleNamespace(
+        exact_city_for_order=AsyncMock(side_effect=[city, city_after])
+    )
+    payments = SimpleNamespace(
+        get_by_order=AsyncMock(
+            return_value=SimpleNamespace(status=PaymentStatus.PAID)
+        )
+    )
+    geocoder = SimpleNamespace(
+        get_multipolygon_wkt_for_queries=AsyncMock(return_value="NEW")
+    )
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction),
+        build_repos=lambda: {
+            "payment_repo": payments,
+            "order_intake_repo": intake,
+        },
+        build_geocoder=lambda: geocoder,
+    )
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+    published = []
+
+    async def publish(order, *, session):
+        published.append(order)
+
+    outbox = SimpleNamespace(publish_order_activation=publish)
+    displayed = SimpleNamespace(
+        order_id=order_id,
+        financial_version="v1",
+        status=OrderStatus.PENDING_MODERATION,
+        geography="Москва",
+        product_link="https://example.com",
+        offer_text="Brief",
+        barter_description=None,
+        content_usage=None,
+    )
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            AsyncMock(return_value=displayed),
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, outbox, orders),
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
+        ),
+    ):
+        if city != city_after:
+            with pytest.raises(ValueError, match="order_geography_changed"):
+                await OrderAdmin().update_model(
+                    request, str(order_id), {"status": "active"}
+                )
+            assert (
+                await orders.get_by_id(order_id)
+            ).status == OrderStatus.PENDING_MODERATION
+            assert published == []
+            return
+        await OrderAdmin().update_model(
+            request, str(order_id), {"status": "active"}
+        )
+    saved = await orders.get_by_id(order_id)
+    assert saved.status == OrderStatus.ACTIVE
+    assert saved.location_geometry == (None if city else "NEW")
+    assert published[0].location_geometry == saved.location_geometry
+    if city:
+        geocoder.get_multipolygon_wkt_for_queries.assert_not_awaited()
+    else:
+        geocoder.get_multipolygon_wkt_for_queries.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_activation_without_geography_field_refreshes_saved_geography():
     order_id = UUID(int=803)
     order = OrderModel(
