@@ -1132,10 +1132,7 @@ async def test_order_admin_activation_checks_payment(scenario):
                 request, str(order_id), {"status": "active"}
             )
             assert len(await events.get_pending_events()) == 1
-            assert (
-                save.call_args.args[-1]["status"]
-                == OrderStatus.PENDING_MODERATION
-            )
+            assert "status" not in save.call_args.args[-1]
         else:
             expected = (
                 "order_not_found"
@@ -1314,6 +1311,106 @@ async def test_activation_waits_for_geography_update(geometry_updated):
 
 
 @pytest.mark.asyncio
+async def test_activation_without_geography_field_refreshes_saved_geography():
+    order_id = UUID(int=803)
+    order = OrderModel(
+        order_id=order_id,
+        status=OrderStatus.PENDING_MODERATION,
+        geography="Москва",
+    )
+    admin = OrderAdmin()
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk", AsyncMock(return_value=order)
+        ),
+        patch(
+            "ugc_bot.admin.app._get_admin_container", return_value=MagicMock()
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, None, None),
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._resolve_order_location_geometry",
+            AsyncMock(return_value="NEW"),
+        ) as resolve,
+        patch(
+            "ugc_bot.admin.app._activate_paid_order", new_callable=AsyncMock
+        ) as activate,
+        patch(
+            "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
+        ),
+    ):
+        await admin.update_model(request, str(order_id), {"status": "active"})
+    resolve.assert_awaited_once_with("Москва")
+    activate.assert_awaited_once_with(
+        order_id, geography_update=("Москва", "NEW")
+    )
+
+
+@pytest.mark.asyncio
+async def test_delayed_geography_update_does_not_overwrite_newer_geography():
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
+    )
+
+    order_id = UUID(int=804)
+    orders = InMemoryOrderRepository()
+    await orders.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID(int=805),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Brief",
+            barter_description=None,
+            price=100,
+            bloggers_needed=10,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            geography="Москва",
+            location_geometry="MOSCOW",
+        )
+    )
+    geocoder = SimpleNamespace(
+        get_multipolygon_wkt_for_queries=AsyncMock(return_value="KAZAN")
+    )
+
+    @asynccontextmanager
+    async def transaction():
+        yield object()
+
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction),
+        build_geocoder=lambda: geocoder,
+    )
+    with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(None, None, orders),
+        ),
+    ):
+        await _update_order_location_geometry_after_geography_change(
+            order_id, "Казань"
+        )
+    saved = await orders.get_by_id(order_id)
+    assert saved.geography == "Москва"
+    assert saved.location_geometry == "MOSCOW"
+
+
+@pytest.mark.asyncio
 async def test_order_admin_geography_change_updates_location_geometry() -> None:
     """Geography in form data triggers location_geometry update via geocoder."""
     order_id = UUID("00000000-0000-0000-0000-000000000080")
@@ -1389,7 +1486,7 @@ async def test_update_order_location_geometry_no_tm_early_return() -> None:
             order_id, ""
         )
 
-    mock_order_repo.get_by_id.assert_not_called()
+    mock_order_repo.get_by_id_for_update.assert_not_called()
     mock_order_repo.save.assert_not_called()
 
 
@@ -1418,7 +1515,7 @@ async def test_update_order_location_geometry_exception_logged() -> None:
     )
 
     mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=order)
+    mock_order_repo.get_by_id_for_update = AsyncMock(return_value=order)
     mock_order_repo.save = AsyncMock(side_effect=RuntimeError("db error"))
 
     mock_session = MagicMock()
@@ -1485,7 +1582,7 @@ async def test_update_order_location_geometry_with_geocoder() -> None:
     )
 
     mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=order)
+    mock_order_repo.get_by_id_for_update = AsyncMock(return_value=order)
     mock_order_repo.save = AsyncMock()
 
     mock_session = MagicMock()
@@ -1524,7 +1621,7 @@ async def test_update_order_location_geometry_with_geocoder() -> None:
             order_id, "Казань"
         )
 
-    mock_order_repo.get_by_id.assert_called_once_with(
+    mock_order_repo.get_by_id_for_update.assert_called_once_with(
         order_id, session=mock_session
     )
     mock_order_repo.save.assert_called_once()

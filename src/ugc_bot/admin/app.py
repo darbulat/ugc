@@ -151,8 +151,12 @@ async def _update_order_location_geometry_after_geography_change(
         return
     try:
         async with tm.transaction() as session:
-            order = await order_repo.get_by_id(order_id, session=session)
+            order = await order_repo.get_by_id_for_update(
+                order_id, session=session
+            )
             if order is None:
+                return
+            if (order.geography or "").strip() != (geography_raw or "").strip():
                 return
             updated = dataclasses.replace(order, location_geometry=new_geometry)
             await order_repo.save(updated, session=session)
@@ -251,15 +255,14 @@ async def _activate_paid_order(
 
 
 async def _finish_order_geography_and_activation(
-    order_id: UUID, data: dict, *, activating: bool
+    order_id: UUID, data: dict, *, activating: bool, saved_geography: str | None
 ) -> None:
-    if activating and "geography" in data:
-        geometry = await _resolve_order_location_geometry(data.get("geography"))
+    if activating:
+        geography = data.get("geography", saved_geography)
+        geometry = await _resolve_order_location_geometry(geography)
         await _activate_paid_order(
-            order_id, geography_update=(data.get("geography"), geometry)
+            order_id, geography_update=(geography, geometry)
         )
-    elif activating:
-        await _activate_paid_order(order_id)
     elif "geography" in data:
         await _update_order_location_geometry_after_geography_change(
             order_id, data.get("geography")
@@ -1870,10 +1873,15 @@ class OrderAdmin(ModelView, model=OrderModel):
         if activating:
             # Save edits while keeping the pending state. Only the locked
             # payment check below can commit ACTIVE and its dispatch event.
-            data = {**data, "status": OrderStatus.PENDING_MODERATION}
+            data = {
+                key: value for key, value in data.items() if key != "status"
+            }
         result = await super().update_model(request, pk, data)
         await _finish_order_geography_and_activation(
-            pk_uuid, data, activating=activating
+            pk_uuid,
+            data,
+            activating=activating,
+            saved_geography=getattr(obj, "geography", None),
         )
 
         try:
