@@ -47,6 +47,16 @@ _SUPPORT = {
     "be": "Паведаміць пра праблему",
     "uz": "Muammo haqida xabar berish",
 }
+_PAYMENT_TOGETHER = {
+    "ru": "Подбор и выбранное сопровождение оплачиваются вместе в одном счёте.",
+    "en": (
+        "Creator selection and chosen management are paid together "
+        "in one invoice."
+    ),
+    "kk": "Іріктеу мен таңдалған сүйемелдеу бір шотпен бірге төленеді.",
+    "be": "Падбор і выбранае суправаджэнне аплачваюцца разам у адным рахунку.",
+    "uz": "Tanlov va tanlangan hamrohlik bitta hisobda birga to‘lanadi.",
+}
 
 
 @pytest.mark.e2e
@@ -143,6 +153,9 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             await page.locator(
                 'input[name="intake-mode"][value="with_manager"]'
             ).check()
+            await expect(page.locator("#intake-preview")).to_contain_text(
+                _PAYMENT_TOGETHER[locale]
+            )
             await page.locator("#intake-order-type").select_option("stories")
             await page.locator("#intake-image").set_input_files(
                 {
@@ -163,6 +176,9 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             body = await response.json()
             assert response.status == 200, body
             await expect(page.locator("#intake-result")).to_be_visible()
+            await expect(page.locator("#intake-result")).to_contain_text(
+                _PAYMENT_TOGETHER[locale]
+            )
             await expect(page.locator("#intake-total")).to_have_attribute(
                 "data-minor", "1700000"
             )
@@ -211,6 +227,20 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                 assert (
                     tmp_path / "images" / f"{stored['token']}.jpg"
                 ).read_bytes() == image.getvalue()
+            async with page.expect_response(
+                lambda r: r.url.endswith("/customer/orders/completion")
+            ) as pending_completion:
+                await page.locator("#btn-intake-selection").click()
+            completion = await pending_completion.value
+            assert completion.status == 200, await completion.text()
+            assert await completion.json() == {"has_completed_work": False}
+            await page.wait_for_function(
+                "() => document.querySelector('#screen-selection')"
+                ".dataset.recommendationChecked === 'true'"
+            )
+            await expect(
+                page.locator("#screen-selection [data-service-recommendation]")
+            ).to_have_count(0)
             await page.evaluate("window.UMCCustomer.orders()")
             card = page.locator(f'[data-order-id="{body["order_id"]}"]')
             await expect(card).to_be_visible()

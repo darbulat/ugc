@@ -169,6 +169,49 @@ class FullServiceCatalogNetwork(CustomerNetwork):
         super().route(route)
 
 
+class DelayedSupportOrdersNetwork(CustomerNetwork):
+    def __init__(self):
+        super().__init__()
+        self.hold_orders = False
+        self.pending_orders = []
+
+    def route(self, route):
+        if self.hold_orders and urlparse(route.request.url).path.endswith(
+            "/orders/list"
+        ):
+            self.pending_orders.append(route)
+            return
+        super().route(route)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_order_support_can_be_submitted_while_order_list_is_loading(
+    page, platform
+):
+    network = DelayedSupportOrdersNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-orders-list").click()
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card).to_be_visible()
+    network.hold_orders = True
+    with page.expect_request("**/orders/list"):
+        card.get_by_role("button", name="Сообщить о проблеме").click()
+    support = page.locator("#screen-customer-support")
+    expect(support.locator("select")).to_have_value(ORDER)
+    support.locator('[name="reason"]').fill("Нужна помощь по заказу")
+    support.locator('[name="contact"]').fill("@customer")
+    support.locator('button[type="submit"]').click()
+    expect(support).to_contain_text("Заявка сохранена")
+    sent = [b for p, b in network.customer_posts if p.endswith("/support")]
+    assert sent[0]["order_id"] == ORDER
+    assert len(network.pending_orders) == 1
+    network.hold_orders = False
+    with page.expect_response("**/orders/list"):
+        network.route(network.pending_orders.pop())
+    expect(support.locator(f'option[value="{ORDER}"]')).to_have_count(1)
+    expect(support.locator("select")).to_have_value(ORDER)
+
+
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize(
     "locale,result_hint",
