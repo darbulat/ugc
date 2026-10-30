@@ -43,6 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     scope = parser.add_mutually_exclusive_group(required=True)
     scope.add_argument("--allowed-client", action="append", type=UUID)
     scope.add_argument("--all-clients", action="store_true")
+    parser.add_argument(
+        "--maturity-mode", choices=("legacy", "per_item_v1"), default="legacy"
+    )
     parser.add_argument("--publish", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -54,6 +57,7 @@ def main(argv: list[str] | None = None) -> int:
             allowed_clients=frozenset(args.allowed_client or ()),
             terms_reference=args.terms_reference,
             all_clients=args.all_clients,
+            maturity_mode=args.maturity_mode,
         )
     except ValueError:
         parser.error("invalid_refund_policy_configuration")

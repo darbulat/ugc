@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 
-def selection_maturity_tables(metadata):
+def selection_maturity_tables(metadata, *, per_item=False):
     json = sa.JSON().with_variant(JSONB(), "postgresql")
     closures = sa.Table(
         "financial_selection_closures",
@@ -55,7 +55,7 @@ def selection_maturity_tables(metadata):
             "closure_id",
             UUID(as_uuid=True),
             sa.ForeignKey("financial_selection_closures.closure_id"),
-            nullable=False,
+            nullable=per_item,
         ),
         sa.Column(
             "paid_item_id",
@@ -101,14 +101,21 @@ def selection_maturity_tables(metadata):
             name="ck_selection_maturity_chronology",
         ),
         sa.CheckConstraint(
-            "release_at=hold_started_at+INTERVAL '14 days'",
+            (
+                "(closure_id IS NOT NULL AND "
+                "release_at=hold_started_at+INTERVAL '14 days') OR "
+                "(closure_id IS NULL AND "
+                "release_at=hold_started_at+1209600*INTERVAL '1 second')"
+                if per_item
+                else "release_at=hold_started_at+INTERVAL '14 days'"
+            ),
             name="ck_selection_maturity_hold",
         ).ddl_if(dialect="postgresql"),
     )
     return {"closures": closures, "schedules": schedules}
 
 
-def selection_maturity_guards(tables):
+def selection_maturity_guards(tables, *, per_item=False):
     statements = [
         """
 CREATE OR REPLACE FUNCTION financial_selection_deny_mutation() RETURNS trigger
@@ -116,7 +123,7 @@ LANGUAGE plpgsql AS $$ BEGIN
  RAISE EXCEPTION 'financial_selection_fact_immutable' USING ERRCODE='23514';
 END $$;
 """,
-        SELECTION_SOURCE_GUARD,
+        PER_ITEM_SELECTION_SOURCE_GUARD if per_item else SELECTION_SOURCE_GUARD,
     ]
     for table in tables.values():
         statements.append(
@@ -234,3 +241,56 @@ ERRCODE='23514'; END IF;
  RETURN NEW;
 END $$;
 """
+
+
+# The earlier revision imports this module, so retain its original DDL and
+# explicitly opt into the new guard only in the current model and migration.
+_PER_ITEM_GUARD_PREFIX = """
+ IF TG_TABLE_NAME='financial_selection_schedules' AND EXISTS (
+  SELECT 1 FROM financial_policy_versions p
+  WHERE p.version=NEW.policy_version
+   AND p.rules->>'maturity_mode'='per_item_v1'
+ ) THEN
+  SELECT d.* INTO actual_delivery
+  FROM paid_selection_accepted_deliveries d
+  JOIN order_items i ON i.paid_item_id=d.paid_item_id
+  JOIN orders o ON o.order_id=i.order_id
+  JOIN payments payment ON payment.payment_id=d.payment_id
+  JOIN financial_policy_versions p ON p.version=o.financial_version
+  WHERE d.paid_item_id=NEW.paid_item_id
+   AND d.order_id=NEW.order_id AND d.client_id=NEW.client_id
+   AND d.payment_id=NEW.payment_id
+   AND i.order_id=NEW.order_id AND i.policy_version=NEW.policy_version
+   AND o.advertiser_id=NEW.client_id AND o.financial_version=NEW.policy_version
+   AND payment.order_id=NEW.order_id AND payment.paid_at IS NOT NULL
+   AND i.captured_at=payment.paid_at
+   AND i.quote_payload->>'terms_reference'=p.rules->>'terms_reference'
+   AND (NOT (p.rules ? 'refund_rules') OR
+        (i.quote_payload->'refund_rules'=p.rules->'refund_rules'
+        AND p.rules->'refund_rules'->>'selection_refund_window_anchor'=
+            'item_delivered'
+        AND p.rules->'refund_rules'->>'selection_refund_window_seconds'=
+            '604800'))
+   AND p.refund_window_seconds=604800
+   AND p.rules->>'hold_seconds'='1209600'
+   AND p.rules->>'selection_refund_window_anchor'=
+       'per_item_delivery_accepted_at';
+  IF actual_delivery.delivery_id IS NULL OR NEW.closure_id IS NOT NULL
+   OR EXISTS(SELECT 1 FROM financial_refund_component_applications
+     WHERE paid_item_id=NEW.paid_item_id AND component='selection')
+  THEN RAISE EXCEPTION 'selection_schedule_source_mismatch'
+   USING ERRCODE='23514'; END IF;
+  expected_deadline:=actual_delivery.accepted_at+604800*INTERVAL '1 second';
+  IF NEW.refund_deadline_at<>expected_deadline
+   OR NEW.hold_started_at<>expected_deadline
+   OR NEW.release_at<>expected_deadline+1209600*INTERVAL '1 second'
+  THEN RAISE EXCEPTION 'selection_schedule_time_mismatch'
+   USING ERRCODE='23514'; END IF;
+  RETURN NEW;
+ END IF;
+"""
+PER_ITEM_SELECTION_SOURCE_GUARD = SELECTION_SOURCE_GUARD.replace(
+    "BEGIN\n SELECT p.rules",
+    "BEGIN\n" + _PER_ITEM_GUARD_PREFIX + " SELECT p.rules",
+    1,
+)

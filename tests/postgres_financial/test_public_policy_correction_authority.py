@@ -16,6 +16,7 @@ from tests.helpers.factories import (
     create_test_user,
 )
 from tests.postgres_financial.test_order_intake import intake_env as intake_env
+from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.models import FinancialPolicyVersionModel
 from ugc_bot.infrastructure.db.repositories.financial_capture import intent_id
 
@@ -23,8 +24,9 @@ __all__ = ["intake_env"]
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("run_metadata_create_all", [False, True])
 async def test_real_public_correction_guard_rejects_forged_access_scopes(
-    intake_env,
+    intake_env, run_metadata_create_all
 ):
     env = intake_env.copy()
     client = await create_test_user(
@@ -56,6 +58,9 @@ async def test_real_public_correction_guard_rejects_forged_access_scopes(
         )
     env["policy"] = version
     facts = await captured_order(env)
+    if run_metadata_create_all:
+        Base.metadata.create_all(env["pg"])
+        Base.metadata.create_all(env["pg"])
     facts["invoice_id"] = intent_id(facts["order"].order_id)
     rt = ApprovalRuntime(env, facts)
     _, approved, _, match = await create_match(rt)

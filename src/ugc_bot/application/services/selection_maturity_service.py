@@ -65,6 +65,10 @@ class SelectionMaturityService:
         self._require_stable(before, current, fresh_grounds, users, now)
         if actor_id is not None:
             await self._authorize(current, actor_id, principal, session=session)
+        if current.policy.maturity_mode == "per_item_v1":
+            return await self._schedule_individual(
+                current, fresh_grounds, now, session=session
+            )
         rules = current.policy.refund_rules
         if rules is None:
             raise ValueError("selection_refund_rules_required")
@@ -81,6 +85,58 @@ class SelectionMaturityService:
             "closed_at": closed.closed_at.isoformat(),
             "items": results,
         }
+
+    async def _schedule_individual(
+        self, current, fresh_grounds, now, *, session
+    ):
+        if current.policy.selection_refund_window != timedelta(days=7):
+            raise ValueError("selection_refund_window_required")
+        results = []
+        for item in current.positions:
+            if item.delivered_at is None or item.refunded_at is not None:
+                continue
+            try:
+                await self.repository.require_clear(
+                    item.paid_item_id, session=session
+                )
+            except ValueError as error:
+                if str(error) not in {
+                    "work_disputed",
+                    "correction_unresolved",
+                    "correction_component_refunded",
+                }:
+                    raise
+                continue
+            deadline = item.delivered_at + timedelta(days=7)
+            schedule = await self.repository.save_schedule(
+                SelectionMaturitySource(
+                    uuid5(
+                        NAMESPACE_URL,
+                        f"ugc:selection-maturity:{item.paid_item_id}",
+                    ),
+                    None,
+                    item.paid_item_id,
+                    current.order_id,
+                    current.payment_id,
+                    current.client_id,
+                    current.policy.version,
+                    deadline,
+                    deadline,
+                    deadline + timedelta(days=14),
+                ),
+                session=session,
+            )
+            for ground in fresh_grounds:
+                if ground.paid_item_id == item.paid_item_id:
+                    await self._release(ground, schedule, now, session=session)
+            results.append(
+                {
+                    "paid_item_id": str(item.paid_item_id),
+                    "refund_deadline_at": deadline.isoformat(),
+                    "available_at": schedule.release_at.isoformat(),
+                }
+            )
+        return {"state": "per_item", "items": results}
 
     @staticmethod
     def _require_stable(before, current, fresh_grounds, users, now):
@@ -229,6 +285,8 @@ class SelectionMaturityService:
             self.ledger.repository
         ).require_ready(ground.recipient_id, "RUB", session=session)
         balances = dict(report.replay.by_obligation[ground.obligation_id])
+        if schedule.closure_id is None and balances["blocked"]:
+            return
         for source, target, at in (
             ("pending", "hold", schedule.hold_started_at),
             ("hold", "available", schedule.release_at),
@@ -239,7 +297,7 @@ class SelectionMaturityService:
             movement = JournalMovement(
                 obligation_id=ground.obligation_id,
                 operation_key=f"selection-{target}:{schedule.source_id}:{ground.obligation_id}",
-                event_id=str(schedule.closure_id),
+                event_id=str(schedule.closure_id or schedule.source_id),
                 movement_type="transfer",
                 amount_minor=amount,
                 currency="RUB",

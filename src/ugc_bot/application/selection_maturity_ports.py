@@ -85,7 +85,7 @@ class SelectionClosure:
 @dataclass(frozen=True, slots=True)
 class SelectionMaturitySource:
     source_id: UUID
-    closure_id: UUID
+    closure_id: UUID | None
     paid_item_id: UUID
     order_id: UUID
     payment_id: UUID

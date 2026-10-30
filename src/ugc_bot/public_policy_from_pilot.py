@@ -23,6 +23,10 @@ from ugc_bot.application.services.financial_policy_service import (
 )
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.financial_policy_versions import (
+    PILOT_POLICY_VERSION,
+    PUBLIC_POLICY_VERSION,
+)
 from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.models import (
     FinancialPolicyVersionModel,
@@ -33,8 +37,8 @@ from ugc_bot.infrastructure.db.repositories.financial_policy import (
     decode_policy_version,
 )
 
-SOURCE_VERSION = "umc-financial-v1.2-pilot-2026-10-24"
-PUBLIC_VERSION = "umc-financial-v1.2-public-2026-10-30"
+SOURCE_VERSION = PILOT_POLICY_VERSION
+PUBLIC_VERSION = PUBLIC_POLICY_VERSION
 SOURCE_URL = (
     f"https://bot.usemycontent.ru/financial-policy/{SOURCE_VERSION}.html"
 )
@@ -132,6 +136,7 @@ def build_public_rules(source, request: PublicationRequest) -> dict:
             for k, v in expected.items()
         )
         or rules.get("all_clients", False) is not False
+        or rules.get("maturity_mode", "legacy") != "legacy"
         or not isinstance(rules.get("allowed_clients"), list)
         or len(rules["allowed_clients"]) != 2
         or source.approved_by is None
@@ -161,6 +166,7 @@ def build_public_rules(source, request: PublicationRequest) -> dict:
     result.update(
         allowed_clients=[],
         all_clients=True,
+        maturity_mode="per_item_v1",
         terms_reference=PUBLIC_URL,
         terms_sha256=request.terms_sha256,
         approval_scope="public_customer_policy",
@@ -247,6 +253,7 @@ async def execute(
             decoded = decode_policy_version(row)
             if (
                 not decoded.all_clients
+                or decoded.maturity_mode != "per_item_v1"
                 or decoded.refund_rules != request.refund_rules
             ):
                 raise ValueError("public_policy_decode_mismatch")

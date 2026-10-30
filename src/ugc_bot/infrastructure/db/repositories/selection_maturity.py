@@ -114,7 +114,11 @@ class SqlAlchemySelectionMaturityRepository:
                 paid_item_id=item["paid_item_id"],
             )
             refunded_at, application = await self._refund_resolution(
-                db, item, refunds, payment_id
+                db,
+                item,
+                refunds,
+                payment_id,
+                allow_partial=approved.maturity_mode == "per_item_v1",
             )
             positions.append(
                 SelectionPosition(
@@ -135,15 +139,22 @@ class SqlAlchemySelectionMaturityRepository:
         )
 
     @staticmethod
-    async def _refund_resolution(db, item, refunds, payment_id):
+    async def _refund_resolution(
+        db, item, refunds, payment_id, *, allow_partial=False
+    ):
+        refunds = [r for r in refunds if r["component"] == "selection"]
         if not refunds:
             return None, None
-        if sum(r["refund_minor"] for r in refunds) != item[
-            "selection_minor"
-        ] or any(
-            r["component"] != "selection" or r["payment_id"] != payment_id
+        total = sum(r["refund_minor"] for r in refunds)
+        if total > item["selection_minor"] or any(
+            r["payment_id"] != payment_id or r["refund_minor"] <= 0
             for r in refunds
         ):
+            raise ValueError("selection_refund_scope_mismatch")
+        if total < item["selection_minor"]:
+            if allow_partial:
+                # The funding guard still prevents releasing this position.
+                return None, None
             raise ValueError("selection_refund_scope_mismatch")
         apps = [
             await rows(

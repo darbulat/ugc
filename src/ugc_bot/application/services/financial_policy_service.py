@@ -11,6 +11,27 @@ from ugc_bot.domain.financial import utc
 from ugc_bot.domain.financial_tariff import require_tariff
 from ugc_bot.domain.refund_rules import RefundRules
 
+PER_ITEM_SELECTION_ANCHOR = "per_item_delivery_accepted_at"
+PER_ITEM_HOLD_SECONDS = 14 * 24 * 60 * 60
+
+
+def require_maturity_mode(mode, window, refund_rules) -> None:
+    """Keep the per-position rule explicit and consistent with refund terms."""
+    if type(mode) is not str or mode not in ("legacy", "per_item_v1"):
+        raise ValueError("invalid_maturity_policy")
+    if mode == "per_item_v1" and (
+        window != timedelta(days=7)
+        or (
+            refund_rules is not None
+            and (
+                not isinstance(refund_rules, RefundRules)
+                or refund_rules.selection_refund_window_anchor
+                != "item_delivered"
+            )
+        )
+    ):
+        raise ValueError("invalid_maturity_policy")
+
 
 @dataclass(frozen=True, slots=True)
 class FinancialPolicy:
@@ -25,9 +46,13 @@ class FinancialPolicy:
     selection_minor: int = 50000
     accompaniment_minor: int = 120000
     all_clients: bool = False
+    maturity_mode: str = "legacy"
 
     def __post_init__(self) -> None:
         require_tariff(self.selection_minor, self.accompaniment_minor)
+        require_maturity_mode(
+            self.maturity_mode, self.selection_refund_window, self.refund_rules
+        )
         if type(self.all_clients) is not bool:
             raise ValueError("invalid_policy_access_scope")
         object.__setattr__(
@@ -56,6 +81,8 @@ class FinancialPolicyReader(Protocol):
     async def load(
         self, version: str, *, session: object
     ) -> FinancialPolicy | None: ...
+
+    async def lock_version(self, version: str, *, session: object) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)

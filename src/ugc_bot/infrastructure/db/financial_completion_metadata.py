@@ -80,7 +80,7 @@ def install_financial_completion_guards(connection, names):
         **originals,
     }
     if not {t.name for t in completion.values()} <= names:
-        return
+        return False
     for table in selection.values():
         _drop(
             connection,
@@ -88,7 +88,9 @@ def install_financial_completion_guards(connection, names):
             "selection_fact_immutable",
             "selection_source_guard",
         )
-    connection.exec_driver_sql(selection_maturity_guards(selection))
+    connection.exec_driver_sql(
+        selection_maturity_guards(selection, per_item=True)
+    )
     for table in accompaniment.values():
         _drop(connection, table.name, "accompaniment_refund_immutable")
     _drop(
@@ -139,3 +141,5 @@ def install_financial_completion_guards(connection, names):
             "financial_review_recovery_source",
         )
         connection.exec_driver_sql(financial_review_guards(reviews))
+
+    return True
