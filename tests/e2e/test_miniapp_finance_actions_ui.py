@@ -245,3 +245,38 @@ def test_explicit_refund_before_initialized_work_uses_version_zero(
     assert command["expected_work_version"] == 0
     assert command["reviewed_manager_target_minor"] == "0"
     assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("can_close", [False, True])
+def test_per_item_policy_explains_maturity_without_close_action(
+    page, platform, can_close
+):
+    network = Network(registered=True)
+    errors = open_app(page, network, platform)
+    page.evaluate("window.__umcAppBridge.showScreen('screen-selection')")
+    page.evaluate(
+        "detail=>document.dispatchEvent(new CustomEvent("
+        "'umc:selection-view',{detail}))",
+        {
+            "order_id": ID,
+            "writes_paused": False,
+            "closure_policy": {
+                "mode": "per_item_v1",
+                "anchor": "item_delivered",
+                "refund_window_seconds": 604800,
+                "closed_at": None,
+                "can_close": can_close,
+            },
+        },
+    )
+    page.locator("#finance-selection-policy").click()
+    panel = page.locator("#screen-finance-actions")
+    expect(panel).to_contain_text("каждой переданной позиции")
+    expect(panel).to_contain_text("7 дней")
+    expect(panel).to_contain_text("14 дней")
+    assert panel.locator("form").count() == 0
+    assert not [
+        r for r in network.requests if r[0].endswith("/selection/close")
+    ]
+    assert not errors

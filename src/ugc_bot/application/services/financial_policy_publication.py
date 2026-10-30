@@ -9,6 +9,7 @@ from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicy,
+    require_maturity_mode,
 )
 from ugc_bot.config import FinancialConfig
 from ugc_bot.domain.financial import utc
@@ -25,6 +26,8 @@ class FinancialPolicyDraft:
     refund_rules: RefundRules
     selection_minor: int
     accompaniment_minor: int
+    all_clients: bool = False
+    maturity_mode: str = "legacy"
 
     def __post_init__(self) -> None:
         require_tariff(self.selection_minor, self.accompaniment_minor)
@@ -38,14 +41,26 @@ class FinancialPolicyDraft:
                 raise ValueError("policy_identity_and_terms_required")
         object.__setattr__(self, "effective_from", utc(self.effective_from))
         clients = frozenset(self.allowed_clients)
-        if not clients or any(
-            not isinstance(client, UUID) or client.int == 0
-            for client in clients
+        if (
+            type(self.all_clients) is not bool
+            or (self.all_clients and clients)
+            or (not self.all_clients and not clients)
+            or any(
+                not isinstance(client, UUID) or client.int == 0
+                for client in clients
+            )
         ):
             raise ValueError("policy_allowed_clients_required")
         object.__setattr__(self, "allowed_clients", clients)
         if not isinstance(self.refund_rules, RefundRules):
             raise ValueError("refund_rules_required")
+        require_maturity_mode(
+            self.maturity_mode,
+            timedelta(
+                seconds=self.refund_rules.selection_refund_window_seconds
+            ),
+            self.refund_rules,
+        )
 
     @classmethod
     def from_environment(
@@ -56,6 +71,8 @@ class FinancialPolicyDraft:
         effective_from: datetime,
         allowed_clients: frozenset[UUID],
         terms_reference: str,
+        all_clients: bool = False,
+        maturity_mode: str = "legacy",
     ) -> "FinancialPolicyDraft":
         rules = config.refund_rules()
         if rules is None:
@@ -73,6 +90,8 @@ class FinancialPolicyDraft:
             rules,
             config.selection_price_minor,
             config.accompaniment_price_minor,
+            all_clients,
+            maturity_mode,
         )
 
     def to_document(self) -> dict:
@@ -82,6 +101,8 @@ class FinancialPolicyDraft:
             "version": self.version,
             "effective_from": self.effective_from.isoformat(),
             "allowed_clients": sorted(str(c) for c in self.allowed_clients),
+            "all_clients": self.all_clients,
+            "maturity_mode": self.maturity_mode,
             "terms_reference": self.terms_reference,
             "refund_window_seconds": (
                 self.refund_rules.selection_refund_window_seconds
@@ -145,6 +166,8 @@ class FinancialPolicyPublicationService:
                 refund_rules=draft.refund_rules,
                 selection_minor=draft.selection_minor,
                 accompaniment_minor=draft.accompaniment_minor,
+                all_clients=draft.all_clients,
+                maturity_mode=draft.maturity_mode,
             )
             await repo.save_approved(policy, session=session)
             return policy
@@ -156,6 +179,8 @@ class FinancialPolicyPublicationService:
             and policy.approved_at is not None
             and policy.effective_from == draft.effective_from
             and policy.allowed_clients == draft.allowed_clients
+            and policy.all_clients == draft.all_clients
+            and policy.maturity_mode == draft.maturity_mode
             and policy.terms_reference == draft.terms_reference
             and policy.refund_rules == draft.refund_rules
             and policy.selection_minor == draft.selection_minor

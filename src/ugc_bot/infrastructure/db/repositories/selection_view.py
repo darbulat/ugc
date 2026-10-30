@@ -7,6 +7,7 @@ from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    FinancialPolicyVersionModel,
     ItemAssignmentModel,
     OrderItemModel,
     OrderModel,
@@ -14,6 +15,9 @@ from ugc_bot.infrastructure.db.models import (
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.financial_policy import (
+    decode_policy_version,
+)
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 from ugc_bot.infrastructure.db.selection_maturity_models import (
     TABLES as MATURITY_TABLES,
@@ -156,7 +160,12 @@ class SqlAlchemySelectionViewRepository:
             for item in items
         ]
         closure_policy = await self._closure_policy(
-            db, order_id, items, deliveries, positions
+            db,
+            order_id,
+            order["financial_version"],
+            items,
+            deliveries,
+            positions,
         )
         return dict(
             order_id=order_id,
@@ -178,7 +187,19 @@ class SqlAlchemySelectionViewRepository:
         )
 
     @staticmethod
-    async def _closure_policy(db, order_id, items, deliveries, positions):
+    async def _closure_policy(
+        db, order_id, policy_version, items, deliveries, positions
+    ):
+        stored_policy = await db.get(
+            FinancialPolicyVersionModel, policy_version
+        )
+        policy = None
+        if (
+            stored_policy is not None
+            and isinstance(stored_policy.rules, dict)
+            and "maturity_mode" in stored_policy.rules
+        ):
+            policy = decode_policy_version(stored_policy)
         raw_rules = (
             items[0]["quote_payload"].get("refund_rules") if items else None
         )
@@ -232,6 +253,16 @@ class SqlAlchemySelectionViewRepository:
                 can_close=rules.selection_closure_mode == "manual"
                 and closed_at is None
                 and resolved,
+            )
+        if policy is not None and policy.maturity_mode == "per_item_v1":
+            closure_policy = dict(
+                mode="per_item_v1",
+                refund_window_seconds=int(
+                    policy.selection_refund_window.total_seconds()
+                ),
+                anchor="item_delivered",
+                closed_at=None,
+                can_close=False,
             )
         return closure_policy
 

@@ -197,6 +197,7 @@ class IntakeClient:
     telegram_id: str | None = None
     max_id: str | None = None
     is_admin: bool = False
+    country: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

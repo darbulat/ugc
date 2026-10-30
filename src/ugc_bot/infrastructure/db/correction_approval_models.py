@@ -1,5 +1,7 @@
 """Install the final approval guard after all historical table hooks."""
 
+from importlib import import_module
+
 import sqlalchemy as sa
 
 from ugc_bot.infrastructure.db.base import Base
@@ -51,7 +53,14 @@ def install_final_guard(metadata, connection, **kw):
             install_financial_completion_guards,
         )
 
-        install_financial_completion_guards(connection, names)
+        if install_financial_completion_guards(connection, names):
+            # Match the final migrated authority only for complete metadata.
+            # Partial historical metadata keeps its original guard boundary.
+            public_scope = import_module(
+                "ugc_bot.infrastructure.db.migrations.versions."
+                "0127_public_policy_scope"
+            )
+            connection.exec_driver_sql(public_scope._authority_sql(public=True))
 
 
 sa.event.listen(Base.metadata, "after_create", install_final_guard)

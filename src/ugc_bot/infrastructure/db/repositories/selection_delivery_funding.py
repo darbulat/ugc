@@ -16,7 +16,7 @@ class SqlAlchemySelectionFundingRepository(
     def _require_policy(policy, effective, order, items, at):
         _require(
             effective <= utc(order["created_at"]) <= at
-            and order["advertiser_id"] in policy.allowed_clients
+            and policy.allows_client(order["advertiser_id"])
             and bool(policy.terms_reference)
             and policy.selection_refund_window is not None
             and policy.selection_refund_window > timedelta(0),

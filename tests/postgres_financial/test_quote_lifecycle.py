@@ -24,6 +24,9 @@ from ugc_bot.infrastructure.db.repositories.financial_items import (
 from ugc_bot.infrastructure.db.repositories.orders import (
     SqlAlchemyOrderRepository,
 )
+from ugc_bot.infrastructure.db.repositories.platform import (
+    SqlAlchemyCountryRepository,
+)
 from ugc_bot.infrastructure.db.session import SessionTransactionManager
 
 
@@ -40,7 +43,9 @@ async def test_explicit_new_order_atomic_quote_retry(
     assert hasattr(OrderService, "create_financial_order"), (
         "explicit v1 command missing"
     )
-    client = await create_test_advertiser(user_repo, advertiser_repo)
+    client = await create_test_advertiser(
+        user_repo, advertiser_repo, country="ru"
+    )
     # Existing user/profile ports; genuine PostgreSQL order and quote path.
     with Session(financial_pg_engine) as db, db.begin():
         from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -52,6 +57,7 @@ async def test_explicit_new_order_atomic_quote_retry(
                 messenger_type=MessengerType.TELEGRAM,
                 username="quote",
                 status=UserStatus.ACTIVE,
+                country="ru",
             )
         )
     engine = create_async_engine(financial_pg_engine.url)
@@ -88,6 +94,7 @@ async def test_explicit_new_order_atomic_quote_retry(
         frozenset({3}),
         100000,
         transaction_manager=SessionTransactionManager(factory),
+        country_repo=SqlAlchemyCountryRepository(factory),
     )
     service.metrics_collector = NoPrecommitEffects()
     if failure == "commit":

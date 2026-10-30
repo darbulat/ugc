@@ -20,6 +20,10 @@ from ugc_bot.application.services.order_image_service import OrderImageService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.config import FinancialConfig
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.financial_policy_versions import (
+    PILOT_POLICY_VERSION,
+    PUBLIC_POLICY_VERSION,
+)
 from ugc_bot.domain.order_intake import (
     AccompanimentLead,
     EligibleOrderPolicies,
@@ -91,14 +95,21 @@ class OrderIntakeService:
                 not self.config.core_enabled
                 or not self.config.new_orders_enabled
             )
-            if paused or client.currency != "RUB":
+            if paused or client.country != "ru" or client.currency != "RUB":
                 return EligibleOrderPolicies(client.currency, paused, ())
             now = utc(self.clock.now())
             gate = FinancialPolicyService(self.config)
             result = []
-            for version in await self.repository.policy_versions(
+            versions = await self.repository.policy_versions(
                 now, session=session
-            ):
+            )
+            pilot_superseded = (
+                PILOT_POLICY_VERSION in versions
+                and await self._pilot_superseded(now, session=session)
+            )
+            for version in versions:
+                if version == PILOT_POLICY_VERSION and pilot_superseded:
+                    continue
                 try:
                     policy = await self.policies.load(version, session=session)
                     approved = gate.validate_for_capture(
@@ -165,16 +176,28 @@ class OrderIntakeService:
                 command.client_id, command.operation_key, session=session
             )
             if previous is not None:
-                if previous.payload_hash not in _matching_receipt_hashes(
-                    command, previous.result
+                if (
+                    previous.payload_hash != command.payload_hash
+                    and previous.payload_hash
+                    not in _matching_receipt_hashes(command, previous.result)
                 ):
                     raise ValueError("idempotency_payload_conflict")
                 return previous.result
             if not self.config.new_orders_enabled:
                 raise ValueError("financial_disabled")
-            if client.currency != "RUB":
+            if client.country != "ru" or client.currency != "RUB":
                 raise ValueError("unpublished_currency")
+            if command.policy_version == PILOT_POLICY_VERSION:
+                # Coordinate with publication of the replacement version.
+                await self.policies.lock_version(
+                    PUBLIC_POLICY_VERSION, session=session
+                )
             now = utc(self.clock.now())
+            if (
+                command.policy_version == PILOT_POLICY_VERSION
+                and await self._pilot_superseded(now, session=session)
+            ):
+                raise ValueError("pilot_policy_superseded")
             policy = await self.policies.load(
                 command.policy_version, session=session
             )
@@ -264,6 +287,22 @@ class OrderIntakeService:
                     session=session,
                 )
             return result
+
+    async def _pilot_superseded(self, now, *, session):
+        policy = await self.policies.load(
+            PUBLIC_POLICY_VERSION, session=session
+        )
+        if policy is None:
+            return False
+        approved, effective = FinancialPolicyService._approved_policy(
+            policy, PUBLIC_POLICY_VERSION
+        )
+        return (
+            approved.all_clients
+            and approved.terms_reference
+            == f"https://bot.usemycontent.ru/financial-policy/{PUBLIC_POLICY_VERSION}.html"
+            and effective <= now
+        )
 
     @staticmethod
     def _order_fields(command):

@@ -97,7 +97,9 @@ class IntakeFacts:
 
 def setup(platform):
     command = OrderIntakeCommand(**values())
-    client = IntakeClient(command.client_id, "active", True, "RUB")
+    client = IntakeClient(
+        command.client_id, "active", True, "RUB", country="ru"
+    )
     facts = IntakeFacts(client)
     service = OrderIntakeService(
         facts,

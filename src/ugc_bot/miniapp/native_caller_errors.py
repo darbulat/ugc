@@ -16,6 +16,7 @@ SHARED_CODES = {
     "idempotency_payload_conflict": 409,
 }
 INTAKE_CODES = SHARED_CODES | {
+    "pilot_policy_superseded": 409,
     "active_advertiser_required": 403,
     "intake_admin_required": 403,
     "invalid_intake_funnel_stage": 422,

@@ -7,6 +7,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.application.services.financial_policy_service import (
+    PER_ITEM_HOLD_SECONDS,
+    PER_ITEM_SELECTION_ANCHOR,
     FinancialPolicy,
 )
 from ugc_bot.domain.enums import UserStatus
@@ -70,6 +72,18 @@ class SqlAlchemyFinancialPolicyRepository:
                     "allowed_clients": sorted(
                         str(client) for client in policy.allowed_clients
                     ),
+                    "all_clients": policy.all_clients,
+                    "maturity_mode": policy.maturity_mode,
+                    **(
+                        {
+                            "selection_refund_window_anchor": (
+                                PER_ITEM_SELECTION_ANCHOR
+                            ),
+                            "hold_seconds": PER_ITEM_HOLD_SECONDS,
+                        }
+                        if policy.maturity_mode == "per_item_v1"
+                        else {}
+                    ),
                     "terms_reference": policy.terms_reference,
                     "refund_rules": policy.refund_rules.to_document(),
                     "selection_minor": policy.selection_minor,
@@ -101,14 +115,23 @@ def decode_policy_version(
     if not isinstance(rules, dict):
         raise ValueError("invalid_policy_document")
     clients = rules.get("allowed_clients")
+    all_clients = rules.get("all_clients", False)
     terms = rules.get("terms_reference")
     if (
         not isinstance(clients, list)
+        or type(all_clients) is not bool
+        or (all_clients and bool(clients))
         or not isinstance(terms, str)
         or not terms.strip()
     ):
         raise ValueError("invalid_policy_document")
     if ("selection_minor" in rules) != ("accompaniment_minor" in rules):
+        raise ValueError("invalid_policy_document")
+    if rules.get("maturity_mode", "legacy") == "per_item_v1" and (
+        rules.get("selection_refund_window_anchor") != PER_ITEM_SELECTION_ANCHOR
+        or type(rules.get("hold_seconds")) is not int
+        or rules.get("hold_seconds") != PER_ITEM_HOLD_SECONDS
+    ):
         raise ValueError("invalid_policy_document")
     try:
         if any(not isinstance(client, str) for client in clients):
@@ -127,6 +150,8 @@ def decode_policy_version(
                 seconds=model.refund_window_seconds
             ),
             allowed_clients=allowed,
+            all_clients=all_clients,
+            maturity_mode=rules.get("maturity_mode", "legacy"),
             terms_reference=terms,
             refund_rules=RefundRules.from_document(rules["refund_rules"])
             if "refund_rules" in rules

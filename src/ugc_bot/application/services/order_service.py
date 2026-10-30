@@ -415,7 +415,18 @@ class OrderService:
             )
             if user is None:
                 raise UserNotFoundError("Advertiser not found.")
-            if await self._resolve_currency(user.country, session) != currency:
+            country = (
+                await self.country_repo.get_by_code(
+                    user.country, session=session
+                )
+                if user.country == "ru" and self.country_repo is not None
+                else None
+            )
+            if (
+                country is None
+                or country.currency_code != "RUB"
+                or currency != "RUB"
+            ):
                 raise ValueError("unpublished_currency")
             await self._create_order(
                 advertiser_id=advertiser_id,
