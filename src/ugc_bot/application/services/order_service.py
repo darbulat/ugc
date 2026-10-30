@@ -39,6 +39,21 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 logger = logging.getLogger(__name__)
 
 
+async def _order_geometry(geography, geocoder, *, financial):
+    spec = parse_geography(geography)
+    if spec is None or geocoder is None:
+        return None
+    queries = get_geometry_queries_from_spec(spec)
+    if not queries:
+        return None
+    try:
+        return await geocoder.get_multipolygon_wkt_for_queries(queries)
+    except Exception as exc:
+        if financial:
+            raise ValueError("geography_unavailable") from exc
+        raise
+
+
 def _validate_order_input(
     product_link: str,
     offer_text: str,
@@ -234,18 +249,11 @@ class OrderService:
             order_currency = await self._resolve_currency(user.country, session)
 
             geography_clean = (geography or "").strip() or None
-            order_location_geometry = None
-            if geography_clean and self.geocoder:
-                spec = parse_geography(geography_clean)
-                if spec is not None:
-                    queries = get_geometry_queries_from_spec(spec)
-                    if queries:
-                        geocoder = self.geocoder
-                        order_location_geometry = (
-                            await geocoder.get_multipolygon_wkt_for_queries(
-                                queries
-                            )
-                        )
+            order_location_geometry = await _order_geometry(
+                geography_clean,
+                self.geocoder,
+                financial=_financial_order_id is not None,
+            )
             order = Order(
                 order_id=_financial_order_id or uuid4(),
                 advertiser_id=advertiser_id,
@@ -421,6 +429,7 @@ class OrderService:
                 _financial_order_id=order_id,
                 _created_at=order_created_at,
                 product_photo_file_id=product_photo_file_id,
+                geography=targeting.geography if targeting else None,
             )
             await paid.repository.activate_new_order(
                 order_id, quote.policy_version, session=session

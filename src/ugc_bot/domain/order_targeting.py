@@ -30,6 +30,7 @@ class OrderTargeting:
     content_usage: str | None = None
     brief_link: str | None = None
     deadlines: str | None = None
+    geography: str | None = None
 
     def __post_init__(self):
         validate_range(self.min_followers, self.max_followers, 2147483647)
@@ -38,6 +39,7 @@ class OrderTargeting:
             object.__setattr__(self, "gender", BloggerGender(self.gender).value)
         for name, limit in (
             ("city", 200),
+            ("geography", 200),
             ("content_usage", 4000),
             ("brief_link", 2048),
             ("deadlines", 4000),
@@ -51,6 +53,8 @@ class OrderTargeting:
                 ):
                     raise ValueError("invalid_targeting_brief")
                 object.__setattr__(self, name, value.strip())
+        if self.city is not None and self.geography is not None:
+            raise ValueError("ambiguous_targeting_geography")
         if self.brief_link is not None:
             parsed = urlsplit(self.brief_link)
             if (
@@ -75,7 +79,8 @@ class OrderTargeting:
         values = asdict(self)
         if values["deadlines"] is None:
             values.pop("deadlines")
-        values["geography"] = values.pop("city")
+        city = values.pop("city")
+        values["geography"] = values["geography"] or city
         values.pop("platforms")
         gender = values.pop("gender")
         values["required_blogger_gender"] = (
@@ -88,4 +93,6 @@ class OrderTargeting:
         values = asdict(self)
         if values["deadlines"] is None:
             values.pop("deadlines")
+        if values["geography"] is None:
+            values.pop("geography")
         return values

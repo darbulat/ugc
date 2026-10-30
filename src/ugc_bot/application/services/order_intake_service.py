@@ -1,6 +1,6 @@
 """One caller transaction persists the requested service before any send."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
 from uuid import UUID, uuid5
@@ -29,6 +29,29 @@ from ugc_bot.domain.order_intake import (
     OrderIntakeReceipt,
     OrderIntakeResult,
 )
+
+
+def _matching_receipt_hashes(command, result):
+    matching_hashes = {command.payload_hash}
+    legacy = (
+        command.position_count == 30
+        and command.image_token is None
+        and len(result.items) == 30
+    )
+    if legacy:
+        matching_hashes.add(command.legacy_payload_hash)
+    # Preserve retries of bot briefs saved before geography was separated
+    # from the Mini App's exact city filter.
+    target = command.targeting
+    if target is not None and target.geography is not None:
+        prior = replace(
+            command,
+            targeting=replace(target, city=target.geography, geography=None),
+        )
+        matching_hashes.add(prior.payload_hash)
+        if legacy:
+            matching_hashes.add(prior.legacy_payload_hash)
+    return matching_hashes
 
 
 @dataclass
@@ -142,11 +165,8 @@ class OrderIntakeService:
                 command.client_id, command.operation_key, session=session
             )
             if previous is not None:
-                if previous.payload_hash != command.payload_hash and not (
-                    command.position_count == 30
-                    and command.image_token is None
-                    and len(previous.result.items) == 30
-                    and previous.payload_hash == command.legacy_payload_hash
+                if previous.payload_hash not in _matching_receipt_hashes(
+                    command, previous.result
                 ):
                     raise ValueError("idempotency_payload_conflict")
                 return previous.result

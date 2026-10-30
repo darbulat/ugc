@@ -16,6 +16,7 @@ from ugc_bot.miniapp.order_intake_api import IntakeTargeting
         dict(min_age=30, max_age=20),
         dict(min_age=121),
         dict(extra="forged"),
+        dict(geography="весь мир"),
     ],
 )
 def test_targeting_wire_rejects_coercion_and_unknown_fields(values):

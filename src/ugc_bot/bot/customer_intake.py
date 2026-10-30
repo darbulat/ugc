@@ -174,7 +174,7 @@ def command_from_state(data, incoming):
         order_type=OrderType(data["order_type"]),
         barter_description=data.get("barter_description"),
         targeting=OrderTargeting(
-            city=data.get("geography"),
+            geography=data.get("geography"),
             platforms=tuple(data.get("platforms", ())),
             content_usage=data.get("content_usage"),
             deadlines=data.get("deadlines"),
