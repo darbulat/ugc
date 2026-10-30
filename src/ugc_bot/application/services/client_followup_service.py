@@ -72,7 +72,11 @@ class ClientFollowupService(CustomerWorkflowService):
         )
         if series and known and known != series["series_id"]:
             if event != "order_created" or not order_id:
-                return known, linked_order, True
+                if not await self.repository.intent_after_latest_payment(
+                    user_id, intent_id, series["created_at"], session=session
+                ):
+                    return known, linked_order, True
+                return known, linked_order, False
             incoming_at = await self.repository.order_created_at(
                 user_id, order_id, session=session
             )
@@ -127,11 +131,18 @@ class ClientFollowupService(CustomerWorkflowService):
             and not series["opted_out"]
             and event == "brief_opened"
             and intent_id
-            and known is None
+            and known == series["series_id"]
             and linked_order is None
             and series.get("stopped_at") is not None
             and now > max(utc(series["stopped_at"]), utc(series["created_at"]))
         ):
+            registered_at = await self.repository.intent_recorded_at(
+                series["user_id"], intent_id, session=session
+            )
+            if registered_at is None or utc(registered_at) <= utc(
+                series["stopped_at"]
+            ):
+                return None
             opened_at = await self.repository.intent_opened_at(
                 series["user_id"], intent_id, session=session
             )
@@ -148,6 +159,29 @@ class ClientFollowupService(CustomerWorkflowService):
                 user_id, intent_id, series["series_id"], now, session=session
             )
 
+    async def _unregistered_old_brief(
+        self, user_id, event, known_intent, series, session
+    ):
+        return (
+            not series["stop_reason"]
+            and known_intent is None
+            and event in {"brief_opened", "brief_changed"}
+            and await self.repository.has_older_paid_series(
+                user_id, series["created_at"], session=session
+            )
+        )
+
+    async def _ignore_active_activity(
+        self, user_id, event, order_id, known_intent, series, session
+    ):
+        if await self._older_order(user_id, order_id, series, session):
+            await self._reconcile_paid(series, session)
+            return True
+        await self._reconcile_paid(series, session, order_id)
+        return await self._unregistered_old_brief(
+            user_id, event, known_intent, series, session
+        )
+
     @staticmethod
     def _validate_activity(event, intent_id):
         if event not in ACTIVITY_EVENTS:
@@ -156,6 +190,36 @@ class ClientFollowupService(CustomerWorkflowService):
             not isinstance(intent_id, UUID) or not intent_id.int
         ):
             raise ValueError("followup_intent_invalid")
+
+    async def register_brief(
+        self,
+        user_id: UUID,
+        *,
+        principal: AuthenticatedMessengerPrincipal | None = None,
+    ) -> UUID:
+        intent_id = uuid4()
+        async with self.transactions.transaction() as session:
+            actor = await self.authorize(user_id, principal, session=session)
+            series = await self.repository.series(user_id, session=session)
+            now = utc(self.clock.now())
+            if series is None:
+                series = dict(
+                    series_id=uuid4(),
+                    user_id=user_id,
+                    generation=0,
+                    last_activity_at=now,
+                    created_at=now,
+                    order_id=None,
+                    channel=principal.platform
+                    if principal
+                    else actor["channel"],
+                    opted_out=False,
+                    stop_reason=None,
+                    stopped_at=None,
+                )
+                await self.repository.save_series(series, session=session)
+            await self._bind_intent(user_id, intent_id, series, now, session)
+            return intent_id
 
     async def record_activity(
         self,
@@ -182,11 +246,15 @@ class ClientFollowupService(CustomerWorkflowService):
                 return series
             if intent_order and not order_id and series is None:
                 order_id = intent_order
-            if series and not series["stop_reason"] and not series["opted_out"]:
-                if await self._older_order(user_id, order_id, series, session):
-                    await self._reconcile_paid(series, session)
-                    return series
-                await self._reconcile_paid(series, session, order_id)
+            if (
+                series
+                and not series["stop_reason"]
+                and not series["opted_out"]
+                and await self._ignore_active_activity(
+                    user_id, event, order_id, known_intent, series, session
+                )
+            ):
+                return series
             start_at = None
             if series and (series["stop_reason"] or series["opted_out"]):
                 start_at = await self._restart_time(

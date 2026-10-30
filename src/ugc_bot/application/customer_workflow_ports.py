@@ -40,6 +40,17 @@ class CustomerWorkflowRepository(Protocol):
     async def intent_series(
         self, user_id: UUID, intent_id: UUID, *, session: object
     ) -> UUID | None: ...
+    async def intent_recorded_at(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> datetime | None: ...
+    async def intent_after_latest_payment(
+        self,
+        user_id: UUID,
+        intent_id: UUID,
+        since: datetime,
+        *,
+        session: object,
+    ) -> bool: ...
     async def intent_order(
         self, user_id: UUID, intent_id: UUID, *, session: object
     ) -> UUID | None: ...

@@ -33,6 +33,7 @@ def api():
         catalog=AsyncMock(return_value={"services": []}),
     )
     follow = SimpleNamespace(
+        register_brief=AsyncMock(),
         record_activity=AsyncMock(return_value={"generation": 1}),
         state=AsyncMock(return_value=None),
         optout=AsyncMock(),
@@ -122,6 +123,27 @@ async def test_followup_brief_preserves_its_purchase_intent(api):
     ].record_activity.call_args
     assert call.kwargs["principal"] == actor
     assert call.kwargs["intent_id"] == intent_id
+
+
+@pytest.mark.asyncio
+async def test_followup_registers_intent_for_authenticated_customer(api):
+    app, actor, _ = api
+    intent_id = uuid4()
+    app.state.dispatcher[
+        "client_followup_service"
+    ].register_brief.return_value = intent_id
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="https://test"
+    ) as client:
+        response = await client.post(
+            "/customer/followups/register-brief",
+            json={"init_data": "signed"},
+        )
+    assert response.status_code == 200
+    app.state.dispatcher[
+        "client_followup_service"
+    ].register_brief.assert_awaited_once_with(actor.user_id, principal=actor)
+    assert response.json()["intent_id"] == str(intent_id)
 
 
 @pytest.mark.asyncio

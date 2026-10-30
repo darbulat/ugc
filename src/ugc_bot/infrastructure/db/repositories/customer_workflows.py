@@ -192,6 +192,40 @@ class SqlAlchemyCustomerWorkflowRepository:
             is not None
         )
 
+    async def intent_recorded_at(
+        self, user_id: UUID, intent_id: UUID, *, session: object
+    ) -> datetime | None:
+        return await _session(session).scalar(
+            select(INTENTS.c.recorded_at).where(
+                INTENTS.c.user_id == user_id,
+                INTENTS.c.intent_id == intent_id,
+            )
+        )
+
+    async def intent_after_latest_payment(
+        self,
+        user_id: UUID,
+        intent_id: UUID,
+        since: datetime,
+        *,
+        session: object,
+    ) -> bool:
+        boundary = await _session(session).scalar(
+            select(func.max(SERIES.c.stopped_at)).where(
+                SERIES.c.user_id == user_id,
+                SERIES.c.stop_reason == "paid",
+                SERIES.c.created_at < since,
+            )
+        )
+        registered = await self.intent_recorded_at(
+            user_id, intent_id, session=session
+        )
+        return (
+            boundary is not None
+            and registered is not None
+            and registered > boundary
+        )
+
     async def intent_opened_at(
         self, user_id: UUID, intent_id: UUID, *, session: object
     ) -> datetime | None:

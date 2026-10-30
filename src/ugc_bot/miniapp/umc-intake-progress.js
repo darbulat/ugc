@@ -4,13 +4,13 @@
   var bridge=window.__umcAppBridge,form=document.getElementById('form-umc-intake');
   if(!bridge||!form)return;
   var copy={ru:['Бриф','Фильтры','Пакет и оплата','Черновик сохранён на этом устройстве','Черновик сохранён в этой сессии'],en:['Brief','Filters','Package and payment','Draft saved on this device','Draft saved in this session'],kk:['Тапсырма','Сүзгілер','Пакет пен төлем','Жоба осы құрылғыда сақталды','Осы сессияда жоба сақталды'],be:['Заданне','Фільтры','Пакет і аплата','Чарнавік захаваны на гэтай прыладзе','Чарнавік захаваны ў гэтай сесіі'],uz:['Topshiriq','Filtrlar','Paket va to‘lov','Qoralama ushbu qurilmada saqlandi','Qoralama shu seansda saqlandi']};
-  var navigation=document.createElement('nav'),status=document.createElement('p'),tracking=false,flow=null,observed={},restored=false,binding=null,context=null,generation=0,applying=false,submittedBinding=null;
+  var navigation=document.createElement('nav'),status=document.createElement('p'),tracking=false,flow=null,registeredFlow=null,observed={},restored=false,binding=null,context=null,generation=0,applying=false,submittedBinding=null;
   var draftLoad=null,draftDirty=false,lastSnapshot=null,writers={},queued={},ownKey=null,sources=[],draftGroup=null;
   navigation.className='umc-selection-steps';status.className='hint';status.setAttribute('role','status');
   var ids=['intake-product','intake-min_followers','intake-policy'], stages=['brief','filters','package'];
   function words(){return copy[(window._me||{}).locale]||copy.en;}
   function identity(){var user=(window._me||{}).user_id;return typeof user==='string'&&user?'umc:intake-draft:'+(window.__miniapp_platform||'telegram')+':'+user:null;}
-  function newContext(){if(context)context.dispose();context=bridge.createRequestContext?bridge.createRequestContext():null;generation++;tracking=false;observed={};}
+  function newContext(){if(context)context.dispose();context=bridge.createRequestContext?bridge.createRequestContext():null;generation++;tracking=false;registeredFlow=null;observed={};}
   function bind(){
     var next=identity();
     if(next===binding){if(context&&!context.isCurrent())return true;return false;}
@@ -158,11 +158,14 @@
   }
   document.addEventListener('umc:app-ready',function(){if(context&&!context.isCurrent())binding=null;bind();localize();});
   window.UMCIntakeProgress={
-    prepare:function(){bind();return restore(true);},
+    prepare:function(enabled,initialize){bind();return restore(true).then(function(){if(typeof enabled==='boolean')tracking=enabled;var existing=!!flow;if(tracking&&!flow&&initialize!==false)flow=operation();return binding&&tracking&&context&&context.isCurrent()?{intent:flow,existing:existing}:null;});},
+    markExisting:function(intent){if(!bind()&&context&&context.isCurrent()&&intent===flow)registeredFlow=intent;},
+    markRegistered:function(intent){if(!bind()&&context&&context.isCurrent()&&validVersion(intent)){flow=intent;registeredFlow=intent;observed={};save();}},
+    registeredFunnel:function(){bind();return binding&&context&&context.isCurrent()&&registeredFlow===flow?registeredFlow:null;},
     startNew:function(){
       if(bind()||!binding||!context||!context.isCurrent())return false;
       var nextGroup=operation();if(!nextGroup)return false;
-      flow=tracking?operation():null;observed={};lastSnapshot=null;draftLoad=null;restored=true;draftDirty=false;sources=[];draftGroup=nextGroup;status.textContent='';save();return true;
+      flow=null;registeredFlow=null;observed={};lastSnapshot=null;draftLoad=null;restored=true;draftDirty=false;sources=[];draftGroup=nextGroup;status.textContent='';save();return true;
     },
     complete:complete,
     flush:function(){bind();return writers[binding]||Promise.resolve();},

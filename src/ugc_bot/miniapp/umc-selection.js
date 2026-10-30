@@ -35,7 +35,7 @@
   freshDraft.addEventListener('click',function(){
     var ctx=binding(),progress=window.UMCIntakeProgress;if(state.busy||!ctx.isCurrent()){text('intake-error',words().session);return;}
     try{if(progress&&!progress.startNew())throw new Error('storage_unavailable');}catch(_){text('intake-error',words().storage);return;}
-    freshDraft.hidden=true;text('intake-error','');preview();
+    freshDraft.hidden=true;text('intake-error','');loadPolicies();
   });
   function text(name, value) { id(name).textContent=value || ''; }
   function sync() { if(window.UMCShell) window.UMCShell.syncControls(); }
@@ -182,7 +182,11 @@
       var select=id('intake-policy'), old=select.value; select.replaceChildren(); var placeholder=node('option',words().choose); placeholder.value=''; select.appendChild(placeholder);
       state.policies.forEach(function(p) { var option=node('option',p.terms_reference+' · '+date(p.effective_from)); option.value=p.version; select.appendChild(option); }); if(state.policies.some(function(p) { return p.version===old; })) select.value=old; else if(state.policies.length===1)select.value=state.policies[0].version;
       var progress=window.UMCIntakeProgress;
-      return (progress?progress.prepare():Promise.resolve()).then(function(){
+      return (progress?progress.prepare(data.funnel_tracking===true,!state.pending&&!state.result&&!data.writes_paused&&state.policies.length>0):Promise.resolve(null)).then(function(attempt){
+        if(!ctx.isCurrent()||!attempt||!attempt.intent||state.pending||state.result||data.writes_paused||!state.policies.length)return;
+        if(attempt.existing){progress.markExisting(attempt.intent);return;}
+        return Promise.race([ctx.request('/customer/followups/register-brief',{}),new Promise(function(resolve){setTimeout(function(){resolve(null);},3000);})]).then(function(result){if(ctx.isCurrent()&&result&&result.intent_id)progress.markRegistered(result.intent_id);}).catch(function(){});
+      }).then(function(){
         if(!ctx.isCurrent())return;
         if(state.pending) pendingView(); else if(!state.result) id('form-umc-intake').hidden=data.writes_paused || !state.policies.length;
         document.dispatchEvent(new CustomEvent("umc:intake-policy-ready",{detail:{tracking:data.funnel_tracking===true}}));

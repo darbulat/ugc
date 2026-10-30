@@ -92,7 +92,10 @@ async def test_bot_order_and_followup_share_brief_intent(flow, platform):
     service.create.return_value = SimpleNamespace(
         order_id=uuid4(), selection_base_minor=500000, total_minor=500000
     )
-    followup = SimpleNamespace(record_activity=AsyncMock())
+    followup = SimpleNamespace(
+        register_brief=AsyncMock(return_value=uuid4()),
+        record_activity=AsyncMock(),
+    )
     await complete_intake(
         IncomingMessage("12", incoming.user, text="0"),
         state,
@@ -1061,7 +1064,10 @@ async def test_new_canonical_brief_clears_previous_operation(
         )
     )
     registration = SimpleNamespace(confirm_advertiser_agreement=AsyncMock())
-    followup = SimpleNamespace(record_activity=AsyncMock())
+    followup = SimpleNamespace(
+        register_brief=AsyncMock(return_value=uuid4()),
+        record_activity=AsyncMock(),
+    )
     texts = SimpleNamespace(
         get=AsyncMock(return_value="Brief"), get_many=AsyncMock(return_value={})
     )
@@ -1144,4 +1150,8 @@ async def test_new_canonical_brief_clears_previous_operation(
     assert state._data["locale"] == "en"
     assert state.state == OrderCreationStates.order_type.state
     intent_id = UUID(state._data["intake_funnel_id"])
+    assert followup.register_brief.call_args.args == (user_id,)
+    assert (
+        followup.register_brief.call_args.kwargs["principal"].user_id == user_id
+    )
     assert followup.record_activity.call_args.kwargs["intent_id"] == intent_id

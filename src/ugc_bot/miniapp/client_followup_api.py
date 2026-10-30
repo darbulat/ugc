@@ -23,6 +23,16 @@ def create_client_followup_router(
         prefix="/customer/followups", route_class=CustomerWorkflowRoute
     )
 
+    @router.post("/register-brief")
+    async def register_brief(request: Request, body: SignedMiniAppRequest):
+        principal, service = await context(
+            request, body, resolve, "client_followup_service"
+        )
+        intent_id = await service.register_brief(
+            principal.user_id, principal=principal
+        )
+        return {"intent_id": str(intent_id)}
+
     @router.post("/activity")
     async def activity(request: Request, body: FollowupActivity):
         principal, service = await context(

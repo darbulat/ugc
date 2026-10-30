@@ -1,5 +1,6 @@
 """Customer journeys on production templates and synthetic signed APIs."""
 
+import time
 from urllib.parse import urlparse
 
 import pytest
@@ -145,6 +146,12 @@ class IntentTrackingNetwork(CustomerNetwork):
         if path.endswith("/financial/orders/funnel/stage"):
             route.fulfill(json={"ok": True})
             return
+        if path.endswith("/customer/followups/register-brief"):
+            self.customer_posts.append((path, route.request.post_data_json))
+            route.fulfill(
+                json={"intent_id": "e0000000-0000-4000-8000-000000000001"}
+            )
+            return
         super().route(route)
 
 
@@ -162,6 +169,12 @@ def test_new_brief_and_created_order_share_followup_intent(page, platform):
     ) as opened:
         page.locator("#btn-show-create-order").click()
     intent = opened.value.post_data_json["intent_id"]
+    registration = [
+        body
+        for path, body in network.customer_posts
+        if path.endswith("/customer/followups/register-brief")
+    ]
+    assert registration and intent == "e0000000-0000-4000-8000-000000000001"
     fill(page)
     with page.expect_request(
         lambda request: (
@@ -173,6 +186,84 @@ def test_new_brief_and_created_order_share_followup_intent(page, platform):
     expect(page.locator("#intake-result")).to_be_visible()
     assert network.creates[0]["funnel_id"] == intent
     assert created.value.post_data_json["intent_id"] == intent
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_unavailable_followup_registration_does_not_block_order(page, platform):
+    class UnavailableRegistration(IntentTrackingNetwork):
+        def route(self, route):
+            if urlparse(route.request.url).path.endswith(
+                "/customer/followups/register-brief"
+            ):
+                route.fulfill(status=503, json={"error": "unavailable"})
+                return
+            super().route(route)
+
+    network = UnavailableRegistration()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert len(network.creates) == 1
+    assert not [
+        body
+        for path, body in network.customer_posts
+        if path.endswith("/customer/followups/activity")
+        and body.get("event") in {"brief_opened", "brief_changed"}
+        and body.get("intent_id")
+    ]
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_reopening_saved_brief_preserves_server_intent(page, platform):
+    network = IntentTrackingNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    page.locator("#intake-brief").fill("Saved before payment")
+    page.evaluate("() => UMCIntakeProgress.flush()")
+    page.reload()
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#intake-brief")).to_have_value("Saved before payment")
+    expect(page.locator("#screen-intake")).to_have_attribute(
+        "aria-busy", "false"
+    )
+    registrations = [
+        body
+        for path, body in network.customer_posts
+        if path.endswith("/customer/followups/register-brief")
+    ]
+    assert len(registrations) == 1
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_late_registration_response_does_not_start_followups(page, platform):
+    class SlowRegistration(IntentTrackingNetwork):
+        def route(self, route):
+            if urlparse(route.request.url).path.endswith(
+                "/customer/followups/register-brief"
+            ):
+                time.sleep(3.5)
+                route.fulfill(
+                    json={"intent_id": "e0000000-0000-4000-8000-000000000001"}
+                )
+                return
+            super().route(route)
+
+    network = SlowRegistration()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    page.locator("#intake-brief").fill("This brief remains usable")
+    page.wait_for_timeout(600)
+    assert not [
+        body
+        for path, body in network.customer_posts
+        if path.endswith("/customer/followups/activity")
+        and body.get("intent_id")
+    ]
 
 
 class FullServiceCatalogNetwork(CustomerNetwork):

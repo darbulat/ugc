@@ -125,9 +125,8 @@
   document.getElementById('screen-intake').appendChild(button(word('help'),function(){openSupport(state.current);}));
   document.getElementById('screen-selection').append(button(word('problem'),function(){openSupport(state.current);}),button(word('rating'),function(){openRatings(state.current);}),button(word('services'),openServices));
   document.addEventListener('umc:intake-created',function(e){syncFollowupAfterActivity('order_created',e.detail&&e.detail.order_id,e.detail&&e.detail.intent_id);document.getElementById('btn-show-orders-list').textContent=word('orders');homeSummary();});
-  document.addEventListener('umc:screen-change',function(e){if(!e.detail)return;if(e.detail.screen==='screen-intake')activity('brief_opened');});
-  document.addEventListener('umc:intake-policy-ready',function(){if(document.getElementById('form-umc-intake').hidden)return;var progress=window.UMCIntakeProgress,intent=progress&&progress.funnel();if(intent)syncFollowupAfterActivity('brief_opened',null,intent);});
-  var intakeTimer;document.getElementById('form-umc-intake').addEventListener('input',function(){clearTimeout(intakeTimer);var progress=window.UMCIntakeProgress,intent=progress&&progress.funnel();intakeTimer=setTimeout(function(){activity('brief_changed',null,intent);},500);});
+  document.addEventListener('umc:intake-policy-ready',function(){if(document.getElementById('form-umc-intake').hidden)return;var progress=window.UMCIntakeProgress,intent=progress&&progress.registeredFunnel();if(intent)syncFollowupAfterActivity('brief_opened',null,intent);});
+  var intakeTimer;document.getElementById('form-umc-intake').addEventListener('input',function(){clearTimeout(intakeTimer);var progress=window.UMCIntakeProgress,intent=progress&&progress.registeredFunnel();if(intent)intakeTimer=setTimeout(function(){activity('brief_changed',null,intent);},500);});
   document.getElementById('btn-order-detail-back').addEventListener('click',function(e){if(!state.current)return;e.stopImmediatePropagation();show(orders);window.scrollTo(0,state.scroll);},true);
   document.addEventListener('umc:screen-change',function(e){if(e.detail&&e.detail.screen===orders.id)requestAnimationFrame(function(){requestAnimationFrame(function(){window.scrollTo(0,state.scroll);});});});
   var homeSummaryGeneration=0;

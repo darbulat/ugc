@@ -65,6 +65,19 @@ async def record_activity(
 async def begin_intake(incoming, user_id, state, followup):
     intent_id = uuid4()
     await state.update_data(intake_funnel_id=str(intent_id))
+    if followup is not None:
+        try:
+            registered = await followup.register_brief(
+                user_id, principal=principal_for(incoming, user_id)
+            )
+            if isinstance(registered, UUID):
+                intent_id = registered
+                await state.update_data(intake_funnel_id=str(intent_id))
+        except Exception as exc:
+            logger.warning(
+                "Customer brief registration unavailable",
+                extra={"error_type": type(exc).__name__},
+            )
     await record_activity(
         incoming, user_id, followup, "brief_opened", intent_id=intent_id
     )

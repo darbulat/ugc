@@ -612,8 +612,9 @@ async def test_new_brief_after_payment_starts_followups_without_old_replays(
 ):
     env = intake_env
     follow = services(env)["client_followup_service"]
-    old_intent, new_intent, delayed_intent = uuid4(), uuid4(), uuid4()
     first = await order(env)
+    old_intent = await follow.register_brief(env["user"].user_id)
+    delayed_intent = await follow.register_brief(env["user"].user_id)
     first_series = await follow.record_activity(
         env["user"].user_id, "brief_opened", intent_id=old_intent
     )
@@ -656,11 +657,30 @@ async def test_new_brief_after_payment_starts_followups_without_old_replays(
         env["user"].user_id, "brief_opened", intent_id=delayed_intent
     )
     assert delayed["stop_reason"] == "paid"
+    unregistered = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=uuid4()
+    )
+    assert unregistered["stop_reason"] == "paid"
+    new_intent = await follow.register_brief(env["user"].user_id)
+    parallel_intent = await follow.register_brief(env["user"].user_id)
     second = await follow.record_activity(
         env["user"].user_id, "brief_opened", intent_id=new_intent
     )
     assert second["stop_reason"] is None
     assert second["series_id"] != first_series["series_id"]
+    for event in ("brief_opened", "brief_changed"):
+        delayed = await follow.record_activity(
+            env["user"].user_id, event, intent_id=uuid4()
+        )
+        assert delayed["series_id"] == second["series_id"]
+        assert delayed["generation"] == second["generation"]
+        legacy = await follow.record_activity(env["user"].user_id, event)
+        assert legacy["generation"] == second["generation"]
+    parallel = await follow.record_activity(
+        env["user"].user_id, "brief_opened", intent_id=parallel_intent
+    )
+    assert parallel["series_id"] == second["series_id"]
+    assert parallel["generation"] == second["generation"] + 1
     for event in ("order_created", "menu", "brief_opened", "brief_changed"):
         current = await follow.record_activity(
             env["user"].user_id, event, first.order_id
