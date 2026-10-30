@@ -206,6 +206,75 @@ async def test_max_status_needs_actual_canonical_link_not_equal_numeric_id(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status", ["pending_moderation", "active", "closed", "deleted"]
+)
+@pytest.mark.parametrize("issued", [False, True])
+async def test_terminal_order_status_does_not_offer_invoice_or_handoff(
+    checkout_env, status, issued
+):
+    env = checkout_env
+    order_id = env["order"].order_id
+    env["config"].bot.bot_username = "actual_bot"
+    max_id = "max-" + uuid4().hex
+    if issued:
+        await env["checkout"].request_invoice(order_id, env["actor"], "issue")
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == env["actor"].user_id)
+            .values(max_id=max_id)
+        )
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == order_id)
+            .values(status=status)
+        )
+
+    telegram = await env["checkout"].status(order_id, env["actor"])
+    assert telegram["order_open_for_payment"] is False
+    assert telegram["can_open"] is False
+    assert telegram["invoice_url"] is None
+    if issued:
+        replay = await env["checkout"].request_invoice(
+            order_id, env["actor"], "issue"
+        )
+        assert replay["invoice_url"] is None and not replay["can_open"]
+        assert env["gateway"].create_link.await_count == 1
+    max_value = await env["checkout"].status(
+        order_id, replace(env["actor"], platform="max", external_id=max_id)
+    )
+    assert max_value["order_open_for_payment"] is False
+    assert max_value["telegram_handoff"] is None
+
+
+@pytest.mark.asyncio
+async def test_terminal_order_keeps_authorization_replayable(
+    checkout_env,
+):
+    env = checkout_env
+    order_id = env["order"].order_id
+    await env["checkout"].request_invoice(order_id, env["actor"], "issue")
+    authorization = await env["checkout"].authorize(
+        order_id, env["actor"].external_id, "pending-query", 1740000, "RUB"
+    )
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == order_id)
+            .values(status="deleted")
+        )
+    state = await env["checkout"].status(order_id, env["actor"])
+    assert state["order_open_for_payment"] is False
+    assert state["authorization_id"] == authorization["authorization_id"]
+    assert state["invoice_url"] is None and not state["can_open"]
+    replay = await env["checkout"].authorize(
+        order_id, env["actor"].external_id, "pending-query", 1740000, "RUB"
+    )
+    assert replay["authorization_id"] == authorization["authorization_id"]
+
+
+@pytest.mark.asyncio
 async def test_pending_receipt_prevents_new_authorization_even_before_capture(
     checkout_env,
 ):

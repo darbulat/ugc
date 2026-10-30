@@ -311,6 +311,91 @@ class InitialMenuFollowupNetwork(CreatedOrderFollowupNetwork):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("payment_state", ["unpaid", "pending", "failed"])
+def test_unpaid_order_offers_payment_continuation(
+    page, platform, payment_state
+):
+    network = CustomerNetwork()
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "New order",
+            "status": "new",
+            "payment_state": payment_state,
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": "v1",
+        }
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card).to_contain_text("Ожидает оплаты")
+    expect(
+        card.get_by_role("button", name="Продолжить оформление")
+    ).to_be_visible()
+    if payment_state != "unpaid":
+        expect(card).not_to_contain_text(payment_state)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "locale,awaiting,continue_order",
+    [
+        ("ru", "Ожидает оплаты", "Продолжить оформление"),
+        ("en", "Awaiting payment", "Continue your order"),
+        ("kk", "Төлем күтілуде", "Тапсырысты жалғастыру"),
+        ("be", "Чакае аплаты", "Працягнуць афармленне"),
+        ("uz", "To‘lov kutilmoqda", "Buyurtmani davom ettirish"),
+    ],
+)
+def test_pending_payment_is_localized(
+    page, platform, locale, awaiting, continue_order
+):
+    network = CustomerNetwork()
+    network.locale = locale
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "New order",
+            "status": "new",
+            "payment_state": "pending",
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": "v1",
+        }
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card).to_contain_text(awaiting)
+    expect(card.get_by_role("button", name=continue_order)).to_be_visible()
+    expect(card.get_by_text(awaiting, exact=True)).to_have_count(1)
+    expect(card).not_to_contain_text("pending")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("status", ["closed", "deleted"])
+def test_finished_order_does_not_offer_payment_continuation(
+    page, platform, status
+):
+    network = CustomerNetwork()
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "Finished order",
+            "status": status,
+            "payment_state": "unpaid",
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": "v1",
+        }
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    card = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(card).to_contain_text("Не оплачено")
+    expect(card.get_by_role("button", name="Открыть заказ")).to_be_visible()
+    expect(
+        card.get_by_role("button", name="Продолжить оформление")
+    ).to_have_count(0)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_initial_followup_appears_after_menu_activity_is_saved(page, platform):
     network = InitialMenuFollowupNetwork()
     with page.expect_request(

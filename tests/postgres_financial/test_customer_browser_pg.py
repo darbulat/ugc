@@ -389,6 +389,75 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                 assert [price.amount for price in prices] == [500000, 1200000]
                 await expect(action).to_have_text(_CHECKOUT[locale][1])
                 if locale == "ru":
+                    # An issued invoice creates a pending payment. Returning
+                    # to the list must still offer continuation of payment.
+                    await page.locator("#btn-intake-back").click()
+                    await page.locator("#btn-show-orders-list").click()
+                    card = page.locator(f'[data-order-id="{body["order_id"]}"]')
+                    await expect(
+                        card.get_by_role("button", name="Продолжить оформление")
+                    ).to_be_visible()
+                    await expect(card).not_to_contain_text("pending")
+                    await expect(
+                        card.get_by_text("Ожидает оплаты", exact=True)
+                    ).to_have_count(1)
+                    async with page.expect_response(
+                        lambda r: r.url.endswith(
+                            f"/financial/orders/{body['order_id']}/selection"
+                        )
+                    ) as pending_resume:
+                        await card.get_by_role(
+                            "button", name="Продолжить оформление"
+                        ).click()
+                    assert (await pending_resume.value).status == 200
+                    await expect(action).to_have_text(_CHECKOUT[locale][1])
+                    await page.locator("#btn-selection-back").click()
+                    await (
+                        page.locator("#screen-customer-orders")
+                        .get_by_role("button", name="Назад", exact=True)
+                        .click()
+                    )
+                    await page.locator("#btn-show-create-order").click()
+                    await expect(action).to_be_visible()
+
+                    # A previously issued link is not offered after the
+                    # order is cancelled; restoring the synthetic state
+                    # lets the remaining paid-path assertions continue.
+                    with Session(env["pg"]) as db, db.begin():
+                        db.execute(
+                            update(OrderModel)
+                            .where(
+                                OrderModel.order_id == UUID(body["order_id"])
+                            )
+                            .values(status="deleted")
+                        )
+                    await page.locator("#btn-intake-back").click()
+                    await page.locator("#btn-show-orders-list").click()
+                    card = page.locator(f'[data-order-id="{body["order_id"]}"]')
+                    await expect(card).to_contain_text("Отменён")
+                    await card.get_by_role(
+                        "button", name="Открыть заказ"
+                    ).click()
+                    await expect(
+                        page.locator("#umc-checkout-status")
+                    ).to_have_text("Заказ больше недоступен для оплаты.")
+                    await expect(action).to_be_hidden()
+                    with Session(env["pg"]) as db, db.begin():
+                        db.execute(
+                            update(OrderModel)
+                            .where(
+                                OrderModel.order_id == UUID(body["order_id"])
+                            )
+                            .values(status="new")
+                        )
+                    await page.locator("#btn-selection-back").click()
+                    await (
+                        page.locator("#screen-customer-orders")
+                        .get_by_role("button", name="Назад", exact=True)
+                        .click()
+                    )
+                    await page.locator("#btn-show-create-order").click()
+                    await expect(action).to_be_visible()
                     await page.evaluate(
                         "window.Telegram.WebApp.openInvoice=(url,callback)=>{"
                         "window.__invoiceUrl=url;window.__invoiceCallback=callback}"
@@ -397,6 +466,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                     assert await page.evaluate("window.__invoiceUrl") == (
                         "https://t.me/$synthetic_invoice"
                     )
+                    assert app.state.bot.create_invoice_link.await_count == 1
                     await page.evaluate("window.__invoiceCallback('paid')")
                     await expect(
                         page.locator("#umc-checkout-status")
