@@ -4,6 +4,7 @@ import asyncio
 import io
 import json
 import socket
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,14 +16,26 @@ import pytest
 import uvicorn
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
+from fastapi.testclient import TestClient
 from PIL import Image
 from playwright.async_api import async_playwright, expect
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from tests.e2e.miniapp_helpers import generate_init_data
+from tests.helpers.fakes import FakeCallback, FakeUser
 from tests.postgres_financial.test_order_intake import intake_env as intake_env
+from ugc_bot.application.services.checkout_paid_receipts import (
+    PaidReceiptProcessor,
+)
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
+from ugc_bot.bot.telegram.handlers.admin_moderation import (
+    handle_moderate_activate,
+)
 from ugc_bot.config import MaxBotConfig
+from ugc_bot.domain.checkout import NativePaidReceipt
 from ugc_bot.infrastructure.db.customer_workflow_models import JOBS, REQUESTS
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
 from ugc_bot.infrastructure.db.order_image_models import IMAGES
@@ -57,6 +70,121 @@ _PAYMENT_TOGETHER = {
     "be": "Падбор і выбранае суправаджэнне аплачваюцца разам у адным рахунку.",
     "uz": "Tanlov va tanlangan hamrohlik bitta hisobda birga to‘lanadi.",
 }
+
+
+async def _capture_and_activate(env, app, page, order_id, image, monkeypatch):
+    """Continue this browser's order through a synthetic provider and admin."""
+    from ugc_bot.admin import app as admin_module
+
+    services = app.state.dispatcher
+    transactions = env["container"].transaction_manager
+    checkout = services["checkout_service"]
+    order_id = UUID(order_id)
+
+    async def activate():
+        callback = FakeCallback(
+            data=f"mod_activate:{order_id.hex}",
+            user=FakeUser(int(env["admin"].telegram_id), "admin"),
+        )
+        await handle_moderate_activate(
+            callback,
+            user_role_service=services["user_role_service"],
+            content_moderation_service=ContentModerationService(),
+            order_repo=env["repos"]["order_repo"],
+            outbox_publisher=services["outbox_publisher"],
+            transaction_manager=transactions,
+            payment_repo=env["repos"]["payment_repo"],
+        )
+        return callback.answers
+
+    assert await activate() == ["Заказ уже обработан."]
+    async with transactions.transaction() as session:
+        await checkout.repository.authorize(
+            order_id,
+            env["user"].telegram_id,
+            "synthetic-precheckout",
+            1700000,
+            "RUB",
+            session=session,
+        )
+    receipt = NativePaidReceipt(
+        env["user"].telegram_id,
+        "synthetic-chat",
+        "synthetic-message",
+        order_id,
+        "synthetic-provider-charge",
+        "synthetic-telegram-charge",
+        1700000,
+        "RUB",
+        datetime.now(timezone.utc),
+    )
+    payment = replace(
+        services["payment_service"],
+        capture_repository=checkout.repository.capture,
+        capture_account=env["config"].bot.telegram_payment_account_id,
+    )
+    processor = PaidReceiptProcessor(checkout.repository, transactions, payment)
+    assert await processor.accept(receipt)
+    assert await processor.run_once()
+    await page.locator("#umc-checkout-refresh").click()
+    await expect(page.locator("#umc-checkout-status")).to_have_attribute(
+        "data-state", "confirmed"
+    )
+
+    env["config"].admin.admin_base_url = "https://admin.example.test"
+    messenger = AsyncMock()
+    notices = env["container"].build_order_notice_delivery(messenger)
+    for _ in range(100):
+        if not await notices.run_once():
+            break
+    cards = [call.kwargs for call in messenger.send_photo.await_args_list]
+    assert len(cards) == 2
+    created = next(card for card in cards if "Новый заказ" in card["caption"])
+    paid = next(card for card in cards if "Заказ оплачен" in card["caption"])
+    assert created["chat_id"] == paid["chat_id"] == env["admin"].telegram_id
+    assert created["file_id"] == paid["file_id"]
+    buttons = [button for row in paid["keyboard"].rows for button in row]
+    assert any(
+        button.callback_data == f"mod_activate:{order_id.hex}"
+        for button in buttons
+    )
+    target = f"/admin/order-model/edit/{order_id}"
+    assert any(
+        button.url == "https://admin.example.test" + target
+        for button in buttons
+    )
+    assert not await notices.run_once()
+
+    config = env["config"].model_copy(
+        update={
+            "admin": env["config"].admin.model_copy(
+                update={
+                    "admin_username": "admin",
+                    "admin_password": "Strong-Image-Preview42!",
+                    "admin_secret": (
+                        "strong-image-admin-test-secret-32-characters"
+                    ),
+                }
+            )
+        }
+    )
+    monkeypatch.setattr(admin_module, "load_config", lambda: config)
+    with TestClient(admin_module.create_admin_app()) as client:
+        response = client.get(target, follow_redirects=False)
+        assert response.status_code == 302
+        assert "/admin/login" in response.headers["location"]
+        login = client.post(
+            "/admin/login",
+            data={"username": "admin", "password": "Strong-Image-Preview42!"},
+            follow_redirects=False,
+        )
+        assert login.status_code == 302
+        assert login.headers["location"] == target
+        assert client.get(target).status_code == 200
+        assert client.get(f"/admin/order-images/{order_id}").content == image
+
+    assert await activate() == ["Заказ активирован, уходит блогерам."]
+    assert await activate() == ["Заказ уже обработан."]
 
 
 @pytest.mark.e2e
@@ -205,6 +333,27 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                 ]
                 assert [price.amount for price in prices] == [500000, 1200000]
                 await expect(action).to_have_text(_CHECKOUT[locale][1])
+                if locale == "ru":
+                    await page.evaluate(
+                        "window.Telegram.WebApp.openInvoice=(url,callback)=>{"
+                        "window.__invoiceUrl=url;window.__invoiceCallback=callback}"
+                    )
+                    await action.click()
+                    assert await page.evaluate("window.__invoiceUrl") == (
+                        "https://t.me/$synthetic_invoice"
+                    )
+                    await page.evaluate("window.__invoiceCallback('paid')")
+                    await expect(
+                        page.locator("#umc-checkout-status")
+                    ).not_to_have_attribute("data-state", "confirmed")
+                    await _capture_and_activate(
+                        env,
+                        app,
+                        page,
+                        body["order_id"],
+                        image.getvalue(),
+                        monkeypatch,
+                    )
             with Session(env["pg"]) as db:
                 order = db.scalar(
                     select(OrderModel).where(
@@ -244,6 +393,9 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             await page.evaluate("window.UMCCustomer.orders()")
             card = page.locator(f'[data-order-id="{body["order_id"]}"]')
             await expect(card).to_be_visible()
+            if platform == "telegram" and locale == "ru":
+                await expect(card).to_contain_text("Идёт подбор")
+                await expect(card).to_contain_text("Оплачено")
             await card.get_by_role("button", name=_SUPPORT[locale]).click()
             await page.locator('#screen-customer-support [name="reason"]').fill(
                 "Synthetic support request"

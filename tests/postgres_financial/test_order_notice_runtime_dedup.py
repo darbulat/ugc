@@ -10,6 +10,7 @@ import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tests.helpers.fakes import FakeCallback, FakeUser
 from tests.postgres_financial.test_checkout_runtime import (
     checkout_env as _checkout_env,
 )
@@ -20,10 +21,18 @@ from ugc_bot.application.services.checkout_paid_notices import (
 from ugc_bot.application.services.checkout_paid_receipts import (
     PaidReceiptProcessor,
 )
+from ugc_bot.application.services.content_moderation_service import (
+    ContentModerationService,
+)
+from ugc_bot.bot.telegram.handlers.admin_moderation import (
+    handle_moderate_activate,
+)
 from ugc_bot.container.checkout_factory import build_checkout_service
 from ugc_bot.container.order_notice_factory import build_order_notice_delivery
 from ugc_bot.domain.checkout import NativePaidReceipt
+from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.checkout_models import NOTICE_JOBS
+from ugc_bot.infrastructure.db.models import OutboxEventModel
 from ugc_bot.infrastructure.db.order_notice_models import (
     ORDER_NOTICE_DELIVERIES,
 )
@@ -39,12 +48,41 @@ async def checkout_env(financial_pg_engine):
 
 
 @pytest.mark.asyncio
-async def test_paid_capture_sends_one_admin_card_and_one_client_receipt(
+async def test_paid_order_notifies_once_and_activates_only_after_capture(
     checkout_env,
 ):
     env = checkout_env
+    config = env["config"].model_copy(
+        update={
+            "admin": env["config"].admin.model_copy(
+                update={"admin_base_url": "https://admin.example.test"}
+            )
+        }
+    )
+    services = env["container"].build_bot_services()
+
+    async def activate():
+        callback = FakeCallback(
+            data=f"mod_activate:{env['order'].order_id.hex}",
+            user=FakeUser(int(env["admin"].telegram_id), "admin"),
+        )
+        await handle_moderate_activate(
+            callback,
+            user_role_service=services["user_role_service"],
+            content_moderation_service=ContentModerationService(),
+            order_repo=env["repos"]["order_repo"],
+            outbox_publisher=services["outbox_publisher"],
+            transaction_manager=env["container"].transaction_manager,
+            payment_repo=env["repos"]["payment_repo"],
+        )
+        return callback.answers
+
+    assert await activate() == ["Заказ уже обработан."]
+    assert (
+        await env["repos"]["order_repo"].get_by_id(env["order"].order_id)
+    ).status == OrderStatus.NEW
     # Use the production factory's ownership setting with the fixture gateway.
-    checkout = build_checkout_service(env["config"], env["transactions"])
+    checkout = build_checkout_service(config, env["transactions"])
     assert checkout.repository.admin_notices_enabled is False
     checkout = replace(checkout, gateway=env["gateway"])
     await checkout.request_invoice(
@@ -64,9 +102,9 @@ async def test_paid_capture_sends_one_admin_card_and_one_client_receipt(
     async with env["transactions"].transaction() as session:
         await checkout.repository.accept_receipt(paid, session=session)
     payment = replace(
-        env["container"].build_bot_services()["payment_service"],
+        services["payment_service"],
         capture_repository=checkout.repository.capture,
-        capture_account=env["config"].bot.telegram_payment_account_id,
+        capture_account=config.bot.telegram_payment_account_id,
     )
     processor = PaidReceiptProcessor(
         checkout.repository, env["transactions"], payment
@@ -96,15 +134,56 @@ async def test_paid_capture_sends_one_admin_card_and_one_client_receipt(
     assert receipt.send.await_count == 1
     messenger = AsyncMock()
     notices = build_order_notice_delivery(
-        env["config"], env["transactions"], messenger, env["repos"]
+        config, env["transactions"], messenger, env["repos"]
     )
     for _ in range(100):
         if not await notices.run_once():
             break
     # Created + paid admin events are distinct; checkout sends only the receipt.
     assert messenger.send_text.await_count == 2
+    cards = [call.kwargs for call in messenger.send_text.await_args_list]
+    created = next(card for card in cards if "Новый заказ" in card["text"])
+    paid_card = next(card for card in cards if "Заказ оплачен" in card["text"])
+    assert (
+        created["chat_id"] == paid_card["chat_id"] == env["admin"].telegram_id
+    )
+    created_buttons = [
+        button for row in created["keyboard"].rows for button in row
+    ]
+    paid_buttons = [
+        button for row in paid_card["keyboard"].rows for button in row
+    ]
+    callback_data = f"mod_activate:{env['order'].order_id.hex}"
+    assert not any(
+        button.callback_data == callback_data for button in created_buttons
+    )
+    assert any(button.callback_data == callback_data for button in paid_buttons)
+    assert any(
+        button.url
+        == f"https://admin.example.test/admin/order-model/edit/{env['order'].order_id}"
+        for button in paid_buttons
+    )
     assert not await processor.run_once()
     assert not await notices.run_once()
+    assert await activate() == ["Заказ активирован, уходит блогерам."]
+    assert await activate() == ["Заказ уже обработан."]
+    view = await services["client_order_view_service"].list(env["user"].user_id)
+    order = next(
+        row
+        for row in view["orders"]
+        if row["order_id"] == str(env["order"].order_id)
+    )
+    assert order["status"] == "active"
+    assert order["customer_status"] == "selecting"
+    assert order["payment_state"] == "paid"
+    with Session(env["pg"]) as db:
+        events = db.scalars(
+            select(OutboxEventModel).where(
+                OutboxEventModel.aggregate_id == str(env["order"].order_id),
+                OutboxEventModel.event_type == "order.activated",
+            )
+        ).all()
+        assert len(events) == 1
 
 
 @pytest.mark.asyncio
