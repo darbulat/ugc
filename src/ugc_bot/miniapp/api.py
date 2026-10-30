@@ -2689,6 +2689,28 @@ class CustomerOrderRatingsRequest(SignedMiniAppRequest):
     order_id: UUID
 
 
+@router.post("/customer/orders/completion")
+async def customer_order_completion(
+    request: Request, body: CustomerOrderRatingsRequest
+):
+    principal = await resolve_financial_principal(
+        request, body.init_data, platform=body.platform
+    )
+    service = request.app.state.dispatcher.get("blogger_rating_service")
+    if service is None:
+        raise HTTPException(503, "rating_unavailable")
+    try:
+        return {
+            "has_completed_work": await service.has_completed_work(
+                principal.user_id, body.order_id, principal=principal
+            )
+        }
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
 @router.post("/customer/orders/ratings")
 async def customer_order_ratings(
     request: Request, body: CustomerOrderRatingsRequest

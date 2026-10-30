@@ -22,6 +22,8 @@ class CustomerNetwork(SelectionNetwork):
         self.customer_posts = []
         self.fail_support = False
         self.orders = None
+        self.has_completed_work = False
+        self.fail_completion = False
 
     def route(self, route):
         path = urlparse(route.request.url).path
@@ -43,6 +45,12 @@ class CustomerNetwork(SelectionNetwork):
                         },
                     ]
                 }
+            elif path.endswith("/completion"):
+                route.fulfill(
+                    status=503 if self.fail_completion else 200,
+                    json={"has_completed_work": self.has_completed_work},
+                )
+                return
             elif path.endswith("/ratings"):
                 data = {
                     "authors": [
@@ -119,6 +127,84 @@ class CustomerNetwork(SelectionNetwork):
             route.fulfill(json={"score": 5})
             return
         super().route(route)
+
+
+class FullServiceCatalogNetwork(CustomerNetwork):
+    def route(self, route):
+        if urlparse(route.request.url).path.endswith(
+            "/customer/services/catalog"
+        ):
+            route.fulfill(
+                json={
+                    "services": [
+                        {
+                            "code": "selection",
+                            "title": "Автоподбор",
+                            "mode": "order",
+                        },
+                        {
+                            "code": "accompaniment",
+                            "title": "Подбор под ключ",
+                            "mode": "order",
+                        },
+                        {
+                            "code": "regular_search",
+                            "title": "Регулярный поиск",
+                            "mode": "lead",
+                        },
+                        {
+                            "code": "ambassadors",
+                            "title": "Ведение амбассадоров",
+                            "mode": "lead",
+                        },
+                        {
+                            "code": "result",
+                            "title": "Оплата за результат",
+                            "mode": "assessment",
+                        },
+                    ]
+                }
+            )
+            return
+        super().route(route)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "locale,result_hint",
+    [
+        ("ru", "просмотры, заявки или продажи"),
+        ("en", "views, leads or sales"),
+        ("kk", "қаралым, өтінім немесе сату"),
+        ("be", "прагляды, заяўкі або продажы"),
+        ("uz", "ko‘rishlar, arizalar yoki savdo"),
+    ],
+)
+def test_service_catalog_explains_choices_and_links_to_details(
+    page, platform, locale, result_hint
+):
+    page.set_viewport_size({"width": 320, "height": 740})
+    network = FullServiceCatalogNetwork()
+    network.locale = locale
+    open_app(page, network, platform, init_data=SIGNED)
+    page.evaluate("UMCCustomer.services()")
+    cards = page.locator("#screen-customer-services article")
+    expect(cards).to_have_count(5)
+    for index, url in enumerate(
+        [
+            "https://usemycontent.ru/pricing",
+            "https://usemycontent.ru/business#pod-klyuch",
+            "https://usemycontent.ru/barter",
+            "https://usemycontent.ru/barter",
+            "https://usemycontent.ru/rezultat",
+        ]
+    ):
+        expect(cards.nth(index).locator("p")).not_to_be_empty()
+        link = cards.nth(index).locator("a")
+        expect(link).to_have_attribute("href", url)
+        expect(link).to_have_attribute("rel", "noopener noreferrer")
+    expect(cards.nth(4).locator("p")).to_contain_text(result_hint)
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
@@ -646,12 +732,16 @@ def test_service_recommendation_uses_customer_language_after_real_intake(
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-@pytest.mark.parametrize("status", ["closed", "active"])
+@pytest.mark.parametrize(
+    "status,completed",
+    [("closed", False), ("active", False), ("active", True), ("closed", True)],
+)
 def test_ambassadors_recommendation_reads_owned_completion_on_fresh_entry(
-    page, platform, status
+    page, platform, status, completed
 ):
     network = DeepLinkNetwork()
     network.detail["status"] = status
+    network.has_completed_work = completed
     open_app(
         page, network, platform, init_data=SIGNED, query=f"?selection={ORDER}"
     )
@@ -663,13 +753,32 @@ def test_ambassadors_recommendation_reads_owned_completion_on_fresh_entry(
     recommendation = page.locator(
         "#screen-selection [data-service-recommendation]"
     )
-    expect(recommendation).to_have_count(1 if status == "closed" else 0)
+    expect(recommendation).to_have_count(1 if completed else 0)
     assert network.owner_reads and network.owner_reads[-1]["order_id"] == ORDER
-    if status == "closed":
+    if completed:
         recommendation.click()
         expect(
             page.locator("#customer-service-ambassadors-product")
         ).to_have_value("Проверенный кофе")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_ambassadors_recommendation_fails_closed_when_completion_unavailable(
+    page, platform
+):
+    network = DeepLinkNetwork()
+    network.fail_completion = True
+    open_app(
+        page, network, platform, init_data=SIGNED, query=f"?selection={ORDER}"
+    )
+    expect(page.locator("#selection-positions article").first).to_be_visible()
+    page.wait_for_function(
+        "() => document.querySelector('#screen-selection')"
+        ".dataset.recommendationChecked === 'true'"
+    )
+    expect(
+        page.locator("#screen-selection [data-service-recommendation]")
+    ).to_have_count(0)
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])

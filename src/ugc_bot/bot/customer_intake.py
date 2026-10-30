@@ -26,6 +26,11 @@ UNAVAILABLE = (
 )
 
 
+def _minor_as_decimal(value: int) -> Decimal:
+    whole, cents = divmod(value, 100)
+    return Decimal(f"{whole}.{cents:02d}")
+
+
 def principal_for(incoming, user_id):
     return AuthenticatedMessengerPrincipal(
         user_id, incoming.user.messenger_type.value, incoming.user.external_id
@@ -109,8 +114,8 @@ async def choose_platforms(incoming, state, messenger, intake):
     await state.update_data(platforms=list(platforms))
     data = await state.get_data()
     count = data["bloggers_needed"]
-    selection = data["intake_selection_minor"] * count / 100
-    unit = data["intake_accompaniment_minor"] / 100
+    selection = _minor_as_decimal(data["intake_selection_minor"] * count)
+    unit = _minor_as_decimal(data["intake_accompaniment_minor"])
     await messenger.send_text(
         chat_id=incoming.chat_id,
         text=customer_text(
@@ -119,7 +124,9 @@ async def choose_platforms(incoming, state, messenger, intake):
             count=count,
             selection=selection,
             unit=unit,
-        ),
+        )
+        + "\n"
+        + customer_text(data.get("locale", "ru"), "customer_payment_together"),
     )
     await state.set_state(OrderCreationStates.accompaniment.state)
 
@@ -197,11 +204,20 @@ async def complete_intake(incoming, state, messenger, intake, followup=None):
             number=public_order_number(result.order_id),
             title=command.offer_text[:80],
             count=command.position_count,
-            selection=result.selection_base_minor / 100,
+            selection=_minor_as_decimal(result.selection_base_minor),
             accompanied=data["accompaniment_count"],
-            accompaniment=(result.total_minor - result.selection_base_minor)
-            / 100,
-            total=result.total_minor / 100,
+            accompaniment=_minor_as_decimal(
+                result.total_minor - result.selection_base_minor
+            ),
+            total=_minor_as_decimal(result.total_minor),
+        )
+        + (
+            "\n"
+            + customer_text(
+                data.get("locale", "ru"), "customer_payment_together"
+            )
+            if data["accompaniment_count"]
+            else ""
         ),
     )
     return result

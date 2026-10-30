@@ -178,6 +178,21 @@ async def test_manager_admin_roles_preserved_and_listing_owner_only(
 
 
 @pytest.mark.asyncio
+async def test_completed_work_signal_requires_owner_and_actual_completion(flow):
+    service, _, eligibility, owner, manager, outsider, creator, order = flow
+    assert await service.has_completed_work(owner, order) is True
+    eligibility.participants[order] = (
+        RatingParticipant(creator, "Creator", False),
+    )
+    assert await service.has_completed_work(owner, order) is False
+    eligibility.participants[order] = ()
+    assert await service.has_completed_work(owner, order) is False
+    for actor in (manager, outsider):
+        with pytest.raises(ValueError, match="rating_access_denied"):
+            await service.has_completed_work(actor, order)
+
+
+@pytest.mark.asyncio
 async def test_effective_aggregation_uses_one_score_and_latest_fallback(
     flow,
 ):

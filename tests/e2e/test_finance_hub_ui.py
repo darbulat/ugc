@@ -117,6 +117,7 @@ def test_finance_hub_partial_failure_precise_money_and_existing_review(
 ):
     network = Network()
     errors = open_app(page, network, platform)
+    page.wait_for_function("() => window.__umcAppReady === true")
     page.evaluate("window.__umcAppBridge.showScreen('screen-manager-orders')")
     page.locator("#screen-manager-orders [data-finance-hub-open]").click()
     screen = page.locator("#screen-finance-hub")
@@ -160,6 +161,7 @@ def test_hub_revocation_during_parallel_source_reads_clears_every_queue(
 ):
     network = Network()
     errors = open_app(page, network, platform)
+    page.wait_for_function("() => window.__umcAppReady === true")
     page.evaluate("window.UMCFinanceHub.open()")
     screen = page.locator("#screen-finance-hub")
     expect(screen).to_contain_text("9007199254740993 RUB")

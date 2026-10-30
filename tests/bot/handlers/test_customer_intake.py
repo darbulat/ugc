@@ -1,6 +1,7 @@
 """Authenticated bot intake and customer actions on both channels."""
 
 from datetime import UTC, datetime
+from decimal import localcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -87,9 +88,124 @@ async def test_platform_then_offer_uses_server_quote(flow):
     assert state.state == OrderCreationStates.accompaniment.state
     assert "1700" in messenger.send_text.call_args.kwargs["text"]
     assert (
+        "оплачиваются вместе в одном счёте"
+        in (messenger.send_text.call_args.kwargs["text"])
+    )
+    assert (
         service.eligible_policies.call_args.kwargs["principal"].user_id
         == user_id
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", [MessengerType.TELEGRAM, MessengerType.MAX]
+)
+@pytest.mark.parametrize(
+    "locale,statement",
+    [
+        ("ru", "оплачиваются вместе в одном счёте"),
+        ("en", "paid together in one invoice"),
+        ("kk", "бір шотпен бірге төленеді"),
+        ("be", "аплачваюцца разам у адным рахунку"),
+        ("uz", "bitta hisobda birga to‘lanadi"),
+    ],
+)
+async def test_payment_timing_is_localized_in_both_bots(
+    flow, platform, locale, statement
+):
+    _, incoming, state, service, messenger = flow
+    state._data["locale"] = locale
+    incoming = IncomingMessage(
+        incoming.chat_id, IncomingUser("12", platform), text="telegram"
+    )
+    await ask_platforms(incoming, state, messenger, service)
+    await choose_platforms(incoming, state, messenger, service)
+    assert statement in messenger.send_text.call_args.kwargs["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", [MessengerType.TELEGRAM, MessengerType.MAX]
+)
+@pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz"])
+@pytest.mark.parametrize(
+    "count,selection_minor,unit_minor,selection,unit,accompaniment,total",
+    [
+        (10, 1, 60000, "0.10", "600.00", "1200.00", "1200.10"),
+        (
+            10,
+            1234567,
+            17000001,
+            "123456.70",
+            "170000.01",
+            "340000.02",
+            "463456.72",
+        ),
+        (
+            200,
+            49399999,
+            60001,
+            "98799998.00",
+            "600.01",
+            "1200.02",
+            "98801198.02",
+        ),
+    ],
+)
+async def test_custom_prices_show_exact_cents_in_offer_and_receipt(
+    flow,
+    platform,
+    locale,
+    count,
+    selection_minor,
+    unit_minor,
+    selection,
+    unit,
+    accompaniment,
+    total,
+):
+    _, incoming, state, service, messenger = flow
+    state._data.update(locale=locale, bloggers_needed=count, price=1)
+    service.eligible_policies.return_value = EligibleOrderPolicies(
+        "RUB",
+        False,
+        (
+            EligibleOrderPolicy(
+                "v1",
+                "terms",
+                datetime.now(UTC),
+                3600,
+                selection_minor,
+                unit_minor,
+            ),
+        ),
+    )
+    incoming = IncomingMessage(
+        incoming.chat_id, IncomingUser("12", platform), text="telegram"
+    )
+    with localcontext() as context:
+        context.prec = 4
+        await ask_platforms(incoming, state, messenger, service)
+        await choose_platforms(incoming, state, messenger, service)
+        offer = messenger.send_text.call_args.kwargs["text"]
+        assert selection in offer and unit in offer
+
+        service.create.return_value = SimpleNamespace(
+            order_id=uuid4(),
+            selection_base_minor=selection_minor * count,
+            total_minor=selection_minor * count + unit_minor * 2,
+        )
+        await complete_intake(
+            IncomingMessage(incoming.chat_id, incoming.user, text="2"),
+            state,
+            messenger,
+            service,
+        )
+        receipt = messenger.send_text.call_args.kwargs["text"]
+        assert selection in receipt
+        assert accompaniment in receipt
+        assert total in receipt
 
 
 @pytest.mark.asyncio
@@ -152,6 +268,10 @@ async def test_success_leaves_input_state_but_keeps_saved_order(flow):
     assert state.state == OrderCreationStates.accompaniment.state
     assert state._data["saved_order_id"] == str(order_id)
     assert state._data["intake_operation_key"]
+    assert (
+        "оплачиваются вместе в одном счёте"
+        in (messenger.send_text.call_args.kwargs["text"])
+    )
 
 
 @pytest.mark.asyncio

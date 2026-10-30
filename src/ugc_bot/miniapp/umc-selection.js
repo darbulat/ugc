@@ -19,6 +19,8 @@
     be:{entry:'Падабраць аўтараў',base:'Падбор аўтараў',all:'Суправаджэнне ўсіх аўтараў',count:'Колькасць аўтараў, 10–200',image:'Выява задання',removeImage:'Выдаліць выяву',leadHint:'Менеджар узгодніць умовы, тэрміны, матэрыялы і статыстыку.',create:'Перайсці да аплаты',unpaid:'Суправаджэнне дададзена. Перайдзіце да аплаты.'},
     uz:{entry:'Mualliflarni tanlash',base:'Mualliflarni tanlash',all:'Barcha mualliflarga hamrohlik',count:'Mualliflar soni, 10–200',image:'Topshiriq rasmi',removeImage:'Rasmni o‘chirish',leadHint:'Menejer shartlar, muddatlar, materiallar va statistikani muvofiqlashtiradi.',create:'To‘lovga o‘tish',unpaid:'Hamrohlik qo‘shildi. To‘lovga o‘ting.'}
   };
+  var paymentTogether={ru:'Подбор и выбранное сопровождение оплачиваются вместе в одном счёте.',en:'Creator selection and chosen management are paid together in one invoice.',kk:'Іріктеу мен таңдалған сүйемелдеу бір шотпен бірге төленеді.',be:'Падбор і выбранае суправаджэнне аплачваюцца разам у адным рахунку.',uz:'Tanlov va tanlangan hamrohlik bitta hisobda birga to‘lanadi.'};
+  Object.keys(paymentTogether).forEach(function(locale){copy[locale].paymentTogether=paymentTogether[locale];});
   Object.keys(clientCopy).forEach(function(locale){Object.assign(copy[locale],clientCopy[locale]);});
   var state = { busy:false, policies:[], pending:null, result:null, order:null, intakeBack:'screen-advertiser-dashboard', selectionBack:'screen-advertiser-dashboard', opened:false };
   var context=null,owner=null;
@@ -63,7 +65,7 @@
     row(list,c.base,money(p.selection_minor,p.currency)+' × '+positionCount());
     row(list,c.accompaniment,money(p.accompaniment_minor,p.currency)+' / '+c.position.toLowerCase()+' × '+count);
     if(manager) row(list,c.manager,money(Number(p.selection_minor)+Number(p.accompaniment_minor),p.currency)+' / '+c.position.toLowerCase());
-    row(list,c.total,money(Number(p.selection_minor)*positionCount()+Number(p.accompaniment_minor)*count,p.currency)); parent.appendChild(list);
+    row(list,c.total,money(Number(p.selection_minor)*positionCount()+Number(p.accompaniment_minor)*count,p.currency)); parent.appendChild(list);if(manager&&count>0)parent.appendChild(node('p',c.paymentTogether,'hint'));
   }
   function storageKey() { var user=(window._me || {}).user_id; if(!validId(user)) throw new Error('missing_authenticated_identity'); return 'umc:intake:'+window.__miniapp_platform+':'+user; }
   function savePending(payload) { sessionStorage.setItem(storageKey(),JSON.stringify(payload)); state.pending=payload; }
@@ -80,7 +82,7 @@
     text('intake-error',''); text('intake-order-id',[result.public_number,result.public_title||(request&&request.offer_text||'').split('\n')[0].slice(0,120)].filter(Boolean).join(' · '));
     var parent=id('intake-quote'); parent.replaceChildren(); var accompaniment=result.items.reduce(function(total,item) { return total+Number(item.accompaniment_minor); },0);
     row(parent,words().base+' · '+result.items.length,money(result.selection_base_minor,result.currency)); row(parent,words().accompaniment,money(accompaniment,result.currency)); row(parent,words().total,money(result.total_minor,result.currency),'intake-total',result.total_minor); row(parent,words().due,date(result.selection_due_at));
-    text('intake-lead-state',result.lead_id?words().unpaid:words().noLead); id('intake-lead-state').dataset.state=result.lead_id?'requested_unpaid':'self_service';
+    text('intake-lead-state',result.lead_id?words().unpaid+' '+words().paymentTogether:words().noLead); id('intake-lead-state').dataset.state=result.lead_id?'requested_unpaid':'self_service';
     var previous=id('intake-components'); if(previous) previous.remove(); var details=node('details'); details.id='intake-components'; details.appendChild(node('summary',words().breakdown));
     result.items.forEach(function(item) { var total=Number(item.selection_minor)+Number(item.accompaniment_minor); var line=node('p',words().position+' '+item.ordinal+': '+money(item.selection_minor,result.currency)+' + '+money(item.accompaniment_minor,result.currency)+' = '+money(total,result.currency)); line.dataset.positionTotal=String(total); details.appendChild(line); }); id('intake-result').appendChild(details); sync();
   }

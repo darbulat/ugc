@@ -234,6 +234,10 @@ async def test_actual_financial_completion_unlocks_advertiser_rating(
         )
 
     try:
+        assert (
+            await service.has_completed_work(env["client"], env["order"])
+            is False
+        )
         with pytest.raises(ValueError, match="rating_work_incomplete"):
             await submit()
         await flow["command"]("start", env["client"], 1)
@@ -245,7 +249,15 @@ async def test_actual_financial_completion_unlocks_advertiser_rating(
         )
         with pytest.raises(ValueError, match="rating_work_incomplete"):
             await submit()
+        assert (
+            await service.has_completed_work(env["client"], env["order"])
+            is False
+        )
         await flow["command"]("agree", env["client"], 3)
+        assert (
+            await service.has_completed_work(env["client"], env["order"])
+            is True
+        )
         assert (await submit()).score == 5
         assert (await service.list_for_order(env["client"], env["order"]))[0][
             "rating_eligible"

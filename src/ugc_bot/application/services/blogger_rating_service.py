@@ -119,6 +119,24 @@ class BloggerRatingService:
             return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def has_completed_work(
+        self,
+        actor_id: UUID,
+        order_id: UUID,
+        principal: AuthenticatedMessengerPrincipal | None = None,
+    ) -> bool:
+        """Check actual work completion for the current order owner."""
+
+        async def _run(sess: object | None) -> bool:
+            scope = await self._scope(
+                actor_id, order_id, principal, sess, owner_only=True
+            )
+            return any(
+                participant.completed for participant in scope.participants
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def list_for_order(
         self,
         actor_id: UUID,

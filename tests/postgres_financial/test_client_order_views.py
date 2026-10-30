@@ -71,7 +71,13 @@ async def test_order_pages_are_owned_and_have_actual_progress(intake_env):
                     offer_text=f"Campaign {n}",
                     price=1000,
                     bloggers_needed=10,
-                    status=OrderStatus.ACTIVE if n == 11 else OrderStatus.NEW,
+                    status=(
+                        OrderStatus.ACTIVE
+                        if n == 11
+                        else OrderStatus.CLOSED
+                        if n == 0
+                        else OrderStatus.NEW
+                    ),
                     created_at=now + timedelta(seconds=n),
                 )
             )
@@ -173,6 +179,21 @@ async def test_order_pages_are_owned_and_have_actual_progress(intake_env):
             if a["blogger_id"] == str(creator.user_id)
         )
         assert author["rating_eligible"]
+        completed = await client.post(
+            "/miniapp/api/customer/orders/completion",
+            json={
+                "init_data": body(env)["init_data"],
+                "order_id": str(ids[-1]),
+            },
+        )
+        assert completed.status_code == 200, completed.text
+        assert completed.json() == {"has_completed_work": True}
+        empty = await client.post(
+            "/miniapp/api/customer/orders/completion",
+            json={"init_data": body(env)["init_data"], "order_id": str(ids[0])},
+        )
+        assert empty.status_code == 200, empty.text
+        assert empty.json() == {"has_completed_work": False}
         rated = await client.post(
             "/miniapp/api/ratings",
             json={
@@ -191,6 +212,11 @@ async def test_order_pages_are_owned_and_have_actual_progress(intake_env):
             json={"init_data": other_signed, "order_id": str(ids[-1])},
         )
         assert denied.status_code == 403
+        denied_completion = await client.post(
+            "/miniapp/api/customer/orders/completion",
+            json={"init_data": other_signed, "order_id": str(ids[-1])},
+        )
+        assert denied_completion.status_code == 403
         unknown = await client.post(
             "/miniapp/api/customer/orders/ratings",
             json={"init_data": "bad", "order_id": str(uuid4())},

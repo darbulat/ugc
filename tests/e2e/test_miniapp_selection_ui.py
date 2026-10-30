@@ -190,6 +190,40 @@ def fill(page, *, manager=False):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "locale,disclosure",
+    [
+        (
+            "ru",
+            "Подбор и выбранное сопровождение "
+            "оплачиваются вместе в одном счёте.",
+        ),
+        (
+            "en",
+            "Creator selection and chosen management "
+            "are paid together in one invoice.",
+        ),
+        ("kk", "Іріктеу мен таңдалған сүйемелдеу бір шотпен бірге төленеді."),
+        (
+            "be",
+            "Падбор і выбранае суправаджэнне "
+            "аплачваюцца разам у адным рахунку.",
+        ),
+        ("uz", "Tanlov va tanlangan hamrohlik bitta hisobda birga to‘lanadi."),
+    ],
+)
+def test_accompaniment_payment_terms_are_shown_before_checkout(
+    page, platform, locale, disclosure
+):
+    open_app(page, SelectionNetwork(locale), platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page, manager=True)
+    expect(page.locator("#intake-preview")).to_contain_text(disclosure)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_contain_text(disclosure)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz"])
 def test_actual_intake_uses_server_policy_and_persisted_quote(
     page, platform, locale
