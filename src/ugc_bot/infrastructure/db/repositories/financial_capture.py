@@ -24,6 +24,7 @@ from ugc_bot.application.services.financial_policy_service import (
 from ugc_bot.domain.entities import Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.financial_tariff import require_invoice_total
 from ugc_bot.domain.identity_history import IdentityHistoryUnavailable
 from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.models import (
@@ -156,7 +157,9 @@ class SqlAlchemyFinancialCaptureRepository:
                 ):
                     raise ValueError("invalid_capture_policy")
             if any(
-                i.quote_payload.get("client_id") != str(order.advertiser_id)
+                i.selection_minor != policy.selection_minor
+                or i.accompaniment_minor not in (0, policy.accompaniment_minor)
+                or i.quote_payload.get("client_id") != str(order.advertiser_id)
                 or i.quote_payload.get("terms_reference")
                 != policy.terms_reference
                 or (
@@ -178,6 +181,10 @@ class SqlAlchemyFinancialCaptureRepository:
         if not account.strip():
             raise OrderCreationError("capture_account_required")
         total = sum(i.selection_minor + i.accompaniment_minor for i in items)
+        try:
+            require_invoice_total(total)
+        except ValueError as error:
+            raise OrderCreationError(str(error)) from error
         identity = dict(
             order_id=str(order_id),
             client_id=str(client_id),

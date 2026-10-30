@@ -71,10 +71,11 @@ class SelectionNetwork(MiniAppNetwork):
         ]
 
     def created(self, payload):
+        count = payload.get("position_count", 30)
         selected = payload.get("accompaniment_ordinals")
         if selected is None:
             selected = (
-                list(range(1, 31))
+                list(range(1, count + 1))
                 if payload["service_mode"] == "with_manager"
                 else []
             )
@@ -93,12 +94,12 @@ class SelectionNetwork(MiniAppNetwork):
                     "selection_minor": 50000,
                     "accompaniment_minor": 120000 if n in selected else 0,
                 }
-                for n in range(1, 31)
+                for n in range(1, count + 1)
             ],
             "lead_id": str(UUID(int=31)) if selected else None,
             "honorarium_payment": "paid_direct",
-            "total_minor": 1500000 + 120000 * len(selected),
-            "selection_base_minor": 1500000,
+            "total_minor": 50000 * count + 120000 * len(selected),
+            "selection_base_minor": 50000 * count,
         }
 
     def route(self, route: Route):
@@ -111,7 +112,7 @@ class SelectionNetwork(MiniAppNetwork):
                     "country": "ru",
                     "currency_code": "RUB",
                     "currency_symbol": "₽",
-                    "has_advertiser_profile": True,
+                    "has_advertiser_profile": self.registered,
                     "has_blogger_profile": False,
                     "is_manager": False,
                 }
@@ -176,6 +177,7 @@ class SelectionNetwork(MiniAppNetwork):
 
 
 def fill(page, *, manager=False):
+    page.locator("#intake-count").fill("30")
     page.locator("#intake-policy").select_option(POLICY)
     page.locator("#intake-product").fill("https://example.test/real-product")
     page.locator("#intake-brief").fill("Actual synthetic requested brief")
@@ -188,23 +190,57 @@ def fill(page, *, manager=False):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "locale,disclosure",
+    [
+        (
+            "ru",
+            "Подбор и выбранное сопровождение "
+            "оплачиваются вместе в одном счёте.",
+        ),
+        (
+            "en",
+            "Creator selection and chosen management "
+            "are paid together in one invoice.",
+        ),
+        ("kk", "Іріктеу мен таңдалған сүйемелдеу бір шотпен бірге төленеді."),
+        (
+            "be",
+            "Падбор і выбранае суправаджэнне "
+            "аплачваюцца разам у адным рахунку.",
+        ),
+        ("uz", "Tanlov va tanlangan hamrohlik bitta hisobda birga to‘lanadi."),
+    ],
+)
+def test_accompaniment_payment_terms_are_shown_before_checkout(
+    page, platform, locale, disclosure
+):
+    open_app(page, SelectionNetwork(locale), platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page, manager=True)
+    expect(page.locator("#intake-preview")).to_contain_text(disclosure)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_contain_text(disclosure)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz"])
 def test_actual_intake_uses_server_policy_and_persisted_quote(
     page, platform, locale
 ):
     network = SelectionNetwork(locale)
     errors = open_app(page, network, platform, init_data=SIGNED)
-    expect(page.locator("#btn-umc-intake")).to_be_visible()
-    page.locator("#btn-umc-intake").click()
+    expect(page.locator("#btn-show-create-order")).to_be_visible()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#screen-intake")).to_be_visible()
     fill(page, manager=True)
     expect(page.locator("#btn-intake-create")).to_have_text(
         {
-            "ru": "Создать заказ с подбором",
-            "en": "Create selection order",
-            "kk": "Іріктеуге тапсырыс жасау",
-            "be": "Стварыць заказ з падборам",
-            "uz": "Tanlov buyurtmasini yaratish",
+            "ru": "Перейти к оплате",
+            "en": "Continue to payment",
+            "kk": "Төлемге өту",
+            "be": "Перайсці да аплаты",
+            "uz": "To‘lovga o‘tish",
         }[locale]
     )
     page.locator("#intake-all-manager").uncheck()
@@ -254,14 +290,14 @@ def test_uncertain_create_keeps_same_payload_and_key_until_explicit_retry(page):
     network = SelectionNetwork()
     network.abort = True
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
     expect(page.locator("#btn-intake-new")).to_be_hidden()
     assert len(network.creates) == 1
     page.reload()
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
     expect(page.locator("#btn-intake-new")).to_be_hidden()
     assert len(network.creates) == 1
@@ -272,12 +308,343 @@ def test_uncertain_create_keeps_same_payload_and_key_until_explicit_retry(page):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_uncertain_create_survives_closing_and_reopening_webview(
+    page, platform
+):
+    network = SelectionNetwork()
+    network.abort = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#btn-intake-retry")).to_be_visible()
+    original = network.creates[0]
+    context = page.context
+    page.close()
+
+    reopened = context.new_page()
+    try:
+        open_app(reopened, network, platform, init_data=SIGNED)
+        reopened.locator("#btn-show-create-order").click()
+        expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+        network.abort = False
+        reopened.locator("#btn-intake-retry").click()
+        expect(reopened.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[1] == original
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_existing_session_pending_request_is_migrated_before_webview_closes(
+    page, platform
+):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    legacy = {
+        "operation_key": "miniapp:intake:legacy-synthetic-key",
+        "policy_version": POLICY,
+        "product_link": "https://example.test/legacy",
+        "offer_text": "Original legacy request",
+        "honorarium": "999.00",
+        "selection_due_at": "2030-01-01T12:00:00.000Z",
+        "contact_reference": "@legacy_client",
+        "service_mode": "self_service",
+        "accompaniment_ordinals": [],
+        "position_count": 30,
+        "order_type": "ugc_only",
+    }
+    page.evaluate(
+        "data => sessionStorage.setItem("
+        "data.key, JSON.stringify(data.payload))",
+        {"key": f"umc:intake:{platform}:{CLIENT}", "payload": legacy},
+    )
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#btn-intake-retry")).to_be_visible()
+    context = page.context
+    page.close()
+    reopened = context.new_page()
+    try:
+        open_app(reopened, network, platform, init_data=SIGNED)
+        reopened.locator("#btn-show-create-order").click()
+        expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+        reopened.locator("#btn-intake-retry").click()
+        expect(reopened.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 1
+        assert all(
+            network.creates[0][key] == value for key, value in legacy.items()
+        )
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_closing_after_server_success_preserves_safe_retry(page, platform):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.evaluate("""() => {
+      UMCIntakeProgress.complete = () => new Promise(() => {
+        window.cleanupWaiting = true;
+      });
+    }""")
+    page.locator("#btn-intake-create").click()
+    page.wait_for_function("window.cleanupWaiting === true")
+    original = network.creates[0]
+    context = page.context
+    page.close()
+    reopened = context.new_page()
+    try:
+        open_app(reopened, network, platform, init_data=SIGNED)
+        reopened.locator("#btn-show-create-order").click()
+        expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+        assert network.creates == [original]
+        reopened.locator("#btn-intake-retry").click()
+        expect(reopened.locator("#intake-result")).to_be_visible()
+        assert network.creates == [original, original]
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("reload", [False, True])
+def test_lost_indexeddb_recovers_same_pending_request(page, platform, reload):
+    network = SelectionNetwork()
+    network.abort = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#btn-intake-retry")).to_be_visible()
+    original = network.creates[0]
+    page.evaluate("""() => new Promise((resolve, reject) => {
+      const req=indexedDB.deleteDatabase('umc-intake-recovery');
+      req.onsuccess=resolve; req.onerror=() => reject(req.error);
+    })""")
+    if reload:
+        page.reload()
+        page.locator("#btn-show-create-order").click()
+        expect(page.locator("#btn-intake-retry")).to_be_visible()
+    network.abort = False
+    page.locator("#btn-intake-retry").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert network.creates == [original, original]
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_new_order_waits_for_confirmed_draft_cleanup(page, platform):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.evaluate("""() => {
+      window.originalRemoveItem = Storage.prototype.removeItem;
+      Storage.prototype.removeItem = function(key) {
+        if (this === localStorage && key.startsWith('umc:intake-draft:'))
+          throw new Error('synthetic cleanup failure');
+        return window.originalRemoveItem.call(this, key);
+      };
+    }""")
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    page.locator("#btn-intake-new").click()
+    expect(page.locator("#intake-error")).not_to_be_empty()
+    expect(page.locator("#intake-result")).to_be_visible()
+    expect(page.locator("#form-umc-intake")).to_be_hidden()
+    assert len(network.creates) == 1
+    page.evaluate("""() => {
+      Storage.prototype.removeItem = window.originalRemoveItem;
+    }""")
+    page.locator("#btn-intake-new").click()
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    expect(page.locator("#intake-brief")).to_have_value("")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_stale_window_cannot_resubmit_a_completed_draft(page, platform):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        expect(other.locator("#intake-brief")).to_have_value(
+            page.locator("#intake-brief").input_value()
+        )
+        original_brief = page.locator("#intake-brief").input_value()
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#intake-result")).to_be_visible()
+        page.locator("#btn-intake-new").click()
+        expect(page.locator("#form-umc-intake")).to_be_visible()
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#intake-error")).not_to_be_empty()
+        assert len(network.creates) == 1
+        other.locator("#btn-intake-fresh").click()
+        expect(other.locator("#intake-brief")).to_have_value(original_brief)
+        other.locator("#intake-brief").fill("Intentionally new order")
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[1]["offer_text"] == "Intentionally new order"
+    finally:
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_other_window_does_not_resurrect_rejected_request(page, platform):
+    network = SelectionNetwork()
+    network.hold = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        fill(other)
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#btn-intake-retry")).to_be_visible()
+        route, _ = network.pending.pop()
+        route.fulfill(status=422, json={"detail": "synthetic invalid"})
+        expect(page.locator("#form-umc-intake")).to_be_visible()
+        expect(page.locator("#intake-error")).not_to_be_empty()
+        other.reload()
+        other.locator("#btn-show-create-order").click()
+        expect(other.locator("#form-umc-intake")).to_be_visible()
+        network.hold = False
+        page.locator("#intake-brief").fill("Corrected request")
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[1]["offer_text"] == "Corrected request"
+    finally:
+        for route, payload in network.pending:
+            route.fulfill(json=network.created(payload))
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_first_rejection_cannot_clear_a_concurrent_retry(page, platform):
+    network = SelectionNetwork()
+    network.hold = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        fill(other)
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#btn-intake-retry")).to_be_visible()
+        other.locator("#btn-intake-retry").click()
+        expect(other.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        for _ in range(100):
+            if len(network.pending) == 2:
+                break
+            other.wait_for_timeout(25)
+        assert len(network.pending) == 2
+        first, second = network.pending[:]
+        network.pending.clear()
+        first[0].fulfill(status=422, json={"detail": "synthetic invalid"})
+        expect(page.locator("#btn-intake-retry")).to_be_visible()
+        second[0].fulfill(json=network.created(second[1]))
+        expect(other.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[0] == network.creates[1]
+    finally:
+        for route, payload in network.pending:
+            route.fulfill(json=network.created(payload))
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_other_open_window_cannot_replace_unknown_order_request(page, platform):
+    network = SelectionNetwork()
+    network.abort = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        fill(other)
+        other.locator("#intake-brief").fill(
+            "Different order from another window"
+        )
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#btn-intake-retry")).to_be_visible()
+        original = network.creates[0]
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#btn-intake-retry")).to_be_visible()
+        assert network.creates == [original]
+        network.abort = False
+        other.locator("#btn-intake-retry").click()
+        expect(other.locator("#intake-result")).to_be_visible()
+        assert network.creates == [original, original]
+    finally:
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_unavailable_durable_storage_blocks_unrecoverable_create(
+    page, platform
+):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.evaluate("Object.defineProperty(window, 'indexedDB', {value: null})")
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-error")).not_to_be_empty()
+    assert network.creates == []
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_checkout_returns_to_saved_order_after_viewing_selection(
+    page, platform
+):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result #umc-checkout")).to_be_visible()
+    page.locator("#btn-intake-selection").click()
+    expect(page.locator("#screen-selection #umc-checkout")).to_be_visible()
+    page.locator("#btn-selection-back").click()
+    expect(page.locator("#intake-result #umc-checkout")).to_be_visible()
+    expect(
+        page.locator("#intake-result #umc-checkout-status")
+    ).to_have_attribute("data-state", "not_requested")
+    assert any(
+        path.endswith(f"/financial/orders/{ORDER}/checkout-status")
+        for path, _ in network.requests
+    )
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
     page, platform
 ):
     network = SelectionNetwork("en")
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     page.locator("#intake-all-manager").uncheck()
     page.locator("#intake-position-7").check()
@@ -289,7 +656,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
     expect(page.locator("#intake-result")).to_be_hidden()
     expect(page.locator("#intake-product")).to_have_value("")
     expect(page.locator("#intake-brief")).to_have_value("")
-    expect(page.locator("#intake-policy")).to_have_value("")
+    expect(page.locator("#intake-policy")).to_have_value(POLICY)
     expect(
         page.locator('input[name="intake-mode"][value="self_service"]')
     ).to_be_checked()
@@ -313,7 +680,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
 def test_completed_receipt_reset_requires_safe_pending_storage_cleanup(page):
     network = SelectionNetwork("en")
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-result")).to_be_visible()
@@ -350,7 +717,7 @@ def test_rejected_retry_cannot_discard_previously_unknown_original_request(
     network = SelectionNetwork()
     network.abort = True
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
@@ -374,7 +741,7 @@ def test_paused_intake_is_localized_readable_at_320px(page, locale):
     page.set_viewport_size({"width": 320, "height": 720})
     network = SelectionNetwork(locale, paused=True)
     errors = open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-paused")).to_be_visible()
     expect(page.locator("#form-umc-intake")).to_be_hidden()
     assert network.creates == []
@@ -383,6 +750,26 @@ def test_paused_intake_is_localized_readable_at_320px(page, locale):
     )
     screenshot(page, f"intake-{locale}-paused-320")
     assert errors == []
+
+
+def test_changed_credentials_cannot_refresh_previous_accounts_selection(page):
+    network = SelectionNetwork()
+    open_app(page, network, init_data=SIGNED, query=f"?selection={ORDER}")
+    expect(page.locator('[data-position="1"]')).to_be_visible()
+    original_reads = [
+        body for path, body in network.requests if path.endswith("/selection")
+    ]
+    auth_b = generate_init_data("test-token", 102, "synthetic_second_owner")
+    page.evaluate("auth => {window.__host.wa.initData=auth;}", auth_b)
+    page.locator("#btn-selection-refresh").click()
+    expect(page.locator("#selection-error")).not_to_be_empty()
+    expect(page.locator("#screen-selection")).to_have_attribute(
+        "aria-busy", "false"
+    )
+    assert [
+        body for path, body in network.requests if path.endswith("/selection")
+    ] == original_reads
+    expect(page.locator("[data-position]")).to_have_count(0)
 
 
 def test_selection_replacement_never_claims_new_creator_delivered(page):
@@ -398,7 +785,9 @@ def test_selection_replacement_never_claims_new_creator_delivered(page):
         page.locator('[data-position="1"] [data-delivery-history]')
     ).to_contain_text("previous_actual_synthetic")
     expect(page.locator("#selection-paused")).to_be_visible()
-    assert network.requests[-1][1] == {
+    assert [
+        body for path, body in network.requests if path.endswith("/selection")
+    ][-1] == {
         "init_data": SIGNED,
         "platform": "telegram",
     }
@@ -434,41 +823,46 @@ def test_v1_list_links_to_actual_selection_without_legacy_pay_control(page):
     }
     open_app(page, network, init_data=SIGNED)
     page.locator("#btn-show-orders-list").click()
-    expect(page.locator("[data-selection-open]")).to_be_visible()
+    expect(page.locator("#screen-customer-orders article")).to_be_visible()
     assert page.locator('#orders-list a[href*="pay_"]').count() == 0
-    page.locator("[data-selection-open]").click()
+    page.locator("#screen-customer-orders article button").first.click()
     expect(page.locator("#screen-selection")).to_be_visible()
 
 
 def test_pending_native_action_cannot_double_send_and_back_is_real(page):
     network = SelectionNetwork()
     network.hold = True
-    open_app(page, network, native=True, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
-    fill(page)
-    page.wait_for_function(
-        "window.__host.wa.MainButton.visible && "
-        "window.__host.wa.MainButton.params.is_active"
-    )
-    page.evaluate("window.__host.wa.MainButton.click()")
-    expect(page.locator("#screen-intake")).to_have_attribute(
-        "aria-busy", "true"
-    )
-    page.evaluate("window.__host.wa.MainButton.click()")
-    expect(page.locator("#intake-result")).to_be_hidden()
-    assert len(network.creates) == len(network.pending) == 1
-    route, payload = network.pending.pop()
-    route.fulfill(json=network.created(payload))
-    expect(page.locator("#intake-result")).to_be_visible()
-    page.evaluate("window.__host.wa.BackButton.click()")
-    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    try:
+        open_app(page, network, native=True, init_data=SIGNED)
+        page.wait_for_function("window.__host.wa.MainButton.visible")
+        page.evaluate("window.__host.wa.MainButton.click()")
+        fill(page)
+        page.wait_for_function(
+            "window.__host.wa.MainButton.visible && "
+            "window.__host.wa.MainButton.params.is_active"
+        )
+        page.evaluate("window.__host.wa.MainButton.click()")
+        expect(page.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        page.evaluate("window.__host.wa.MainButton.click()")
+        expect(page.locator("#intake-result")).to_be_hidden()
+        assert len(network.creates) == len(network.pending) == 1
+        route, payload = network.pending.pop()
+        route.fulfill(json=network.created(payload))
+        expect(page.locator("#intake-result")).to_be_visible()
+        page.evaluate("window.__host.wa.BackButton.click()")
+        expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    finally:
+        for route, payload in network.pending:
+            route.fulfill(json=network.created(payload))
 
 
 def test_no_eligible_policy_never_shows_action_or_guesses_a_version(page):
     network = SelectionNetwork()
     network.policies = []
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-empty")).to_be_visible()
     expect(page.locator("#form-umc-intake")).to_be_hidden()
     assert network.creates == []
@@ -479,7 +873,7 @@ def test_opaque_published_terms_reference_remains_visible_literal_text(page):
     reference = "actual-published-reference:<b>terms</b>"
     network.policies[0]["terms_reference"] = reference
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     page.locator("#intake-policy").select_option(POLICY)
     expect(page.locator("#intake-terms")).to_contain_text(reference)
     assert page.locator("#intake-terms b").count() == 0
@@ -558,7 +952,7 @@ def test_dark_form_quote_and_selection_fit_320px(page, platform, locale):
         "window.__host.wa.colorScheme='dark'; "
         "window.__host.events.themeChanged()"
     )
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
     expect(page.locator("#intake-terms")).to_be_visible()
@@ -589,7 +983,7 @@ def test_light_320px_subset_grid_supports_keyboard_and_exact_quote(page):
     page.set_viewport_size({"width": 320, "height": 720})
     network = SelectionNetwork("en")
     errors = open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     page.locator("#intake-all-manager").uncheck()
     page.locator("#intake-position-1").focus()

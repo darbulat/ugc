@@ -3,7 +3,7 @@
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
-from ugc_bot.infrastructure.db.correction_schema import GUARD_SQL
+from ugc_bot.infrastructure.db.correction_schema import CURRENT_GUARD_SQL
 
 
 def correction_approval_tables(metadata):
@@ -53,10 +53,10 @@ def correction_approval_tables(metadata):
         ),
         sa.CheckConstraint(
             "source_hash ~ '^[0-9a-f]{64}$' AND currency='RUB' AND "
-            "amount_minor BETWEEN 50000 AND 1500000 AND review_version>0 AND "
+            "amount_minor>0 AND review_version>0 AND "
             "jsonb_typeof(source_capsule)='object' AND "
             "jsonb_typeof(bundle)='array' AND "
-            "jsonb_array_length(bundle) BETWEEN 1 AND 30",
+            "jsonb_array_length(bundle) BETWEEN 1 AND 200",
             name="ck_correction_approval_capsule",
         ),
     )
@@ -222,8 +222,8 @@ BEGIN
  version=ordered.financial_version;
  expected :=
  jsonb_build_object('order_id',request.order_id,'client_id',request.client_id,
- 'provider','yookassa_telegram','account',invoice.payload->>'account','currency','RUB',
- 'amount_minor',payment.captured_minor,'policy_version',ordered.financial_version,
+'provider','yookassa_telegram','account',invoice.payload->>'account','currency','RUB',
+'amount_minor',payment.captured_minor,'policy_version',ordered.financial_version,
  'quote_key',invoice.payload->>'quote_key','components',components);
  IF payment.payment_id IS NULL OR payment.order_id IS DISTINCT FROM
  request.order_id
@@ -245,8 +245,8 @@ BEGIN
  OR NULLIF(trim(invoice.payload->>'account'),'') IS NULL
  OR NULLIF(trim(payment.external_id),'') IS NULL
  OR capture.payload->'capture' IS DISTINCT FROM expected||jsonb_build_object(
- 'external_id',payment.external_id,'telegram_payment_charge_id',capture.payload#>>'{capture,telegram_payment_charge_id}',
- 'captured_at',capture.payload#>>'{capture,captured_at}','captured_at_source','telegram.message.date')
+'external_id',payment.external_id,'telegram_payment_charge_id',capture.payload#>>'{capture,telegram_payment_charge_id}',
+'captured_at',capture.payload#>>'{capture,captured_at}','captured_at_source','telegram.message.date')
  OR NULLIF(trim(capture.payload#>>'{capture,telegram_payment_charge_id}'),'')
  IS NULL
  OR (capture.payload#>>'{capture,captured_at}')::timestamptz IS DISTINCT FROM
@@ -268,8 +268,9 @@ BEGIN
  RAISE EXCEPTION 'correction_approval_capture_invalid' USING ERRCODE='23514';
  END IF;
  IF jsonb_typeof(authority->'bundle') IS DISTINCT FROM 'array'
- OR jsonb_array_length(authority->'bundle') NOT BETWEEN 1 AND 30
- OR jsonb_array_length(authority->'bundle')*50000 IS DISTINCT FROM
+ OR jsonb_array_length(authority->'bundle') NOT BETWEEN 1 AND 200
+ OR (SELECT sum((e->>'gross_minor')::bigint) FROM
+jsonb_array_elements(authority->'bundle') e) IS DISTINCT FROM
  (authority->>'amount_minor')::bigint
  OR (SELECT count(DISTINCT element.val->>'paid_item_id') FROM
  jsonb_array_elements(authority->'bundle') element(val))
@@ -292,14 +293,16 @@ BEGIN
  SELECT * INTO allocation FROM payment_item_allocations WHERE
  allocation_key=b->>'allocation_key';
  due_hash := correction_approval_hash(jsonb_build_object(
- 'receipt',correction_approval_row(to_jsonb(intake),'order_intake_receipts'::regclass),
+'receipt',correction_approval_row(to_jsonb(intake),'order_intake_receipts'::regclass),
  'quote',item.quote_payload,'due',to_char(item.selection_due_at AT TIME ZONE
  'UTC',
  'YYYY-MM-DD"T"HH24:MI:SS.US')||'+00:00'));
  IF item.order_id IS DISTINCT FROM request.order_id OR item.currency IS
  DISTINCT FROM 'RUB'
- OR item.selection_minor IS DISTINCT FROM 50000 OR item.accompaniment_minor NOT
- IN (0,120000)
+ OR item.selection_minor IS DISTINCT FROM
+COALESCE((policy.rules->>'selection_minor')::bigint,50000) OR
+item.accompaniment_minor NOT
+ IN (0,COALESCE((policy.rules->>'accompaniment_minor')::bigint,120000))
  OR item.policy_version IS DISTINCT FROM ordered.financial_version
  OR item.quote_key IS DISTINCT FROM invoice.payload->>'quote_key'
  OR item.quote_payload->>'client_id' IS DISTINCT FROM request.client_id::text
@@ -317,15 +320,17 @@ BEGIN
  OR intake.result->>'terms_reference' IS DISTINCT FROM
  item.quote_payload->>'terms_reference'
  OR intake.result->>'policy_version' IS DISTINCT FROM item.policy_version
- OR jsonb_array_length(intake.result->'items') IS DISTINCT FROM 30
+ OR jsonb_array_length(intake.result->'items') IS DISTINCT FROM
+ordered.bloggers_needed
  OR allocation.payment_id IS DISTINCT FROM payment.payment_id
  OR allocation.order_id IS DISTINCT FROM request.order_id OR
  allocation.paid_item_id IS DISTINCT FROM item.paid_item_id
  OR allocation.component IS DISTINCT FROM 'selection' OR
- allocation.amount_minor IS DISTINCT FROM 50000
+ allocation.amount_minor IS DISTINCT FROM item.selection_minor
  OR allocation.currency IS DISTINCT FROM 'RUB'
  OR b->>'payment_id' IS DISTINCT FROM payment.payment_id::text
- OR b->'gross_minor' IS DISTINCT FROM '50000'::jsonb OR b->>'currency' IS
+ OR b->'gross_minor' IS DISTINCT FROM to_jsonb(item.selection_minor) OR
+b->>'currency' IS
  DISTINCT FROM 'RUB'
  OR (b->>'selection_due_at')::timestamptz IS DISTINCT FROM
  item.selection_due_at
@@ -346,7 +351,7 @@ BEGIN
  'UTC','YYYY-MM-DD"T"HH24:MI:SS.US')||'+00:00'));
  END LOOP;
  SELECT
- COALESCE(jsonb_agg(correction_approval_row(to_jsonb(g),'financial_obligations'::regclass)
+COALESCE(jsonb_agg(correction_approval_row(to_jsonb(g),'financial_obligations'::regclass)
  ORDER BY paid_item_id),'[]') INTO actual_grounds FROM financial_obligations g
  WHERE paid_item_id::text IN (SELECT
  jsonb_array_elements_text(request.paid_item_ids));
@@ -355,24 +360,24 @@ BEGIN
  INTO selected FROM order_items i WHERE paid_item_id::text IN (SELECT
  jsonb_array_elements_text(request.paid_item_ids));
  source_hash := correction_approval_hash(jsonb_build_object(
- 'capture_source_hash',correction_approval_hash(jsonb_build_object('event_id',capture.event_id,
- 'event_type',capture.event_type,'aggregate_id',capture.aggregate_id,'aggregate_type',capture.aggregate_type,'payload',capture.payload)),
- 'selected_items',selected,'bundle',jsonb_build_object('components',normalized_bundle),
+'capture_source_hash',correction_approval_hash(jsonb_build_object('event_id',capture.event_id,
+'event_type',capture.event_type,'aggregate_id',capture.aggregate_id,'aggregate_type',capture.aggregate_type,'payload',capture.payload)),
+'selected_items',selected,'bundle',jsonb_build_object('components',normalized_bundle),
  'assignments','[]'::jsonb,'deliveries','[]'::jsonb,'grounds',actual_grounds,
- 'intake',jsonb_build_array(correction_approval_row(to_jsonb(intake),'order_intake_receipts'::regclass))));
+'intake',jsonb_build_array(correction_approval_row(to_jsonb(intake),'order_intake_receipts'::regclass))));
  IF authority->>'source_hash' IS DISTINCT FROM source_hash THEN
  RAISE EXCEPTION 'correction_approval_source_seal_invalid' USING
  ERRCODE='23514'; END IF;
  IF is_new THEN
  expected :=
  jsonb_build_object('invoice',jsonb_build_object('event_id',invoice.event_id,
- 'event_type',invoice.event_type,'aggregate_id',invoice.aggregate_id,'aggregate_type',invoice.aggregate_type,'payload',invoice.payload),
- 'payment',jsonb_build_object('payment_id',payment.payment_id,'order_id',payment.order_id,
- 'provider',payment.provider,'status',payment.status,'external_id',payment.external_id,'currency',payment.currency,
- 'captured_minor',payment.captured_minor,'paid_at',authority#>>'{source_capsule,payment,paid_at}'),
+'event_type',invoice.event_type,'aggregate_id',invoice.aggregate_id,'aggregate_type',invoice.aggregate_type,'payload',invoice.payload),
+'payment',jsonb_build_object('payment_id',payment.payment_id,'order_id',payment.order_id,
+'provider',payment.provider,'status',payment.status,'external_id',payment.external_id,'currency',payment.currency,
+'captured_minor',payment.captured_minor,'paid_at',authority#>>'{source_capsule,payment,paid_at}'),
  'invoice_intent_id',invoice.event_id,'capture_id',capture.event_id,
  'captured_at',authority#>>'{source_capsule,captured_at}',
- 'quote_key',invoice.payload->>'quote_key','terms_reference',policy.rules->>'terms_reference',
+'quote_key',invoice.payload->>'quote_key','terms_reference',policy.rules->>'terms_reference',
  'ground_ids',COALESCE((SELECT jsonb_agg(id ORDER BY id)
  FROM financial_obligations WHERE order_id=request.order_id),'[]'),
  'selected_paid_item_ids',request.paid_item_ids);
@@ -520,7 +525,7 @@ BEGIN
  (a->>'intent_id')::uuid,(a->>'case_id')::uuid,(a->>'command_id')::uuid,
  (a->>'request_id')::uuid,(a->>'capture_id')::uuid,(a->>'payment_id')::uuid,
  (a->>'source_hash')::varchar,a->'bundle',(a->>'amount_minor')::bigint,
- (a->>'currency')::varchar,(a->>'review_version')::bigint,(a->>'recorded_at')::timestamptz;
+(a->>'currency')::varchar,(a->>'review_version')::bigint,(a->>'recorded_at')::timestamptz;
 END $$;
 
 CREATE OR REPLACE FUNCTION correction_check_approval() RETURNS trigger
@@ -542,7 +547,7 @@ END $$;
 
 # The historical builder remains byte-frozen. Only the authority lookup changes;
 # All original component, capacity, pending, issuance and wallet checks stay.
-FINAL_APPLICATION_SQL = GUARD_SQL.replace(
+FINAL_APPLICATION_SQL = CURRENT_GUARD_SQL.replace(
     "SELECT * INTO intent FROM financial_refund_intents WHERE\n"
     "intent_id=app.intent_id;",
     "SELECT * INTO intent FROM correction_match_capsule(app.match_id);",
@@ -584,7 +589,7 @@ def correction_approval_trigger_sql(tables, *, install_match=True):
 
 def correction_approval_pending_sql(table):
     """Partial metadata must refuse writes until every source guard is ready."""
-    immutable = GUARD_SQL.split(
+    immutable = CURRENT_GUARD_SQL.split(
         "CREATE OR REPLACE FUNCTION correction_check_application()", 1
     )[0]
     return (

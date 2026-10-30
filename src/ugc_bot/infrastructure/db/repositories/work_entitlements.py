@@ -153,7 +153,7 @@ class SqlAlchemyWorkEntitlementRepository:
             valid_to=assignment["valid_to"],
             selection_funded=any(
                 item.paid_item_id == assignment["paid_item_id"]
-                and item.selection_minor == 50000
+                and item.selection_minor == capture.policy.selection_minor
                 for item in capture.items
             ),
         )

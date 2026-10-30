@@ -161,7 +161,7 @@ class CorrectionViewService:
         if existing_case_id is not None:
             require_uuid(existing_case_id)
         selected = uuid_tuple(paid_item_ids)
-        if not 1 <= len(selected) <= 30:
+        if not 1 <= len(selected) <= 200:
             raise ValueError("correction_selection_required")
         scope = await self.repository.discover_preview(
             actor_id,

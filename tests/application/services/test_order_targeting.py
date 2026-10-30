@@ -43,6 +43,8 @@ def test_targeting_rejects_ambiguous_or_impossible_filters(changes):
     "changes",
     [
         dict(city="  "),
+        dict(geography=" "),
+        dict(city="Москва", geography="Россия"),
         dict(platforms=["youtube"]),
         dict(platforms=("youtube", "youtube")),
         dict(platforms=("unknown",)),

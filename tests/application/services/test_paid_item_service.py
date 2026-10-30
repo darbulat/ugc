@@ -6,6 +6,8 @@ def test_selection_and_accompaniment_components():
     from ugc_bot.application.services.paid_item_service import build_quote
 
     quote = build_quote(
+        selection_minor=50000,
+        accompaniment_minor=120000,
         order_id=uuid4(),
         count=30,
         accompaniment_ordinals=frozenset({1, 3}),

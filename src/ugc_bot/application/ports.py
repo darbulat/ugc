@@ -654,7 +654,17 @@ class BloggerRatingRepository(ABC):
         order_id: UUID,
         session: object | None = None,
     ) -> Optional[BloggerRating]:
-        """Fetch rating for a specific blogger+order pair, or None."""
+        """Read the effective rating: advertiser first, otherwise latest."""
+
+    @abstractmethod
+    async def get_by_blogger_order_and_rater(
+        self,
+        blogger_id: UUID,
+        order_id: UUID,
+        rater_id: UUID,
+        session: object | None = None,
+    ) -> Optional[BloggerRating]:
+        """Fetch the current evaluator's rating for an update."""
 
     @abstractmethod
     async def get_avg_rating(

@@ -667,3 +667,59 @@ async def test_confirm_payment_updates_existing_pending(
     assert payment.status == PaymentStatus.PAID
     assert payment.external_id == "charge_updated"
     assert payment.amount == 1000.0
+
+
+@pytest.mark.asyncio
+async def test_paid_notice_is_atomic_and_replay_deduplicates(
+    user_repo, advertiser_repo, order_repo, payment_repo, pricing_repo
+):
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from ugc_bot.infrastructure.db.order_notice_models import (
+        ORDER_NOTICE_EVENTS,
+        metadata,
+    )
+    from ugc_bot.infrastructure.db.repositories.order_notices import (
+        SqlAlchemyOrderNoticeRepository,
+    )
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(metadata.create_all)
+    factory = async_sessionmaker(engine)
+
+    class Transactions:
+        @asynccontextmanager
+        async def transaction(self):
+            async with factory.begin() as session:
+                yield session
+
+    await create_test_contact_pricing(
+        pricing_repo, bloggers_count=3, price=1000.0
+    )
+    user_id = await create_test_advertiser(user_repo, advertiser_repo)
+    order = await create_test_order(order_repo, user_id)
+    service = build_payment_service(
+        user_repo,
+        advertiser_repo,
+        order_repo,
+        payment_repo,
+        pricing_repo,
+        Transactions(),
+    )
+    service.order_notices = SqlAlchemyOrderNoticeRepository()
+    for _ in range(2):
+        await service.confirm_telegram_payment(
+            user_id, order.order_id, "notice-charge", 100000, "RUB"
+        )
+    async with factory() as session:
+        rows = (
+            (await session.execute(select(ORDER_NOTICE_EVENTS)))
+            .mappings()
+            .all()
+        )
+    assert [(row["order_id"], row["event_kind"]) for row in rows] == [
+        (order.order_id, "paid")
+    ]
+    await engine.dispose()

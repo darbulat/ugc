@@ -60,7 +60,9 @@ services:
   # In .env set WEBHOOK_BASE_URL to the public URL that reaches nginx (e.g. https://xxx.ngrok.io), WEBHOOK_SECRET, TELEGRAM_E2E_BOT_TOKEN.
   app:
     build: *app-build
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
       BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
       DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
@@ -93,6 +95,7 @@ services:
   # Use with: docker compose -f docker-compose.yml -f docker-compose.test.yml (see Makefile e2e-telegram-docker, test-all-docker).
   # WEBHOOK_BASE_URL must be https (e.g. https://host:443 or https://tunnel that forwards to host:443).
   nginx:
+    image: nginx:1.28-alpine
     volumes:
       - ./nginx/nginx-test.conf:/etc/nginx/nginx.conf:ro
     depends_on:
@@ -113,6 +116,7 @@ services:
       context: .
       dockerfile: Dockerfile.e2e
     environment:
+      E2E_TEST_ONLY: "1"
       E2E_BASE_URL: http://admin_test:8001
     depends_on:
       admin_test:
@@ -126,6 +130,7 @@ services:
       context: .
       dockerfile: Dockerfile.e2e
     environment:
+      E2E_TEST_ONLY: "1"
       E2E_BASE_URL: http://admin_test:8001
       TELEGRAM_E2E_BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
       TELEGRAM_E2E_BOT_USERNAME: ${TELEGRAM_E2E_BOT_USERNAME:-}

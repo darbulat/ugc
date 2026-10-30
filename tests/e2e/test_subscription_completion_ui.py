@@ -127,7 +127,7 @@ def test_published_tariff_admin_form_preserves_exact_price(page, price):
 def test_intake_targeting_is_sent_in_actual_saved_command(page):
     network = SelectionNetwork()
     errors = open_app(page, network, "telegram", init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#intake-min_followers").fill("1000")
     page.locator("#intake-max_followers").fill("20000")
@@ -165,12 +165,12 @@ class FunnelNetwork(SelectionNetwork):
 def test_intake_draft_survives_reload_without_submitting_or_repricing(page):
     network = FunnelNetwork()
     errors = open_app(page, network, "telegram", init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#intake-min_followers").fill("1234")
     original = page.locator("#intake-brief").input_value()
     page.reload()
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-brief")).to_have_value(original)
     expect(page.locator("#intake-min_followers")).to_have_value("1234")
     assert network.creates == []

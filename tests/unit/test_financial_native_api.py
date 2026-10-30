@@ -72,7 +72,8 @@ def application(platform, *, override=False):
     return app, facts, auth
 
 
-REF = str(uuid4())
+# Parametrized cases are collected independently by each xdist worker.
+REF = "00000000-0000-4000-8000-000000000001"
 PAYOUT_PATHS = (
     (
         "/admin/requirements/publish",

@@ -160,6 +160,13 @@ class SqlAlchemySelectionViewRepository:
         )
         return dict(
             order_id=order_id,
+            **(
+                {"image_token": order["product_photo_file_id"].split(":", 1)[1]}
+                if (order["product_photo_file_id"] or "").startswith(
+                    "order-image:"
+                )
+                else {}
+            ),
             policy_version=order["financial_version"],
             **(
                 {"closure_policy": closure_policy}

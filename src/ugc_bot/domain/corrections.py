@@ -343,7 +343,7 @@ class SelectionRefundBundle:
     def __post_init__(self) -> None:
         if (
             type(self.components) is not tuple
-            or not 1 <= len(self.components) <= 30
+            or not 1 <= len(self.components) <= 200
             or any(
                 not isinstance(c, CapturedSelectionComponent)
                 for c in self.components
@@ -383,6 +383,6 @@ class SelectionRefundBundle:
                 return "selection_previously_assigned"
             if component.accepted_delivery_ids:
                 return "selection_already_delivered"
-            if component.gross_minor != 50_000:
+            if component.gross_minor <= 0:
                 return "full_selection_component_required"
         return None

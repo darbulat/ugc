@@ -199,7 +199,7 @@ ACCEPTED = sa.Table(
         "channel", "provider_reference", name="uq_selection_provider_acceptance"
     ),
     sa.CheckConstraint(
-        "currency='RUB' AND amount_minor=50000 "
+        "currency='RUB' AND amount_minor>0 "
         "AND length(trim(instagram_user_id))>0 "
         "AND length(trim(provider_reference))>0",
         name="ck_selection_accepted_value",

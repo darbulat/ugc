@@ -2,11 +2,40 @@
 
 import hashlib
 import hmac
+from urllib.parse import unquote, urlsplit
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
+from starlette.responses import RedirectResponse
+
+
+def safe_admin_return_to(value: object) -> str | None:
+    """Accept only local admin destinations, including encoded path checks."""
+    if not isinstance(value, str):
+        return None
+    decoded = value
+    for _ in range(3):
+        decoded = unquote(decoded)
+    if any(ord(char) < 32 or char == "\\" for char in decoded):
+        return None
+    parsed = urlsplit(decoded)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/admin/"):
+        return None
+    if parsed.path.rstrip("/") in {"/admin/login", "/admin/logout"}:
+        return None
+    return value
+
+
+def admin_login_redirect(request: Request) -> RedirectResponse:
+    target = safe_admin_return_to(
+        request.url.path
+        + ("?" + request.url.query if request.url.query else "")
+    )
+    if target and "session" in request.scope:
+        request.session["admin_return_to"] = target
+    return RedirectResponse(url="/admin/login")
 
 
 def _hash_password_argon2(password: str) -> str:
@@ -65,11 +94,25 @@ class AdminAuth(AuthenticationBackend):
         request.session.clear()
         return True
 
+    def remember_destination(self, request: Request) -> None:
+        target = safe_admin_return_to(
+            request.url.path
+            + ("?" + request.url.query if request.url.query else "")
+        )
+        if target:
+            request.session["admin_return_to"] = target
+
+    def redirect_to_login(self, request: Request) -> RedirectResponse:
+        return admin_login_redirect(request)
+
     async def authenticate(self, request: Request) -> bool:
         """Check current session (constant-time to prevent timing attacks)."""
 
         token = request.session.get("admin_token") or ""
-        return hmac.compare_digest(token, self._token)
+        authenticated = hmac.compare_digest(token, self._token)
+        if not authenticated and hasattr(request, "url"):
+            self.remember_destination(request)
+        return authenticated
 
 
 def _verify_credentials(

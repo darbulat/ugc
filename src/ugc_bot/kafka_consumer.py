@@ -109,6 +109,30 @@ def _parse_order_id(data: dict[str, Any]) -> UUID | None:
         return None
 
 
+def _offer_message_parts(text: str, *, photo: bool) -> list[str]:
+    """Lossless plain-text chunks within both messengers' Unicode limits.
+
+    Telegram captions allow 1024 UTF-16 units; MAX text allows 4000
+    characters. Conservatively cap all subsequent chunks at 4000 UTF-16
+    units, preserving Unicode code points and every original character.
+    """
+    parts: list[str] = []
+    current: list[str] = []
+    size = 0
+    limit = 1024 if photo else 4000
+    for char in text:
+        units = 2 if ord(char) > 0xFFFF else 1
+        if size + units > limit:
+            parts.append("".join(current))
+            current = []
+            size = 0
+            limit = 4000
+        current.append(char)
+        size += units
+    parts.append("".join(current))
+    return parts
+
+
 async def _send_offer_via_client(
     chat_id: str,
     messenger_client: MessengerClient,
@@ -128,21 +152,32 @@ async def _send_offer_via_client(
 
     Returns True if the message was delivered, False otherwise.
     """
+    parts = _offer_message_parts(
+        offer_text, photo=bool(order.product_photo_file_id)
+    )
+    delivered_parts = 0
     for attempt in range(1, retries + 1):
         try:
-            if order.product_photo_file_id:
-                await messenger_client.send_photo(
-                    chat_id=chat_id,
-                    file_id=order.product_photo_file_id,
-                    caption=offer_text,
-                    keyboard=reply_markup,
+            while delivered_parts < len(parts):
+                part = parts[delivered_parts]
+                keyboard = (
+                    reply_markup if delivered_parts == len(parts) - 1 else None
                 )
-            else:
-                await messenger_client.send_text(
-                    chat_id=chat_id,
-                    text=offer_text,
-                    keyboard=reply_markup,
-                )
+                if delivered_parts == 0 and order.product_photo_file_id:
+                    await messenger_client.send_photo(
+                        chat_id=chat_id,
+                        file_id=order.product_photo_file_id,
+                        caption=part,
+                        keyboard=keyboard,
+                    )
+                else:
+                    await messenger_client.send_text(
+                        chat_id=chat_id,
+                        text=part,
+                        keyboard=keyboard,
+                    )
+                # A later failure resumes after already accepted parts.
+                delivered_parts += 1
             logger.info(
                 "Offer sent to blogger",
                 extra={

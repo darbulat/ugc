@@ -605,7 +605,10 @@ class BloggerRatingModel(Base):
     __tablename__ = "blogger_ratings"
     __table_args__ = (
         UniqueConstraint(
-            "blogger_id", "order_id", name="uq_blogger_order_rating"
+            "blogger_id",
+            "order_id",
+            "rater_id",
+            name="uq_blogger_order_rater_rating",
         ),
     )
 
@@ -1467,6 +1470,9 @@ from ugc_bot.infrastructure.db import (  # noqa: E402
     correction_models as _correction_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    customer_workflow_models as _customer_workflow_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     debt_recovery_models as _debt_recovery_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
@@ -1489,6 +1495,9 @@ from ugc_bot.infrastructure.db import (  # noqa: E402
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     order_funnel_models as _order_funnel_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
+    order_image_models as _order_image_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
     order_intake_models as _order_intake_models,  # noqa: F401

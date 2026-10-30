@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
+from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.miniapp.financial_principal import FinancialPrincipalResolver
 from ugc_bot.miniapp.native_caller_errors import NoStoreSelectionRoute
 from ugc_bot.miniapp.principal import SignedMiniAppRequest
@@ -38,7 +39,11 @@ def create_selection_router(
                 order_id, principal.user_id, principal=principal
             )
             paused = not request.app.state.config.financial.core_enabled
-            return dict(result, writes_paused=paused)
+            return dict(
+                result,
+                writes_paused=paused,
+                public_number=public_order_number(order_id),
+            )
         except LookupError as exc:
             if str(exc) == "selection_order_not_found":
                 raise HTTPException(404, "selection_order_not_found") from None

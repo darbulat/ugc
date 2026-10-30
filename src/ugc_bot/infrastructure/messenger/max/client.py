@@ -4,6 +4,8 @@ import asyncio
 import json
 import logging
 from typing import Any
+from urllib.parse import urlsplit
+from uuid import UUID
 
 import aiohttp
 
@@ -13,6 +15,7 @@ from ugc_bot.application.messenger.dto import (
     KeyboardKind,
 )
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.infrastructure.order_images import PrivateOrderImageStorage
 
 logger = logging.getLogger(__name__)
 
@@ -214,12 +217,78 @@ class MaxMessengerClient(MessengerClient):
         keyboard: Keyboard | None = None,
         parse_mode: str | None = None,
     ) -> None:
-        if file_id:
-            logger.warning(
-                "send_photo: photos not supported on Max, sending caption only"
+        if not file_id.startswith("order-image:"):
+            # Historical IDs belong to Telegram; MAX cannot resolve them.
+            await self.send_text(
+                chat_id=chat_id,
+                text=caption or "",
+                keyboard=keyboard,
+                parse_mode=parse_mode,
             )
-        text = caption or ""
-        await self.send_text(chat_id=chat_id, text=text, keyboard=keyboard)
+            return
+        token = await self._upload_order_image(file_id)
+        body: dict[str, Any] = {
+            "text": caption or "",
+            "attachments": [{"type": "image", "payload": {"token": token}}],
+        }
+        if parse_mode and "html" in parse_mode.lower():
+            body["format"] = "html"
+        if keyboard and keyboard.kind == KeyboardKind.INLINE:
+            body["attachments"].append(_build_inline_keyboard(keyboard))
+        for attempt in range(MAX_RETRY_ATTEMPTS):
+            try:
+                await self._post("/messages", body, params={"chat_id": chat_id})
+                return
+            except MaxAPIError as exc:
+                # MAX can reject an uploaded image until processing completes.
+                # Only this explicit rejection is safe to retry here.
+                if (
+                    '"attachment.not.ready"' not in exc.body
+                    or attempt == MAX_RETRY_ATTEMPTS - 1
+                ):
+                    raise
+                await asyncio.sleep(MAX_RETRY_BASE_DELAY * (2**attempt))
+
+    async def _upload_order_image(self, reference: str) -> str:
+        token = UUID(reference.removeprefix("order-image:"))
+        data = await PrivateOrderImageStorage().get(token)
+        upload = await self._post("/uploads", params={"type": "image"})
+        url = upload.get("url")
+        upload_url = url if isinstance(url, str) else ""
+        target = urlsplit(upload_url)
+        if (
+            target.scheme != "https"
+            or target.hostname != "iu.oneme.ru"
+            or target.username
+            or target.password
+            or target.port not in (None, 443)
+        ):
+            raise ValueError("max_image_upload_url_invalid")
+        form = aiohttp.FormData()
+        form.add_field(
+            "data", data, filename=f"{token}.jpg", content_type="image/jpeg"
+        )
+        response = await self._session.request(
+            "POST",
+            upload_url,
+            data=form,
+            headers={"Authorization": self._token},
+            allow_redirects=False,
+        )
+        async with response:
+            if not 200 <= response.status < 300:
+                raise MaxAPIError(response.status, "max_image_upload_failed")
+            result = await response.json(content_type=None)
+        photos = result.get("photos", {})
+        values = list(photos.values()) if isinstance(photos, dict) else []
+        received = (
+            values[0].get("token")
+            if len(values) == 1 and isinstance(values[0], dict)
+            else None
+        )
+        if not isinstance(received, str) or not received.strip():
+            raise ValueError("max_image_upload_token_missing")
+        return received
 
     async def edit_text(
         self,

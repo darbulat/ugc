@@ -44,7 +44,7 @@ def refund_original_tables(metadata):
         sa.CheckConstraint(
             (
                 "jsonb_typeof(new_ground_ids)='array' AND "
-                "jsonb_array_length(new_ground_ids) BETWEEN 1 AND 30"
+                "jsonb_array_length(new_ground_ids) BETWEEN 1 AND 200"
             ),
             name="ck_refund_original_grounds",
         ).ddl_if(dialect="postgresql"),
@@ -78,14 +78,14 @@ def refund_original_guards():
         selected,
         selected[:-1]
         + (
-            " AND "
+            " AND\n"
             "correction_original_ground_visible(id,request.case_id,authority->>'source_hash');"
         ),
         1,
     ).replace(
         all_grounds,
         (
-            "FROM financial_obligations WHERE order_id=request.order_id AND "
+            "FROM financial_obligations WHERE order_id=request.order_id AND\n"
             "correction_original_ground_visible(id,request.case_id,authority->>'source_hash')),'[]'),"
         ),
     )
@@ -168,14 +168,15 @@ DISTINCT FROM 'RUB'
 'client-selection:'||NEW.payment_id::text||':'||ground.paid_item_id::text
  OR ground.recipient_id::text IS DISTINCT FROM
 capture.payload->>'client_referrer_id'
- OR ground.base_minor IS DISTINCT FROM 50000
+ OR ground.base_minor IS DISTINCT FROM (SELECT selection_minor FROM
+order_items WHERE paid_item_id=ground.paid_item_id)
  OR snapshot.payment_id IS DISTINCT FROM NEW.payment_id
  OR snapshot.referred_user_id::text IS DISTINCT FROM
 capture.payload#>>'{capture,client_id}'
  OR snapshot.effective_at IS DISTINCT FROM
 (capture.payload#>>'{capture,captured_at}')::timestamptz
  OR ground.amount_minor IS DISTINCT FROM
-(50000::bigint*snapshot.rate_bps+5000)/10000
+floor((ground.base_minor::numeric*snapshot.rate_bps+5000)/10000)::bigint
  OR issuance.obligation_id IS DISTINCT FROM ground.id
  OR issuance.event_id IS DISTINCT FROM NEW.capture_id::text
  OR issuance.actor_kind IS DISTINCT FROM 'user'

@@ -101,6 +101,7 @@ from ugc_bot.application.services.offer_dispatch_service import (
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
+from ugc_bot.application.services.order_image_service import OrderImageService
 from ugc_bot.application.services.order_intake_service import OrderIntakeService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
@@ -153,6 +154,7 @@ from ugc_bot.container.correction_factory import (
     build_accompaniment_refund_service,
     build_correction_services,
 )
+from ugc_bot.container.customer_workflow_factory import build_customer_workflows
 from ugc_bot.container.debt_recovery_factory import build_debt_recovery
 from ugc_bot.container.financial_review_factory import build_financial_review
 from ugc_bot.container.manual_grant_factory import build_manual_grants
@@ -171,8 +173,17 @@ from ugc_bot.infrastructure.db.repositories.corrections import (
 from ugc_bot.infrastructure.db.repositories.financial_capture import (
     SqlAlchemyFinancialCaptureRepository,
 )
+from ugc_bot.infrastructure.db.repositories.order_images import (
+    SqlAlchemyOrderImageRepository,
+)
+from ugc_bot.infrastructure.db.repositories.order_notices import (
+    SqlAlchemyOrderNoticeRepository,
+)
 from ugc_bot.infrastructure.db.repositories.partner_admin import (
     SqlAlchemyPartnerAdminRepository,
+)
+from ugc_bot.infrastructure.db.repositories.rating_eligibility import (
+    SqlAlchemyRatingEligibilityRepository,
 )
 from ugc_bot.infrastructure.db.repositories.selection_maturity import (
     SqlAlchemySelectionMaturityRepository,
@@ -192,6 +203,7 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryFinancialDeliveryRepository,
     InMemoryOutboxRepository,
 )
+from ugc_bot.infrastructure.order_images import PrivateOrderImageStorage
 
 
 def build_geocoder(config: AppConfig) -> GeocoderPort:
@@ -627,6 +639,9 @@ def build_bot_services(
         blogger_profile_repo=repos["blogger_repo"],
     )
     order_service = OrderService(
+        order_notices=SqlAlchemyOrderNoticeRepository()
+        if transaction_manager is not None
+        else None,
         user_repo=repos["user_repo"],
         advertiser_repo=repos["advertiser_repo"],
         order_repo=repos["order_repo"],
@@ -655,7 +670,34 @@ def build_bot_services(
         if transaction_manager is not None
         else (None, None)
     )
+    image_service = (
+        OrderImageService(
+            SqlAlchemyOrderImageRepository(),
+            PrivateOrderImageStorage(),
+            transaction_manager,
+            SystemClock(),
+        )
+        if transaction_manager is not None
+        else None
+    )
+    customer_workflows = (
+        build_customer_workflows(transaction_manager)
+        if transaction_manager is not None
+        else {}
+    )
     return {
+        "order_image_service": image_service,
+        "order_support_service": customer_workflows.get(
+            "order_support_service"
+        ),
+        "service_lead_service": customer_workflows.get("service_lead_service"),
+        "client_followup_service": customer_workflows.get(
+            "client_followup_service"
+        ),
+        "client_order_view_service": customer_workflows.get(
+            "client_order_view_service"
+        ),
+        "payment_repo": repos["payment_repo"],
         "financial_review_service": build_financial_review(config),
         "manual_grant_service": manual_grant_service,
         "manual_grant_sweep": manual_grant_sweep,
@@ -799,6 +841,7 @@ def build_bot_services(
             transaction_manager,
             SystemClock(),
             config.financial,
+            image_service=image_service,
         )
         if repos.get("order_intake_repo") is not None
         else None,
@@ -816,6 +859,7 @@ def build_bot_services(
             currency_symbol=config.market.currency_symbol,
         ),
         "blogger_rating_service": BloggerRatingService(
+            eligibility_repo=SqlAlchemyRatingEligibilityRepository(),
             rating_repo=repos["blogger_rating_repo"],
             transaction_manager=transaction_manager,
         ),
@@ -850,6 +894,9 @@ def build_bot_services(
         ),
         "checkout_service": build_checkout_service(config, transaction_manager),
         "payment_service": PaymentService(
+            order_notices=SqlAlchemyOrderNoticeRepository()
+            if transaction_manager is not None
+            else None,
             user_repo=repos["user_repo"],
             advertiser_repo=repos["advertiser_repo"],
             order_repo=repos["order_repo"],

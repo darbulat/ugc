@@ -49,6 +49,7 @@ class OrderType(StrEnum):
 
     UGC_ONLY = "ugc_only"
     UGC_PLUS_PLACEMENT = "ugc_plus_placement"
+    STORIES = "stories"
 
 
 class OrderStatus(StrEnum):

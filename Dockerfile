@@ -32,3 +32,7 @@ COPY pyproject.toml alembic.ini /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
+
+# Named volume shared by both Telegram replicas, MAX and cleanup/delivery.
+ENV ORDER_IMAGE_DIRECTORY=/app/var/order-images
+RUN install -d -m 0700 /app/var/order-images

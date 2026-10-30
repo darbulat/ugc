@@ -10,6 +10,10 @@ from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.financial_tariff import (
+    require_invoice_total,
+    require_tariff,
+)
 from ugc_bot.domain.refund_rules import RefundRules
 
 
@@ -33,6 +37,9 @@ class FinancialQuote:
     items: tuple[QuotedItem, ...]
     client_id: UUID | None = None
     refund_rules: RefundRules | None = None
+
+    def __post_init__(self) -> None:
+        require_invoice_total(self.total_minor)
 
     @property
     def total_minor(self) -> int:
@@ -75,6 +82,7 @@ class PaidItemService:
         accompaniment_ordinals: frozenset[int],
         client_contact_reference: str,
         idempotency_key: str,
+        position_count: int = 30,
     ) -> FinancialQuote:
         approved = self.policy_service.validate_for_capture(
             policy=policy,
@@ -92,7 +100,9 @@ class PaidItemService:
         return replace(
             build_quote(
                 order_id=order_id,
-                count=30,
+                count=position_count,
+                selection_minor=approved.selection_minor,
+                accompaniment_minor=approved.accompaniment_minor,
                 accompaniment_ordinals=accompaniment_ordinals,
                 currency=currency,
                 policy_version=approved.version,
@@ -119,6 +129,7 @@ class PaidItemService:
         accompaniment_ordinals: frozenset[int],
         client_contact_reference: str,
         idempotency_key: str,
+        position_count: int = 30,
     ) -> FinancialQuote:
         quote = self.prepare_quote(
             policy=policy,
@@ -131,6 +142,7 @@ class PaidItemService:
             accompaniment_ordinals=accompaniment_ordinals,
             client_contact_reference=client_contact_reference,
             idempotency_key=idempotency_key,
+            position_count=position_count,
         )
         return await self.repository.save_quote(quote, session=session)
 
@@ -139,6 +151,8 @@ def build_quote(
     *,
     order_id: UUID,
     count: int,
+    selection_minor: int,
+    accompaniment_minor: int,
     accompaniment_ordinals: frozenset[int],
     currency: str,
     policy_version: str,
@@ -149,8 +163,9 @@ def build_quote(
 ) -> FinancialQuote:
     if currency != "RUB":
         raise ValueError("unpublished_currency")
-    if type(count) is not int or count <= 0:
-        raise ValueError("positive_item_count_required")
+    if type(count) is not int or not 10 <= count <= 200:
+        raise ValueError("invalid_position_count")
+    require_tariff(selection_minor, accompaniment_minor)
     if any(
         type(n) is not int or not 1 <= n <= count
         for n in accompaniment_ordinals
@@ -178,8 +193,8 @@ def build_quote(
             QuotedItem(
                 uuid4(),
                 ordinal,
-                50000,
-                120000 if ordinal in accompaniment_ordinals else 0,
+                selection_minor,
+                accompaniment_minor if ordinal in accompaniment_ordinals else 0,
             )
             for ordinal in range(1, count + 1)
         ),

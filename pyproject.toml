@@ -27,6 +27,7 @@ dependencies = [
  "boto3>=1.35.0,<1.36.0",
  "aiograpi>=0.0.4",
  "geoalchemy2[shapely]>=0.14.0,<1.0.0",
+ "pillow>=13.0.0,<14",
 ]
 
 [project.optional-dependencies]

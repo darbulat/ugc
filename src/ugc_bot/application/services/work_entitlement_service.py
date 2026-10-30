@@ -286,8 +286,9 @@ class WorkEntitlementService:
         )
         if (
             item is None
-            or item.selection_minor != 50000
-            or item.accompaniment_minor not in (0, 120000)
+            or item.selection_minor != capture.policy.selection_minor
+            or item.accompaniment_minor
+            not in (0, capture.policy.accompaniment_minor)
         ):
             raise ValueError("work_funding_mismatch")
 
@@ -345,7 +346,11 @@ class WorkEntitlementService:
             referred_user_id=scope.creator_id,
             payment_id=capture.payment_id,
             currency="RUB",
-            base_minor=50000,
+            base_minor=next(
+                i.selection_minor
+                for i in capture.items
+                if i.paid_item_id == scope.paid_item_id
+            ),
             rate_bps=rate,
             policy_version=capture.policy.version,
             snapshot_at=capture.captured_at,
@@ -419,7 +424,10 @@ class WorkEntitlementService:
     async def _management_deferral(
         self, snapshot, item, assessment, *, session
     ):
-        if item.accompaniment_minor != 120000:
+        if (
+            item.accompaniment_minor
+            != snapshot.capture.policy.accompaniment_minor
+        ):
             return "accompaniment_not_purchased"
         if snapshot.scope.manager_id is None:
             return "actual_manager_not_assigned"

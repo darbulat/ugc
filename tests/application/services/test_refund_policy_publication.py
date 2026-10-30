@@ -30,6 +30,8 @@ def config(**changes):
     return FinancialConfig(
         **(
             {
+                "FINANCIAL_SELECTION_PRICE_MINOR": 50000,
+                "FINANCIAL_ACCOMPANIMENT_PRICE_MINOR": 120000,
                 "FINANCIAL_SELECTION_REFUND_WINDOW_SECONDS": 604800,
                 "FINANCIAL_SELECTION_REFUND_WINDOW_ANCHOR": "order_closed",
                 "FINANCIAL_SELECTION_CLOSURE_MODE": "all_positions_resolved",

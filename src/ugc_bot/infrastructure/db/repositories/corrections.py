@@ -615,7 +615,7 @@ class SqlAlchemyCorrectionRepository:
             or quote.get("selection_due_at") != result.get("selection_due_at")
             or result.get("terms_reference") != quote.get("terms_reference")
             or result.get("policy_version") != item["policy_version"]
-            or len(result.get("items", ())) != 30
+            or len(result.get("items", ())) != order["bloggers_needed"]
         ):
             return None
         return payload_hash(
@@ -709,6 +709,23 @@ class SqlAlchemyCorrectionRepository:
         event = await self.original_capture_event(scope, session=session)
         history = event.payload.get("attribution_history", {})
         fact = history.get("fact", {})
+        zero = await _session(session).scalar(
+            text("""SELECT id FROM financial_audit_events WHERE
+                operation_key=:key AND correction_zero_assessment_valid(
+                    id,:capture,:payment,:order_id,:item,:client,:gross)
+                IS TRUE"""),
+            dict(
+                key=f"potential:client-selection:{scope.payment_id}:{item.paid_item_id}",
+                capture=scope.capture_id,
+                payment=scope.payment_id,
+                order_id=scope.order_id,
+                item=item.paid_item_id,
+                client=scope.client_id,
+                gross=item.gross_minor,
+            ),
+        )
+        if zero is not None:
+            return (zero, "covered_zero")
         if (
             history.get("status") != "assessed"
             or fact.get("referrer_user_id") is not None
@@ -741,7 +758,7 @@ class SqlAlchemyCorrectionRepository:
             record["details"].get(k) != v for k, v in expected.items()
         ):
             return None
-        return record["id"]
+        return (record["id"], "covered_absence")
 
     async def record_original_assessment(
         self, scope, matched, command_id, now, *, session
@@ -1224,7 +1241,7 @@ class SqlAlchemyCorrectionRepository:
     @staticmethod
     def _funding_selection(values, item_ids):
         try:
-            if type(values) is not list or not 1 <= len(values) <= 30:
+            if type(values) is not list or not 1 <= len(values) <= 200:
                 return None
             selected = tuple(UUID(value) for value in values)
             if (

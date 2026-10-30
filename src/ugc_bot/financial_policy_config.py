@@ -1,4 +1,4 @@
-"""Preview or explicitly publish environment-backed immutable refund rules."""
+"""Preview or publish immutable policy prices and refund rules."""
 
 import argparse
 import asyncio

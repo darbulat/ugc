@@ -215,3 +215,78 @@ async def test_routed_supported_transport_preserves_actual_receipt():
     )
     receipt = await Routed({"telegram": Telegram(bot)}).send(await prepared())
     assert receipt.reference == "101:19" and bot.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limits_report_delay_without_inline_retry():
+    from aiogram.exceptions import TelegramRetryAfter
+    from aiogram.methods import SendMessage
+
+    Telegram, Max, _ = adapters()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(
+            side_effect=TelegramRetryAfter(
+                method=SendMessage(chat_id=101, text="test"),
+                message="limited",
+                retry_after=75,
+            )
+        )
+    )
+    with pytest.raises(DeliveryFailure) as telegram:
+        await Telegram(bot).send(await prepared())
+    assert telegram.value.uncertain is False
+    assert telegram.value.retry_after_seconds == 75
+    assert bot.send_message.await_count == 1
+
+    session = MaxSession(429, {"code": "rate.limit"})
+    session.response.headers = {"Retry-After": "90"}
+    with pytest.raises(DeliveryFailure) as max_error:
+        await Max(session, "synthetic-token").send(
+            replace(await prepared(), channel="max")
+        )
+    assert max_error.value.uncertain is False
+    assert max_error.value.retry_after_seconds == 90
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_max_http_date_rate_limit_waits_until_requested_time(monkeypatch):
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+
+    from ugc_bot.infrastructure.messenger import notice_receipts
+
+    now = datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    monkeypatch.setattr(
+        notice_receipts, "datetime", FixedDateTime, raising=False
+    )
+    _, Max, _ = adapters()
+    session = MaxSession(429, {"code": "rate.limit"})
+    session.response.headers = {
+        "Retry-After": format_datetime(now.replace(minute=2), usegmt=True)
+    }
+    with pytest.raises(DeliveryFailure) as error:
+        await Max(session, "synthetic-token").send(
+            replace(await prepared(), channel="max")
+        )
+    assert error.value.retry_after_seconds == 120
+    assert len(session.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_max_malformed_retry_after_does_not_retry_early():
+    _, Max, _ = adapters()
+    session = MaxSession(429, {"code": "rate.limit"})
+    session.response.headers = {"Retry-After": "not a valid delay"}
+    with pytest.raises(DeliveryFailure) as error:
+        await Max(session, "synthetic-token").send(
+            replace(await prepared(), channel="max")
+        )
+    assert error.value.uncertain is False
+    assert error.value.retry_after_seconds is None

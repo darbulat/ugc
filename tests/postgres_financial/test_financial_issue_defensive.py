@@ -52,7 +52,6 @@ def persisted_state(engine):
     ("change", "message"),
     [
         ({"rate_bps": 300}, "unapproved_referral_rate"),
-        ({"base_minor": 1}, "zero_monetary_obligation_unsupported"),
         ({"registered_at": "future"}, "snapshot_before_registration"),
     ],
 )
@@ -92,7 +91,9 @@ async def test_issue_rejected_assessment_preserves_all_tables(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("missing", ["policy_version", "rate_bps"])
+@pytest.mark.parametrize(
+    "missing", ["policy_version", "rate_bps", "rounded_zero"]
+)
 async def test_unresolved_policy_is_durable_nonmonetary_and_conflicts_rollback(
     financial_pg_engine, seed, missing
 ):
@@ -100,14 +101,21 @@ async def test_unresolved_policy_is_durable_nonmonetary_and_conflicts_rollback(
     service = FinancialLedgerService(repo)
     engine = create_async_engine(financial_pg_engine.url)
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    cmd = replace(basis(seed), **{missing: None})
+    cmd = replace(
+        basis(seed),
+        **({"base_minor": 1} if missing == "rounded_zero" else {missing: None}),
+    )
     try:
         async with factory.begin() as session:
             saved = await service.issue(
                 cmd, recorded_at=seed["now"], session=session
             )
             assert isinstance(saved, PotentialBasis)
-            assert saved.reason == "snapshot_policy_unresolved"
+            assert saved.reason == (
+                "rounded_commission_zero"
+                if missing == "rounded_zero"
+                else "snapshot_policy_unresolved"
+            )
         before = persisted_state(financial_pg_engine)
         async with factory.begin() as session:
             assert (
@@ -145,6 +153,15 @@ async def test_unresolved_policy_is_durable_nonmonetary_and_conflicts_rollback(
         assert error.value.operation_key == "potential:" + cmd.business_key
         assert error.value.audit_required
         assert persisted_state(financial_pg_engine) == before
+        if missing == "rounded_zero":
+            with pytest.raises(PayloadConflict):
+                async with factory.begin() as session:
+                    await service.issue(
+                        replace(cmd, base_minor=50000),
+                        recorded_at=seed["now"],
+                        session=session,
+                    )
+            assert persisted_state(financial_pg_engine) == before
     finally:
         await engine.dispose()
 

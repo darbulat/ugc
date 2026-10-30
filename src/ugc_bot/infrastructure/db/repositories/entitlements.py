@@ -278,8 +278,9 @@ class SqlAlchemyClientEntitlementRepository:
                 item["currency"] == "RUB"
                 and item["policy_version"] == policy.version
                 and item["quote_key"] == items[0]["quote_key"]
-                and item["selection_minor"] == 50000
-                and item["accompaniment_minor"] in (0, 120000)
+                and item["selection_minor"] == policy.selection_minor
+                and item["accompaniment_minor"]
+                in (0, policy.accompaniment_minor)
                 and item["captured_at"] == at
                 and item["selection_state"] not in ("refunded", "cancelled")
                 and utc(item["selection_due_at"]) > at

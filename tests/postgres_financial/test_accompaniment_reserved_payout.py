@@ -36,7 +36,7 @@ REVIEW_RULES = RefundRules(
 )
 
 
-async def actual_refund(env):
+async def actual_refund(env, *, customer_minor=60000):
     tm = env["flow"]["container"].transaction_manager
     service = build_accompaniment_refund_service(
         env["config"], tm, env["flow"]["container"].session_factory
@@ -54,7 +54,7 @@ async def actual_refund(env):
                 operation_key="actual-accompaniment-report:" + uuid4().hex,
                 paid_item_id=env["flow"]["item"],
                 original_payment_reference=scope.original_payment_reference,
-                amount_minor=60000,
+                amount_minor=customer_minor,
                 currency="RUB",
                 bank_account_label="synthetic-origin-account",
                 bank_reference="synthetic-actual-refund:" + uuid4().hex,
@@ -72,7 +72,7 @@ async def actual_refund(env):
         observation_id=UUID(observation["observation_id"]),
         paid_item_id=env["flow"]["item"],
         expected_work_version=scope.work_version,
-        reviewed_customer_target_minor=60000,
+        reviewed_customer_target_minor=customer_minor,
         reviewed_manager_target_minor=30000,
         reason="Explicit review cancels half of earned management liability",
         evidence_reference="synthetic:partial-service-review",

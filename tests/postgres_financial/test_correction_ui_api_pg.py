@@ -1,6 +1,7 @@
 """Real mounted UI endpoints, current SQL sources, synthetic bank evidence."""
 
 from dataclasses import asdict
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import httpx
@@ -345,3 +346,34 @@ async def test_early_owned_case_offers_real_positions_without_invented_subset(
         assert preview.json()["total_minor"] == "250000"
         assert preview.json()["can_request"] is False
         assert not rt.rows("requests", case_id=UUID(early["case_id"]))
+
+
+@pytest.mark.asyncio
+async def test_correction_order_navigation_returns_all_200_captured_positions(
+    correction_env,
+):
+    from tests.helpers.corrections import captured_order
+    from tests.postgres_financial.test_order_intake import command, service
+
+    rt = correction_env
+    # The shared fixture advances its clock past the first order's deadline.
+    # A newly issued invoice must use a creation time no later than issuance.
+    rt.env["clock"].at = datetime.now(timezone.utc)
+    request = command(rt.env, position_count=200)
+    result = await service(rt.env).create(request)
+    await captured_order(rt.env, existing=(request, result))
+    app, own, _ = application(rt, "telegram")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        response = await post(client, own, "orders")
+        assert response.status_code == 200, response.text
+        order = next(
+            item
+            for item in response.json()["entries"]
+            if item["order_id"] == str(result.order_id)
+        )
+        assert len(order["items"]) == 200
+        assert {item["ordinal"] for item in order["items"]} == set(
+            range(1, 201)
+        )

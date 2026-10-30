@@ -122,7 +122,7 @@ async def setup(env):
         referred_user_id=creators[0],
         payment_id=payment_id,
         currency="RUB",
-        base_minor=50000,
+        base_minor=env.get("selection_minor", 50000),
         rate_bps=1000,
         policy_version=env["version"],
         snapshot_at=paid_at,

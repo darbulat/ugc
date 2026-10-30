@@ -186,7 +186,7 @@ class RequestSelectionRefund(_CorrectionCommand):
             require_uuid(self.existing_case_id)
         require_hash(self.expected_source_hash)
         selected = uuid_tuple(self.paid_item_ids)
-        if not 1 <= len(selected) <= 30:
+        if not 1 <= len(selected) <= 200:
             raise ValueError("correction_selection_required")
         object.__setattr__(self, "paid_item_ids", selected)
 
@@ -364,7 +364,7 @@ class CorrectionScope:
         if self.case_id is not None:
             require_uuid(self.case_id)
         selected = uuid_tuple(self.selected_paid_item_ids)
-        if len(selected) > 30:
+        if len(selected) > 200:
             raise ValueError("correction_selection_required")
         object.__setattr__(self, "selected_paid_item_ids", selected)
         for name in ("prospective_user_ids", "wallet_user_ids", "ground_ids"):

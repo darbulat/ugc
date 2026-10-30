@@ -1987,13 +1987,14 @@ class InMemoryBloggerRatingRepository(BloggerRatingRepository):
     async def save(
         self, rating: BloggerRating, session: object | None = None
     ) -> None:
-        """Persist a rating, replacing existing for same blogger+order."""
+        """Persist a rating, replacing only the same evaluator's rating."""
         self.ratings = [
             r
             for r in self.ratings
             if not (
                 r.blogger_id == rating.blogger_id
                 and r.order_id == rating.order_id
+                and r.rater_id == rating.rater_id
             )
         ]
         self.ratings.append(rating)
@@ -2004,21 +2005,50 @@ class InMemoryBloggerRatingRepository(BloggerRatingRepository):
         order_id: UUID,
         session: object | None = None,
     ) -> Optional[BloggerRating]:
-        """Fetch rating for specific blogger+order pair."""
-        for rating in self.ratings:
-            if rating.blogger_id == blogger_id and rating.order_id == order_id:
-                return rating
-        return None
+        """Read the effective rating for a specific creator/order pair."""
+        candidates = [
+            rating
+            for rating in self.ratings
+            if rating.blogger_id == blogger_id and rating.order_id == order_id
+        ]
+        return (
+            max(candidates, key=_effective_rating_key) if candidates else None
+        )
+
+    async def get_by_blogger_order_and_rater(
+        self,
+        blogger_id: UUID,
+        order_id: UUID,
+        rater_id: UUID,
+        session: object | None = None,
+    ) -> Optional[BloggerRating]:
+        return next(
+            (
+                rating
+                for rating in self.ratings
+                if rating.blogger_id == blogger_id
+                and rating.order_id == order_id
+                and rating.rater_id == rater_id
+            ),
+            None,
+        )
 
     async def get_avg_rating(
         self, blogger_id: UUID, session: object | None = None
     ) -> float | None:
         """Return average score for blogger or None when absent."""
-        scores = [
-            rating.score
+        orders = {
+            rating.order_id
             for rating in self.ratings
             if rating.blogger_id == blogger_id
-        ]
+        }
+        scores = []
+        for order_id in orders:
+            rating = await self.get_by_blogger_and_order(
+                blogger_id, order_id, session=session
+            )
+            if rating is not None:
+                scores.append(rating.score)
         if not scores:
             return None
         return sum(scores) / len(scores)
@@ -2033,7 +2063,7 @@ class InMemoryBloggerRatingRepository(BloggerRatingRepository):
                 for rating in self.ratings
                 if rating.blogger_id == blogger_id
             ],
-            key=lambda rating: rating.created_at,
+            key=lambda rating: (rating.created_at, rating.rating_id.int),
             reverse=True,
         )
 
@@ -2049,3 +2079,13 @@ class InMemoryBloggerRatingRepository(BloggerRatingRepository):
             if avg is not None:
                 result[blogger_id] = avg
         return result
+
+
+def _effective_rating_key(rating: BloggerRating) -> tuple:
+    """Keep memory selection identical to SQL's deterministic effective view."""
+    return (
+        rating.rater_role.value == "advertiser",
+        rating.updated_at or rating.created_at,
+        rating.created_at,
+        rating.rating_id.int,
+    )

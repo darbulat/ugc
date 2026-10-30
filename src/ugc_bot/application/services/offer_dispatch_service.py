@@ -216,7 +216,7 @@ def _passes_placement_filter(
         return True
     if profile is None:
         return False
-    if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
+    if order.order_type in (OrderType.UGC_PLUS_PLACEMENT, OrderType.STORIES):
         return profile.work_format == WorkFormat.ADS_IN_ACCOUNT
     return True
 
@@ -681,17 +681,25 @@ class OfferDispatchService:
                 "offer_how_it_works",
                 "offer_format_label_ugc_placement",
                 "offer_format_label_ugc_only",
+                "order_type_stories",
+                "offer_budget_per_creator",
             ]
             texts = await bot_texts_service.get_many(keys, locale)
 
         def t(key: str, default: str) -> str:
             return texts.get(key) or default
 
-        format_label = (
-            t("offer_format_label_ugc_placement", "UGC + размещение")
-            if order.order_type.value == "ugc_plus_placement"
-            else t("offer_format_label_ugc_only", "UGC-видео для бренда")
+        format_key, fallback = {
+            OrderType.STORIES: ("order_type_stories", "Сторис"),
+            OrderType.UGC_PLUS_PLACEMENT: (
+                "offer_format_label_ugc_placement",
+                "UGC + размещение",
+            ),
+        }.get(
+            order.order_type,
+            ("offer_format_label_ugc_only", "UGC-видео для бренда"),
         )
+        format_label = t(format_key, fallback)
 
         parts = [
             t("offer_header", "Новый заказ"),
@@ -705,8 +713,12 @@ class OfferDispatchService:
         if order.price > 0:
             parts.append(
                 t(
-                    "offer_budget",
-                    "💰 Бюджет: {price} {currency} за 1 UGC-видео",
+                    "offer_budget_per_creator"
+                    if order.order_type == OrderType.STORIES
+                    else "offer_budget",
+                    "💰 Гонорар: {price} {currency} одному автору"
+                    if order.order_type == OrderType.STORIES
+                    else "💰 Бюджет: {price} {currency} за 1 UGC-видео",
                 ).format(price=order.price, currency=currency_symbol)
             )
         if order.barter_description:

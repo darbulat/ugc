@@ -70,6 +70,21 @@ def result_from_payload(payload: dict[str, Any]) -> OrderIntakeResult:
 
 
 class SqlAlchemyOrderIntakeRepository:
+    async def exact_city_for_order(
+        self, order_id, *, session, for_update=False
+    ):
+        statement = select(INTAKE_RECEIPTS.c.result).where(
+            INTAKE_RECEIPTS.c.order_id == order_id
+        )
+        if for_update:
+            statement = statement.with_for_update()
+        result = await _session(session).scalar(statement)
+        targeting = result.get("targeting") if result else None
+        city = targeting.get("city") if targeting else None
+        if city is not None and (not isinstance(city, str) or not city.strip()):
+            raise ValueError("invalid_targeting_city")
+        return city.strip() if city is not None else None
+
     async def filter_candidates(self, order_id, creator_ids, *, session):
         db = _session(session)
         result = await db.scalar(

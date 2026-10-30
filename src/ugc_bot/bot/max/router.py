@@ -5,6 +5,7 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
+from ugc_bot.bot.customer_activity import record_customer_visit
 from ugc_bot.infrastructure.messenger.max.client import (
     MaxChatNotFoundError,
     MaxUserBlockedError,
@@ -171,6 +172,7 @@ class MaxRouter:
         is in an FSM state.  For regular text the order is reversed:
         state-based handlers are checked first, then predicate-based.
         """
+        await record_customer_visit(incoming, deps)
         is_command = bool(incoming.text and incoming.text.startswith("/"))
 
         if is_command and await self._try_predicate_handlers(incoming, deps):
@@ -307,6 +309,7 @@ class MaxRouter:
         State-based handlers are checked first (if a state_store is present in
         deps), then regular predicate-based handlers.
         """
+        await record_customer_visit(incoming, deps)
         await self._remove_callback_keyboard(incoming, deps)
 
         if await self._try_state_callback_handlers(incoming, deps):

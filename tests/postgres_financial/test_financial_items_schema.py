@@ -131,6 +131,8 @@ async def test_quote_repository_is_idempotent_and_snapshots_30_items(
         params = dict(
             order_id=seed["order"],
             count=30,
+            selection_minor=50000,
+            accompaniment_minor=120000,
             accompaniment_ordinals=frozenset({1, 2}),
             currency="RUB",
             policy_version=seed["version"],

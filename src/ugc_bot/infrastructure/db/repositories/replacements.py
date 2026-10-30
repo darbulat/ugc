@@ -99,7 +99,7 @@ class SqlAlchemyReplacementRepository:
         )
         if (
             captured is None
-            or captured.selection_minor != 50000
+            or captured.selection_minor != capture.policy.selection_minor
             or capture.client_id != order.advertiser_id
         ):
             raise ValueError("replacement_paid_capture_required")
@@ -162,7 +162,7 @@ class SqlAlchemyReplacementRepository:
             tuple(sorted((a["assignment_id"] for a in assignments), key=str)),
             tuple(sorted({a["creator_id"] for a in assignments}, key=str)),
             managers,
-            captured.accompaniment_minor == 120000,
+            captured.accompaniment_minor == capture.policy.accompaniment_minor,
             count,
             completed,
         )

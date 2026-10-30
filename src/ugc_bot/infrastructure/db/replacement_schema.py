@@ -233,7 +233,9 @@ BEGIN
  END IF;
  SELECT count(*) INTO total FROM payment_item_allocations
  WHERE payment_id=request.payment_id AND component='selection'
-  AND order_id=request.order_id AND currency='RUB' AND amount_minor=50000;
+  AND order_id=request.order_id AND currency='RUB'
+  AND amount_minor=(SELECT i.selection_minor FROM order_items i WHERE
+i.paid_item_id=payment_item_allocations.paid_item_id);
  IF total<>NEW.original_paid_pool THEN
   RAISE EXCEPTION 'replacement_original_pool_invalid' USING ERRCODE='23514';
  END IF;

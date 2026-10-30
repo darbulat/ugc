@@ -24,6 +24,8 @@ ARCHIVES = (
     "correction_ports.py.source",
     "correction_service.py.source",
     "corrections_repository.py.source",
+    "domain_corrections.py.source",
+    "correction_schema.py.source",
 )
 DEPENDENCIES = tuple(
     json.loads((ARCHIVE / "manifest.json").read_text())[
@@ -115,7 +117,7 @@ async def test_archived_commands_dispatch_without_replacing_current_modules():
         assert writer.ports.CorrectionPrincipal is (
             current_ports.CorrectionPrincipal
         )
-        assert len(private_modules() - private_before) == 3
+        assert len(private_modules() - private_before) == 4
         assert {key: sys.modules.get(key) for key in CANONICAL} == before
         assert builtins.__import__ is import_before
     assert private_modules() == private_before
@@ -132,7 +134,7 @@ def test_nested_contexts_keep_independent_command_types_and_cleanup():
     with archived_correction_writer() as first:
         first_names = private_modules() - before
         with archived_correction_writer() as second:
-            assert len(private_modules() - before) == 6
+            assert len(private_modules() - before) == 8
             assert first.ports.RequestSelectionRefund is not (
                 second.ports.RequestSelectionRefund
             )
@@ -148,11 +150,6 @@ async def test_actual_archived_service_keeps_historical_early_intent_refusal():
     from tests.helpers.correction_legacy_writer import (
         archived_correction_writer,
     )
-    from ugc_bot.domain.corrections import (
-        CapturedSelectionComponent,
-        CorrectionState,
-        SelectionRefundBundle,
-    )
 
     now = datetime(2026, 10, 24, tzinfo=timezone.utc)
     actor, client, order, case, paid, payment, capture, invoice, intent = (
@@ -160,6 +157,9 @@ async def test_actual_archived_service_keeps_historical_early_intent_refusal():
     )
     with archived_correction_writer() as writer:
         ports = writer.ports
+        CapturedSelectionComponent = writer.domain.CapturedSelectionComponent
+        CorrectionState = writer.domain.CorrectionState
+        SelectionRefundBundle = writer.domain.SelectionRefundBundle
         bundle = SelectionRefundBundle(
             components=(
                 CapturedSelectionComponent(
@@ -352,6 +352,6 @@ def test_caller_failure_also_releases_private_module_registrations():
         pytest.raises(RuntimeError, match="Declared caller failure"),
         archived_correction_writer(),
     ):
-        assert len(private_modules() - before) == 3
+        assert len(private_modules() - before) == 4
         raise RuntimeError("Declared caller failure")
     assert private_modules() == before

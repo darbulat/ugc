@@ -312,6 +312,18 @@ class SqlAlchemyFinancialLedgerRepository:
         )
         return self._maturity(row)
 
+    async def has_zero_assessment(self, key: str, *, session: object) -> bool:
+        audit = Base.metadata.tables["financial_audit_events"]
+        return (
+            await _session(session).scalar(
+                select(audit.c.id).where(
+                    audit.c.operation_key == "potential:" + key,
+                    audit.c.action == "potential_basis",
+                    audit.c.reason == "rounded_commission_zero",
+                )
+            )
+        ) is not None
+
     async def save_potential(
         self,
         basis: IssueBasis,

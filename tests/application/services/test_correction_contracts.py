@@ -131,7 +131,7 @@ def test_request_has_canonical_unique_immutable_selection_and_native_alias():
         {"paid_item_ids": (U[2], U[2])},
         {"paid_item_ids": [U[2]]},
         {"paid_item_ids": ("forged",)},
-        {"paid_item_ids": tuple(UUID(int=i + 1) for i in range(31))},
+        {"paid_item_ids": tuple(UUID(int=i + 1) for i in range(201))},
         {"operation_key": " "},
         {"operation_key": "x" * 257},
         {"reason": " "},
@@ -360,10 +360,16 @@ def test_full_bundle_binds_all_original_selected_components_and_due_facts():
         ({"selection_due_at": NOW}, "selection_due_not_passed"),
         ({"assignment_ids": (U[17],)}, "selection_previously_assigned"),
         ({"accepted_delivery_ids": (U[18],)}, "selection_already_delivered"),
-        ({"gross_minor": 49_999}, "full_selection_component_required"),
     ):
         changed = SelectionRefundBundle(components=(component(**changes),))
         assert changed.positive_a1_refusal(NOW) == want
+    # The captured allocation is authoritative even when a published tariff
+    # differs from the historical 500-rouble price.
+    variable_price = SelectionRefundBundle(
+        components=(component(gross_minor=49_999),)
+    )
+    assert variable_price.total_minor == 49_999
+    assert variable_price.positive_a1_refusal(NOW) is None
     for parts in ((), [component()], (component(), component())):
         with pytest.raises(ValueError):
             SelectionRefundBundle(components=parts)
@@ -625,7 +631,7 @@ def test_scope_freezes_case_and_selected_routing_before_capture():
         {"selected_paid_item_ids": [U[2]]},
         {"selected_paid_item_ids": (U[2], U[2])},
         {"selected_paid_item_ids": (UUID(int=0),)},
-        {"selected_paid_item_ids": tuple(UUID(int=i + 1) for i in range(31))},
+        {"selected_paid_item_ids": tuple(UUID(int=i + 1) for i in range(201))},
     ):
         with pytest.raises(ValueError):
             replace(scope, **changes)

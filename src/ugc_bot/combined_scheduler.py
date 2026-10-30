@@ -10,6 +10,9 @@ from ugc_bot.accompaniment_lead_scheduler import run_enabled as lead_loop
 from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.campaign_digest_scheduler import run_enabled as feedback_loop
 from ugc_bot.campaign_scheduler import run_loop as campaign_loop
+from ugc_bot.client_followup_scheduler import (
+    run_enabled as customer_workflow_loop,
+)
 from ugc_bot.collaboration_scheduler import run_loop as collaboration_loop
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
@@ -24,6 +27,10 @@ from ugc_bot.infrastructure.messenger.telegram.client import (
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.manual_grant_scheduler import run_loop as manual_grant_loop
 from ugc_bot.notice_delivery_scheduler import run_enabled as notice_loop
+from ugc_bot.order_image_cleanup_scheduler import (
+    run_enabled as image_cleanup_loop,
+)
+from ugc_bot.order_notice_scheduler import run_enabled as order_notice_loop
 from ugc_bot.paid_selection_delivery_scheduler import (
     run_enabled as selection_loop,
 )
@@ -39,6 +46,19 @@ from ugc_bot.startup_logging import log_startup_info
 logger = logging.getLogger(__name__)
 
 
+def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
+    if getattr(container, "transaction_manager", None) is None:
+        return []
+    return [
+        asyncio.create_task(loop(config, container, bot), name=name)
+        for name, loop in (
+            ("order-notice-delivery", order_notice_loop),
+            ("customer-workflow-delivery", customer_workflow_loop),
+            ("order-image-cleanup", image_cleanup_loop),
+        )
+    ]
+
+
 async def _run_all(config, container: Container, bot: Bot) -> None:
     """Launch all enabled scheduler loops concurrently."""
     install_asyncio_exception_handler("combined-scheduler")
@@ -47,6 +67,8 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
         "telegram": TelegramMessengerClient(bot),
     }
     tasks: list[asyncio.Task] = []
+
+    tasks.extend(_customer_tasks(config, container, bot))
 
     if getattr(getattr(config, "financial", None), "core_enabled", False):
         tasks.append(

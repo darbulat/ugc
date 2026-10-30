@@ -826,6 +826,7 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     mock_ps = MagicMock()
     mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
     mock_order_svc = MagicMock()
+    mock_order_svc.order_notices = None
     mock_order_svc.create_order = AsyncMock(return_value=order)
     mock_messenger = MagicMock()
     mock_messenger.send_text = AsyncMock(return_value=None)

@@ -71,6 +71,77 @@ def open_selection(page, network, platform="telegram"):
     return errors
 
 
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("invoice_state", ["not_requested", "ready", "unknown"])
+def test_terminal_order_never_offers_a_payment_action(
+    page, platform, invoice_state
+):
+    network = CheckoutNetwork()
+    network.value.update(
+        order_open_for_payment=False,
+        invoice_state=invoice_state,
+        invoice_url="https://t.me/$synthetic_invoice",
+        can_open=True,
+        telegram_handoff=f"https://t.me/actual_bot?start=pay_{ORDER}",
+    )
+    errors = open_selection(page, network, platform)
+    expect(page.locator("#umc-checkout-status")).to_have_text(
+        "This order is no longer available for payment."
+    )
+    expect(page.locator("#umc-checkout-action")).to_be_hidden()
+    expect(page.locator("#umc-checkout-link-account")).to_be_hidden()
+    assert all(
+        path.endswith("/checkout-status")
+        for path, _ in network.checkout_requests
+    )
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "locale,notice",
+    [
+        ("ru", "Заказ больше недоступен для оплаты."),
+        ("en", "This order is no longer available for payment."),
+        ("kk", "Бұл тапсырысқа енді төлем жасау мүмкін емес."),
+        ("be", "Гэта замова больш недаступная для аплаты."),
+        ("uz", "Bu buyurtma uchun endi to‘lov qilib bo‘lmaydi."),
+    ],
+)
+def test_terminal_checkout_explains_unavailability_on_small_screens(
+    page, platform, locale, notice
+):
+    page.set_viewport_size({"width": 320, "height": 720})
+    network = CheckoutNetwork(locale)
+    network.value["order_open_for_payment"] = False
+    errors = open_selection(page, network, platform)
+    expect(page.locator("#umc-checkout-status")).to_have_text(notice)
+    expect(page.locator("#umc-checkout-action")).to_be_hidden()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert not errors
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ("confirmed", "Payment confirmed by the server"),
+        ("authorized", "Payment authorization awaits an outcome"),
+    ],
+)
+def test_terminal_order_keeps_existing_payment_state_visible(
+    page, state, expected
+):
+    network = CheckoutNetwork()
+    network.value.update(order_open_for_payment=False)
+    if state == "confirmed":
+        network.value["capture_state"] = "confirmed"
+    else:
+        network.value["authorization_id"] = ORDER
+    open_selection(page, network)
+    expect(page.locator("#umc-checkout-status")).to_contain_text(expected)
+    expect(page.locator("#umc-checkout-action")).to_be_hidden()
+
+
 @pytest.mark.parametrize(
     "native_status", ["paid", "pending", "cancelled", "failed"]
 )

@@ -29,6 +29,8 @@ class OrderTargeting:
     platforms: tuple[str, ...] = ()
     content_usage: str | None = None
     brief_link: str | None = None
+    deadlines: str | None = None
+    geography: str | None = None
 
     def __post_init__(self):
         validate_range(self.min_followers, self.max_followers, 2147483647)
@@ -37,8 +39,10 @@ class OrderTargeting:
             object.__setattr__(self, "gender", BloggerGender(self.gender).value)
         for name, limit in (
             ("city", 200),
+            ("geography", 200),
             ("content_usage", 4000),
             ("brief_link", 2048),
+            ("deadlines", 4000),
         ):
             value = getattr(self, name)
             if value is not None:
@@ -49,6 +53,8 @@ class OrderTargeting:
                 ):
                     raise ValueError("invalid_targeting_brief")
                 object.__setattr__(self, name, value.strip())
+        if self.city is not None and self.geography is not None:
+            raise ValueError("ambiguous_targeting_geography")
         if self.brief_link is not None:
             parsed = urlsplit(self.brief_link)
             if (
@@ -71,10 +77,22 @@ class OrderTargeting:
 
     def order_fields(self) -> dict:
         values = asdict(self)
-        values["geography"] = values.pop("city")
+        if values["deadlines"] is None:
+            values.pop("deadlines")
+        city = values.pop("city")
+        values["geography"] = values["geography"] or city
         values.pop("platforms")
         gender = values.pop("gender")
         values["required_blogger_gender"] = (
             BloggerGender(gender) if gender is not None else None
         )
+        return values
+
+    def payload(self) -> dict:
+        """Keep historical hashes stable when no preview deadline is set."""
+        values = asdict(self)
+        if values["deadlines"] is None:
+            values.pop("deadlines")
+        if values["geography"] is None:
+            values.pop("geography")
         return values

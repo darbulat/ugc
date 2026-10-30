@@ -1,0 +1,29 @@
+# Optional, isolated Mini App used only by the synthetic browser suite.
+services:
+  miniapp_test:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    environment:
+      E2E_TEST_ONLY: "1"
+      E2E_BOT_TOKEN: test-token
+      DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
+      SYNTHETIC_E2E_BIND: 0.0.0.0
+    depends_on:
+      migrate_test:
+        condition: service_completed_successfully
+    command: ["python", "-m", "tests.helpers.synthetic_miniapp_server"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/miniapp/app.html', timeout=5)\" || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  e2e:
+    environment:
+      E2E_MINIAPP_URL: http://miniapp_test:8002
+      E2E_BOT_TOKEN: test-token
+    depends_on:
+      miniapp_test:
+        condition: service_healthy

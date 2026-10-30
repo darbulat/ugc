@@ -55,8 +55,9 @@ def now():
 class SqlCheckoutRepository:
     tables = {"requests": REQUESTS, "checkouts": CHECKOUTS, "inbox": INBOX}
 
-    def __init__(self, config, capture):
+    def __init__(self, config, capture, *, admin_notices_enabled=True):
         self.config, self.capture = config, capture
+        self.admin_notices_enabled = admin_notices_enabled
         self.account = config.bot.telegram_payment_account_id
 
     async def _owner(self, order_id, actor, db, *, lock=False, active=False):
@@ -335,11 +336,16 @@ class SqlCheckoutRepository:
             name = self.config.bot.bot_username
             value["telegram_handoff"] = (
                 f"https://t.me/{name}?start=pay_{order_id}"
-                if user.telegram_id and name and name.replace("_", "").isalnum()
+                if value["order_open_for_payment"]
+                and user.telegram_id
+                and name
+                and name.replace("_", "").isalnum()
                 else None
             )
             value["reason"] = (
-                "telegram_handoff_required"
+                "checkout_order_not_payable"
+                if not value["order_open_for_payment"]
+                else "telegram_handoff_required"
                 if value["telegram_handoff"]
                 else "telegram_link_required"
             )
@@ -380,6 +386,9 @@ class SqlCheckoutRepository:
             self.config.financial.core_enabled
             and self.config.financial.new_orders_enabled
         )
+        order_open_for_payment = (
+            original_client and order.status == OrderStatus.NEW
+        )
         return dict(
             order_id=order.order_id,
             policy_version=order.financial_version,
@@ -388,13 +397,15 @@ class SqlCheckoutRepository:
             invoice_state=state,
             attempt_id=current.attempt_id if current else None,
             invoice_url=current.invoice_url
-            if current and state == "ready"
+            if current and state == "ready" and order_open_for_payment
             else None,
             capture_state=capture_state,
             captured_at=captured_at,
             writes_paused=paused,
+            order_open_for_payment=order_open_for_payment,
             can_open=state == "ready"
             and capture_state == "not_recorded"
+            and order_open_for_payment
             and not paused,
             reason=None if original_client else "checkout_unavailable",
             version=current.version if current else 0,
@@ -835,6 +846,11 @@ class SqlCheckoutRepository:
             )
         ).all()
         for user in recipients:
+            if (
+                not self.admin_notices_enabled
+                and user.user_id != order.advertiser_id
+            ):
+                continue
             await db.execute(
                 pg_insert(NOTICE_JOBS)
                 .values(
@@ -904,6 +920,9 @@ class SqlCheckoutRepository:
                     .where(
                         NOTICE_JOBS.c.account == self.account,
                         NOTICE_JOBS.c.state == "ready",
+                        True
+                        if self.admin_notices_enabled
+                        else NOTICE_JOBS.c.kind == "client",
                         (NOTICE_JOBS.c.lease_until.is_(None))
                         | (NOTICE_JOBS.c.lease_until <= now()),
                     )

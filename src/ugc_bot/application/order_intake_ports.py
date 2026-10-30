@@ -12,6 +12,10 @@ from ugc_bot.domain.order_intake import (
 
 
 class OrderIntakeRepository(Protocol):
+    async def exact_city_for_order(
+        self, order_id: UUID, *, session: object, for_update: bool = False
+    ) -> str | None: ...
+
     async def filter_candidates(
         self, order_id: UUID, creator_ids: list[UUID], *, session: object
     ) -> list[UUID]: ...

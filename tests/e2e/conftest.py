@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from sqlalchemy import create_engine
@@ -259,9 +260,22 @@ def browser_context_args(browser_context_args: dict) -> dict:  # type: ignore[ty
 
 
 @pytest.fixture()
-def miniapp_page(browser):
-    """Fresh context/page that blocks telegram-web-app.js SDK."""
+def miniapp_page(browser, miniapp_base_url):
+    """Restrict the synthetic host to the configured local test app."""
     ctx = browser.new_context(ignore_https_errors=True)
+    target = urlsplit(miniapp_base_url)
+
+    def test_app_only(route):
+        destination = urlsplit(route.request.url)
+        if (destination.scheme, destination.netloc) == (
+            target.scheme,
+            target.netloc,
+        ):
+            route.continue_()
+        else:
+            route.abort()
+
+    ctx.route("**/*", test_app_only)
     ctx.route(
         "**/telegram-web-app.js",
         lambda route: route.fulfill(

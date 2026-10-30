@@ -13,13 +13,13 @@ E2E_TIMEOUT ?= 90
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
 
-.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down deploy-apps-zero-downtime dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 base-backup list-base-backups-s3 upload-wal pitr-restore deploy-dev-e2e deploy-dev-e2e-watch all e2e-miniapp
+.PHONY: help install-dev lint typecheck test coverage e2e e2e-dev e2e-docker e2e-synthetic e2e-telegram e2e-telegram-dev e2e-telegram-docker e2e-telegram-docker-auth e2e-telegram-clean test-docker test-all-docker test-all-dev test-all-docker-dev format format-check migrate docker-up docker-down deploy-apps-zero-downtime dev-up dev-down admin instagram-stats export-requirements backup-db restore-db restore-db-s3 list-backups list-backups-s3 base-backup list-base-backups-s3 upload-wal pitr-restore deploy-dev-e2e deploy-dev-e2e-watch all e2e-miniapp
 
 help:
 	@echo "Usage: make [target]"
 	@echo ""
 	@echo "Development:  install-dev, format, format-check, lint, typecheck, test, coverage"
-	@echo "E2E:          e2e, e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
+	@echo "E2E:          e2e, e2e-synthetic (isolated Docker stack), e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
 	@echo "Infra:        docker-up, docker-down, deploy-apps-zero-downtime, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
 	@echo "PITR:         base-backup, list-base-backups-s3, upload-wal, pitr-restore TARGET_TIME=\"...\""
 	@echo "Run:          admin, instagram-stats"
@@ -91,6 +91,9 @@ e2e-telegram-clean:
 
 e2e-docker:
 	$(COMPOSE_TEST) run --rm e2e
+
+e2e-synthetic:
+	bash scripts/run_umc_synthetic_e2e.sh
 
 e2e-miniapp:  ## Mini App Playwright E2E tests (requires E2E_MINIAPP_URL, E2E_BOT_TOKEN)
 	uv run pytest tests/e2e/test_miniapp_ui.py -v -m e2e

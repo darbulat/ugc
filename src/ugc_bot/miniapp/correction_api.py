@@ -75,7 +75,7 @@ class ReadPage(SignedMiniAppRequest):
 
 class Preview(SignedMiniAppRequest):
     order_id: UUID
-    paid_item_ids: tuple[UUID, ...] = Field(min_length=1, max_length=30)
+    paid_item_ids: tuple[UUID, ...] = Field(min_length=1, max_length=200)
     existing_case_id: UUID | None = None
 
 

@@ -220,7 +220,9 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             and item["order_id"] == interest["order_id"]
             and allocation["payment_id"] == capture.payment_id
             and allocation["currency"] == "RUB"
-            and allocation["amount_minor"] == 50000
+            and allocation["amount_minor"]
+            == item["selection_minor"]
+            == capture.policy.selection_minor
             and capture.captured_at <= interest["confirmed_at"] <= at,
             "selection_delivery_scope_invalid",
         )
@@ -471,7 +473,18 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
                 delivery_id=uuid5(source.interest_id, "accepted-selection"),
                 outcome_id=outcome.outcome_id,
                 attempt_id=attempt.attempt_id,
-                amount_minor=50000,
+                amount_minor=await db.scalar(
+                    select(
+                        Base.metadata.tables[
+                            "payment_item_allocations"
+                        ].c.amount_minor
+                    ).where(
+                        Base.metadata.tables[
+                            "payment_item_allocations"
+                        ].c.allocation_key
+                        == source.allocation_key
+                    )
+                ),
                 accepted_at=outcome.recorded_at,
                 channel=attempt.channel,
                 provider_reference=outcome.provider_reference,

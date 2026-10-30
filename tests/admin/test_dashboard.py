@@ -1793,3 +1793,49 @@ def test_admin_order_api_returns_order_when_found(monkeypatch) -> None:
     response = client.get(f"/admin/api/orders/{order_id}")
     assert response.status_code == 200
     assert response.json() == order_card
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/admin/orders/00000000-0000-0000-0000-000000000123",
+        "/admin/order-model/edit/00000000-0000-0000-0000-000000000123",
+    ],
+)
+def test_order_deep_link_survives_login(monkeypatch, path) -> None:
+    """Both card entry points return to the requested order after login."""
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    client = TestClient(create_admin_app())
+    response = client.get(path, follow_redirects=False)
+    assert response.status_code in (302, 307)
+    login = client.post(
+        "/admin/login",
+        data={"username": "admin", "password": _TEST_ADMIN_PASSWORD},
+        follow_redirects=False,
+    )
+    assert login.status_code == 302
+    assert login.headers["location"] == path
+
+
+@pytest.mark.parametrize(
+    "target", ["https://evil.test/steal", "//evil.test/steal", "/admin/%5cevil"]
+)
+def test_login_rejects_external_return_target(monkeypatch, target) -> None:
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", _TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    client = TestClient(create_admin_app())
+    login = client.post(
+        "/admin/login",
+        params={"return_to": target},
+        data={"username": "admin", "password": _TEST_ADMIN_PASSWORD},
+        follow_redirects=False,
+    )
+    assert login.status_code == 302
+    assert login.headers["location"] in ("/admin/", "http://testserver/admin/")

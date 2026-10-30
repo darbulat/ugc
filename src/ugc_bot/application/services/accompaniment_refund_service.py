@@ -252,7 +252,10 @@ class AccompanimentRefundService:
             if i.paid_item_id == command.paid_item_id
         )
         rules = scope.capture.policy.refund_rules
-        if item.accompaniment_minor != 120000 or rules is None:
+        if (
+            item.accompaniment_minor != scope.capture.policy.accompaniment_minor
+            or rules is None
+        ):
             raise ValueError("accompaniment_refund_rules_required")
         originals = [
             await self.ledger.repository.get_issue(
@@ -274,13 +277,13 @@ class AccompanimentRefundService:
                 None, command.reviewed_customer_target_minor
             )
             manager = self._target(0, command.reviewed_manager_target_minor)
-            if not 0 <= customer <= 120000:
+            if not 0 <= customer <= item.accompaniment_minor:
                 raise ValueError("accompaniment_refund_capacity_exceeded")
             return originals, rules, customer, manager
         earned = 60000 if originals or scope.manager_earned else 0
         assessment = rules.assess_accompaniment_refund(
             stage=scope.record.collaboration.state.value,
-            paid_minor=120000,
+            paid_minor=item.accompaniment_minor,
             manager_earned_minor=earned,
         )
         customer = self._target(
@@ -291,7 +294,10 @@ class AccompanimentRefundService:
             assessment.manager_adjustment_minor,
             command.reviewed_manager_target_minor,
         )
-        if not 0 <= customer <= 120000 or not 0 <= manager <= earned:
+        if (
+            not 0 <= customer <= item.accompaniment_minor
+            or not 0 <= manager <= earned
+        ):
             raise ValueError("accompaniment_refund_capacity_exceeded")
         return originals, rules, customer, manager
 
@@ -365,7 +371,14 @@ class AccompanimentRefundService:
             or application["application_id"] != command.application_id
         ):
             raise ValueError("accompaniment_management_application_conflict")
-        net = 120000 - application["customer_target_minor"]
+        net = (
+            next(
+                i.accompaniment_minor
+                for i in scope.capture.items
+                if i.paid_item_id == command.paid_item_id
+            )
+            - application["customer_target_minor"]
+        )
         self._require_management_review(scope, grounds, command.decision, net)
         review_id = uuid4()
         operation = "accompaniment-management:" + str(review_id)

@@ -24,8 +24,10 @@ from ugc_bot.infrastructure.db.repositories.financial_items import (
 def quote_and_row(rules=None):
     _, policy, args = ready_policy()
     quote = build_quote(
+        selection_minor=50000,
+        accompaniment_minor=120000,
         order_id=uuid4(),
-        count=1,
+        count=10,
         accompaniment_ordinals=frozenset({1}),
         currency="RUB",
         policy_version=policy.version,
@@ -37,7 +39,7 @@ def quote_and_row(rules=None):
     assert "refund_rules" in quote.__dataclass_fields__, (
         "Quotes do not retain their approved refund rules"
     )
-    quote = replace(quote, refund_rules=rules)
+    quote = replace(quote, items=quote.items[:1], refund_rules=rules)
     row = SimpleNamespace(
         order_id=quote.order_id,
         ordinal=1,

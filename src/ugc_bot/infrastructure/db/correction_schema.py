@@ -3,6 +3,8 @@
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
+from ugc_bot.infrastructure.db.zero_commission_schema import ZERO_ASSESSMENT_SQL
+
 PREFIX = "financial_"
 
 
@@ -127,7 +129,7 @@ def correction_tables(metadata):
         check(
             (
                 "jsonb_typeof(paid_item_ids)='array' AND "
-                "jsonb_array_length(paid_item_ids) BETWEEN 1 AND 30"
+                "jsonb_array_length(paid_item_ids) BETWEEN 1 AND 200"
             ),
             "request_items",
         ),
@@ -212,7 +214,7 @@ def correction_tables(metadata):
             (
                 "amount_minor>0 AND currency='RUB' AND review_version>0 AND "
                 "jsonb_typeof(bundle)='array' AND jsonb_array_length(bundle) "
-                "BETWEEN 1 AND 30"
+                "BETWEEN 1 AND 200"
             ),
             "match",
         ),
@@ -256,7 +258,7 @@ def correction_tables(metadata):
         check(
             (
                 "component='selection' AND currency='RUB' AND "
-                "gross_minor=50000 AND prior_refund_minor>=0 AND "
+                "gross_minor>0 AND prior_refund_minor>=0 AND "
                 "new_refund_minor=prior_refund_minor+refund_minor AND "
                 "new_refund_minor<=gross_minor AND refund_minor=gross_minor"
             ),
@@ -287,7 +289,8 @@ def correction_tables(metadata):
         sa.UniqueConstraint("movement_id"),
         check(
             (
-                "status IN ('pending_cancelled','covered_absence') AND "
+                "status IN ('pending_cancelled','covered_absence',"
+                "'covered_zero') AND "
                 "target_minor>=0 AND already_cancelled_minor>=0 AND "
                 "delta_minor=target_minor-already_cancelled_minor AND "
                 "delta_minor>=0 AND (frozen_rate_bps IS NULL OR "
@@ -336,7 +339,25 @@ def correction_tables(metadata):
     return tables
 
 
-GUARD_SQL = """
+ZERO_ASSESSMENT_BRANCH = """   ELSIF liability.status='covered_zero' THEN
+     IF correction_zero_assessment_valid(liability.potential_id,
+       app.capture_id,app.payment_id,app.order_id,component.paid_item_id,
+       request.client_id,component.gross_minor) IS NOT TRUE
+       OR liability.obligation_id IS NOT NULL
+       OR liability.snapshot_id IS NOT NULL
+       OR liability.issuance_entry_id IS NOT NULL
+       OR liability.movement_id IS NOT NULL
+       OR liability.frozen_rate_bps IS NOT NULL
+       OR liability.override_id IS NOT NULL
+       OR liability.target_minor<>0 OR liability.already_cancelled_minor<>0
+       OR liability.delta_minor<>0
+     THEN RAISE EXCEPTION 'correction_zero_assessment_unavailable'; END IF;
+"""
+
+
+CURRENT_GUARD_SQL = (
+    ZERO_ASSESSMENT_SQL
+    + """
 CREATE OR REPLACE FUNCTION correction_deny_mutation() RETURNS trigger
 LANGUAGE plpgsql AS $$ BEGIN
  RAISE EXCEPTION 'correction_fact_immutable' USING ERRCODE='23514';
@@ -512,7 +533,7 @@ liability.delta_minor<>0
        OR EXISTS (SELECT 1 FROM financial_obligations WHERE
 business_key=liability.business_key)
      THEN RAISE EXCEPTION 'correction_covered_absence_unavailable'; END IF;
-   ELSE
+{zero_assessment_branch}   ELSE
      SELECT * INTO original FROM financial_obligations WHERE
 id=liability.obligation_id;
      SELECT * INTO snapshot FROM rate_snapshots WHERE id=original.snapshot_id;
@@ -600,11 +621,23 @@ id=liability.movement_id;
  END LOOP;
  RETURN NEW;
 END $$;
-"""
+""".replace("{zero_assessment_branch}", ZERO_ASSESSMENT_BRANCH)
+)
+
+# The original approval migration imports GUARD_SQL during downgrade. Restore
+# its original guard and remove the helper introduced by the later tariff
+# migration, while metadata and the current approval guard use the new body.
+GUARD_SQL = (
+    CURRENT_GUARD_SQL.removeprefix(ZERO_ASSESSMENT_SQL).replace(
+        ZERO_ASSESSMENT_BRANCH, ""
+    )
+    + "\nDROP FUNCTION IF EXISTS correction_zero_assessment_valid("
+    "uuid,uuid,uuid,uuid,uuid,uuid,bigint);\n"
+)
 
 
 def correction_trigger_sql(tables):
-    statements = [GUARD_SQL]
+    statements = [CURRENT_GUARD_SQL]
     for key, table in tables.items():
         if key != "states":
             statements.append(

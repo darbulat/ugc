@@ -381,7 +381,7 @@ def test_zero_funded_component_and_no_earned_reward_have_zero_target():
 
 @pytest.mark.parametrize(
     "changes",
-    [{"paid_minor": v} for v in (True, 1.0, -1, 1, 119999, 120001)]
+    [{"paid_minor": v} for v in (True, 1.0, -1, 1, 59999, 2**63)]
     + [{"manager_earned_minor": v} for v in (True, 1.0, -1, 1, 59999, 60001)]
     + [{"paid_minor": 0, "manager_earned_minor": 60000}],
 )

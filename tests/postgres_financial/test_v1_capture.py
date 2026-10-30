@@ -35,9 +35,22 @@ async def capture_env(financial_pg_engine, user_repo, advertiser_repo, request):
     client = await create_test_advertiser(user_repo, advertiser_repo)
     now = datetime.now(timezone.utc) - timedelta(minutes=10)
     order, version = uuid4(), str(uuid4())
+    parameter = getattr(request, "param", None)
+    tariff = parameter if isinstance(parameter, dict) else {}
+    selection_minor = tariff.get("selection_minor", 50000)
+    accompaniment_minor = tariff.get("accompaniment_minor", 120000)
+    chosen_rules = tariff.get("refund_rules") if tariff else parameter
     refund_rules = (
-        {"refund_rules": request.param.to_document()}
-        if getattr(request, "param", None) is not None
+        {"refund_rules": chosen_rules.to_document()}
+        if chosen_rules is not None
+        else {}
+    )
+    prices = (
+        {
+            "selection_minor": selection_minor,
+            "accompaniment_minor": accompaniment_minor,
+        }
+        if tariff
         else {}
     )
     with Session(financial_pg_engine) as db, db.begin():
@@ -61,6 +74,7 @@ async def capture_env(financial_pg_engine, user_repo, advertiser_repo, request):
                     "terms_reference": "terms:test",
                     "allowed_clients": [str(client)],
                     **refund_rules,
+                    **prices,
                 },
             )
         )
@@ -86,14 +100,14 @@ async def capture_env(financial_pg_engine, user_repo, advertiser_repo, request):
             )
         )
         db.flush()
-        for ordinal, accompaniment in [(1, 120000), (2, 0)]:
+        for ordinal, accompaniment in [(1, accompaniment_minor), (2, 0)]:
             db.add(
                 OrderItemModel(
                     paid_item_id=uuid4(),
                     order_id=order,
                     ordinal=ordinal,
                     currency="RUB",
-                    selection_minor=50000,
+                    selection_minor=selection_minor,
                     accompaniment_minor=accompaniment,
                     policy_version=version,
                     selection_due_at=now + timedelta(days=3),
@@ -145,6 +159,9 @@ async def capture_env(financial_pg_engine, user_repo, advertiser_repo, request):
             order=order,
             now=now,
             version=version,
+            selection_minor=selection_minor,
+            accompaniment_minor=accompaniment_minor,
+            total_minor=2 * selection_minor + accompaniment_minor,
             pg=financial_pg_engine,
         )
     finally:
@@ -165,7 +182,7 @@ def telegram_receipt(env, **changes):
         from_user={"id": 123, "is_bot": False, "first_name": "Synthetic"},
         successful_payment=dict(
             currency="RUB",
-            total_amount=220000,
+            total_amount=env.get("total_minor", 220000),
             invoice_payload=str(env["order"]),
             telegram_payment_charge_id="tg-" + str(env["order"]),
             provider_payment_charge_id="provider-" + str(env["order"]),
@@ -737,8 +754,10 @@ async def test_capture_waits_on_quote_order_row_lock(capture_env):
             # Actual quote writer shares the exact order row lock and freezes
             # the already-issued invoice, rather than changing its components.
             quote = build_quote(
+                selection_minor=50000,
+                accompaniment_minor=120000,
                 order_id=env["order"],
-                count=2,
+                count=10,
                 accompaniment_ordinals=frozenset({2}),
                 currency="RUB",
                 policy_version=env["version"],

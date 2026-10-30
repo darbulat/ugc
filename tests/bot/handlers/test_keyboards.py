@@ -71,11 +71,14 @@ def test_advertiser_menu_inline_keyboard() -> None:
 
     assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
-    assert len(keyboard.rows) == 4
+    assert len(keyboard.rows) == 5
     assert keyboard.rows[0][0].text == _TEXTS_RU["btn_create_order"]
     assert keyboard.rows[1][0].text == _TEXTS_RU["btn_my_orders"]
     assert keyboard.rows[2][0].text == _TEXTS_RU["btn_my_profile"]
     assert keyboard.rows[2][1].text == _TEXTS_RU["btn_edit_profile"]
+
+    assert keyboard.rows[3][0].callback_data == "customer:help"
+    assert keyboard.rows[3][1].callback_data == "customer:services"
 
 
 def test_creator_filled_profile_inline_keyboard() -> None:

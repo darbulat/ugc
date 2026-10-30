@@ -1,12 +1,14 @@
 """Service read paths and explicit transaction ownership."""
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import pytest
 
+from ugc_bot.application.rating_eligibility_ports import RatingParticipant
 from ugc_bot.application.services.blogger_rating_service import (
     BloggerRatingService,
 )
@@ -16,7 +18,11 @@ from ugc_bot.application.services.geocoder_rate_limit_store import (
 )
 from ugc_bot.application.services.manager_service import ManagerService
 from ugc_bot.application.services.profile_service import ProfileService
-from ugc_bot.domain.enums import RaterRole
+from ugc_bot.domain.entities import User
+from ugc_bot.domain.enums import MessengerType, RaterRole, UserStatus
+from ugc_bot.infrastructure.memory_rating_eligibility import (
+    InMemoryRatingEligibilityRepository,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerRatingRepository,
 )
@@ -39,19 +45,41 @@ async def test_rating_reads_aggregate_and_sort_without_leaking_other_bloggers(
         finally:
             transactions.append("end")
 
-    service = BloggerRatingService(repo, NS(transaction=transaction))
     blogger_id, other, rater = uuid4(), uuid4(), uuid4()
+    orders = [uuid4() for _ in range(3)]
+    eligibility = InMemoryRatingEligibilityRepository(
+        users={
+            rater: User(
+                rater,
+                MessengerType.TELEGRAM,
+                "Rater",
+                UserStatus.ACTIVE,
+                0,
+                datetime.now(timezone.utc),
+            )
+        },
+        owners={order: rater for order in orders},
+        participants={
+            order: (RatingParticipant(creator, "Creator", True),)
+            for order, creator in zip(
+                orders, (blogger_id, blogger_id, other), strict=True
+            )
+        },
+    )
+    service = BloggerRatingService(
+        repo, NS(transaction=transaction), eligibility
+    )
     kwargs = {"session": session} if explicit_session else {}
     assert await service.get_blogger_avg_rating(blogger_id, **kwargs) is None
     assert await service.get_blogger_ratings(blogger_id, **kwargs) == []
     first = await service.rate_blogger(
-        blogger_id, uuid4(), rater, RaterRole.ADMIN, 2, **kwargs
+        blogger_id, orders[0], rater, RaterRole.ADMIN, 2, **kwargs
     )
     second = await service.rate_blogger(
-        blogger_id, uuid4(), rater, RaterRole.MANAGER, 5, **kwargs
+        blogger_id, orders[1], rater, RaterRole.MANAGER, 5, **kwargs
     )
     await service.rate_blogger(
-        other, uuid4(), rater, RaterRole.ADVERTISER, 1, **kwargs
+        other, orders[2], rater, RaterRole.ADVERTISER, 1, **kwargs
     )
     assert await service.get_blogger_avg_rating(blogger_id, **kwargs) == 3.5
     assert await service.get_blogger_ratings(blogger_id, **kwargs) == [

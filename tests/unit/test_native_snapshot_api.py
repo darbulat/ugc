@@ -141,7 +141,11 @@ async def test_snapshot_signed_typed_identity_reaches_view_without_country_fill(
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == dict(
         service.result,
-        **({"writes_paused": True} if family == "selection" else {}),
+        **(
+            {"writes_paused": True, "public_number": "UMC-00000000"}
+            if family == "selection"
+            else {}
+        ),
     )
     assert service.identities == (
         (ACTOR,) if family == "partner" else (ORDER, ACTOR)

@@ -182,6 +182,7 @@ async def test_archived_writer_upgrade_preserves_history_without_backfill(
     )
     from tests.helpers.correction_legacy_writer import (
         archived_correction_writer,
+        install_archived_correction_schema,
     )
     from tests.helpers.financial_environment import (
         isolated_financial_database,
@@ -200,8 +201,25 @@ async def test_archived_writer_upgrade_preserves_history_without_backfill(
 
     with isolated_financial_database(
         os.environ["FINANCIAL_TEST_DATABASE_URL"],
-        target_revision="financial_corrections_a1",
+        target_revision="campaign_drafts_v1",
     ) as engine:
+        install_archived_correction_schema(engine)
+        with engine.connect() as db:
+            constraint = db.scalar(
+                text(
+                    "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conrelid='financial_correction_requests'::regclass "
+                    "AND conname='ck_correction_request_items'"
+                )
+            )
+            guard = db.scalar(
+                text(
+                    "SELECT prosrc FROM pg_proc WHERE "
+                    "oid='correction_check_application()'::regprocedure"
+                )
+            )
+            assert "30" in constraint and "200" not in constraint
+            assert "covered_zero" not in guard
         async for env in intake_env.__wrapped__(engine):
             rt = ApprovalRuntime.from_runtime(await runtime(env))
             with archived_correction_writer() as writer:

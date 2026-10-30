@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Literal
@@ -25,12 +25,23 @@ class OrderIntakeCommand:
     contact_reference: str
     service_mode: Literal["self_service", "with_manager"]
     accompaniment_ordinals: frozenset[int] | None = None
+    position_count: int = 30
     order_type: OrderType = OrderType.UGC_ONLY
     barter_description: str | None = None
     targeting: OrderTargeting | None = None
     funnel_id: UUID | None = None
+    image_token: UUID | None = None
 
     def __post_init__(self) -> None:
+        if self.image_token is not None and (
+            not isinstance(self.image_token, UUID) or not self.image_token.int
+        ):
+            raise ValueError("invalid_image_token")
+        if (
+            type(self.position_count) is not int
+            or not 10 <= self.position_count <= 200
+        ):
+            raise ValueError("invalid_position_count")
         if self.funnel_id is not None and (
             not isinstance(self.funnel_id, UUID) or not self.funnel_id.int
         ):
@@ -87,9 +98,10 @@ class OrderIntakeCommand:
                 raise ValueError("self_service_has_no_accompaniment")
             return frozenset()
         if selected is None:
-            return frozenset(range(1, 31))
+            return frozenset(range(1, self.position_count + 1))
         if not selected or any(
-            type(n) is not int or not 1 <= n <= 30 for n in selected
+            type(n) is not int or not 1 <= n <= self.position_count
+            for n in selected
         ):
             raise ValueError("invalid_accompaniment_ordinals")
         return frozenset(selected)
@@ -107,6 +119,13 @@ class OrderIntakeCommand:
 
     @property
     def payload_hash(self) -> str:
+        return self._payload_hash()
+
+    @property
+    def legacy_payload_hash(self) -> str:
+        return self._payload_hash(legacy=True)
+
+    def _payload_hash(self, *, legacy: bool = False) -> str:
         payload: dict[str, object] = dict(
             client_id=str(self.client_id),
             policy_version=self.policy_version,
@@ -120,10 +139,15 @@ class OrderIntakeCommand:
             service_mode=self.service_mode,
             accompaniment_ordinals=sorted(self.accompaniment_ordinals or ()),
         )
+        if not legacy:
+            payload["schema_version"] = 2
+            payload["position_count"] = self.position_count
+            if self.image_token is not None:
+                payload["image_token"] = str(self.image_token)
         if self.funnel_id is not None:
             payload["funnel_id"] = str(self.funnel_id)
         if self.targeting is not None:
-            payload["targeting"] = asdict(self.targeting)
+            payload["targeting"] = self.targeting.payload()
         return hashlib.sha256(
             json.dumps(
                 payload, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -201,10 +225,13 @@ class EligibleOrderPolicy:
     terms_reference: str
     effective_from: datetime
     refund_window_seconds: int
+    selection_minor: int
+    accompaniment_minor: int
     currency: str = "RUB"
     position_count: int = 30
-    selection_minor: int = 50000
-    accompaniment_minor: int = 120000
+    min_position_count: int = 10
+    max_position_count: int = 200
+    position_counts: tuple[int, ...] = (10, 20, 30, 50, 100, 200)
 
 
 @dataclass(frozen=True, slots=True)

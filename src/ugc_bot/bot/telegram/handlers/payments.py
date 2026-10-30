@@ -563,7 +563,7 @@ async def successful_payment_handler(
         raise
 
     order = await payment_service.get_order(order_id)
-    if order:
+    if order and getattr(payment_service, "order_notices", None) is None:
         invoice_data = (
             await payment_service.calculate_invoice_data(
                 order, user.country, config
@@ -604,6 +604,7 @@ async def successful_payment_handler(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_partner_program",

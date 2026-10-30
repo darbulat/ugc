@@ -20,6 +20,7 @@ from redis.asyncio import Redis
 from ugc_bot.bot.max.handlers.advertiser_registration import (
     router as adv_reg_router,
 )
+from ugc_bot.bot.max.handlers.blogger_rating import router as rating_router
 from ugc_bot.bot.max.handlers.blogger_registration import (
     router as blog_reg_router,
 )
@@ -61,6 +62,7 @@ max_router.include(start_router)
 max_router.include(support_chat_router)
 max_router.include(adv_reg_router)
 max_router.include(blog_reg_router)
+max_router.include(rating_router)
 max_router.include(order_create_router)
 max_router.include(profile_router)
 max_router.include(my_orders_router)

@@ -1034,260 +1034,499 @@ async def test_order_admin_update_model_banned_content_rejected() -> None:
 
 
 @pytest.mark.asyncio
-async def test_order_admin_update_model_activation_publishes() -> None:
-    """Test OrderAdmin.update_model publishes activation on status change."""
+@pytest.mark.parametrize(
+    "scenario", ["paid", "unpaid", "missing", "publish_failure"]
+)
+async def test_order_admin_activation_checks_payment(scenario):
+    """The edit flow commits activation through a locked paid-order check."""
     from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+    from ugc_bot.domain.entities import Order, Payment
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
+        InMemoryOutboxRepository,
+        InMemoryPaymentRepository,
+    )
 
     order_id = UUID("00000000-0000-0000-0000-000000000050")
-    old_order = OrderModel(
+    order = Order(
         order_id=order_id,
-        advertiser_id=UUID("00000000-0000-0000-0000-000000000051"),
-        order_type="ugc_only",
-        product_link="https://example.com/product",
-        offer_text="Test",
-        price=100.0,
-        bloggers_needed=1,
+        advertiser_id=UUID(int=51),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Brief",
+        barter_description=None,
+        price=100,
+        bloggers_needed=10,
         status=OrderStatus.PENDING_MODERATION,
         created_at=datetime.now(timezone.utc),
     )
-    new_order = OrderModel(
-        order_id=order_id,
-        advertiser_id=old_order.advertiser_id,
-        order_type=old_order.order_type,
-        product_link=old_order.product_link,
-        offer_text=old_order.offer_text,
-        price=old_order.price,
-        bloggers_needed=old_order.bloggers_needed,
-        status=OrderStatus.ACTIVE,
-        created_at=old_order.created_at,
+    orders, payments, events = (
+        InMemoryOrderRepository(),
+        InMemoryPaymentRepository(),
+        InMemoryOutboxRepository(),
     )
-
-    mock_session = MagicMock()
-    mock_session.get = AsyncMock(side_effect=[old_order, new_order])
-
-    mock_order = MagicMock()
-    mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=mock_order)
-
-    mock_outbox_publisher = MagicMock()
-    mock_outbox_publisher.publish_order_activation = AsyncMock()
+    if scenario != "missing":
+        await orders.save(order)
+    if scenario in {"paid", "publish_failure"}:
+        await payments.save(
+            Payment(
+                payment_id=UUID(int=52),
+                order_id=order_id,
+                provider="test",
+                status=PaymentStatus.PAID,
+                amount=100,
+                currency="RUB",
+                external_id="receipt",
+                created_at=datetime.now(timezone.utc),
+            )
+        )
 
     @asynccontextmanager
-    async def _tx():
-        yield mock_session
+    async def transaction():
+        yield object()
 
-    mock_tm = MagicMock()
-    mock_tm.transaction = MagicMock(return_value=_tx())
-
-    mock_manager_service = AsyncMock()
-
-    mock_container = MagicMock()
-    mock_container.build_outbox_publisher = MagicMock(
-        return_value=mock_outbox_publisher,
+    tm = SimpleNamespace(transaction=transaction)
+    outbox = OutboxPublisher(events, orders)
+    if scenario == "publish_failure":
+        outbox = SimpleNamespace(
+            publish_order_activation=AsyncMock(
+                side_effect=RuntimeError("Publish failed")
+            )
+        )
+    container = SimpleNamespace(
+        transaction_manager=tm,
+        build_repos=lambda: {"order_repo": orders, "payment_repo": payments},
+        build_outbox_publisher=lambda: outbox,
     )
-    mock_container.build_repos = MagicMock(
-        return_value={"order_repo": mock_order_repo}
-    )
-    mock_container.build_manager_service = MagicMock(
-        return_value=mock_manager_service
-    )
-    mock_container.transaction_manager = mock_tm
-
     admin = OrderAdmin()
-    admin._container = mock_container  # type: ignore[attr-defined]
-    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
-    admin.is_async = True  # type: ignore[attr-defined]
-
     request = MagicMock()
     request.form = AsyncMock(return_value={})
-    data = {"status": OrderStatus.ACTIVE}
+    displayed = OrderModel(
+        order_id=order_id, status=OrderStatus.PENDING_MODERATION
+    )
+    with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            AsyncMock(return_value=displayed),
+        ),
+        patch("ugc_bot.admin.app._update_order_managers", AsyncMock()),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ) as save,
+    ):
+        if scenario == "paid":
+            await admin.update_model(
+                request, str(order_id), {"status": "active"}
+            )
+            assert (
+                await orders.get_by_id(order_id)
+            ).status == OrderStatus.ACTIVE
+            assert len(await events.get_pending_events()) == 1
+            # A second approval does not publish the activation twice.
+            await admin.update_model(
+                request, str(order_id), {"status": "active"}
+            )
+            assert len(await events.get_pending_events()) == 1
+            assert "status" not in save.call_args.args[-1]
+        else:
+            expected = (
+                "order_not_found"
+                if scenario == "missing"
+                else "Publish failed"
+                if scenario == "publish_failure"
+                else "paid_pending_moderation_required"
+            )
+            with pytest.raises((ValueError, RuntimeError), match=expected):
+                await admin.update_model(
+                    request, str(order_id), {"status": "active"}
+                )
+            assert not await events.get_pending_events()
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("changed", [False, True])
+async def test_activation_publishes_only_matching_committed_geography(changed):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ugc_bot.admin.app import _activate_paid_order
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
+    )
+
+    order_id = UUID(int=801)
+    orders = InMemoryOrderRepository()
+    await orders.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID(int=802),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Brief",
+            barter_description=None,
+            price=100,
+            bloggers_needed=10,
+            status=OrderStatus.PENDING_MODERATION,
+            created_at=datetime.now(timezone.utc),
+            geography="Казань" if changed else "Москва",
+            location_geometry="OLD",
+        )
+    )
+    payment = SimpleNamespace(status=PaymentStatus.PAID)
+    payments = SimpleNamespace(get_by_order=AsyncMock(return_value=payment))
+    observed = []
+
+    async def publish(order, *, session):
+        saved = await orders.get_by_id(order_id)
+        observed.append(
+            (saved.status, saved.location_geometry, order.location_geometry)
+        )
+
+    outbox = SimpleNamespace(publish_order_activation=publish)
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+
+    @asynccontextmanager
+    async def transaction():
+        yield object()
+
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction),
+        build_repos=lambda: {"payment_repo": payments},
+    )
+    with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, outbox, orders),
+        ),
+    ):
+        if changed:
+            with pytest.raises(ValueError, match="order_geography_changed"):
+                await _activate_paid_order(
+                    order_id, geography_update=("Москва", "NEW")
+                )
+            assert observed == []
+            assert (
+                await orders.get_by_id(order_id)
+            ).status == OrderStatus.PENDING_MODERATION
+        else:
+            await _activate_paid_order(
+                order_id, geography_update=("Москва", "NEW")
+            )
+            assert observed == [(OrderStatus.ACTIVE, "NEW", "NEW")]
+
+
+@pytest.mark.asyncio
+async def test_activation_geocoder_failure_does_not_drop_geographic_filter():
+    from types import SimpleNamespace
+
+    from ugc_bot.admin.app import _resolve_order_location_geometry
+
+    geocoder = SimpleNamespace(
+        get_multipolygon_wkt_for_queries=AsyncMock(return_value=None)
+    )
+    container = SimpleNamespace(build_geocoder=lambda: geocoder)
+    with patch(
+        "ugc_bot.admin.app._get_admin_container", return_value=container
+    ):
+        with pytest.raises(ValueError, match="order_geography_update_failed"):
+            await _resolve_order_location_geometry("Москва")
+        assert await _resolve_order_location_geometry("весь мир") is None
+        assert await _resolve_order_location_geometry("") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("geometry_updated", [True, False])
+async def test_activation_waits_for_geography_update(geometry_updated):
+    order_id = UUID(int=800)
+    admin = OrderAdmin()
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    displayed = OrderModel(
+        order_id=order_id, status=OrderStatus.PENDING_MODERATION
+    )
+    steps = []
+
+    async def refresh(*args):
+        steps.append("geometry")
+        if not geometry_updated:
+            raise ValueError("order_geography_update_failed")
+        return "POLYGON"
+
+    async def activate(*args, **kwargs):
+        assert kwargs["geography_update"] == ("Москва", "POLYGON")
+        steps.append("activation")
+
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
     with (
         patch(
-            "ugc_bot.admin.app._get_admin_container",
-            return_value=mock_container,
+            "ugc_bot.admin.app._get_obj_by_pk",
+            AsyncMock(return_value=displayed),
+        ),
+        patch(
+            "ugc_bot.admin.app._get_admin_container", return_value=MagicMock()
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, None, None),
         ),
         patch.object(
             OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
         ),
+        patch(
+            "ugc_bot.admin.app._resolve_order_location_geometry",
+            side_effect=refresh,
+        ),
+        patch("ugc_bot.admin.app._activate_paid_order", side_effect=activate),
+        patch(
+            "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
+        ),
     ):
-        await admin.update_model(request, str(order_id), data)
+        if geometry_updated:
+            await admin.update_model(
+                request,
+                str(order_id),
+                {"status": "active", "geography": "Москва"},
+            )
+            assert steps == ["geometry", "activation"]
+        else:
+            with pytest.raises(
+                ValueError, match="order_geography_update_failed"
+            ):
+                await admin.update_model(
+                    request,
+                    str(order_id),
+                    {"status": "active", "geography": "Москва"},
+                )
+            assert steps == ["geometry"]
 
-    assert mock_session.get.call_count == 2
-    mock_order_repo.get_by_id.assert_called_once_with(
-        order_id, session=mock_session
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "city,city_after", [("Москва", "Москва"), (None, None), ("Москва", None)]
+)
+async def test_financial_activation_respects_stored_exact_city(
+    city, city_after
+):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
     )
-    mock_outbox_publisher.publish_order_activation.assert_called_once_with(
-        mock_order, session=mock_session
+
+    order_id = UUID(int=901)
+    orders = InMemoryOrderRepository()
+    await orders.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID(int=902),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Brief",
+            barter_description=None,
+            price=100,
+            bloggers_needed=10,
+            status=OrderStatus.PENDING_MODERATION,
+            created_at=datetime.now(timezone.utc),
+            geography="Москва",
+            location_geometry="OLD",
+            financial_version="v1",
+        )
+    )
+
+    @asynccontextmanager
+    async def transaction():
+        yield object()
+
+    intake = SimpleNamespace(
+        exact_city_for_order=AsyncMock(side_effect=[city, city_after])
+    )
+    payments = SimpleNamespace(
+        get_by_order=AsyncMock(
+            return_value=SimpleNamespace(status=PaymentStatus.PAID)
+        )
+    )
+    geocoder = SimpleNamespace(
+        get_multipolygon_wkt_for_queries=AsyncMock(return_value="NEW")
+    )
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction),
+        build_repos=lambda: {
+            "payment_repo": payments,
+            "order_intake_repo": intake,
+        },
+        build_geocoder=lambda: geocoder,
+    )
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+    published = []
+
+    async def publish(order, *, session):
+        published.append(order)
+
+    outbox = SimpleNamespace(publish_order_activation=publish)
+    displayed = SimpleNamespace(
+        order_id=order_id,
+        financial_version="v1",
+        status=OrderStatus.PENDING_MODERATION,
+        geography="Москва",
+        product_link="https://example.com",
+        offer_text="Brief",
+        barter_description=None,
+        content_usage=None,
+    )
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            AsyncMock(return_value=displayed),
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, outbox, orders),
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
+        ),
+    ):
+        if city != city_after:
+            with pytest.raises(ValueError, match="order_geography_changed"):
+                await OrderAdmin().update_model(
+                    request, str(order_id), {"status": "active"}
+                )
+            assert (
+                await orders.get_by_id(order_id)
+            ).status == OrderStatus.PENDING_MODERATION
+            assert published == []
+            return
+        await OrderAdmin().update_model(
+            request, str(order_id), {"status": "active"}
+        )
+    saved = await orders.get_by_id(order_id)
+    assert saved.status == OrderStatus.ACTIVE
+    assert saved.location_geometry == (None if city else "NEW")
+    assert published[0].location_geometry == saved.location_geometry
+    if city:
+        geocoder.get_multipolygon_wkt_for_queries.assert_not_awaited()
+    else:
+        geocoder.get_multipolygon_wkt_for_queries.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_activation_without_geography_field_refreshes_saved_geography():
+    order_id = UUID(int=803)
+    order = OrderModel(
+        order_id=order_id,
+        status=OrderStatus.PENDING_MODERATION,
+        geography="Москва",
+    )
+    admin = OrderAdmin()
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk", AsyncMock(return_value=order)
+        ),
+        patch(
+            "ugc_bot.admin.app._get_admin_container", return_value=MagicMock()
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, None, None),
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._resolve_order_location_geometry",
+            AsyncMock(return_value="NEW"),
+        ) as resolve,
+        patch(
+            "ugc_bot.admin.app._activate_paid_order", new_callable=AsyncMock
+        ) as activate,
+        patch(
+            "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
+        ),
+    ):
+        await admin.update_model(request, str(order_id), {"status": "active"})
+    resolve.assert_awaited_once_with("Москва")
+    activate.assert_awaited_once_with(
+        order_id, geography_update=("Москва", "NEW")
     )
 
 
 @pytest.mark.asyncio
-async def test_order_admin_update_model_activation_no_order() -> None:
-    """Test OrderAdmin.update_model handles missing order gracefully."""
+async def test_delayed_geography_update_does_not_overwrite_newer_geography():
     from contextlib import asynccontextmanager
+    from types import SimpleNamespace
 
-    order_id = UUID("00000000-0000-0000-0000-000000000060")
-    old_order = OrderModel(
-        order_id=order_id,
-        advertiser_id=UUID("00000000-0000-0000-0000-000000000061"),
-        order_type="ugc_only",
-        product_link="https://example.com/product",
-        offer_text="Test",
-        price=100.0,
-        bloggers_needed=1,
-        status=OrderStatus.PENDING_MODERATION,
-        created_at=datetime.now(timezone.utc),
-    )
-    new_order = OrderModel(
-        order_id=order_id,
-        advertiser_id=old_order.advertiser_id,
-        order_type=old_order.order_type,
-        product_link=old_order.product_link,
-        offer_text=old_order.offer_text,
-        price=old_order.price,
-        bloggers_needed=old_order.bloggers_needed,
-        status=OrderStatus.ACTIVE,
-        created_at=old_order.created_at,
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
     )
 
-    mock_session = MagicMock()
-    mock_session.get = AsyncMock(side_effect=[old_order, new_order])
-
-    mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=None)
-
-    mock_outbox_publisher = MagicMock()
-    mock_outbox_publisher.publish_order_activation = AsyncMock()
-
-    @asynccontextmanager
-    async def _tx():
-        yield mock_session
-
-    mock_tm = MagicMock()
-    mock_tm.transaction = MagicMock(return_value=_tx())
-
-    mock_container = MagicMock()
-    mock_container.build_outbox_deps = MagicMock(
-        return_value=(mock_outbox_publisher, None)
+    order_id = UUID(int=804)
+    orders = InMemoryOrderRepository()
+    await orders.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID(int=805),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Brief",
+            barter_description=None,
+            price=100,
+            bloggers_needed=10,
+            status=OrderStatus.ACTIVE,
+            created_at=datetime.now(timezone.utc),
+            geography="Москва",
+            location_geometry="MOSCOW",
+        )
     )
-    mock_container.build_repos = MagicMock(
-        return_value={"order_repo": mock_order_repo}
-    )
-    mock_container.transaction_manager = mock_tm
-
-    admin = OrderAdmin()
-    admin._container = mock_container  # type: ignore[attr-defined]
-    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
-    admin.is_async = True  # type: ignore[attr-defined]
-
-    request = MagicMock()
-    request.form = AsyncMock(return_value={})
-    data = {"status": OrderStatus.ACTIVE}
-
-    with (
-        patch(
-            "ugc_bot.admin.app._get_admin_container",
-            return_value=mock_container,
-        ),
-        patch.object(
-            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
-        ),
-    ):
-        await admin.update_model(request, str(order_id), data)
-
-    assert mock_session.get.call_count == 2
-    mock_order_repo.get_by_id.assert_called_once_with(
-        order_id, session=mock_session
-    )
-    mock_outbox_publisher.publish_order_activation.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_order_admin_update_model_activation_exception_handled() -> None:
-    """Test OrderAdmin.update_model handles exception during publishing."""
-    from contextlib import asynccontextmanager
-
-    order_id = UUID("00000000-0000-0000-0000-000000000070")
-    old_order = OrderModel(
-        order_id=order_id,
-        advertiser_id=UUID("00000000-0000-0000-0000-000000000071"),
-        order_type="ugc_only",
-        product_link="https://example.com/product",
-        offer_text="Test",
-        price=100.0,
-        bloggers_needed=1,
-        status=OrderStatus.PENDING_MODERATION,
-        created_at=datetime.now(timezone.utc),
-    )
-    new_order = OrderModel(
-        order_id=order_id,
-        advertiser_id=old_order.advertiser_id,
-        order_type=old_order.order_type,
-        product_link=old_order.product_link,
-        offer_text=old_order.offer_text,
-        price=old_order.price,
-        bloggers_needed=old_order.bloggers_needed,
-        status=OrderStatus.ACTIVE,
-        created_at=old_order.created_at,
-    )
-
-    mock_session = MagicMock()
-    mock_session.get = AsyncMock(side_effect=[old_order, new_order])
-
-    mock_order = MagicMock()
-    mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=mock_order)
-
-    mock_outbox_publisher = MagicMock()
-    mock_outbox_publisher.publish_order_activation = AsyncMock(
-        side_effect=Exception("Publish failed")
+    geocoder = SimpleNamespace(
+        get_multipolygon_wkt_for_queries=AsyncMock(return_value="KAZAN")
     )
 
     @asynccontextmanager
-    async def _tx():
-        yield mock_session
+    async def transaction():
+        yield object()
 
-    mock_tm = MagicMock()
-    mock_tm.transaction = MagicMock(return_value=_tx())
-
-    mock_manager_service = AsyncMock()
-
-    mock_container = MagicMock()
-    mock_container.build_outbox_publisher = MagicMock(
-        return_value=mock_outbox_publisher,
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction),
+        build_geocoder=lambda: geocoder,
     )
-    mock_container.build_repos = MagicMock(
-        return_value={"order_repo": mock_order_repo}
-    )
-    mock_container.build_manager_service = MagicMock(
-        return_value=mock_manager_service
-    )
-    mock_container.transaction_manager = mock_tm
-
-    admin = OrderAdmin()
-    admin._container = mock_container  # type: ignore[attr-defined]
-    admin.session_maker = _make_session_maker_mock(mock_session)  # type: ignore[attr-defined]
-    admin.is_async = True  # type: ignore[attr-defined]
-
-    request = MagicMock()
-    request.form = AsyncMock(return_value={})
-    data = {"status": OrderStatus.ACTIVE}
-
     with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
         patch(
-            "ugc_bot.admin.app._get_admin_container",
-            return_value=mock_container,
-        ),
-        patch.object(
-            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(None, None, orders),
         ),
     ):
-        # Should not raise exception
-        result = await admin.update_model(request, str(order_id), data)
-
-    assert result is not None
-    mock_outbox_publisher.publish_order_activation.assert_called_once()
+        await _update_order_location_geometry_after_geography_change(
+            order_id, "Казань"
+        )
+    saved = await orders.get_by_id(order_id)
+    assert saved.geography == "Москва"
+    assert saved.location_geometry == "MOSCOW"
 
 
 @pytest.mark.asyncio
@@ -1366,7 +1605,7 @@ async def test_update_order_location_geometry_no_tm_early_return() -> None:
             order_id, ""
         )
 
-    mock_order_repo.get_by_id.assert_not_called()
+    mock_order_repo.get_by_id_for_update.assert_not_called()
     mock_order_repo.save.assert_not_called()
 
 
@@ -1395,7 +1634,7 @@ async def test_update_order_location_geometry_exception_logged() -> None:
     )
 
     mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=order)
+    mock_order_repo.get_by_id_for_update = AsyncMock(return_value=order)
     mock_order_repo.save = AsyncMock(side_effect=RuntimeError("db error"))
 
     mock_session = MagicMock()
@@ -1462,7 +1701,7 @@ async def test_update_order_location_geometry_with_geocoder() -> None:
     )
 
     mock_order_repo = MagicMock()
-    mock_order_repo.get_by_id = AsyncMock(return_value=order)
+    mock_order_repo.get_by_id_for_update = AsyncMock(return_value=order)
     mock_order_repo.save = AsyncMock()
 
     mock_session = MagicMock()
@@ -1501,7 +1740,7 @@ async def test_update_order_location_geometry_with_geocoder() -> None:
             order_id, "Казань"
         )
 
-    mock_order_repo.get_by_id.assert_called_once_with(
+    mock_order_repo.get_by_id_for_update.assert_called_once_with(
         order_id, session=mock_session
     )
     mock_order_repo.save.assert_called_once()
@@ -2481,3 +2720,23 @@ def test_admin_flowchart_returns_html_when_authenticated(
 
     assert response.status_code == 200
     assert "Flowchart" in response.text
+
+
+@pytest.mark.asyncio
+async def test_order_admin_cannot_activate_unpaid_new_order():
+    order_id = UUID("00000000-0000-0000-0000-000000000123")
+    order = OrderModel(order_id=order_id, status=OrderStatus.NEW)
+    admin = OrderAdmin()
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk", AsyncMock(return_value=order)
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ) as save,
+        pytest.raises(ValueError, match="paid_pending_moderation_required"),
+    ):
+        await admin.update_model(request, str(order_id), {"status": "active"})
+    save.assert_not_called()

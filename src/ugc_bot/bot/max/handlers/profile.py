@@ -285,6 +285,7 @@ async def _send_profile(
             [
                 "btn_create_order",
                 "btn_my_orders",
+                "btn_rate_creators",
                 "btn_my_profile",
                 "btn_edit_profile",
                 "btn_partner_program",
@@ -336,6 +337,7 @@ async def _handle_advertiser_field_update(
     adv_keys = [
         "btn_create_order",
         "btn_my_orders",
+        "btn_rate_creators",
         "btn_my_profile",
         "btn_edit_profile",
     ]

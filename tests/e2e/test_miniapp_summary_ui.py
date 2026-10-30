@@ -83,6 +83,8 @@ def test_real_summary_deeplink_locales_and_signed_read(page, platform, locale):
     )
     expect(page.locator("#screen-summary")).to_be_visible()
     expect(page.locator("#summary-total")).to_have_text("30")
+    expect(page.locator("#summary-order")).to_have_text("UMC-22000000")
+    assert ORDER not in page.locator("#screen-summary").inner_text()
     expect(page.locator('[data-summary-state="assigned"] dd')).to_have_text(
         "25"
     )
@@ -149,12 +151,14 @@ def test_summary_actual_order_entry_and_native_back(page, platform, role):
     errors = open_app(page, network, platform, native=True, init_data=SIGNED)
     if role == "client":
         page.locator("#btn-show-orders-list").click()
-        list_id, return_screen = "orders-list", "screen-advertiser-dashboard"
+        list_id, return_screen = "orders-list", "screen-customer-orders"
     else:
         page.locator("#btn-manager-role").click()
         list_id, return_screen = "manager-orders-list", "screen-manager-orders"
     page.locator(f"#{list_id} [data-summary-open]").click()
     expect(page.locator("#summary-total")).to_have_text("30")
+    expect(page.locator("#summary-order")).to_have_text("UMC-22000000")
+    assert ORDER not in page.locator("#screen-summary").inner_text()
     page.wait_for_function("window.__host.wa.BackButton.visible")
     page.evaluate("window.__host.wa.BackButton.click()")
     expect(page.locator(f"#{return_screen}")).to_be_visible()

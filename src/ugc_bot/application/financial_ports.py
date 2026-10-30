@@ -521,6 +521,10 @@ class LedgerRepository(JournalRepository, FinancialLocks, Protocol):
         self, recipient_id: UUID, currency: str, *, session: object
     ) -> tuple[ObligationBasis, ...]: ...
 
+    async def has_zero_assessment(
+        self, key: str, *, session: object
+    ) -> bool: ...
+
     async def save_potential(
         self,
         basis: IssueBasis,
