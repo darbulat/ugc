@@ -89,6 +89,14 @@ async def _capture_and_activate(
     transactions = env["container"].transaction_manager
     checkout = services["checkout_service"]
     order_id = UUID(order_id)
+    await page.wait_for_function(
+        "async id => {"
+        "const state=await window.__umcAppBridge.request("
+        "'/customer/followups/state',{});"
+        "return state && state.order_id===id;}",
+        arg=str(order_id),
+    )
+    await expect(page.locator("#customer-followup")).to_have_count(1)
 
     async def activate():
         callback = FakeCallback(
@@ -135,10 +143,16 @@ async def _capture_and_activate(
     processor = PaidReceiptProcessor(checkout.repository, transactions, payment)
     assert await processor.accept(receipt)
     assert await processor.run_once()
+    followup = await page.evaluate(
+        "() => window.__umcAppBridge.request('/customer/followups/state',{})"
+    )
+    assert followup["stop_reason"] == "paid"
+    assert followup["next_stage"] is None
     await page.locator("#umc-checkout-refresh").click()
     await expect(page.locator("#umc-checkout-status")).to_have_attribute(
         "data-state", "confirmed"
     )
+    await expect(page.locator("#customer-followup")).to_have_count(0)
 
     env["config"].admin.admin_base_url = "https://admin.example.test"
     messenger = AsyncMock()

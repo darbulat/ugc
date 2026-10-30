@@ -16,6 +16,22 @@ ACTIVITY_EVENTS = frozenset(
 
 
 class ClientFollowupService(CustomerWorkflowService):
+    async def _reconcile_paid(
+        self, series: dict, session: object, order_id: UUID | None = None
+    ) -> None:
+        if series["stop_reason"] or series["opted_out"]:
+            return
+        if await self.repository.has_relevant_payment(
+            series["user_id"],
+            series["created_at"],
+            order_id=order_id or series["order_id"],
+            session=session,
+        ):
+            series["stop_reason"] = "paid"
+            if order_id is not None:
+                series["order_id"] = order_id
+            await self.repository.save_series(series, session=session)
+
     async def record_activity(
         self,
         user_id: UUID,
@@ -45,6 +61,9 @@ class ClientFollowupService(CustomerWorkflowService):
                 opted_out=False,
                 stop_reason=None,
             )
+            await self._reconcile_paid(series, session, order_id)
+            if series["stop_reason"]:
+                return series
             series.update(
                 generation=series["generation"] + 1,
                 last_activity_at=now,
@@ -66,6 +85,7 @@ class ClientFollowupService(CustomerWorkflowService):
             series = await self.repository.series(user_id, session=session)
             if series is None:
                 return None
+            await self._reconcile_paid(series, session)
             next_step = (
                 None
                 if series["stop_reason"]

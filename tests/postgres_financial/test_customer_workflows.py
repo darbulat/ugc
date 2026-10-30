@@ -372,6 +372,110 @@ async def test_optout_before_activity_and_trusted_paid_hook(intake_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["state", "activity"])
+async def test_followup_stops_on_paid_order_before_worker_runs(
+    intake_env, entry
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    owned = await order(env)
+    series = await follow.record_activity(
+        env["user"].user_id, "order_created", owned.order_id
+    )
+    env["clock"].at += timedelta(minutes=5)
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=owned.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=env["clock"].at,
+                created_at=env["clock"].at,
+            )
+        )
+    current = (
+        await follow.state(env["user"].user_id)
+        if entry == "state"
+        else await follow.record_activity(env["user"].user_id, "menu")
+    )
+    assert current["stop_reason"] == "paid"
+    assert current["generation"] == series["generation"]
+    assert (await follow.state(env["user"].user_id))["next_stage"] is None
+    env["clock"].at += timedelta(hours=1)
+    receiver = Receiver(env)
+    assert await worker(env, receiver).run_once() == 0
+    assert receiver.messages == []
+
+
+@pytest.mark.asyncio
+async def test_payment_before_followup_series_does_not_cancel_new_activity(
+    intake_env,
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    owned = await order(env)
+    earlier = env["clock"].at - timedelta(hours=1)
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=owned.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=earlier,
+                created_at=earlier,
+            )
+        )
+    await follow.record_activity(env["user"].user_id, "brief_opened")
+    current = await follow.state(env["user"].user_id)
+    assert current["stop_reason"] is None
+    assert current["next_stage"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("existing_series", [False, True])
+async def test_late_order_activity_cannot_restart_reminders_after_payment(
+    intake_env, existing_series
+):
+    env = intake_env
+    follow = services(env)["client_followup_service"]
+    owned = await order(env)
+    earlier = env["clock"].at - timedelta(minutes=1)
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            PaymentModel(
+                payment_id=uuid4(),
+                order_id=owned.order_id,
+                provider="test",
+                status="paid",
+                amount=100,
+                currency="RUB",
+                external_id=str(uuid4()),
+                paid_at=earlier,
+                created_at=earlier,
+            )
+        )
+    if existing_series:
+        await follow.record_activity(env["user"].user_id, "menu")
+    result = await follow.record_activity(
+        env["user"].user_id, "order_created", owned.order_id
+    )
+    assert result["stop_reason"] == "paid"
+    assert (await follow.state(env["user"].user_id))["next_stage"] is None
+    env["clock"].at += timedelta(hours=1)
+    receiver = Receiver(env)
+    assert await worker(env, receiver).run_once() == 0
+    assert receiver.messages == []
+
+
+@pytest.mark.asyncio
 async def test_multiple_orders_one_series_max_and_double_dispatch(intake_env):
     from ugc_bot.application.native_principal_ports import (
         AuthenticatedMessengerPrincipal,

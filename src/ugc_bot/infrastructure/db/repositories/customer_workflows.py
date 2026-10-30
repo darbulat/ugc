@@ -169,6 +169,39 @@ class SqlAlchemyCustomerWorkflowRepository:
         )
         return dict(row) if row else None
 
+    async def has_relevant_payment(
+        self,
+        user_id: UUID,
+        since: datetime,
+        *,
+        order_id: UUID | None = None,
+        session: object,
+    ) -> bool:
+        # A payment for this order or a payment during the current series.
+        # This operational snapshot never changes financial rights.
+        relevant_payment = [
+            PaymentModel.paid_at >= since,
+            and_(
+                PaymentModel.paid_at.is_(None),
+                PaymentModel.created_at >= since,
+            ),
+        ]
+        if order_id is not None:
+            relevant_payment.append(OrderModel.order_id == order_id)
+        return (
+            await _session(session).scalar(
+                select(PaymentModel.payment_id)
+                .join(OrderModel, OrderModel.order_id == PaymentModel.order_id)
+                .where(
+                    OrderModel.advertiser_id == user_id,
+                    PaymentModel.status == "paid",
+                    or_(*relevant_payment),
+                )
+                .limit(1)
+            )
+            is not None
+        )
+
     async def save_series(self, values: dict, *, session: object) -> None:
         await _session(session).execute(
             insert(SERIES)
@@ -360,24 +393,12 @@ class SqlAlchemyCustomerWorkflowRepository:
             or series["generation"] != job["generation"]
         ):
             return None
-        # Operational read-only payment snapshot; never grants financial rights.
-        paid = await db.scalar(
-            select(PaymentModel.payment_id)
-            .join(OrderModel, OrderModel.order_id == PaymentModel.order_id)
-            .where(
-                OrderModel.advertiser_id == series["user_id"],
-                PaymentModel.status == "paid",
-                or_(
-                    PaymentModel.paid_at >= series["created_at"],
-                    and_(
-                        PaymentModel.paid_at.is_(None),
-                        PaymentModel.created_at >= series["created_at"],
-                    ),
-                ),
-            )
-            .limit(1)
-        )
-        if paid:
+        if await self.has_relevant_payment(
+            series["user_id"],
+            series["created_at"],
+            order_id=series["order_id"],
+            session=session,
+        ):
             await db.execute(
                 update(SERIES)
                 .where(SERIES.c.series_id == series["series_id"])

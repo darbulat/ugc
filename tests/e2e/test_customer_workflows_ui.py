@@ -184,6 +184,131 @@ class DelayedSupportOrdersNetwork(CustomerNetwork):
         super().route(route)
 
 
+class PaidFollowupNetwork(CustomerNetwork):
+    def __init__(self):
+        super().__init__()
+        self.paid = False
+        self.hold_next_followup = False
+        self.pending_followups = []
+        self.hold_optout = False
+        self.pending_optouts = []
+
+    def route(self, route):
+        path = urlparse(route.request.url).path
+        if path.endswith("/checkout-status"):
+            route.fulfill(
+                json={
+                    "order_id": ORDER,
+                    "invoice_state": "ready",
+                    "capture_state": "confirmed"
+                    if self.paid
+                    else "not_recorded",
+                    "writes_paused": False,
+                    "can_open": False,
+                }
+            )
+            return
+        if path.endswith("/customer/followups/state"):
+            if self.hold_next_followup:
+                self.hold_next_followup = False
+                self.pending_followups.append(route)
+                return
+            route.fulfill(
+                json={
+                    "order_id": ORDER,
+                    "next_action": "orders",
+                    "opted_out": False,
+                    "stop_reason": "paid" if self.paid else None,
+                }
+            )
+            return
+        if path.endswith("/customer/followups/optout") and self.hold_optout:
+            self.pending_optouts.append(route)
+            return
+        super().route(route)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_confirmed_checkout_removes_pending_followup_from_dashboard(
+    page, platform
+):
+    network = PaidFollowupNetwork()
+    open_app(
+        page,
+        network,
+        platform,
+        init_data=SIGNED,
+        query=f"?selection={ORDER}",
+    )
+    expect(page.locator("#customer-followup")).to_have_count(1)
+    network.paid = True
+    page.locator("#umc-checkout-refresh").click()
+    expect(page.locator("#umc-checkout-status")).to_have_attribute(
+        "data-state", "confirmed"
+    )
+    expect(page.locator("#customer-followup")).to_have_count(0)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_late_unpaid_followup_does_not_reappear_after_payment(page, platform):
+    network = PaidFollowupNetwork()
+    open_app(
+        page,
+        network,
+        platform,
+        init_data=SIGNED,
+        query=f"?selection={ORDER}",
+    )
+    expect(page.locator("#customer-followup")).to_have_count(1)
+    network.hold_next_followup = True
+    page.evaluate("document.dispatchEvent(new Event('umc:app-ready'))")
+    for _ in range(100):
+        if network.pending_followups:
+            break
+        page.wait_for_timeout(10)
+    assert len(network.pending_followups) == 1
+    network.paid = True
+    with page.expect_response("**/customer/followups/state"):
+        page.locator("#umc-checkout-refresh").click()
+    expect(page.locator("#customer-followup")).to_have_count(0)
+    with page.expect_response("**/customer/followups/state"):
+        network.pending_followups.pop().fulfill(
+            json={
+                "order_id": ORDER,
+                "next_action": "orders",
+                "opted_out": False,
+                "stop_reason": None,
+            }
+        )
+    page.evaluate(
+        "() => new Promise(resolve => requestAnimationFrame("
+        "() => requestAnimationFrame(resolve)))"
+    )
+    expect(page.locator("#customer-followup")).to_have_count(0)
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_optout_confirmation_updates_followup_after_screen_refresh(
+    page, platform
+):
+    network = PaidFollowupNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    box = page.locator("#customer-followup")
+    expect(box).to_be_visible()
+    original = box.element_handle()
+    network.hold_optout = True
+    with page.expect_request("**/customer/followups/optout"):
+        box.get_by_role("button", name="Отключить напоминания").click()
+    page.evaluate("document.dispatchEvent(new Event('umc:app-ready'))")
+    page.wait_for_function("old => !old.isConnected", arg=original)
+    expect(
+        box.get_by_role("button", name="Отключить напоминания")
+    ).to_be_visible()
+    with page.expect_response("**/customer/followups/optout"):
+        network.pending_optouts.pop().fulfill(json={"opted_out": True})
+    expect(box).to_contain_text("Напоминания отключены")
+
+
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize(
     "locale,selection_label,legacy_label",

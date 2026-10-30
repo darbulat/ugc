@@ -31,6 +31,14 @@ class CustomerWorkflowRepository(Protocol):
     async def next_followup(
         self, series_id: UUID, *, session: object
     ) -> dict | None: ...
+    async def has_relevant_payment(
+        self,
+        user_id: UUID,
+        since: datetime,
+        *,
+        order_id: UUID | None = None,
+        session: object,
+    ) -> bool: ...
 
     async def save_series(self, values: dict, *, session: object) -> None: ...
     async def schedule(self, series: dict, *, session: object) -> None: ...

@@ -47,7 +47,7 @@
     else if(['unknown','failed'].includes(d.invoice_state)&&d.attempt_id){action.textContent=c.newLink;action.hidden=false;}
     sync();
   }
-  function apply(data,generation,resolvedCommand){if(generation!==state.generation||data.order_id!==state.order)return;state.data=data;if(['ready','confirmed'].includes(data.invoice_state)||data.capture_state==='confirmed'||(resolvedCommand&&['failed','unknown'].includes(data.invoice_state)&&data.attempt_id)){state.pending=null;try{sessionStorage.removeItem(storageKey());}catch(_){/* Stored same-key replay remains safe. */}}render();}
+  function apply(data,generation,resolvedCommand){if(generation!==state.generation||data.order_id!==state.order)return;var wasConfirmed=state.data&&state.data.capture_state==='confirmed';state.data=data;if(['ready','confirmed'].includes(data.invoice_state)||data.capture_state==='confirmed'||(resolvedCommand&&['failed','unknown'].includes(data.invoice_state)&&data.attempt_id)){state.pending=null;try{sessionStorage.removeItem(storageKey());}catch(_){/* Stored same-key replay remains safe. */}}render();if(!wasConfirmed&&data.capture_state==='confirmed')document.dispatchEvent(new CustomEvent('umc:checkout-confirmed',{detail:{order_id:state.order}}));}
   function poll(){if(!visible()||state.poll>=6||state.data&&state.data.capture_state==='confirmed'){stop();return;}var delay=[500,1000,2000,4000,8000,15000][state.poll++];state.timer=setTimeout(function(){load().finally(poll);},delay);}
   function load(){
     if(state.busy||!state.order)return Promise.resolve();var generation=state.generation;state.busy=true;error.textContent='';render();
