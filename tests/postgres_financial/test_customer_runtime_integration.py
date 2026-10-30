@@ -1,6 +1,6 @@
 """Production customer factories and synthetic providers."""
 
-from datetime import timedelta
+from datetime import timedelta, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -108,6 +108,10 @@ async def test_saved_notice_details_and_followup_never_reprice_issued_quote(
             result.order_id, session=session
         )
     assert saved["contact_reference"] == request.contact_reference
+    assert saved["selection_due_at"] == result.selection_due_at.isoformat()
+    due_display = result.selection_due_at.astimezone(timezone.utc).strftime(
+        "%d.%m.%Y %H:%M:%S UTC"
+    )
     assert saved["format"] == "with_manager"
     assert saved["selection_base_minor"] == 500000
     assert saved["accompaniment_count"] == 2
@@ -164,6 +168,7 @@ async def test_saved_notice_details_and_followup_never_reprice_issued_quote(
     ]
     assert len(target_addresses) == len(set(target_addresses))
     assert request.contact_reference in target[0]
+    assert f"Срок подбора:</b> {due_display}" in target[0]
     assert "5000.00" in target[0] and "2400.00" in target[0]
 
 
@@ -236,6 +241,11 @@ async def test_real_admin_edit_renders_saved_quote_and_private_bound_image(
         edit = client.get(f"/admin/order-model/edit/{result.order_id}")
         assert edit.status_code == 200
         assert 'id="order-saved-quote"' in edit.text
+        due_display = result.selection_due_at.astimezone(timezone.utc).strftime(
+            "%d.%m.%Y %H:%M:%S UTC"
+        )
+        assert "Согласованный срок подбора" in edit.text
+        assert due_display in edit.text
         assert "&lt;private-contact&gt; &amp; client" in edit.text
         assert (
             "5000.00 RUB" in edit.text

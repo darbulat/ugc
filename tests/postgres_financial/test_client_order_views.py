@@ -13,6 +13,10 @@ from tests.helpers.factories import (
     create_test_advertiser_profile,
     create_test_user,
 )
+from tests.postgres_financial.test_order_intake import (
+    command,
+    service,
+)
 from tests.postgres_financial.test_order_intake import intake_env as _intake_env
 from tests.postgres_financial.test_order_intake_api import app, body
 from ugc_bot.application.services.client_order_view_service import (
@@ -34,6 +38,49 @@ from ugc_bot.infrastructure.db.repositories.customer_workflows import (
 async def intake_env(financial_pg_engine):
     async for value in _intake_env.__wrapped__(financial_pg_engine):
         yield value
+
+
+@pytest.mark.asyncio
+async def test_order_list_returns_saved_selection_deadline_and_legacy_text(
+    intake_env,
+):
+    env = intake_env
+    due = env["clock"].at + timedelta(days=3)
+    created = await service(env).create(
+        command(env, position_count=10, selection_due_at=due)
+    )
+    legacy_id = uuid4()
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            OrderModel(
+                order_id=legacy_id,
+                advertiser_id=env["user"].user_id,
+                product_link="https://example.test/legacy",
+                offer_text="Legacy order",
+                price=1000,
+                bloggers_needed=10,
+                status=OrderStatus.NEW,
+                created_at=env["clock"].at,
+                deadlines="7 дней",
+            )
+        )
+    application = app(env, env["container"])
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application),
+        base_url="http://testserver",
+    ) as client:
+        response = await client.post(
+            "/miniapp/api/orders/list",
+            json={"init_data": body(env)["init_data"]},
+        )
+    assert response.status_code == 200, response.text
+    orders = {row["order_id"]: row for row in response.json()["orders"]}
+    current = orders[str(created.order_id)]
+    assert current["selection_due_at"] == due.isoformat()
+    assert current["deadlines"] is None
+    legacy = orders[str(legacy_id)]
+    assert legacy["selection_due_at"] is None
+    assert legacy["deadlines"] == "7 дней"
 
 
 @pytest.mark.asyncio

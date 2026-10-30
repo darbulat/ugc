@@ -60,6 +60,13 @@ _SUPPORT = {
     "be": "Паведаміць пра праблему",
     "uz": "Muammo haqida xabar berish",
 }
+_SELECTION_DUE = {
+    "ru": "Согласованный срок подбора",
+    "en": "Agreed selection due date",
+    "kk": "Келісілген іріктеу мерзімі",
+    "be": "Узгоднены тэрмін падбору",
+    "uz": "Kelishilgan tanlov muddati",
+}
 _PAYMENT_TOGETHER = {
     "ru": "Подбор и выбранное сопровождение оплачиваются вместе в одном счёте.",
     "en": (
@@ -72,7 +79,9 @@ _PAYMENT_TOGETHER = {
 }
 
 
-async def _capture_and_activate(env, app, page, order_id, image, monkeypatch):
+async def _capture_and_activate(
+    env, app, page, order_id, selection_due_at, image, monkeypatch
+):
     """Continue this browser's order through a synthetic provider and admin."""
     from ugc_bot.admin import app as admin_module
 
@@ -141,6 +150,12 @@ async def _capture_and_activate(env, app, page, order_id, image, monkeypatch):
     assert len(cards) == 2
     created = next(card for card in cards if "Новый заказ" in card["caption"])
     paid = next(card for card in cards if "Заказ оплачен" in card["caption"])
+    due_display = (
+        datetime.fromisoformat(selection_due_at)
+        .astimezone(timezone.utc)
+        .strftime("%d.%m.%Y %H:%M:%S UTC")
+    )
+    assert f"Срок подбора:</b> {due_display}" in paid["caption"]
     assert created["chat_id"] == paid["chat_id"] == env["admin"].telegram_id
     assert created["file_id"] == paid["file_id"]
     buttons = [button for row in paid["keyboard"].rows for button in row]
@@ -180,7 +195,9 @@ async def _capture_and_activate(env, app, page, order_id, image, monkeypatch):
         )
         assert login.status_code == 302
         assert login.headers["location"] == target
-        assert client.get(target).status_code == 200
+        edit = client.get(target)
+        assert edit.status_code == 200
+        assert due_display in edit.text
         assert client.get(f"/admin/order-images/{order_id}").content == image
 
     assert await activate() == ["Заказ активирован, уходит блогерам."]
@@ -351,6 +368,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                         app,
                         page,
                         body["order_id"],
+                        body["selection_due_at"],
                         image.getvalue(),
                         monkeypatch,
                     )
@@ -393,6 +411,13 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             await page.evaluate("window.UMCCustomer.orders()")
             card = page.locator(f'[data-order-id="{body["order_id"]}"]')
             await expect(card).to_be_visible()
+            displayed_due = await page.evaluate(
+                "([date, locale]) => new Date(date).toLocaleString(locale)",
+                [body["selection_due_at"], locale],
+            )
+            await expect(card).to_contain_text(
+                f"{_SELECTION_DUE[locale]}: {displayed_due}"
+            )
             if platform == "telegram" and locale == "ru":
                 await expect(card).to_contain_text("Идёт подбор")
                 await expect(card).to_contain_text("Оплачено")

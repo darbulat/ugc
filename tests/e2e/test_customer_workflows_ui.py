@@ -185,6 +185,57 @@ class DelayedSupportOrdersNetwork(CustomerNetwork):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "locale,selection_label,legacy_label",
+    [
+        ("ru", "Согласованный срок подбора", "Срок"),
+        ("en", "Agreed selection due date", "Due date"),
+        ("kk", "Келісілген іріктеу мерзімі", "Мерзімі"),
+        ("be", "Узгоднены тэрмін падбору", "Тэрмін"),
+        ("uz", "Kelishilgan tanlov muddati", "Muddati"),
+    ],
+)
+def test_order_list_displays_saved_selection_and_legacy_deadlines(
+    page, platform, locale, selection_label, legacy_label
+):
+    legacy_id = "22000000-0000-4000-8000-000000000007"
+    due = "2031-04-12T12:30:00+00:00"
+    network = CustomerNetwork()
+    network.locale = locale
+    network.orders = [
+        {
+            "order_id": ORDER,
+            "public_title": "Current order",
+            "status": "new",
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": "v1",
+            "selection_due_at": due,
+            "deadlines": None,
+        },
+        {
+            "order_id": legacy_id,
+            "public_title": "Legacy order",
+            "status": "new",
+            "created_at": "2026-10-30T10:00:00Z",
+            "financial_version": None,
+            "selection_due_at": None,
+            "deadlines": "7 days",
+        },
+    ]
+    open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
+    formatted = page.evaluate(
+        "([date, locale]) => new Date(date).toLocaleString(locale)",
+        [due, locale],
+    )
+    expect(page.locator(f'[data-order-id="{ORDER}"]')).to_contain_text(
+        f"{selection_label}: {formatted}"
+    )
+    expect(page.locator(f'[data-order-id="{legacy_id}"]')).to_contain_text(
+        f"{legacy_label}: 7 days"
+    )
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_order_support_can_be_submitted_while_order_list_is_loading(
     page, platform
 ):
@@ -230,7 +281,9 @@ def test_service_catalog_explains_choices_and_links_to_details(
     network = FullServiceCatalogNetwork()
     network.locale = locale
     open_app(page, network, platform, init_data=SIGNED)
-    page.evaluate("UMCCustomer.services()")
+    page.locator(
+        "#screen-advertiser-dashboard [data-customer-services]"
+    ).click()
     cards = page.locator("#screen-customer-services article")
     expect(cards).to_have_count(5)
     for index, url in enumerate(

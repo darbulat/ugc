@@ -4,6 +4,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from ugc_bot.domain.financial import utc
 from ugc_bot.infrastructure.db.models import OrderItemModel, OrderModel
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
@@ -21,6 +22,7 @@ class SqlAlchemyOrderNoticeDetailsRepository:
         if not rows:
             return None
         snapshot = rows[0].quote_payload
+        selection_due = utc(rows[0].selection_due_at)
         # Components retain the issued price even when later financial state
         # changes, or a subsequently published policy has a different tariff.
         components = snapshot["components"]
@@ -38,6 +40,10 @@ class SqlAlchemyOrderNoticeDetailsRepository:
             format="with_manager" if count else "self_service",
             accompaniment_count=count,
             position_count=len(components),
+            selection_due_at=selection_due.isoformat(),
+            selection_due_display=selection_due.strftime(
+                "%d.%m.%Y %H:%M:%S UTC"
+            ),
             selection_base_minor=selection,
             selection_unit_minor=components[0][1],
             accompaniment_unit_minor=next(

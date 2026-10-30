@@ -83,6 +83,7 @@ class SqlAlchemyClientOrderViewRepository:
                     func.coalesce(
                         func.sum(OrderItemModel.accompaniment_minor), 0
                     ),
+                    func.min(OrderItemModel.selection_due_at),
                 ).where(OrderItemModel.order_id == order.order_id)
             )
         ).one()
@@ -109,6 +110,7 @@ class SqlAlchemyClientOrderViewRepository:
             "financial_version": order.financial_version,
             "bloggers_needed": order.bloggers_needed,
             "deadlines": order.deadlines,
+            "selection_due_at": totals[2].isoformat() if totals[2] else None,
             "payment_state": "paid"
             if payment == PaymentStatus.PAID
             else str(payment or "unpaid"),

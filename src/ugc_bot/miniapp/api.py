@@ -263,6 +263,7 @@ class OrderListItem(BaseModel):
     public_title: str = ""
     bloggers_needed: int | None = None
     deadlines: str | None = None
+    selection_due_at: str | None = None
     payment_state: str = "unknown"
     customer_status: str | None = None
     progress: dict | None = None

@@ -18,6 +18,9 @@
         <dt class="col-sm-5">Формат работы</dt><dd class="col-sm-7">{{ 'С сопровождением менеджера' if order_quote_details.format == 'with_manager' else 'Самостоятельный подбор' }}</dd>
         <dt class="col-sm-5">Количество авторов</dt><dd class="col-sm-7">{{ order_quote_details.position_count }}</dd>
         <dt class="col-sm-5">С сопровождением</dt><dd class="col-sm-7">{{ order_quote_details.accompaniment_count }}</dd>
+        {% if order_quote_details.selection_due_display %}
+        <dt class="col-sm-5">Согласованный срок подбора</dt><dd class="col-sm-7"><time datetime="{{ order_quote_details.selection_due_at }}">{{ order_quote_details.selection_due_display }}</time></dd>
+        {% endif %}
         <dt class="col-sm-5">Подбор</dt><dd class="col-sm-7">{{ order_quote_details.selection_base_display }} {{ order_quote_details.currency }}</dd>
         <dt class="col-sm-5">Сопровождение</dt><dd class="col-sm-7">{{ order_quote_details.accompaniment_display }} {{ order_quote_details.currency }}</dd>
         <dt class="col-sm-5">Сумма счёта</dt><dd class="col-sm-7"><strong>{{ order_quote_details.total_display }} {{ order_quote_details.currency }}</strong></dd>

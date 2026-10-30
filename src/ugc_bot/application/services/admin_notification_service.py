@@ -236,6 +236,7 @@ def _order_quote_details(details: Mapping[str, Any] | None, symbol: str) -> str:
         ("contact_reference", "Контакт"),
         ("format", "Формат"),
         ("accompaniment_count", "С сопровождением"),
+        ("selection_due_display", "Срок подбора"),
     ):
         if details.get(key) is not None:
             lines.append(f"<b>{label}:</b> {html.escape(str(details[key]))}")
