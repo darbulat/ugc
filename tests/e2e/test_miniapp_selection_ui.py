@@ -308,6 +308,314 @@ def test_uncertain_create_keeps_same_payload_and_key_until_explicit_retry(page):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_uncertain_create_survives_closing_and_reopening_webview(
+    page, platform
+):
+    network = SelectionNetwork()
+    network.abort = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#btn-intake-retry")).to_be_visible()
+    original = network.creates[0]
+    context = page.context
+    page.close()
+
+    reopened = context.new_page()
+    try:
+        open_app(reopened, network, platform, init_data=SIGNED)
+        reopened.locator("#btn-show-create-order").click()
+        expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+        network.abort = False
+        reopened.locator("#btn-intake-retry").click()
+        expect(reopened.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[1] == original
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_existing_session_pending_request_is_migrated_before_webview_closes(
+    page, platform
+):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    legacy = {
+        "operation_key": "miniapp:intake:legacy-synthetic-key",
+        "policy_version": POLICY,
+        "product_link": "https://example.test/legacy",
+        "offer_text": "Original legacy request",
+        "honorarium": "999.00",
+        "selection_due_at": "2030-01-01T12:00:00.000Z",
+        "contact_reference": "@legacy_client",
+        "service_mode": "self_service",
+        "accompaniment_ordinals": [],
+        "position_count": 30,
+        "order_type": "ugc_only",
+    }
+    page.evaluate(
+        "data => sessionStorage.setItem("
+        "data.key, JSON.stringify(data.payload))",
+        {"key": f"umc:intake:{platform}:{CLIENT}", "payload": legacy},
+    )
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#btn-intake-retry")).to_be_visible()
+    context = page.context
+    page.close()
+    reopened = context.new_page()
+    try:
+        open_app(reopened, network, platform, init_data=SIGNED)
+        reopened.locator("#btn-show-create-order").click()
+        expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+        reopened.locator("#btn-intake-retry").click()
+        expect(reopened.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 1
+        assert all(
+            network.creates[0][key] == value for key, value in legacy.items()
+        )
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_closing_after_server_success_preserves_safe_retry(page, platform):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.evaluate("""() => {
+      UMCIntakeProgress.complete = () => new Promise(() => {
+        window.cleanupWaiting = true;
+      });
+    }""")
+    page.locator("#btn-intake-create").click()
+    page.wait_for_function("window.cleanupWaiting === true")
+    original = network.creates[0]
+    context = page.context
+    page.close()
+    reopened = context.new_page()
+    try:
+        open_app(reopened, network, platform, init_data=SIGNED)
+        reopened.locator("#btn-show-create-order").click()
+        expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+        assert network.creates == [original]
+        reopened.locator("#btn-intake-retry").click()
+        expect(reopened.locator("#intake-result")).to_be_visible()
+        assert network.creates == [original, original]
+    finally:
+        reopened.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("reload", [False, True])
+def test_lost_indexeddb_recovers_same_pending_request(page, platform, reload):
+    network = SelectionNetwork()
+    network.abort = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#btn-intake-retry")).to_be_visible()
+    original = network.creates[0]
+    page.evaluate("""() => new Promise((resolve, reject) => {
+      const req=indexedDB.deleteDatabase('umc-intake-recovery');
+      req.onsuccess=resolve; req.onerror=() => reject(req.error);
+    })""")
+    if reload:
+        page.reload()
+        page.locator("#btn-show-create-order").click()
+        expect(page.locator("#btn-intake-retry")).to_be_visible()
+    network.abort = False
+    page.locator("#btn-intake-retry").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert network.creates == [original, original]
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_new_order_waits_for_confirmed_draft_cleanup(page, platform):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.evaluate("""() => {
+      window.originalRemoveItem = Storage.prototype.removeItem;
+      Storage.prototype.removeItem = function(key) {
+        if (this === localStorage && key.startsWith('umc:intake-draft:'))
+          throw new Error('synthetic cleanup failure');
+        return window.originalRemoveItem.call(this, key);
+      };
+    }""")
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    page.locator("#btn-intake-new").click()
+    expect(page.locator("#intake-error")).not_to_be_empty()
+    expect(page.locator("#intake-result")).to_be_visible()
+    expect(page.locator("#form-umc-intake")).to_be_hidden()
+    assert len(network.creates) == 1
+    page.evaluate("""() => {
+      Storage.prototype.removeItem = window.originalRemoveItem;
+    }""")
+    page.locator("#btn-intake-new").click()
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    expect(page.locator("#intake-brief")).to_have_value("")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_stale_window_cannot_resubmit_a_completed_draft(page, platform):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        expect(other.locator("#intake-brief")).to_have_value(
+            page.locator("#intake-brief").input_value()
+        )
+        original_brief = page.locator("#intake-brief").input_value()
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#intake-result")).to_be_visible()
+        page.locator("#btn-intake-new").click()
+        expect(page.locator("#form-umc-intake")).to_be_visible()
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#intake-error")).not_to_be_empty()
+        assert len(network.creates) == 1
+        other.locator("#btn-intake-fresh").click()
+        expect(other.locator("#intake-brief")).to_have_value(original_brief)
+        other.locator("#intake-brief").fill("Intentionally new order")
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[1]["offer_text"] == "Intentionally new order"
+    finally:
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_other_window_does_not_resurrect_rejected_request(page, platform):
+    network = SelectionNetwork()
+    network.hold = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        fill(other)
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#btn-intake-retry")).to_be_visible()
+        route, _ = network.pending.pop()
+        route.fulfill(status=422, json={"detail": "synthetic invalid"})
+        expect(page.locator("#form-umc-intake")).to_be_visible()
+        expect(page.locator("#intake-error")).not_to_be_empty()
+        other.reload()
+        other.locator("#btn-show-create-order").click()
+        expect(other.locator("#form-umc-intake")).to_be_visible()
+        network.hold = False
+        page.locator("#intake-brief").fill("Corrected request")
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[1]["offer_text"] == "Corrected request"
+    finally:
+        for route, payload in network.pending:
+            route.fulfill(json=network.created(payload))
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_first_rejection_cannot_clear_a_concurrent_retry(page, platform):
+    network = SelectionNetwork()
+    network.hold = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        fill(other)
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#btn-intake-retry")).to_be_visible()
+        other.locator("#btn-intake-retry").click()
+        expect(other.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        for _ in range(100):
+            if len(network.pending) == 2:
+                break
+            other.wait_for_timeout(25)
+        assert len(network.pending) == 2
+        first, second = network.pending[:]
+        network.pending.clear()
+        first[0].fulfill(status=422, json={"detail": "synthetic invalid"})
+        expect(page.locator("#btn-intake-retry")).to_be_visible()
+        second[0].fulfill(json=network.created(second[1]))
+        expect(other.locator("#intake-result")).to_be_visible()
+        assert len(network.creates) == 2
+        assert network.creates[0] == network.creates[1]
+    finally:
+        for route, payload in network.pending:
+            route.fulfill(json=network.created(payload))
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_other_open_window_cannot_replace_unknown_order_request(page, platform):
+    network = SelectionNetwork()
+    network.abort = True
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    other = page.context.new_page()
+    try:
+        open_app(other, network, platform, init_data=SIGNED)
+        other.locator("#btn-show-create-order").click()
+        fill(other)
+        other.locator("#intake-brief").fill(
+            "Different order from another window"
+        )
+        page.locator("#btn-intake-create").click()
+        expect(page.locator("#btn-intake-retry")).to_be_visible()
+        original = network.creates[0]
+        other.locator("#btn-intake-create").click()
+        expect(other.locator("#btn-intake-retry")).to_be_visible()
+        assert network.creates == [original]
+        network.abort = False
+        other.locator("#btn-intake-retry").click()
+        expect(other.locator("#intake-result")).to_be_visible()
+        assert network.creates == [original, original]
+    finally:
+        other.close()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_unavailable_durable_storage_blocks_unrecoverable_create(
+    page, platform
+):
+    network = SelectionNetwork()
+    open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page)
+    page.evaluate("Object.defineProperty(window, 'indexedDB', {value: null})")
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-error")).not_to_be_empty()
+    assert network.creates == []
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_checkout_returns_to_saved_order_after_viewing_selection(
     page, platform
 ):
@@ -442,6 +750,26 @@ def test_paused_intake_is_localized_readable_at_320px(page, locale):
     )
     screenshot(page, f"intake-{locale}-paused-320")
     assert errors == []
+
+
+def test_changed_credentials_cannot_refresh_previous_accounts_selection(page):
+    network = SelectionNetwork()
+    open_app(page, network, init_data=SIGNED, query=f"?selection={ORDER}")
+    expect(page.locator('[data-position="1"]')).to_be_visible()
+    original_reads = [
+        body for path, body in network.requests if path.endswith("/selection")
+    ]
+    auth_b = generate_init_data("test-token", 102, "synthetic_second_owner")
+    page.evaluate("auth => {window.__host.wa.initData=auth;}", auth_b)
+    page.locator("#btn-selection-refresh").click()
+    expect(page.locator("#selection-error")).not_to_be_empty()
+    expect(page.locator("#screen-selection")).to_have_attribute(
+        "aria-busy", "false"
+    )
+    assert [
+        body for path, body in network.requests if path.endswith("/selection")
+    ] == original_reads
+    expect(page.locator("[data-position]")).to_have_count(0)
 
 
 def test_selection_replacement_never_claims_new_creator_delivered(page):

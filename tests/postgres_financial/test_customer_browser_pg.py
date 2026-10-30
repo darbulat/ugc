@@ -581,3 +581,130 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
         server.should_exit = True
         await asyncio.wait_for(task, 10)
         sock.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.asyncio
+@pytest.mark.timeout(90)
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+async def test_lost_create_response_survives_new_webview_with_one_order(
+    intake_env, platform
+):
+    env = intake_env
+    env["config"].max_bot = MaxBotConfig.model_validate(
+        {"MAX_BOT_TOKEN": "test-token"}
+    )
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == env["user"].user_id)
+            .values(max_id=env["user"].telegram_id)
+        )
+    app = FastAPI()
+    app.state.config = env["config"]
+    app.state.dispatcher = env["container"].build_bot_services()
+    app.state.bot = SimpleNamespace(create_invoice_link=AsyncMock())
+    app.include_router(router, prefix="/miniapp")
+    static_dir = Path(__file__).resolve().parents[2] / "src/ugc_bot/miniapp"
+    app.mount("/miniapp", StaticFiles(directory=static_dir), name="miniapp")
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(128)
+    port = sock.getsockname()[1]
+    server = uvicorn.Server(
+        uvicorn.Config(app, log_level="error", lifespan="off")
+    )
+    task = asyncio.create_task(server.serve(sockets=[sock]))
+    try:
+        for _ in range(100):
+            if server.started:
+                break
+            if task.done():
+                await task
+            await asyncio.sleep(0.05)
+        assert server.started
+        signed = generate_init_data(
+            "test-token", int(env["user"].telegram_id), "test"
+        )
+        mock = (
+            Path(__file__).resolve().parents[1] / "e2e/miniapp_host_mock.js"
+        ).read_text()
+        mock = mock.replace("__PLATFORM__", json.dumps(platform))
+        mock = mock.replace("__NATIVE__", json.dumps(False))
+        mock = mock.replace("__INIT_DATA__", json.dumps(signed))
+        requests = []
+        committed = []
+
+        async def local_with_lost_response(route):
+            url = urlsplit(route.request.url)
+            if url.hostname != "127.0.0.1":
+                await route.abort()
+            elif url.path == "/miniapp/api/financial/orders":
+                requests.append(route.request.post_data_json)
+                if len(requests) == 1:
+                    response = await route.fetch()
+                    assert response.status == 200
+                    committed.append(await response.json())
+                    await route.abort()
+                else:
+                    await route.continue_()
+            else:
+                await route.continue_()
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch()
+            context = await browser.new_context(
+                viewport={"width": 390, "height": 844}
+            )
+            await context.add_init_script(script=mock)
+            await context.route("**/*", local_with_lost_response)
+            template = "max_app.html" if platform == "max" else "app.html"
+            url = f"http://127.0.0.1:{port}/miniapp/{template}"
+            page = await context.new_page()
+            await page.goto(url)
+            await page.locator("#btn-show-create-order").click()
+            await page.locator("#intake-count").fill("10")
+            await page.locator("#intake-policy").select_option(env["policy"])
+            await page.locator("#intake-product").fill(
+                "https://example.test/product"
+            )
+            await page.locator("#intake-brief").fill("Lost response brief")
+            await page.locator("#intake-honorarium").fill("999.00")
+            await page.locator("#intake-contact").fill("@synthetic_client")
+            due = datetime.now(timezone.utc) + timedelta(days=3)
+            await page.locator("#intake-due").fill(
+                due.strftime("%Y-%m-%dT%H:%M")
+            )
+            await page.locator("#btn-intake-create").click()
+            await expect(page.locator("#btn-intake-retry")).to_be_visible()
+            assert len(requests) == len(committed) == 1
+            await page.close()
+
+            reopened = await context.new_page()
+            await reopened.goto(url)
+            await reopened.locator("#btn-show-create-order").click()
+            await expect(reopened.locator("#btn-intake-retry")).to_be_visible()
+            assert len(requests) == 1
+            async with reopened.expect_response(
+                lambda response: response.url.endswith("/financial/orders")
+            ) as response_wait:
+                await reopened.locator("#btn-intake-retry").click()
+            response = await response_wait.value
+            result = await response.json()
+            assert response.status == 200
+            assert result["order_id"] == committed[0]["order_id"]
+            assert requests[0] == requests[1]
+            await expect(reopened.locator("#intake-result")).to_be_visible()
+            with Session(env["pg"]) as db:
+                orders = db.scalars(
+                    select(OrderModel).where(
+                        OrderModel.advertiser_id == env["user"].user_id
+                    )
+                ).all()
+                assert len(orders) == 1
+                assert str(orders[0].order_id) == result["order_id"]
+            await browser.close()
+    finally:
+        server.should_exit = True
+        await asyncio.wait_for(task, 10)
+        sock.close()

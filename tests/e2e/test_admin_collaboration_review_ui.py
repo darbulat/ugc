@@ -71,6 +71,7 @@ def test_dispute_queue_opens_admin_view_and_ordinary_open_remains_denied(
 ):
     network = Network()
     errors = open_app(page, network, platform, init_data=SIGNED_DATA)
+    page.wait_for_function("window.__umcAppReady === true")
     page.evaluate("window.__umcAppBridge.showScreen('screen-manager-orders')")
     page.locator("#screen-manager-orders [data-finance-open]").click()
     page.locator("#screen-finance-actions").get_by_role(
