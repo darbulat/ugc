@@ -72,7 +72,7 @@ class CorrectionViewService:
                 capabilities=dict(
                     read_own_cases=True,
                     read_admin_queue=admin,
-                    request=not self.paused,
+                    request=False,
                     review=admin and not self.paused,
                     record_observation=admin,
                     match=admin and not self.paused,
@@ -198,10 +198,7 @@ class CorrectionViewService:
                 if scope.bundle
                 else [],
                 blockers=blockers,
-                can_request=not self.paused
-                and actor.user_id == scope.client_id
-                and scope.source_hash is not None
-                and not requests,
+                can_request=False,
                 can_approve=not self.paused
                 and actor.admin
                 and not refusal
@@ -308,8 +305,6 @@ class CorrectionViewService:
         actions = result["allowed_actions"]
         if self.paused or not valid or state is None:
             return
-        if not request and actor.user_id == scope.client_id:
-            actions.append("request")
         if (
             actor.admin
             and request

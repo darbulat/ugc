@@ -14,7 +14,6 @@ from ugc_bot.application.correction_ports import (
     ApplySelectionRefund,
     MatchSelectionRefund,
     RecordManualRefundObservation,
-    RequestSelectionRefund,
     ReviewSelectionRefund,
 )
 from ugc_bot.application.native_principal_ports import (
@@ -86,10 +85,6 @@ class Operation(SignedMiniAppRequest):
 
 class Command(Operation):
     reason: str = Field(min_length=1, max_length=4000)
-
-
-class RefundRequest(Command, Preview):
-    expected_source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class Evidence(Command):
@@ -265,9 +260,6 @@ class CorrectionApi:
             operation_key=body.operation_key,
         )
 
-    async def refund_request(self, request: Request, body: RefundRequest):
-        return await self._execute(request, body, RequestSelectionRefund)
-
     async def review(self, request: Request, body: Review):
         return await self._execute(request, body, ReviewSelectionRefund)
 
@@ -293,7 +285,6 @@ def create_correction_router(resolve_principal: FinancialPrincipalResolver):
         ("/orders", api.orders),
         ("/preview", api.preview),
         ("/{case_id}/detail", api.detail),
-        ("/request", api.refund_request),
         ("/admin/review", api.review),
         ("/admin/observation", api.observe),
         ("/admin/match", api.match),

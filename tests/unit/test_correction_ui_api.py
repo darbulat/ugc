@@ -4,6 +4,7 @@ import importlib
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from types import SimpleNamespace
+from uuid import UUID
 
 import httpx
 import pytest
@@ -11,7 +12,10 @@ from fastapi import FastAPI
 
 from tests.e2e.miniapp_helpers import generate_init_data
 from tests.helpers.correction_commands import HASH, NOW, Proofs, Repository, U
-from ugc_bot.application.correction_ports import CorrectionScope
+from ugc_bot.application.correction_ports import (
+    CorrectionScope,
+    RequestSelectionRefund,
+)
 from ugc_bot.application.services.correction_service import CorrectionService
 
 
@@ -171,9 +175,42 @@ async def request_ui(app, auth, **changes):
         paid_item_ids=[str(U[5])],
         expected_source_hash=HASH,
     )
-    response = await post(app, auth, "request", **(values | changes))
-    assert response.status_code == 200, response.text
-    return response.json()
+    body = values | changes
+    service = app.state.dispatcher["correction_service"]
+    repo = service.repository
+    token = (
+        "synthetic-telegram-token"
+        if auth["platform"] == "telegram"
+        else "synthetic-max-token"
+    )
+    actor = next(
+        row
+        for row in repo.actors.values()
+        if generate_init_data(
+            token,
+            int(
+                row["telegram_id"]
+                if auth["platform"] == "telegram"
+                else row["max_id"]
+            ),
+            "Synthetic",
+        )
+        == auth["init_data"]
+    )
+    command = RequestSelectionRefund(
+        actor_id=actor["user_id"],
+        operation_key=body["operation_key"],
+        reason=body["reason"],
+        order_id=U[3],
+        paid_item_ids=(U[5],),
+        expected_source_hash=body["expected_source_hash"],
+        existing_case_id=(
+            UUID(body["existing_case_id"])
+            if body.get("existing_case_id")
+            else None
+        ),
+    )
+    return await service.execute(command, session=repo.session)
 
 
 async def review_ui(app, auth, state, **changes):
@@ -236,7 +273,7 @@ async def test_signed_preview_is_exact_without_creating_command(platform):
     value = response.json()
     assert value["total_minor"] == "50000"
     assert value["components"][0]["gross_minor"] == "50000"
-    assert value["source_hash"] == HASH and value["can_request"]
+    assert value["source_hash"] == HASH and not value["can_request"]
     assert value["can_approve"] is False
     assert not repo.rows["commands"] and not repo.rows["cases"]
     assert response.headers["cache-control"] == "no-store"
@@ -245,25 +282,10 @@ async def test_signed_preview_is_exact_without_creating_command(platform):
 @pytest.mark.asyncio
 async def test_ui_receipt_and_current_state_are_separate():
     app, repo, auth = application()
-    result = await post(
-        app,
-        auth,
-        "request",
-        operation_key="ui-request",
-        reason="Actual own request",
-        order_id=str(U[3]),
-        paid_item_ids=[str(U[5])],
-        expected_source_hash=HASH,
-    )
-    assert result.status_code == 200, result.text
-    receipt = result.json()
-    status = await post(
-        app, auth, "operations/status", operation_key="ui-request"
-    )
-    assert status.status_code == 200, status.text
-    assert status.json()["original_result"] == receipt
-    assert status.json()["current"]["version"] == 1
-    assert len(repo.rows["commands"]) == 1
+    result = await post(app, auth, "request", operation_key="ui-request")
+    assert result.status_code == 404
+    assert not repo.rows["commands"]
+    assert not repo.rows["requests"]
 
 
 @pytest.mark.asyncio
@@ -393,7 +415,7 @@ async def test_core_pause_keeps_actual_manual_fact_and_protected_reads():
         paid_item_ids=[str(U[5])],
         expected_source_hash=HASH,
     )
-    assert refused.status_code == 503
+    assert refused.status_code == 404
     report = await observe_ui(app, admin, amount_minor="-9223372036854775808")
     assert report.status_code == 200, report.text
     assert report.json()["applied"] is False
@@ -502,8 +524,7 @@ async def test_foreign_preview_and_idempotency_conflict_cannot_reveal_source():
         paid_item_ids=[str(U[5])],
         expected_source_hash=HASH,
     )
-    assert conflict.status_code == 409
-    assert conflict.json()["detail"] == "idempotency_payload_conflict"
+    assert conflict.status_code == 404
     assert len(repo.rows["requests"]) == 1
 
 
@@ -519,7 +540,7 @@ async def test_admin_early_case_read_and_rejection_keep_observation_history():
     )
     assert "request" not in early.json()["allowed_actions"]
     own_early = await post(app, own, case_id + "/detail")
-    assert own_early.json()["allowed_actions"] == ["request"]
+    assert "request" not in own_early.json()["allowed_actions"]
     requested = await request_ui(app, own, existing_case_id=case_id)
     rejected = await review_ui(app, admin, requested, decision="reject")
     assert rejected.status_code == 200
