@@ -12,6 +12,7 @@ from ugc_bot.application.services.financial_policy_service import (
 )
 from ugc_bot.config import FinancialConfig
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.financial_tariff import require_tariff
 from ugc_bot.domain.refund_rules import RefundRules
 
 
@@ -22,8 +23,11 @@ class FinancialPolicyDraft:
     allowed_clients: frozenset[UUID]
     terms_reference: str
     refund_rules: RefundRules
+    selection_minor: int
+    accompaniment_minor: int
 
     def __post_init__(self) -> None:
+        require_tariff(self.selection_minor, self.accompaniment_minor)
         for value, limit in ((self.version, 64), (self.terms_reference, 2048)):
             if (
                 not isinstance(value, str)
@@ -56,12 +60,25 @@ class FinancialPolicyDraft:
         rules = config.refund_rules()
         if rules is None:
             raise ValueError("refund_rules_required")
+        if (
+            config.selection_price_minor is None
+            or config.accompaniment_price_minor is None
+        ):
+            raise ValueError("financial_prices_required")
         return cls(
-            version, effective_from, allowed_clients, terms_reference, rules
+            version,
+            effective_from,
+            allowed_clients,
+            terms_reference,
+            rules,
+            config.selection_price_minor,
+            config.accompaniment_price_minor,
         )
 
     def to_document(self) -> dict:
         return {
+            "selection_minor": self.selection_minor,
+            "accompaniment_minor": self.accompaniment_minor,
             "version": self.version,
             "effective_from": self.effective_from.isoformat(),
             "allowed_clients": sorted(str(c) for c in self.allowed_clients),
@@ -126,6 +143,8 @@ class FinancialPolicyPublicationService:
                 allowed_clients=draft.allowed_clients,
                 terms_reference=draft.terms_reference,
                 refund_rules=draft.refund_rules,
+                selection_minor=draft.selection_minor,
+                accompaniment_minor=draft.accompaniment_minor,
             )
             await repo.save_approved(policy, session=session)
             return policy
@@ -139,4 +158,6 @@ class FinancialPolicyPublicationService:
             and policy.allowed_clients == draft.allowed_clients
             and policy.terms_reference == draft.terms_reference
             and policy.refund_rules == draft.refund_rules
+            and policy.selection_minor == draft.selection_minor
+            and policy.accompaniment_minor == draft.accompaniment_minor
         )

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from ugc_bot.domain.collaboration import CollaborationState
-from ugc_bot.domain.financial import MANAGEMENT_REWARD_MINOR, utc
+from ugc_bot.domain.financial import MANAGEMENT_REWARD_MINOR, MAX_MINOR, utc
 
 ACCOMPANIMENT_REFUND_STAGES = frozenset(
     state.value
@@ -198,9 +198,11 @@ class RefundRules:
         """Return cumulative half-up targets under the saved contract terms."""
         if not isinstance(stage, str) or stage not in CollaborationState:
             raise ValueError("invalid_refund_work_stage")
-        _bounded_integer(paid_minor, 0, 120000)
+        _bounded_integer(paid_minor, 0, MAX_MINOR // 400)
         _bounded_integer(manager_earned_minor, 0, MANAGEMENT_REWARD_MINOR)
-        if paid_minor not in (0, 120000) or manager_earned_minor not in (
+        if (
+            paid_minor != 0 and paid_minor < MANAGEMENT_REWARD_MINOR
+        ) or manager_earned_minor not in (
             0,
             MANAGEMENT_REWARD_MINOR,
         ):

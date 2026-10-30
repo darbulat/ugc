@@ -20,6 +20,10 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from ugc_bot.domain.financial_tariff import (
+    MAX_POSITION_TOTAL_MINOR,
+    require_tariff,
+)
 from ugc_bot.domain.refund_rules import RefundRules
 
 _ENV = SettingsConfigDict(
@@ -130,6 +134,7 @@ _FLAT_KEYS = {
     ],
     "order": [
         "ALLOWED_BLOGGER_COUNTS",
+        "CUSTOMER_WORKFLOWS_ENABLED",
         "MAX_ORDER_PRICE",
         "ORDER_RADIUS_KM",
     ],
@@ -139,6 +144,8 @@ _FLAT_KEYS = {
         "CAMPAIGN_DELIVERY_INTERVAL_SECONDS",
     ],
     "financial": [
+        "FINANCIAL_SELECTION_PRICE_MINOR",
+        "FINANCIAL_ACCOMPANIMENT_PRICE_MINOR",
         "FINANCIAL_CORE_ENABLED",
         "FINANCIAL_NEW_ORDERS_ENABLED",
         "FINANCIAL_PAYOUTS_ENABLED",
@@ -581,6 +588,10 @@ class OrderConfig(BaseSettings):
 
     model_config = _ENV
 
+    customer_workflows_enabled: bool = Field(
+        default=False, alias="CUSTOMER_WORKFLOWS_ENABLED"
+    )
+
     allowed_blogger_counts: str = Field(
         default="1,3,5,10", alias="ALLOWED_BLOGGER_COUNTS"
     )
@@ -703,6 +714,30 @@ class FinancialConfig(BaseSettings):
             raise ValueError("financial_superadmin_uuid_list_required")
         return frozenset(result)
 
+    selection_price_minor: int | None = Field(
+        default=None,
+        alias="FINANCIAL_SELECTION_PRICE_MINOR",
+        ge=1,
+        le=MAX_POSITION_TOTAL_MINOR,
+    )
+    accompaniment_price_minor: int | None = Field(
+        default=None,
+        alias="FINANCIAL_ACCOMPANIMENT_PRICE_MINOR",
+        ge=60000,
+        le=MAX_POSITION_TOTAL_MINOR,
+    )
+
+    @field_validator(
+        "selection_price_minor", "accompaniment_price_minor", mode="before"
+    )
+    @classmethod
+    def _strict_tariff_minor(cls, value: Any) -> int | None:
+        if value is None or type(value) is int:
+            return value
+        if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+            return int(value)
+        raise ValueError("tariff_integer_minor_required")
+
     core_enabled: bool = Field(default=False, alias="FINANCIAL_CORE_ENABLED")
     new_orders_enabled: bool = Field(
         default=False, alias="FINANCIAL_NEW_ORDERS_ENABLED"
@@ -784,6 +819,17 @@ class FinancialConfig(BaseSettings):
     @model_validator(mode="after")
     def _complete_refund_configuration(self) -> Self:
         self.refund_rules()
+        if (self.selection_price_minor is None) != (
+            self.accompaniment_price_minor is None
+        ):
+            raise ValueError("tariff_configuration_incomplete")
+        if (
+            self.selection_price_minor is not None
+            and self.accompaniment_price_minor is not None
+        ):
+            require_tariff(
+                self.selection_price_minor, self.accompaniment_price_minor
+            )
         self.superadmin_user_ids()
         return self
 
@@ -902,6 +948,10 @@ class AppConfig(BaseModel):
         default_factory=MessengerLinkingConfig
     )
     max_bot: MaxBotConfig | None = None
+
+    @property
+    def customer_workflows_enabled(self) -> bool:
+        return self.order.customer_workflows_enabled
 
     @model_validator(mode="before")
     @classmethod

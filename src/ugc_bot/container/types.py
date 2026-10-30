@@ -88,6 +88,12 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 class BotServices(TypedDict):
     """Typed structure for bot dispatcher services and dependencies."""
 
+    order_image_service: NotRequired[Any]
+    payment_repo: NotRequired[Any]
+    order_support_service: NotRequired[Any]
+    service_lead_service: NotRequired[Any]
+    client_followup_service: NotRequired[Any]
+    client_order_view_service: NotRequired[Any]
     checkout_service: NotRequired[Any]
     legacy_financial_case_service: Any
     metrics_collector: Any

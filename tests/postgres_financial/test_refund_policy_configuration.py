@@ -84,6 +84,14 @@ async def test_real_publication_to_order_and_issued_invoice_ignores_new_env(
     # The application's configuration changes after approval, before quote.
     cfg.financial.selection_refund_window_seconds = 86400
     cfg.financial.accompaniment_refund_rates_bps = {"assigned": 0}
+    cfg.financial.selection_price_minor = 79000
+    cfg.financial.accompaniment_price_minor = 170000
+    newer = draft(cfg, seed)
+    newer_policy = await _publish(cfg, newer, seed["user"])
+    assert (newer_policy.selection_minor, newer_policy.accompaniment_minor) == (
+        79000,
+        170000,
+    )
     container = Container(cfg)
     try:
         orders = container.build_bot_services()["order_service"]
@@ -111,6 +119,8 @@ async def test_real_publication_to_order_and_issued_invoice_ignores_new_env(
         _, quote = await orders.create_financial_order(**args)
         _, replay = await orders.create_financial_order(**args)
         assert replay == quote and quote.refund_rules == chosen.refund_rules
+        assert {i.selection_minor for i in quote.items} == {50000}
+        assert {i.accompaniment_minor for i in quote.items} == {0, 120000}
         capture = SqlAlchemyFinancialCaptureRepository(
             orders.paid_item_service.policy_service
         )

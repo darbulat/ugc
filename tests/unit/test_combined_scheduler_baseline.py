@@ -41,7 +41,7 @@ def boundaries(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_disabled_schedulers_build_no_dependencies(boundaries, caplog):
-    container = Mock()
+    container = Mock(transaction_manager=None)
     await scheduler._run_all(settings(), container, object())
     assert container.mock_calls == []
     boundaries[0].assert_called_once_with("combined-scheduler")
@@ -68,7 +68,7 @@ async def test_enabled_loops_receive_dependencies_and_cancel_peers_on_failure(
             "recorder",
         )
     }
-    container = Mock()
+    container = Mock(transaction_manager=None)
     container.build_feedback_scheduler_deps.return_value = deps
     container.build_referral_reconciliation_deps.return_value = deps
     started = asyncio.Event()
@@ -157,7 +157,7 @@ def test_main_validates_database_and_disposes_resources(
 def test_main_closes_resources_when_scheduler_setup_fails(monkeypatch):
     config = settings(True)
     config.feedback.campaign_digest_enabled = False
-    container = Mock(dispose=AsyncMock())
+    container = Mock(dispose=AsyncMock(), transaction_manager=None)
     container.build_user_role_service.side_effect = RuntimeError(
         "dependency unavailable"
     )

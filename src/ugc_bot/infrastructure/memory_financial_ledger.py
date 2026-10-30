@@ -112,6 +112,10 @@ class InMemoryFinancialLedgerRepository:
         self.records[b.business_key] = record
         return record
 
+    async def has_zero_assessment(self, key, *, session):
+        saved = self.potentials.get(key)
+        return saved is not None and saved.reason == "rounded_commission_zero"
+
     async def save_potential(self, basis, reason, *, recorded_at, session):
         self._session(session)
         old = self.potentials.get(basis.business_key)

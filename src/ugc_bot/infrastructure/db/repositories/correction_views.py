@@ -122,9 +122,16 @@ class SqlAlchemyCorrectionViewRepository(SqlAlchemyCorrectionRepository):
 
     async def order_positions(self, order_id, *, session):
         items = Base.metadata.tables["order_items"]
+        orders = Base.metadata.tables["orders"]
+        db = _session(session)
+        expected_count = await db.scalar(
+            select(orders.c.bloggers_needed).where(
+                orders.c.order_id == order_id
+            )
+        )
         positions = (
             (
-                await _session(session).execute(
+                await db.execute(
                     select(
                         items.c.paid_item_id,
                         items.c.ordinal,
@@ -136,12 +143,18 @@ class SqlAlchemyCorrectionViewRepository(SqlAlchemyCorrectionRepository):
                         items.c.captured_at.is_not(None),
                     )
                     .order_by(items.c.ordinal)
-                    .limit(31)
+                    .limit(201)
                 )
             )
             .mappings()
             .all()
         )
-        if len(positions) > 30:
+        if (
+            expected_count is None
+            or len(positions) > min(expected_count, 200)
+            or any(
+                not 1 <= row["ordinal"] <= expected_count for row in positions
+            )
+        ):
             raise ValueError("correction_source_unavailable")
         return [dict(item) for item in positions]

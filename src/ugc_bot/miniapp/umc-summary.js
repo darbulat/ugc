@@ -25,6 +25,7 @@
     if(data.order_id!==state.order || !count(data.total) || !states || typeof states!=='object' || Array.isArray(states) || ['client','manager'].indexOf(data.role)<0 || ['financial_positions','legacy_feedback'].indexOf(data.source)<0) throw new Error('invalid_summary');
     var total=0;Object.keys(states).forEach(function(key){if(!count(states[key])) throw new Error('invalid_count');total+=states[key];});
     if(total!==data.total || (data.contact_accepted!==null && (!count(data.contact_accepted)||data.contact_accepted>data.total))) throw new Error('invalid_summary');
+    if(data.public_number)text('summary-order',data.public_number);
     text('summary-total',data.total);text('summary-role',c[data.role]);text('summary-source',data.source==='financial_positions'?c.financial:c.legacy);
     id('summary-contacts').hidden=data.contact_accepted===null; text('summary-contacts',data.contact_accepted===null?'':c.contacts+': '+data.contact_accepted);
     var parent=id('summary-states');parent.replaceChildren();
@@ -41,7 +42,7 @@
     var current=document.querySelector('.screen.active');if(current && current!==screen)state.back=current.id;
     state.request++;busy(false);localize();id('summary-content').hidden=true;bridge.showScreen(screen.id);state.opened=true;
     if(!validId(order)){state.order=null;text('summary-error',words().invalid);return;}
-    state.order=order.toLowerCase();text('summary-order',state.order);var url=new URL(location.href);url.searchParams.set('summary',state.order);history.replaceState(null,'',url.href);load();
+    state.order=order.toLowerCase();text('summary-order','UMC-'+state.order.replace(/-/g,'').slice(0,8).toUpperCase());var url=new URL(location.href);url.searchParams.set('summary',state.order);history.replaceState(null,'',url.href);load();
   }
   id('btn-summary-refresh').addEventListener('click',load);
   id('btn-summary-back').addEventListener('click',function(){state.request++;busy(false);var url=new URL(location.href);url.searchParams.delete('summary');history.replaceState(null,'',url.href);bridge.showScreen(state.back);});

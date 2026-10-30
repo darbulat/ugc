@@ -44,6 +44,23 @@ async def intake_env(financial_pg_engine):
         }
     )
     container = Container(config)
+    # Historical migration tests deliberately seed facts before the order
+    # notice migration exists. Reproduce the historical producers there;
+    # current-head fixtures continue exercising the durable queue.
+    with financial_pg_engine.connect() as connection:
+        has_order_notices = connection.scalar(
+            text("SELECT to_regclass('order_notice_events') IS NOT NULL")
+        )
+    if not has_order_notices:
+        build_current_services = container.build_bot_services
+
+        def build_historical_services():
+            services = build_current_services()
+            services["order_service"].order_notices = None
+            services["payment_service"].order_notices = None
+            return services
+
+        container.build_bot_services = build_historical_services
     repos = container.build_repos()
     user = await create_test_user(
         repos["user_repo"],

@@ -402,6 +402,57 @@ class Container:
             if engine is not None:
                 await engine.dispose()
 
+    def build_order_image_service(self):
+        """Private attachment storage shared by API replicas and cleanup."""
+        from ugc_bot.application.services.order_image_service import (
+            OrderImageService,
+        )
+        from ugc_bot.infrastructure.clock import SystemClock
+        from ugc_bot.infrastructure.db.repositories.order_images import (
+            SqlAlchemyOrderImageRepository,
+        )
+        from ugc_bot.infrastructure.order_images import PrivateOrderImageStorage
+
+        if self._transaction_manager is None:
+            return None
+        return OrderImageService(
+            SqlAlchemyOrderImageRepository(),
+            PrivateOrderImageStorage(),
+            self._transaction_manager,
+            SystemClock(),
+        )
+
+    def build_order_notice_details_service(self):
+        """Saved quote projection shared by private cards and admin views."""
+        from ugc_bot.application.services.order_notice_details_service import (
+            OrderNoticeDetailsService,
+        )
+        from ugc_bot.infrastructure.db.repositories import order_notice_details
+
+        if self._transaction_manager is None:
+            return None
+        return OrderNoticeDetailsService(
+            order_notice_details.SqlAlchemyOrderNoticeDetailsRepository(),
+            self._transaction_manager,
+        )
+
+    def build_order_notice_delivery(self, messenger_client):
+        """Durable created/paid cards use the persisted quote and contacts."""
+        from ugc_bot.container.order_notice_factory import (
+            build_order_notice_delivery,
+        )
+
+        details = self.build_order_notice_details_service()
+        if details is None:
+            return None
+        return build_order_notice_delivery(
+            self._config,
+            self._transaction_manager,
+            messenger_client,
+            self.build_repos(),
+            details_loader=details.for_order,
+        )
+
     def build_bot_services(self) -> "BotServices":
         """Build all services and repos for the bot dispatcher."""
         if not self._session_factory:

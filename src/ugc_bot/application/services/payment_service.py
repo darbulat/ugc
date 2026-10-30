@@ -13,6 +13,7 @@ from uuid import UUID, uuid4
 from ugc_bot.application.capture_ports import FinancialCaptureRepository
 from ugc_bot.application.errors import OrderCreationError, UserNotFoundError
 from ugc_bot.application.messenger.dto import PaymentSuccess
+from ugc_bot.application.order_notice_ports import OrderNoticeRepository
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     ContactPricingRepository,
@@ -110,6 +111,7 @@ class PaymentService:
     transaction_manager: TransactionManager | None = None
     capture_repository: FinancialCaptureRepository | None = None
     capture_account: str = ""
+    order_notices: OrderNoticeRepository | None = None
 
     async def confirm_telegram_payment(
         self,
@@ -321,13 +323,18 @@ class PaymentService:
             or receipt.invoice_payload != str(order.order_id)
         ):
             raise OrderCreationError("capture_receipt_mismatch")
-        return await self.capture_repository.capture(
+        payment = await self.capture_repository.capture(
             order.order_id,
             user_id,
             self.capture_account,
             receipt,
             session=session,
         )
+        if self.order_notices is not None:
+            await self.order_notices.enqueue(
+                order.order_id, "paid", session=session
+            )
+        return payment
 
     async def _locked_payment_order(
         self, order_id: UUID, user_id: UUID, session: object
@@ -398,6 +405,10 @@ class PaymentService:
                     raise OrderCreationError(
                         "Payment replay identity mismatch."
                     )
+                if self.order_notices is not None:
+                    await self.order_notices.enqueue(
+                        order.order_id, "paid", session=session
+                    )
                 return existing
 
             if order.status != OrderStatus.NEW:
@@ -440,6 +451,10 @@ class PaymentService:
                 order, status=OrderStatus.PENDING_MODERATION
             )
             await self.order_repo.save(order_pending, session=session)
+            if self.order_notices is not None:
+                await self.order_notices.enqueue(
+                    order.order_id, "paid", session=session
+                )
 
         logger.info(
             "Payment confirmed",

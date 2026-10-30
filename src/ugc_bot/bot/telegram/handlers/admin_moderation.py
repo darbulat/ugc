@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+from dataclasses import replace
 from uuid import UUID
 
 from aiogram import Router
@@ -12,7 +13,7 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
-from ugc_bot.application.ports import OrderRepository
+from ugc_bot.application.ports import OrderRepository, PaymentRepository
 from ugc_bot.application.services.admin_notification_service import (
     MOD_ACTIVATE_CALLBACK_PREFIX,
 )
@@ -23,7 +24,7 @@ from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 from ugc_bot.domain.entities import Order
-from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.enums import OrderStatus, PaymentStatus, UserStatus
 from ugc_bot.infrastructure.db.session import TransactionManagerProtocol
 
 logger = logging.getLogger(__name__)
@@ -78,14 +79,14 @@ async def _validate_and_get_order(
     )
     if user is None:
         return ("Пользователь не найден.", None)
-    if not user.admin:
+    if not user.admin or user.status != UserStatus.ACTIVE:
         return ("Доступ запрещён.", None)
 
     order_id = _parse_order_id_from_callback(callback.data or "")
     if order_id is None:
         return ("Неверный формат идентификатора заказа.", None)
 
-    order = await order_repo.get_by_id(order_id, session=session)
+    order = await order_repo.get_by_id_for_update(order_id, session=session)
     if order is None:
         return ("Заказ не найден.", None)
     if order.status != OrderStatus.PENDING_MODERATION:
@@ -106,6 +107,7 @@ async def handle_moderate_activate(
     transaction_manager: TransactionManagerProtocol,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    payment_repo: PaymentRepository | None = None,
 ) -> None:
     """Handle admin click on 'Activate' button for order moderation."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -134,7 +136,22 @@ async def handle_moderate_activate(
             )
             return
 
-        await outbox_publisher.publish_order_activation(order, session=session)
+        payment = (
+            await payment_repo.get_by_order(order.order_id, session=session)
+            if payment_repo is not None
+            else None
+        )
+        if payment is None or payment.status != PaymentStatus.PAID:
+            await messenger_client.answer_callback(
+                callback_id=incoming.callback_id,
+                text="Оплата заказа не подтверждена.",
+            )
+            return
+        activated = replace(order, status=OrderStatus.ACTIVE)
+        await order_repo.save(activated, session=session)
+        await outbox_publisher.publish_order_activation(
+            activated, session=session
+        )
 
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,

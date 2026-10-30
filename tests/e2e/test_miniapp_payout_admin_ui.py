@@ -232,7 +232,11 @@ def test_admin_entries_follow_current_read_capabilities(
     assert page.locator("#payout-admin-requirements").count() == int(
         requirements_allowed
     )
-    assert not any("/admin/" in p for p, _ in network.requests)
+    # Customer navigation may request its own admin capability context.
+    # Merely displaying payout entries must not fetch protected payout data.
+    assert not any(
+        p.startswith("/payouts/read/admin/") for p, _ in network.requests
+    )
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])

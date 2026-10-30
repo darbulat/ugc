@@ -24,6 +24,7 @@ def build_checkout_service(
             SqlAlchemyFinancialCaptureRepository(
                 FinancialPolicyService(config.financial)
             ),
+            admin_notices_enabled=False,
         ),
         transactions,
         None,

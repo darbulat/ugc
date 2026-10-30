@@ -7,6 +7,8 @@ from ugc_bot.application.messenger.dto import Button
 ORDER_FLOW_TYPE = "order_creation"
 
 # Inline callback_data for order creation (Telegram limit 64 bytes)
+CALLBACK_ORDER_TYPE_STORIES = "order:type:stories"
+ORDER_TYPE_STORIES = "Сторис"
 CALLBACK_ORDER_TYPE_UGC = "order:type:ugc"
 CALLBACK_ORDER_TYPE_PLACEMENT = "order:type:placement"
 CALLBACK_ORDER_COOP_BARTER = "order:coop:barter"
@@ -69,6 +71,8 @@ class OrderCreationStates(StatesGroup):
     content_usage = State()
     deadlines = State()
     geography = State()
+    platforms = State()
+    accompaniment = State()
 
 
 def order_type_keyboard(
@@ -77,6 +81,12 @@ def order_type_keyboard(
     """Keyboard for order type: UGC only or UGC + placement (inline)."""
     t = texts or {}
     return [
+        [
+            Button(
+                text=t.get("order_type_stories", ORDER_TYPE_STORIES),
+                callback_data=CALLBACK_ORDER_TYPE_STORIES,
+            )
+        ],
         [
             Button(
                 text=t.get("order_type_ugc_only", ORDER_TYPE_UGC_ONLY),
@@ -154,6 +164,7 @@ def bloggers_needed_keyboard(
             )
         ]
         for c in sorted(allowed_blogger_counts)
+        if len(allowed_blogger_counts) <= 10 or c in (10, 20, 30, 50, 100, 200)
     ]
 
 

@@ -38,7 +38,9 @@ capture_env = _capture_env
 @pytest_asyncio.fixture
 async def payout_env(capture_env, monkeypatch):
     env = capture_env
-    flow = await start_flow(env, monkeypatch)
+    flow = await start_flow(
+        env, monkeypatch, accompaniment=env.get("accompaniment_minor", 120000)
+    )
     try:
         await finish_work(env, flow)
         await process_work_events(env, flow)

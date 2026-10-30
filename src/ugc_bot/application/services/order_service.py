@@ -15,6 +15,7 @@ from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
     parse_geography,
 )
+from ugc_bot.application.order_notice_ports import OrderNoticeRepository
 from ugc_bot.application.ports import (
     AdvertiserProfileRepository,
     CountryRepository,
@@ -86,6 +87,21 @@ class OrderService:
     geocoder: Optional[GeocoderPort] = None
     country_repo: Optional[CountryRepository] = None
     paid_item_service: PaidItemService | None = None
+    order_notices: OrderNoticeRepository | None = None
+
+    async def _enqueue_created(self, order, session):
+        if self.order_notices is None:
+            return
+        if session is None:
+            raise ValueError("caller_transaction_required")
+        await self.order_notices.enqueue(
+            order.order_id, "created", session=session
+        )
+
+    @staticmethod
+    def _check_image_match(existing, reference):
+        if existing.product_photo_file_id != reference:
+            raise ValueError("idempotency_payload_conflict")
 
     async def _resolve_currency(
         self, country_code: Optional[str], session: object | None
@@ -206,8 +222,11 @@ class OrderService:
                     price,
                     barter_description,
                     bloggers_needed,
-                    self.allowed_blogger_counts
-                    | ({30} if _financial_order_id else set()),
+                    (
+                        frozenset(range(10, 201))
+                        if _financial_order_id
+                        else self.allowed_blogger_counts
+                    ),
                     self.max_order_price,
                 )
             )
@@ -260,6 +279,7 @@ class OrderService:
                 currency=order_currency,
             )
             await self.order_repo.save(order, session=session)
+            await self._enqueue_created(order, session)
 
             logger.info(
                 "Order created",
@@ -308,6 +328,8 @@ class OrderService:
         idempotency_key: str,
         session: object | None = None,
         targeting: OrderTargeting | None = None,
+        position_count: int = 30,
+        product_photo_file_id: str | None = None,
     ) -> tuple[Order, FinancialQuote]:
         """Explicit opt-in: validate first, commit order and quote together.
 
@@ -331,14 +353,15 @@ class OrderService:
             accompaniment_ordinals=accompaniment_ordinals,
             client_contact_reference=client_contact_reference,
             idempotency_key=idempotency_key,
+            position_count=position_count,
         )
         clean_link, clean_offer, clean_barter = _validate_order_input(
             product_link,
             offer_text,
             price,
             barter_description,
-            30,
-            self.allowed_blogger_counts | {30},
+            position_count,
+            frozenset(range(10, 201)),
             self.max_order_price,
         )
 
@@ -348,6 +371,7 @@ class OrderService:
                 order_id, session=session
             )
             if existing is not None:
+                self._check_image_match(existing, product_photo_file_id)
                 if targeting is not None and any(
                     getattr(existing, k) != v
                     for k, v in targeting.order_fields().items()
@@ -370,7 +394,7 @@ class OrderService:
                     clean_offer,
                     clean_barter,
                     price,
-                    30,
+                    position_count,
                     currency,
                     order_created_at,
                 ):
@@ -392,10 +416,11 @@ class OrderService:
                 offer_text=clean_offer,
                 barter_description=clean_barter,
                 price=price,
-                bloggers_needed=30,
+                bloggers_needed=position_count,
                 _session=session,
                 _financial_order_id=order_id,
                 _created_at=order_created_at,
+                product_photo_file_id=product_photo_file_id,
             )
             await paid.repository.activate_new_order(
                 order_id, quote.policy_version, session=session
@@ -409,7 +434,8 @@ class OrderService:
                 persisted = replace(persisted, **targeting.order_fields())
             persisted = replace(
                 persisted,
-                filter_by_placement=order_type == OrderType.UGC_PLUS_PLACEMENT,
+                filter_by_placement=order_type
+                in (OrderType.UGC_PLUS_PLACEMENT, OrderType.STORIES),
             )
             await self.order_repo.save(persisted, session=session)
             return persisted, saved

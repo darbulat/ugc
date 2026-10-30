@@ -19,12 +19,21 @@ from sqlalchemy import text
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
+from starlette.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from wtforms import SelectField  # type: ignore[import-untyped]
 
-from ugc_bot.admin.auth import AdminAuth
+from ugc_bot.admin.auth import (
+    AdminAuth,
+    admin_login_redirect,
+    safe_admin_return_to,
+)
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
@@ -54,6 +63,7 @@ from ugc_bot.domain.enums import (
     ComplaintStatus,
     InteractionStatus,
     OrderStatus,
+    PaymentStatus,
     PayoutRequestStatus,
     UserStatus,
 )
@@ -177,6 +187,39 @@ async def _publish_order_activation(order_id: UUID) -> None:
             "Failed to publish order activation after admin approval",
             extra={"order_id": str(order_id)},
         )
+
+
+async def _activate_paid_order(order_id: UUID) -> None:
+    """Commit approval and activation delivery intent as one transaction."""
+    container = _get_admin_container()
+    if container is None or container.transaction_manager is None:
+        raise ValueError("order_activation_unavailable")
+    content_moderation, outbox, orders = _get_order_moderation_deps(container)
+    payments = container.build_repos().get("payment_repo")
+    if payments is None:
+        raise ValueError("order_payment_unavailable")
+    async with container.transaction_manager.transaction() as session:
+        order = await orders.get_by_id_for_update(order_id, session=session)
+        if order is None:
+            raise ValueError("order_not_found")
+        if order.status == OrderStatus.ACTIVE:
+            return
+        if order.status != OrderStatus.PENDING_MODERATION:
+            raise ValueError("paid_pending_moderation_required")
+        payment = await payments.get_by_order(order_id, session=session)
+        if payment is None or payment.status != PaymentStatus.PAID:
+            raise ValueError("paid_pending_moderation_required")
+        if content_moderation.order_contains_banned_content(
+            product_link=order.product_link,
+            offer_text=order.offer_text,
+            barter_description=order.barter_description,
+            content_usage=order.content_usage,
+            geography=order.geography,
+        ):
+            raise ValueError("Запрещённый контент. Отредактируйте заявку.")
+        activated = dataclasses.replace(order, status=OrderStatus.ACTIVE)
+        await orders.save(activated, session=session)
+        await outbox.publish_order_activation(activated, session=session)
 
 
 async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
@@ -434,7 +477,7 @@ async def _render_dashboard_page(
 ):
     """Render dashboard HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     period_key = _normalize_period(period)
     include_timings = (
         timings.lower() in ("1", "true", "yes") if timings else False
@@ -498,7 +541,7 @@ async def _render_referrers_page(
 ):
     """Render referrers HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     period_key = _normalize_period(period)
     include_timings = (
         timings.lower() in ("1", "true", "yes") if timings else False
@@ -562,7 +605,7 @@ async def _render_creators_page(
 ):
     """Render creators list HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     period_key = _normalize_period(period)
     cache_key = (
         f"creators:{period_key}:{only_new}:{with_complaints}:"
@@ -625,7 +668,7 @@ async def _render_advertisers_page(
 ):
     """Render advertisers list HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     cache_key = (
         f"advertisers:{page}:{per_page}:{q or ''}:{sort}:{order}"
         if cache
@@ -677,7 +720,7 @@ async def _render_orders_page(
 ):
     """Render orders list HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     period_key = _normalize_period(period)
     search_term = search.strip() if search else ""
     cache_key = (
@@ -732,7 +775,7 @@ async def _render_order_detail_page(
 ):
     """Render order detail HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     order = await dashboard_service.get_order_card(order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="Заказ не найден")
@@ -755,7 +798,7 @@ async def _render_user_card_page(
 ):
     """Render user card HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     user_card = await dashboard_service.get_user_card(user_id)
     if user_card is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
@@ -936,7 +979,7 @@ async def _render_search_page(
 ):
     """Search users HTML page."""
     if not await auth.authenticate(request):
-        return RedirectResponse(url="/admin/login")
+        return admin_login_redirect(request)
     cache_key = f"search:{q or ''}:50" if cache else None
 
     async def _fetch():
@@ -1185,7 +1228,7 @@ def _register_flowchart_route(app: FastAPI, auth: AdminAuth) -> None:
     @app.get("/admin/flowchart", response_class=HTMLResponse)
     async def admin_flowchart(request: Request):
         if not await auth.authenticate(request):
-            return RedirectResponse(url="/admin/login")
+            return admin_login_redirect(request)
         if not _FLOWCHART_PATH.exists():
             raise HTTPException(
                 status_code=404,
@@ -1754,6 +1797,9 @@ class OrderAdmin(ModelView, model=OrderModel):
             new_status_raw == "active" or new_status_raw == OrderStatus.ACTIVE
         )
 
+        activating = new_status_active and old_status != OrderStatus.ACTIVE
+        if activating and old_status != OrderStatus.PENDING_MODERATION:
+            raise ValueError("paid_pending_moderation_required")
         if new_status_active and old_status == OrderStatus.PENDING_MODERATION:
             container = _get_admin_container()
             if container:
@@ -1777,21 +1823,18 @@ class OrderAdmin(ModelView, model=OrderModel):
                         "Отредактируйте заявку."
                     )
 
+        if activating:
+            # Save edits while keeping the pending state. Only the locked
+            # payment check below can commit ACTIVE and its dispatch event.
+            data = {**data, "status": OrderStatus.PENDING_MODERATION}
         result = await super().update_model(request, pk, data)
+        if activating:
+            await _activate_paid_order(pk_uuid)
 
         if "geography" in data:
             await _update_order_location_geometry_after_geography_change(
                 pk_uuid, data.get("geography")
             )
-
-        obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
-        new_status = obj.status if obj else None
-
-        if (
-            old_status != OrderStatus.ACTIVE
-            and new_status == OrderStatus.ACTIVE
-        ):
-            await _publish_order_activation(pk_uuid)
 
         try:
             await _update_order_managers(pk_uuid, managers_raw)
@@ -2548,6 +2591,71 @@ async def _inject_order_eligible_bloggers_count(
         context["eligible_bloggers_count"] = None
 
 
+async def _inject_order_quote_details(context, model_view, model) -> None:
+    """Saved quote and private preview stay read-only in the edit page."""
+    if not isinstance(model_view, OrderAdmin) or model is None:
+        return
+    context["order_quote_details"] = None
+    context["order_image_preview"] = None
+    if (model.product_photo_file_id or "").startswith("order-image:"):
+        context["order_image_preview"] = f"/admin/order-images/{model.order_id}"
+    container = _get_admin_container()
+    if container is None:
+        return
+    service = container.build_order_notice_details_service()
+    if service is None:
+        return
+    details = await service.for_order(model)
+    if details:
+        context["order_quote_details"] = details | {
+            key.removesuffix("_minor") + "_display": format(
+                Decimal(details[key]) / 100, ".2f"
+            )
+            for key in (
+                "selection_base_minor",
+                "accompaniment_minor",
+                "total_minor",
+            )
+        }
+
+
+async def _handle_order_image_preview(request, auth, container, order_id):
+    """Only authenticated admin sessions may read bound private images."""
+    headers = {
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    if not await auth.authenticate(request):
+        return JSONResponse(
+            {"error": "Требуется вход в админку"},
+            status_code=401,
+            headers=headers,
+        )
+    service = container.build_order_image_service()
+    if service is None:
+        return JSONResponse(
+            {"error": "Изображение недоступно"},
+            status_code=503,
+            headers=headers,
+        )
+    order = await container.build_repos()["order_repo"].get_by_id(order_id)
+    if order is None:
+        return JSONResponse(
+            {"error": "Изображение не найдено"},
+            status_code=404,
+            headers=headers,
+        )
+    try:
+        content = await service.attached_content(order)
+    except (LookupError, ValueError, OSError):
+        return JSONResponse(
+            {"error": "Изображение не найдено"},
+            status_code=404,
+            headers=headers,
+        )
+    return Response(content, media_type="image/jpeg", headers=headers)
+
+
 async def _inject_order_managers(
     context: dict[str, Any],
     model_view: Any,
@@ -2589,6 +2697,24 @@ class EnumAwareAdmin(Admin):
     compares these and finds no match, defaulting to first option. We pass
     enum.value in form data so the select shows the correct option.
     """
+
+    async def login(self, request: Request):
+        """Preserve a validated local destination across SQLAdmin login."""
+        supplied: object = request.query_params.get("return_to")
+        if request.method == "POST":
+            supplied = supplied or (await request.form()).get("return_to")
+        if supplied is not None:
+            request.session.pop("admin_return_to", None)
+            if target := safe_admin_return_to(supplied):
+                request.session["admin_return_to"] = target
+        response = await super().login(request)
+        if request.method == "POST" and response.status_code == 302:
+            target = safe_admin_return_to(
+                request.session.pop("admin_return_to", None)
+            )
+            if target:
+                return RedirectResponse(target, status_code=302)
+        return response
 
     def _edit_form_data(
         self, model: Any, model_view: ModelView
@@ -2636,6 +2762,7 @@ class EnumAwareAdmin(Admin):
         }
         await _inject_order_eligible_bloggers_count(context, model_view, model)
         await _inject_order_managers(context, model_view, model)
+        await _inject_order_quote_details(context, model_view, model)
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(
@@ -2758,6 +2885,12 @@ def create_admin_app() -> FastAPI:
     async def upload_order_photo(request: Request) -> JSONResponse:
         """Upload an order image and return its Telegram file_id."""
         return await _handle_order_photo_upload(request, auth, config)
+
+    @app.get("/admin/order-images/{order_id}")
+    async def order_image_preview(request: Request, order_id: UUID) -> Response:
+        return await _handle_order_image_preview(
+            request, auth, container, order_id
+        )
 
     admin = EnumAwareAdmin(
         app,

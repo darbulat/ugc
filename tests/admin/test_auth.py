@@ -49,3 +49,24 @@ async def test_auth_rejects_wrong_username() -> None:
     request = FakeRequest({"username": "wrong_user", "password": "pass"})
 
     assert await auth.login(request) is False
+
+
+def test_safe_admin_return_target_rejects_external_and_encoded_targets() -> (
+    None
+):
+    from ugc_bot.admin.auth import safe_admin_return_to
+
+    assert (
+        safe_admin_return_to("/admin/order-model/edit/123?tab=settings")
+        == "/admin/order-model/edit/123?tab=settings"
+    )
+    for target in (
+        "https://evil.test/admin",
+        "//evil.test/admin",
+        "/admin/\\evil",
+        "/admin/%5cevil",
+        "/admin/%0aevil",
+        "/elsewhere",
+        "/admin/login",
+    ):
+        assert safe_admin_return_to(target) is None

@@ -55,8 +55,9 @@ def now():
 class SqlCheckoutRepository:
     tables = {"requests": REQUESTS, "checkouts": CHECKOUTS, "inbox": INBOX}
 
-    def __init__(self, config, capture):
+    def __init__(self, config, capture, *, admin_notices_enabled=True):
         self.config, self.capture = config, capture
+        self.admin_notices_enabled = admin_notices_enabled
         self.account = config.bot.telegram_payment_account_id
 
     async def _owner(self, order_id, actor, db, *, lock=False, active=False):
@@ -835,6 +836,11 @@ class SqlCheckoutRepository:
             )
         ).all()
         for user in recipients:
+            if (
+                not self.admin_notices_enabled
+                and user.user_id != order.advertiser_id
+            ):
+                continue
             await db.execute(
                 pg_insert(NOTICE_JOBS)
                 .values(
@@ -904,6 +910,9 @@ class SqlCheckoutRepository:
                     .where(
                         NOTICE_JOBS.c.account == self.account,
                         NOTICE_JOBS.c.state == "ready",
+                        True
+                        if self.admin_notices_enabled
+                        else NOTICE_JOBS.c.kind == "client",
                         (NOTICE_JOBS.c.lease_until.is_(None))
                         | (NOTICE_JOBS.c.lease_until <= now()),
                     )

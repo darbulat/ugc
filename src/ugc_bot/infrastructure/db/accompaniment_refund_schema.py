@@ -87,7 +87,7 @@ def accompaniment_refund_tables(metadata):
         text("evidence_hash"),
         at("recorded_at"),
         sa.CheckConstraint(
-            "customer_target_minor BETWEEN 1 AND 120000 "
+            "customer_target_minor>0 "
             "AND customer_delta_minor>0 "
             "AND customer_delta_minor<=customer_target_minor "
             "AND manager_target_minor BETWEEN 0 AND 60000 "
@@ -122,9 +122,8 @@ def accompaniment_refund_tables(metadata):
         sa.UniqueConstraint("assignment_id", "work_version"),
         sa.CheckConstraint(
             (
-                "decision IN ('continue','cancel') AND customer_net_minor "
-                "BETWEEN"
-                " 0 AND 120000 AND work_version>0"
+                "decision IN ('continue','cancel') AND "
+                "customer_net_minor>=0 AND work_version>0"
             ),
             name="ck_accompaniment_management_review",
         ),
@@ -155,7 +154,9 @@ BEGIN
 assignment_id=NEW.assignment_id;
  SELECT * INTO policy FROM financial_policy_versions WHERE
 version=NEW.policy_version;
- IF observation.observation_id IS NULL OR item.accompaniment_minor<>120000
+ IF observation.observation_id IS NULL OR item.accompaniment_minor IS DISTINCT
+FROM COALESCE((policy.rules->>'accompaniment_minor')::bigint,120000)
+ OR NEW.customer_target_minor>item.accompaniment_minor
  OR observation.paid_item_id IS DISTINCT FROM item.paid_item_id
  OR observation.payment_id IS DISTINCT FROM payment.payment_id
  OR payment.order_id IS DISTINCT FROM item.order_id
@@ -215,7 +216,8 @@ ERRCODE='23514'; END IF;
 NEW.stage THEN
    stage_bps :=
 (NEW.rules->'accompaniment_refund_rates_bps'->>NEW.stage)::integer;
-   expected_customer := (120000::bigint*stage_bps+5000)/10000;
+   expected_customer :=
+floor((item.accompaniment_minor::numeric*stage_bps+5000)/10000)::bigint;
    IF NEW.customer_target_minor<>expected_customer THEN
     RAISE EXCEPTION 'accompaniment_refund_policy_mismatch' USING
 ERRCODE='23514'; END IF;
@@ -228,7 +230,11 @@ s.id=o.snapshot_id
  ELSIF NEW.rules->>'accompaniment_manager_refund_mode'='retain_earned' THEN
 expected_manager:=0;
  ELSIF NEW.rules->>'accompaniment_manager_refund_mode'='proportional' THEN
-  expected_manager:=(60000::bigint*NEW.customer_target_minor+60000)/120000;
+  IF stage_bps IS NOT NULL THEN
+   expected_manager:=(60000::bigint*stage_bps+5000)/10000;
+  ELSE
+expected_manager:=floor((60000::numeric*NEW.customer_target_minor+item.accompaniment_minor::numeric/2)/item.accompaniment_minor)::bigint;
+  END IF;
  ELSE expected_manager:=NEW.manager_target_minor; END IF;
  IF NEW.manager_target_minor<>expected_manager THEN
   RAISE EXCEPTION 'accompaniment_manager_policy_mismatch' USING
@@ -296,7 +302,8 @@ BEGIN
 paid_item_id=NEW.paid_item_id;
  IF app.paid_item_id IS DISTINCT FROM NEW.paid_item_id
  OR app.customer_target_minor IS DISTINCT FROM latest_target
- OR NEW.customer_net_minor IS DISTINCT FROM 120000-app.customer_target_minor
+ OR NEW.customer_net_minor IS DISTINCT FROM (SELECT accompaniment_minor FROM
+order_items WHERE paid_item_id=app.paid_item_id)-app.customer_target_minor
  OR source.event_type IS DISTINCT FROM
 'financial.collaboration.management_reviewed'
  OR source.assignment_id IS DISTINCT FROM NEW.assignment_id

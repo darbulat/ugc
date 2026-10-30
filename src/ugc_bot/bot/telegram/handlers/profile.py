@@ -503,6 +503,7 @@ async def _update_advertiser_field(
     adv_keys = [
         "btn_create_order",
         "btn_my_orders",
+        "btn_rate_creators",
         "btn_my_profile",
         "btn_edit_profile",
     ]
@@ -1233,6 +1234,7 @@ async def show_profile(
             [
                 "btn_create_order",
                 "btn_my_orders",
+                "btn_rate_creators",
                 "btn_my_profile",
                 "btn_edit_profile",
                 "btn_partner_program",
@@ -1365,6 +1367,7 @@ async def handle_profile_agree_callback(
             [
                 "btn_create_order",
                 "btn_my_orders",
+                "btn_rate_creators",
                 "btn_my_profile",
                 "btn_edit_profile",
                 "btn_partner_program",
@@ -1588,6 +1591,7 @@ async def handle_profile_my_profile_callback(
             [
                 "btn_create_order",
                 "btn_my_orders",
+                "btn_rate_creators",
                 "btn_my_profile",
                 "btn_edit_profile",
                 "btn_partner_program",

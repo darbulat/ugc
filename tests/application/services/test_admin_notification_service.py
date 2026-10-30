@@ -391,7 +391,7 @@ async def test_notify_admins_about_order_paid_includes_admin_link() -> None:
     assert admin_btn.text == "Открыть в админке"
     assert (
         admin_btn.url
-        == f"https://admin.example.com/order-model/edit/{order.order_id}"
+        == f"https://admin.example.com/admin/order-model/edit/{order.order_id}"
     )
     activate_row = rows[-1]
     assert len(activate_row) == 1
@@ -1233,7 +1233,8 @@ async def test_notify_support_chat_includes_admin_link() -> None:
     btn = rows[0][0]
     assert btn.text == "Открыть в админке"
     assert (
-        btn.url == f"https://bot.usemycontent.ru/admin/orders/{order.order_id}"
+        btn.url
+        == f"https://bot.usemycontent.ru/admin/order-model/edit/{order.order_id}"
     )
 
 
@@ -1413,3 +1414,189 @@ async def test_notify_support_chat_unknown_currency_uses_default() -> None:
 
     text = messenger_client.sent_text[0]["text"]
     assert "₽" in text
+
+
+@pytest.mark.asyncio
+async def test_paid_photo_caption_fits_telegram_and_links_edit_card() -> None:
+    """Paid photo delivery retains its event and a reachable full brief."""
+    import re
+    from html import unescape
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=uuid4(),
+            telegram_id="123",
+            username="admin",
+            admin=True,
+            messenger_type=MessengerType.TELEGRAM,
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    messenger = FakeMessengerClient()
+    order = _make_order(
+        offer_text="😀 <бриф> " * 1500, product_photo_file_id="photo"
+    )
+    await notify_admins_about_order_paid(
+        order,
+        messenger,
+        UserRoleService(user_repo=user_repo),
+        ContentModerationService(),
+        admin_base_url="https://example.com/admin/",
+    )
+    sent = messenger.sent_photos[0]
+    visible = unescape(re.sub(r"<[^>]+>", "", sent["caption"]))
+    assert len(visible.encode("utf-16-le")) // 2 <= 1024
+    assert "Заказ оплачен" in visible
+    assert (
+        sent["keyboard"].rows[0][0].url
+        == f"https://example.com/admin/order-model/edit/{order.order_id}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_order_event_deduplicates_admin_chat_recipients() -> None:
+    """Two admin records for a recipient produce one card per event."""
+    from unittest.mock import AsyncMock
+
+    admin = User(
+        user_id=uuid4(),
+        telegram_id="123",
+        username="admin",
+        admin=True,
+        messenger_type=MessengerType.TELEGRAM,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    service = AsyncMock(spec=UserRoleService)
+    service.list_admins.return_value = [admin, admin]
+    service.get_user_by_id.return_value = None
+    messenger = FakeMessengerClient()
+    order = _make_order()
+    await notify_admins_about_order_created(
+        order, messenger, service, ContentModerationService()
+    )
+    await notify_admins_about_order_paid(
+        order, messenger, service, ContentModerationService()
+    )
+    assert len(messenger.sent_text) == 2
+    assert "Новый заказ" in messenger.sent_text[0]["text"]
+    assert "Заказ оплачен" in messenger.sent_text[1]["text"]
+
+
+@pytest.mark.asyncio
+async def test_support_order_link_matches_admin_edit_and_contains_state() -> (
+    None
+):
+    user = User(
+        user_id=uuid4(),
+        telegram_id="123",
+        username="client",
+        messenger_type=MessengerType.TELEGRAM,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    messenger = FakeMessengerClient()
+    order = _make_order(advertiser_id=user.user_id)
+    await notify_support_chat_about_new_order(
+        order,
+        user,
+        None,
+        messenger,
+        "456",
+        admin_base_url="https://example.com/admin/",
+    )
+    sent = messenger.sent_text[0]
+    assert (
+        sent["keyboard"].rows[0][0].url
+        == f"https://example.com/admin/order-model/edit/{order.order_id}"
+    )
+    assert "pending_moderation" in sent["text"]
+
+
+@pytest.mark.asyncio
+async def test_paid_card_has_saved_quote_and_no_repeated_activation():
+    from dataclasses import replace
+
+    user_repo = InMemoryUserRepository()
+    admin = User(
+        user_id=uuid4(),
+        telegram_id="123",
+        username="admin",
+        admin=True,
+        messenger_type=MessengerType.TELEGRAM,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(admin)
+    messenger = FakeMessengerClient()
+    order = replace(_make_order(), status=OrderStatus.ACTIVE)
+    await notify_admins_about_order_paid(
+        order,
+        messenger,
+        UserRoleService(user_repo=user_repo),
+        ContentModerationService(),
+        order_details={
+            "contact_reference": "@client",
+            "format": "Reels",
+            "selection_base_minor": 500000,
+            "accompaniment_minor": 100000,
+            "total_minor": 600000,
+            "accompaniment_count": 10,
+        },
+    )
+    sent = messenger.sent_text[0]
+    assert "@client" in sent["text"]
+    assert "Reels" in sent["text"]
+    assert "5000.00" in sent["text"]
+    assert "1000.00" in sent["text"]
+    assert "6000.00" in sent["text"]
+    assert "active" in sent["text"]
+    assert not any(
+        button.callback_data for row in sent["keyboard"].rows for button in row
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event", ["created", "paid"])
+async def test_long_text_order_card_fits_telegram(event):
+    import re
+    from html import unescape
+
+    user_repo = InMemoryUserRepository()
+    await user_repo.save(
+        User(
+            user_id=uuid4(),
+            telegram_id="123",
+            username="admin",
+            admin=True,
+            messenger_type=MessengerType.TELEGRAM,
+            status=UserStatus.ACTIVE,
+            issue_count=0,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    messenger = FakeMessengerClient()
+    order = _make_order(offer_text="😀 <полный бриф> " * 1500)
+    notify = (
+        notify_admins_about_order_paid
+        if event == "paid"
+        else notify_admins_about_order_created
+    )
+    await notify(
+        order,
+        messenger,
+        UserRoleService(user_repo=user_repo),
+        ContentModerationService(),
+        admin_base_url="https://example.com/admin",
+    )
+    sent = messenger.sent_text[0]
+    visible = unescape(re.sub(r"<[^>]+>", "", sent["text"]))
+    assert len(visible.encode("utf-16-le")) // 2 <= 4096
+    assert str(order.order_id) in visible
+    assert sent["keyboard"].rows[0][0].url.endswith(str(order.order_id))

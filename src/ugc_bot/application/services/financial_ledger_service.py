@@ -55,16 +55,9 @@ class FinancialLedgerService:
                 if basis.recipient_id is None
                 else "snapshot_policy_unresolved"
             )
-            try:
-                return await self.repository.save_potential(
-                    basis, reason, recorded_at=recorded_at, session=session
-                )
-            except ValueError as error:
-                if str(error) == "idempotency_payload_conflict":
-                    raise PayloadConflict(
-                        "potential:" + basis.business_key
-                    ) from error
-                raise
+            return await self._save_potential(
+                basis, reason, recorded_at=recorded_at, session=session
+            )
         repo = self.repository
         previous_grounds = await self._lock_issue_scope(basis, session=session)
         existing = await repo.get_issue(basis.business_key, session=session)
@@ -72,11 +65,25 @@ class FinancialLedgerService:
             if existing.basis != basis:
                 raise PayloadConflict(basis.business_key)
             return existing
+        if await repo.has_zero_assessment(basis.business_key, session=session):
+            return await self._save_potential(
+                basis,
+                "rounded_commission_zero",
+                recorded_at=recorded_at,
+                session=session,
+            )
         for previous_ground in previous_grounds:
             await self._require_cancelled(previous_ground, session=session)
         amount = await self._assessed_amount(basis, session=session)
         if amount == 0:
-            raise ValueError("zero_monetary_obligation_unsupported")
+            # Assessment is final and auditable, but there is no monetary debt.
+            # _assessed_amount has already validated the frozen rate/override.
+            return await self._save_potential(
+                basis,
+                "rounded_commission_zero",
+                recorded_at=recorded_at,
+                session=session,
+            )
         obligation = uuid4()
         movement = JournalMovement(
             obligation_id=obligation,
@@ -102,6 +109,25 @@ class FinancialLedgerService:
         if basis.kind in ("creator_referral", "management"):
             await repo.set_active_ground(result, session=session)
         return result
+
+    async def _save_potential(
+        self,
+        basis: IssueBasis,
+        reason: str,
+        *,
+        recorded_at: datetime,
+        session: object,
+    ) -> PotentialBasis:
+        try:
+            return await self.repository.save_potential(
+                basis, reason, recorded_at=recorded_at, session=session
+            )
+        except ValueError as error:
+            if str(error) == "idempotency_payload_conflict":
+                raise PayloadConflict(
+                    "potential:" + basis.business_key
+                ) from error
+            raise
 
     async def _lock_issue_scope(
         self, basis: IssueBasis, *, session: object

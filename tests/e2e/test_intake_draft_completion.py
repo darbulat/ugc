@@ -24,7 +24,7 @@ def test_draft_reload_preserves_mode_positions_and_policy(
 ):
     network = SelectionNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     if not all_positions:
         page.locator("#intake-all-manager").uncheck()
@@ -33,7 +33,7 @@ def test_draft_reload_preserves_mode_positions_and_policy(
     page.locator('input[name="intake-mode"][value="' + mode + '"]').check()
     due = page.locator("#intake-due").input_value()
     page.reload()
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator('input[name="intake-mode"]:checked')).to_have_value(
         mode
     )
@@ -111,7 +111,7 @@ def test_drafts_follow_account_and_platform_without_copying_private_brief(
 
     network = DraftNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     page.locator("#intake-brief").fill("PRIVATE account A brief")
     page.locator("#intake-city").fill("PRIVATE account A city")
@@ -174,7 +174,7 @@ def test_input_after_unannounced_switch_cannot_store_previous_brief(
 
     network = DraftNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#intake-brief").fill("PRIVATE former owner brief")
     old_key = f"umc:intake-draft:{platform}:{CLIENT}"
@@ -206,7 +206,7 @@ def test_stale_funnel_failure_cannot_reset_new_owner_observations(
     network.hold_opened = True
     errors = open_app(page, network, platform, init_data=SIGNED)
     with page.expect_request("**/financial/orders/funnel/stage"):
-        page.locator("#btn-umc-intake").click()
+        page.locator("#btn-show-create-order").click()
     fill(page)
     flow_a = page.evaluate("UMCIntakeProgress.funnel()")
     assert len(network.held_funnels) == 1
@@ -270,7 +270,7 @@ def test_draft_owner_switch_preserves_original_unknown_command_retry(
     network = DraftNetwork()
     network.abort = True
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-uncertain")).to_be_visible()
@@ -291,4 +291,32 @@ def test_draft_owner_switch_preserves_original_unknown_command_retry(
     assert (
         len(network.creates) == 2 and network.creates[0] == network.creates[1]
     )
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_variable_count_restores_high_accompaniment_ordinal_before_submit(
+    page, platform
+):
+    network = SelectionNetwork()
+    errors = open_app(page, network, platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    fill(page, manager=True)
+    page.locator("#intake-count").fill("20")
+    page.locator("#intake-all-manager").uncheck()
+    for ordinal in (1, 15):
+        page.locator(f"#intake-position-{ordinal}").check()
+    page.reload()
+    page.locator("#btn-show-create-order").click()
+    expect(page.locator("#intake-count")).to_have_value("20")
+    expect(page.locator("#intake-position-options input")).to_have_count(20)
+    for ordinal in (1, 15):
+        expect(page.locator(f"#intake-position-{ordinal}")).to_be_checked()
+    expect(page.locator("#intake-position-2")).not_to_be_checked()
+    assert network.creates == []
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert len(network.creates) == 1
+    assert network.creates[0]["position_count"] == 20
+    assert network.creates[0]["accompaniment_ordinals"] == [1, 15]
     assert not errors

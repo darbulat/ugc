@@ -462,7 +462,23 @@ def advertiser_menu_inline_keyboard(texts: dict[str, str]) -> Keyboard:
                     callback_data=CALLBACK_PROFILE_EDIT,
                 ),
             ],
-            [partner_menu_button(texts)],
+            [
+                Button(
+                    text=texts.get("btn_help", "Помощь"),
+                    callback_data="customer:help",
+                ),
+                Button(
+                    text=texts.get("btn_all_services", "Все услуги"),
+                    callback_data="customer:services",
+                ),
+            ],
+            [
+                Button(
+                    text=texts.get("btn_rate_creators", "Оценить авторов"),
+                    callback_data="customer:ratings",
+                ),
+                partner_menu_button(texts),
+            ],
         ],
     )
 

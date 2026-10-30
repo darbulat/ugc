@@ -1,7 +1,8 @@
 """One caller transaction persists the requested service before any send."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 from uuid import UUID, uuid5
 
 from ugc_bot.application.financial_ports import Clock
@@ -15,6 +16,7 @@ from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyReader,
     FinancialPolicyService,
 )
+from ugc_bot.application.services.order_image_service import OrderImageService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.config import FinancialConfig
 from ugc_bot.domain.financial import utc
@@ -37,6 +39,7 @@ class OrderIntakeService:
     transactions: TransactionManager
     clock: Clock
     config: FinancialConfig
+    image_service: OrderImageService | None = None
 
     async def eligible_policies(
         self,
@@ -97,6 +100,8 @@ class OrderIntakeService:
                         approved.terms_reference,
                         utc(approved.effective_from),
                         int(approved.selection_refund_window.total_seconds()),
+                        approved.selection_minor,
+                        approved.accompaniment_minor,
                     )
                 )
             return EligibleOrderPolicies(
@@ -137,7 +142,12 @@ class OrderIntakeService:
                 command.client_id, command.operation_key, session=session
             )
             if previous is not None:
-                if previous.payload_hash != command.payload_hash:
+                if previous.payload_hash != command.payload_hash and not (
+                    command.position_count == 30
+                    and command.image_token is None
+                    and len(previous.result.items) == 30
+                    and previous.payload_hash == command.legacy_payload_hash
+                ):
                     raise ValueError("idempotency_payload_conflict")
                 return previous.result
             if not self.config.new_orders_enabled:
@@ -148,8 +158,10 @@ class OrderIntakeService:
             policy = await self.policies.load(
                 command.policy_version, session=session
             )
+            extra = self._order_fields(command)
             _, quote = await self.orders.create_financial_order(
                 order_id=command.order_id,
+                position_count=command.position_count,
                 advertiser_id=command.client_id,
                 order_type=command.order_type,
                 product_link=command.product_link,
@@ -166,12 +178,9 @@ class OrderIntakeService:
                 client_contact_reference=command.contact_reference,
                 idempotency_key=command.operation_key,
                 session=session,
-                **(
-                    {"targeting": command.targeting}
-                    if command.targeting is not None
-                    else {}
-                ),
+                **extra,
             )
+            await self._bind_image(command, session, principal)
             lead_id = (
                 uuid5(command.request_id, "accompaniment")
                 if command.accompaniment_ordinals
@@ -196,7 +205,7 @@ class OrderIntakeService:
                 ),
                 lead_id,
                 targeting=(
-                    asdict(command.targeting)
+                    command.targeting.payload()
                     | {"platforms": list(command.targeting.platforms)}
                     if command.targeting
                     else None
@@ -235,6 +244,30 @@ class OrderIntakeService:
                     session=session,
                 )
             return result
+
+    @staticmethod
+    def _order_fields(command):
+        extra: dict[str, Any] = {}
+        if command.image_token is not None:
+            extra["product_photo_file_id"] = (
+                f"order-image:{command.image_token}"
+            )
+        if command.targeting is not None:
+            extra["targeting"] = command.targeting
+        return extra
+
+    async def _bind_image(self, command, session, principal):
+        if command.image_token is None:
+            return
+        if self.image_service is None:
+            raise ValueError("image_upload_unavailable")
+        await self.image_service.bind(
+            command.client_id,
+            command.image_token,
+            command.order_id,
+            session=session,
+            principal=principal,
+        )
 
     async def _funnel_actor(self, actor_id, principal, session):
         actor = await self.repository.lock_client(actor_id, session=session)

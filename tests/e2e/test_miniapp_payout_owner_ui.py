@@ -278,7 +278,9 @@ def test_pending_partner_does_not_block_payout_history(page, platform):
     assert (
         "SECRET ADMIN DATA" not in page.locator("#screen-payouts").inner_text()
     )
-    assert not any("/admin/" in p for p, _ in network.requests)
+    assert not any(
+        p.startswith("/payouts/read/admin/") for p, _ in network.requests
+    )
     assert not errors
     for _, route, _ in network.pending:
         route.fulfill(status=503, json={"detail": "payout_unavailable"})

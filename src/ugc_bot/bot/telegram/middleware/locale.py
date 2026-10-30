@@ -4,9 +4,13 @@ import logging
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
-from aiogram.types import TelegramObject
+from aiogram.types import CallbackQuery, Message, TelegramObject, Update
 
+from ugc_bot.bot.customer_activity import record_customer_visit
 from ugc_bot.domain.enums import MessengerType
+from ugc_bot.infrastructure.messenger.telegram.adapter import (
+    TelegramEventAdapter,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +39,16 @@ class LocaleMiddleware(BaseMiddleware):
         await self._sync_telegram_username(user, data)
         data["user_locale"] = self._resolve_locale(user, data)
         data["currency_symbol"] = await self._resolve_currency(user, data)
+        native = (
+            (event.message or event.callback_query)
+            if isinstance(event, Update)
+            else event
+        )
+        adapter = TelegramEventAdapter()
+        if isinstance(native, Message):
+            await record_customer_visit(adapter.from_message(native), data)
+        elif isinstance(native, CallbackQuery):
+            await record_customer_visit(adapter.from_callback(native), data)
         return await handler(event, data)
 
     @staticmethod

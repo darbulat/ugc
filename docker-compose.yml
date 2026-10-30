@@ -5,7 +5,10 @@ services:
     image: ugc-app:latest
     build: .
     env_file: .env
+    volumes:
+      - order_images:/app/var/order-images
     environment:
+      ORDER_IMAGE_DIRECTORY: /app/var/order-images
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "9999"
@@ -39,7 +42,10 @@ services:
     image: ugc-app:latest
     build: .
     env_file: .env
+    volumes:
+      - order_images:/app/var/order-images
     environment:
+      ORDER_IMAGE_DIRECTORY: /app/var/order-images
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "9999"
@@ -73,7 +79,10 @@ services:
     image: ugc-app:latest
     build: .
     env_file: .env
+    volumes:
+      - order_images:/app/var/order-images
     environment:
+      ORDER_IMAGE_DIRECTORY: /app/var/order-images
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     expose:
       - "8003"
@@ -117,7 +126,10 @@ services:
   admin:
     build: .
     env_file: .env
+    volumes:
+      - order_images:/app/var/order-images:ro
     environment:
+      ORDER_IMAGE_DIRECTORY: /app/var/order-images
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
@@ -235,7 +247,10 @@ services:
   kafka_consumer:
     build: .
     env_file: .env
+    volumes:
+      - order_images:/app/var/order-images:ro
     environment:
+      ORDER_IMAGE_DIRECTORY: /app/var/order-images
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
@@ -250,7 +265,10 @@ services:
   scheduler:
     build: .
     env_file: .env
+    volumes:
+      - order_images:/app/var/order-images
     environment:
+      ORDER_IMAGE_DIRECTORY: /app/var/order-images
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-ugc}:${POSTGRES_PASSWORD:-ugc}@pgbouncer:6432/${POSTGRES_DB:-ugc}
     depends_on:
       db:
@@ -623,6 +641,7 @@ services:
       - default
 
 volumes:
+  order_images:
   postgres_data:
   redis_data:
   certbot_data:

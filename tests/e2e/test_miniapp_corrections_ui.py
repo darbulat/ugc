@@ -273,7 +273,9 @@ def test_manager_opens_cases_from_own_dashboard_and_returns(page, platform):
 
 def enter(page, network, platform="telegram", *, native=False):
     errors = open_app(page, network, platform, native=native)
-    page.locator("#screen-advertiser-dashboard [data-corrections-open]").click()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    page.evaluate("__umcAppBridge.showScreen('screen-admin-tools')")
+    page.locator("#screen-admin-tools [data-corrections-open]").click()
     expect(page.locator("#screen-corrections")).to_be_visible()
     expect(page.locator("#correction-new")).to_have_count(1)
     expect(page.locator("#screen-corrections")).to_have_attribute(
@@ -335,7 +337,9 @@ def test_unknown_result_reuses_same_key_without_private_persistence(page):
     assert "PRIVATE REQUEST REASON" not in storage
     assert "synthetic-test-auth" not in storage
     page.reload()
-    page.locator("#screen-advertiser-dashboard [data-corrections-open]").click()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    page.evaluate("__umcAppBridge.showScreen('screen-admin-tools')")
+    page.locator("#screen-admin-tools [data-corrections-open]").click()
     expect(page.locator("#correction-receipt")).to_be_visible()
     assert (
         len(
@@ -413,10 +417,10 @@ def test_late_detail_does_not_reopen_screen_or_expose_admin_data(page):
     expect(page.locator("#correction-back")).to_be_visible()
     page.locator("#correction-back").click()
     page.locator("#correction-back").click()
-    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    expect(page.locator("#screen-admin-tools")).to_be_visible()
     for held in network.held:
         held.fulfill(json=network.current)
-    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    expect(page.locator("#screen-admin-tools")).to_be_visible()
     assert page.locator("#screen-corrections").inner_text() == ""
 
 
@@ -953,7 +957,9 @@ def test_restored_unrecorded_operation_stays_blocked(page, platform):
     expect(page.locator("#correction-retry")).to_be_enabled()
     before = page.evaluate("JSON.stringify({...sessionStorage})")
     page.reload()
-    page.locator("#screen-advertiser-dashboard [data-corrections-open]").click()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    page.evaluate("__umcAppBridge.showScreen('screen-admin-tools')")
+    page.locator("#screen-admin-tools [data-corrections-open]").click()
     expect(page.locator("#correction-check")).to_be_enabled()
     expect(page.locator("#correction-pending")).to_be_visible()
     expect(page.locator("#correction-new")).to_have_count(0)

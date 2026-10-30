@@ -88,6 +88,7 @@ from ugc_bot.miniapp.campaign_review_api import create_campaign_review_router
 from ugc_bot.miniapp.campaign_runtime_api import create_campaign_runtime_router
 from ugc_bot.miniapp.campaign_summary_api import create_campaign_summary_router
 from ugc_bot.miniapp.checkout_api import create_checkout_router
+from ugc_bot.miniapp.client_followup_api import create_client_followup_router
 from ugc_bot.miniapp.collaboration_api import create_collaboration_router
 from ugc_bot.miniapp.correction_api import create_correction_router
 from ugc_bot.miniapp.debt_recovery_api import create_debt_recovery_router
@@ -97,18 +98,24 @@ from ugc_bot.miniapp.manual_grant_api import create_manual_grant_router
 from ugc_bot.miniapp.messenger_linking_api import (
     create_messenger_linking_router,
 )
+from ugc_bot.miniapp.order_image_api import create_order_image_router
 from ugc_bot.miniapp.order_intake_api import create_order_intake_router
+from ugc_bot.miniapp.order_support_api import create_order_support_router
 from ugc_bot.miniapp.override_api import create_override_router
 from ugc_bot.miniapp.partner_admin_api import create_partner_admin_router
 from ugc_bot.miniapp.partner_api import create_partner_router
 from ugc_bot.miniapp.payout_api import create_payout_router
 from ugc_bot.miniapp.payout_view_api import create_payout_view_router
-from ugc_bot.miniapp.principal import with_recent_init_data
+from ugc_bot.miniapp.principal import (
+    SignedMiniAppRequest,
+    with_recent_init_data,
+)
 from ugc_bot.miniapp.replacement_api import create_replacement_router
 from ugc_bot.miniapp.selection_api import create_selection_router
 from ugc_bot.miniapp.selection_maturity_api import (
     create_selection_maturity_router,
 )
+from ugc_bot.miniapp.service_lead_api import create_service_lead_router
 from ugc_bot.miniapp.social_api import create_social_router
 from ugc_bot.miniapp.subscription_api import create_subscription_router
 
@@ -242,6 +249,7 @@ class CreateOrderRequest(BaseModel):
 class OrderListItem(BaseModel):
     """Order summary for list."""
 
+    public_number: str | None = None
     order_id: str
     status: str
     product_link: str
@@ -252,12 +260,24 @@ class OrderListItem(BaseModel):
     currency_symbol: str = "₽"
     brand_name: str = ""
     financial_version: str | None = None
+    public_title: str = ""
+    bloggers_needed: int | None = None
+    deadlines: str | None = None
+    payment_state: str = "unknown"
+    customer_status: str | None = None
+    progress: dict | None = None
+    selection_base_minor: int | None = None
+    accompaniment_minor: int | None = None
+    total_minor: int | None = None
 
 
 class OrdersListResponse(BaseModel):
     """List of orders."""
 
     orders: list[OrderListItem]
+    total: int | None = None
+    page: int = 0
+    has_more: bool = False
 
 
 class GetOrderRequest(BaseModel):
@@ -393,7 +413,7 @@ class CreateRatingRequest(BaseModel):
     platform: Platform = "telegram"
     blogger_id: UUID
     order_id: UUID
-    score: int = Field(..., ge=1, le=5)
+    score: int = Field(..., ge=1, le=5, strict=True)
     comment: str | None = Field(None, max_length=2000)
 
 
@@ -621,6 +641,12 @@ router.include_router(create_debt_recovery_router(resolve_financial_principal))
 router.include_router(create_subscription_router(resolve_financial_principal))
 router.include_router(create_checkout_router(_checkout_actor))
 router.include_router(create_order_intake_router(resolve_financial_principal))
+router.include_router(create_order_image_router(resolve_financial_principal))
+router.include_router(create_order_support_router(resolve_financial_principal))
+router.include_router(create_service_lead_router(resolve_financial_principal))
+router.include_router(
+    create_client_followup_router(resolve_financial_principal)
+)
 router.include_router(create_social_router(resolve_financial_principal))
 router.include_router(create_collaboration_router(resolve_financial_principal))
 router.include_router(create_override_router(resolve_financial_principal))
@@ -1342,6 +1368,11 @@ def _validate_order_body(
     return None
 
 
+def _require_legacy_create(dispatcher):
+    if dispatcher.get("order_intake_service") is not None:
+        raise HTTPException(409, "use_canonical_order_intake")
+
+
 @router.post("/orders")
 async def create_order(request: Request, body: CreateOrderRequest) -> dict:
     """Create an order (advertiser only, same validation as bot)."""
@@ -1349,6 +1380,7 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
         request, body.init_data, platform=body.platform
     )
     dispatcher = request.app.state.dispatcher
+    _require_legacy_create(dispatcher)
     profile_service = dispatcher["profile_service"]
     advertiser = await profile_service.get_advertiser_profile(user_id)
     if advertiser is None:
@@ -1399,47 +1431,53 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
     except OrderCreationError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
-    try:
-        messenger_client = dispatcher["messenger_client"]
-        user_role_service = dispatcher["user_role_service"]
-        content_moderation_service = dispatcher["content_moderation_service"]
-        logger.info(
-            "Sending admin notification for miniapp order",
-            extra={"order_id": str(order.order_id)},
-        )
-        country_repo = dispatcher.get("country_repo")
-        await notify_admins_about_order_created(
-            order=order,
-            messenger_client=messenger_client,
-            user_role_service=user_role_service,
-            content_moderation=content_moderation_service,
-            admin_base_url=config.admin.admin_base_url,
-            currency_symbol=config.market.currency_symbol,
-            country_repo=country_repo,
-            advertiser_profile=advertiser,
-        )
-        support_chat_id = config.referral.referral_support_chat_id
-        if support_chat_id.strip():
-            advertiser_user = await user_role_service.get_user_by_id(user_id)
-            if advertiser_user:
-                await notify_support_chat_about_new_order(
-                    order=order,
-                    advertiser_user=advertiser_user,
-                    advertiser_profile=advertiser,
-                    messenger_client=messenger_client,
-                    support_chat_id=support_chat_id,
-                    admin_base_url=config.admin.admin_base_url,
-                    currency_symbol=config.market.currency_symbol,
-                    country_repo=country_repo,
+    if getattr(order_service, "order_notices", None) is None:
+        try:
+            messenger_client = dispatcher["messenger_client"]
+            user_role_service = dispatcher["user_role_service"]
+            content_moderation_service = dispatcher[
+                "content_moderation_service"
+            ]
+            logger.info(
+                "Sending admin notification for miniapp order",
+                extra={"order_id": str(order.order_id)},
+            )
+            country_repo = dispatcher.get("country_repo")
+            await notify_admins_about_order_created(
+                order=order,
+                messenger_client=messenger_client,
+                user_role_service=user_role_service,
+                content_moderation=content_moderation_service,
+                admin_base_url=config.admin.admin_base_url,
+                currency_symbol=config.market.currency_symbol,
+                country_repo=country_repo,
+                advertiser_profile=advertiser,
+            )
+            support_chat_id = config.referral.referral_support_chat_id
+            if support_chat_id.strip():
+                advertiser_user = await user_role_service.get_user_by_id(
+                    user_id
                 )
-    except Exception as exc:
-        logger.error(
-            "Failed to send notifications for miniapp order",
-            extra={
-                "order_id": str(order.order_id),
-                "error": str(exc),
-            },
-        )
+                if advertiser_user:
+                    await notify_support_chat_about_new_order(
+                        order=order,
+                        advertiser_user=advertiser_user,
+                        advertiser_profile=advertiser,
+                        messenger_client=messenger_client,
+                        support_chat_id=support_chat_id,
+                        admin_base_url=config.admin.admin_base_url,
+                        currency_symbol=config.market.currency_symbol,
+                        country_repo=country_repo,
+                        user_role_service=user_role_service,
+                    )
+        except Exception as exc:
+            logger.error(
+                "Failed to send notifications for miniapp order",
+                extra={
+                    "order_id": str(order.order_id),
+                    "error": str(exc),
+                },
+            )
 
     payment_link = _payment_link_for_order(
         str(order.order_id), config.bot.bot_username
@@ -1457,6 +1495,9 @@ class OrdersListRequest(BaseModel):
 
     init_data: str
     platform: Platform = "telegram"
+    page: int = Field(default=0, ge=0, strict=True)
+    limit: int = Field(default=10, ge=1, le=50, strict=True)
+    status: str | None = None
 
 
 class ReverseGeocodeRequest(BaseModel):
@@ -1609,6 +1650,25 @@ async def list_orders(
     request: Request, body: OrdersListRequest
 ) -> OrdersListResponse:
     """List orders for the current advertiser."""
+    view = request.app.state.dispatcher.get("client_order_view_service")
+    if view is not None:
+        principal = await resolve_financial_principal(
+            request, body.init_data, platform=body.platform
+        )
+        try:
+            data = await view.list(
+                principal.user_id,
+                page=body.page,
+                limit=body.limit,
+                status=body.status,
+                principal=principal,
+            )
+            return OrdersListResponse(**data)
+        except PermissionError as exc:
+            raise HTTPException(403, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
     user_id = await _ensure_user_and_get_id(
         request, body.init_data, platform=body.platform
     )
@@ -2475,9 +2535,10 @@ async def create_blogger_rating(
     body: CreateRatingRequest,
 ) -> dict[str, Any]:
     """Create a blogger rating by advertiser, manager, or admin."""
-    user_id = await _ensure_user_and_get_id(
+    principal = await resolve_financial_principal(
         request, body.init_data, platform=body.platform
     )
+    user_id = principal.user_id
     dispatcher = request.app.state.dispatcher
     rater_role = await _resolve_rater_role(dispatcher, user_id, body.order_id)
     rating_service = dispatcher["blogger_rating_service"]
@@ -2489,11 +2550,23 @@ async def create_blogger_rating(
             rater_role=rater_role,
             score=body.score,
             comment=body.comment,
+            principal=principal,
         )
     except RatingAlreadyExistsError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except InvalidRatingScoreError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            403
+            if str(exc)
+            in {"rating_access_denied", "financial_principal_changed"}
+            else 422,
+            str(exc),
+        ) from exc
 
     return {"ok": True, "rating_id": str(rating.rating_id)}
 
@@ -2610,3 +2683,29 @@ async def review_legacy_financial_case(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+class CustomerOrderRatingsRequest(SignedMiniAppRequest):
+    order_id: UUID
+
+
+@router.post("/customer/orders/ratings")
+async def customer_order_ratings(
+    request: Request, body: CustomerOrderRatingsRequest
+):
+    principal = await resolve_financial_principal(
+        request, body.init_data, platform=body.platform
+    )
+    service = request.app.state.dispatcher.get("blogger_rating_service")
+    if service is None:
+        raise HTTPException(503, "rating_unavailable")
+    try:
+        return {
+            "authors": await service.list_for_order(
+                principal.user_id, body.order_id, principal=principal
+            )
+        }
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(403, str(exc)) from exc

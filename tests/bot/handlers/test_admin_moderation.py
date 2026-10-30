@@ -107,6 +107,25 @@ async def test_handle_moderate_activate_success(
         completed_at=None,
     )
     await order_repo.save(order)
+    from ugc_bot.domain.entities import Payment
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryPaymentRepository,
+    )
+
+    payment_repo = InMemoryPaymentRepository()
+    await payment_repo.save(
+        Payment(
+            payment_id=uuid4(),
+            order_id=order.order_id,
+            provider="test",
+            status=PaymentStatus.PAID,
+            amount=1000,
+            currency="RUB",
+            external_id="receipt",
+            created_at=datetime.now(timezone.utc),
+        )
+    )
 
     user_role_service = UserRoleService(user_repo=user_repo)
     content_moderation = ContentModerationService()
@@ -124,6 +143,7 @@ async def test_handle_moderate_activate_success(
         order_repo=order_repo,
         outbox_publisher=outbox_publisher,
         transaction_manager=fake_tm,
+        payment_repo=payment_repo,
     )
 
     assert len(callback.answers) == 1
@@ -709,3 +729,77 @@ async def test_remove_moderation_keyboard_returns_early_when_no_message_id(
     client = FakeMessengerClient()
     await _remove_moderation_keyboard(incoming, messenger_client=client)
     assert len(client.edited_reply_markups) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("paid", [False, True])
+async def test_activation_requires_paid_and_repeated_click_is_idempotent(
+    user_repo, order_repo, outbox_repo, outbox_publisher, fake_tm, paid
+):
+    from ugc_bot.domain.entities import Payment
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryPaymentRepository,
+    )
+
+    admin = User(
+        user_id=uuid4(),
+        telegram_id="910",
+        username="admin",
+        admin=True,
+        messenger_type=MessengerType.TELEGRAM,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    await user_repo.save(admin)
+    order = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Test",
+        barter_description=None,
+        price=1000,
+        bloggers_needed=10,
+        status=OrderStatus.PENDING_MODERATION,
+        created_at=datetime.now(timezone.utc),
+    )
+    await order_repo.save(order)
+    payment_repo = InMemoryPaymentRepository()
+    if paid:
+        await payment_repo.save(
+            Payment(
+                payment_id=uuid4(),
+                order_id=order.order_id,
+                provider="test",
+                status=PaymentStatus.PAID,
+                amount=1000,
+                currency="RUB",
+                external_id="receipt",
+                created_at=datetime.now(timezone.utc),
+                paid_at=datetime.now(timezone.utc),
+            )
+        )
+    for _ in range(2):
+        callback = FakeCallback(
+            data=f"mod_activate:{order.order_id.hex}",
+            user=FakeUser(910, "admin"),
+        )
+        await handle_moderate_activate(
+            callback,
+            user_role_service=UserRoleService(user_repo=user_repo),
+            content_moderation_service=ContentModerationService(),
+            order_repo=order_repo,
+            outbox_publisher=outbox_publisher,
+            transaction_manager=fake_tm,
+            payment_repo=payment_repo,
+        )
+    saved = await order_repo.get_by_id(order.order_id)
+    assert saved.status == (
+        OrderStatus.ACTIVE if paid else OrderStatus.PENDING_MODERATION
+    )
+    assert len(await outbox_repo.get_pending_events()) == (1 if paid else 0)
+    assert callback.answers == (
+        ["Заказ уже обработан."] if paid else ["Оплата заказа не подтверждена."]
+    )

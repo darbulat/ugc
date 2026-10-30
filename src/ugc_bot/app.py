@@ -126,6 +126,7 @@ def build_dispatcher(
         dispatcher.include_router(
             payments_router
         )  # before start for /start pay_
+        dispatcher.include_router(blogger_rating_router)
         dispatcher.include_router(messenger_linking_router)
         dispatcher.include_router(support_chat_router)
         dispatcher.include_router(start_router)
@@ -139,7 +140,6 @@ def build_dispatcher(
         dispatcher.include_router(my_orders_router)
         dispatcher.include_router(order_router)
         dispatcher.include_router(feedback_router)
-        dispatcher.include_router(blogger_rating_router)
         dispatcher.include_router(offer_response_router)
         dispatcher.include_router(complaints_router)
         dispatcher.include_router(survey_messenger_router)

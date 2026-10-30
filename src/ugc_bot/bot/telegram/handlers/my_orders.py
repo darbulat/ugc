@@ -70,6 +70,7 @@ MY_ORDERS_TEXTS_KEYS = (
     "msg_order_barter",
     "msg_order_type_ugc",
     "msg_order_type_placement",
+    "order_type_stories",
     "msg_status_new",
     "msg_status_pending_moderation",
     "msg_status_active",
@@ -97,6 +98,8 @@ def _format_order_type(
 ) -> str:
     """Format order type for display."""
     t = texts or {}
+    if order.order_type == OrderType.STORIES:
+        return t.get("order_type_stories", "Сторис")
     if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
         return t.get("msg_order_type_placement", "UGC + размещение")
     return t.get("msg_order_type_ugc", "UGC-видео для бренда")

@@ -96,9 +96,10 @@ FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation();
 
 CREATE OR REPLACE FUNCTION intake_validate_source() RETURNS trigger
 LANGUAGE plpgsql AS $$
-DECLARE owner uuid; actual_count integer; matched_count integer;
+DECLARE owner uuid; expected_count integer; actual_count integer;
+matched_count integer;
 BEGIN
-    SELECT advertiser_id INTO owner FROM orders
+    SELECT advertiser_id, bloggers_needed INTO owner, expected_count FROM orders
         WHERE order_id=NEW.order_id AND created_at=NEW.requested_at;
     IF owner IS DISTINCT FROM NEW.client_id
        OR NEW.result->>'order_id' IS DISTINCT FROM NEW.order_id::text
@@ -114,9 +115,13 @@ BEGIN
           ON actual.paid_item_id=(requested->>'paid_item_id')::uuid
          AND actual.order_id=NEW.order_id
          AND actual.ordinal=(requested->>'ordinal')::integer
-         AND actual.selection_minor=50000
+         AND actual.selection_minor=COALESCE((SELECT
+(rules->>'selection_minor')::bigint FROM financial_policy_versions WHERE
+version=actual.policy_version),50000)
          AND actual.selection_minor=(requested->>'selection_minor')::bigint
-         AND actual.accompaniment_minor IN (0,120000)
+         AND actual.accompaniment_minor IN (0,COALESCE((SELECT
+(rules->>'accompaniment_minor')::bigint FROM financial_policy_versions WHERE
+version=actual.policy_version),120000))
          AND actual.accompaniment_minor=
              (requested->>'accompaniment_minor')::bigint
          AND actual.currency=NEW.result->>'currency'
@@ -125,8 +130,11 @@ BEGIN
              (NEW.result->>'selection_due_at')::timestamptz
          AND actual.quote_payload->>'terms_reference'=
              NEW.result->>'terms_reference';
-    IF actual_count <> 30 OR matched_count <> 30
-       OR jsonb_array_length(NEW.result->'items') <> 30 THEN
+    IF expected_count NOT BETWEEN 10 AND 200 OR actual_count <> expected_count
+       OR matched_count <> expected_count
+       OR jsonb_array_length(NEW.result->'items') <> expected_count
+       OR EXISTS (SELECT 1 FROM order_items WHERE order_id=NEW.order_id AND
+ordinal NOT BETWEEN 1 AND expected_count) THEN
         RAISE EXCEPTION 'intake_quote_mismatch';
     END IF;
     RETURN NEW;
@@ -142,7 +150,7 @@ BEGIN
     SELECT jsonb_agg((item->>'ordinal')::integer
         ORDER BY (item->>'ordinal')::integer) INTO selected
         FROM jsonb_array_elements(receipt.result->'items') item
-        WHERE (item->>'accompaniment_minor')::bigint=120000;
+        WHERE (item->>'accompaniment_minor')::bigint>0;
     IF receipt.order_id IS DISTINCT FROM NEW.order_id
        OR receipt.client_id IS DISTINCT FROM NEW.client_id
        OR receipt.requested_at IS DISTINCT FROM NEW.requested_at

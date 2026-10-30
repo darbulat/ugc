@@ -8,6 +8,7 @@ from uuid import UUID
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.config import FinancialConfig
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.financial_tariff import require_tariff
 from ugc_bot.domain.refund_rules import RefundRules
 
 
@@ -21,8 +22,11 @@ class FinancialPolicy:
     allowed_clients: frozenset[UUID]
     terms_reference: str | None
     refund_rules: RefundRules | None = None
+    selection_minor: int = 50000
+    accompaniment_minor: int = 120000
 
     def __post_init__(self) -> None:
+        require_tariff(self.selection_minor, self.accompaniment_minor)
         object.__setattr__(
             self, "allowed_clients", frozenset(self.allowed_clients)
         )

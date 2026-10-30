@@ -8,10 +8,23 @@ Differences from Telegram:
 import logging
 from typing import Any, cast
 
-from ugc_bot.application.messenger.dto import IncomingCallback, IncomingMessage
+from ugc_bot.application.messenger.dto import (
+    Button,
+    IncomingCallback,
+    IncomingMessage,
+    Keyboard,
+    KeyboardKind,
+)
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_order_created,
     notify_support_chat_about_new_order,
+)
+from ugc_bot.bot import customer_actions
+from ugc_bot.bot.customer_intake import (
+    ask_platforms,
+    choose_platforms,
+    complete_intake,
+    record_activity,
 )
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.keyboards import (
@@ -31,6 +44,7 @@ from ugc_bot.bot.telegram.handlers.order_creation_states import (
     CALLBACK_ORDER_COOP_PAYMENT,
     CALLBACK_ORDER_DEADLINES_PREFIX,
     CALLBACK_ORDER_TYPE_PLACEMENT,
+    CALLBACK_ORDER_TYPE_STORIES,
     CALLBACK_ORDER_TYPE_UGC,
     CONTENT_USAGE_ADS,
     CONTENT_USAGE_BOTH,
@@ -43,6 +57,7 @@ from ugc_bot.bot.telegram.handlers.order_creation_states import (
     DEADLINES_7,
     DEADLINES_14,
     DEADLINES_TO_OFFER,
+    ORDER_TYPE_STORIES,
     ORDER_TYPE_UGC_ONLY,
     ORDER_TYPE_UGC_PLUS_PLACEMENT,
     OrderCreationStates,
@@ -70,6 +85,7 @@ from ugc_bot.bot.telegram.validators import (
     validate_price,
     validate_product_link,
 )
+from ugc_bot.bot.texts.defaults.customer import customer_text
 from ugc_bot.domain.enums import OrderType
 
 router = MaxRouter()
@@ -203,9 +219,22 @@ async def _start_order_flow(
         await state_store.set_state(_ADVERTISER_AGREEMENTS_STATE)
         return
 
-    await state_store.update_data(user_id=str(user.user_id))
+    if deps.get("order_intake_service") is not None:
+        await state_store.clear()
+    await state_store.update_data(user_id=str(user.user_id), locale=locale)
+    await record_activity(
+        incoming,
+        user.user_id,
+        deps.get("client_followup_service"),
+        "brief_opened",
+    )
     order_type_texts = await bot_texts_service.get_many(
-        ["order_type_ugc_only", "order_type_ugc_placement"], locale
+        [
+            "order_type_ugc_only",
+            "order_type_ugc_placement",
+            "order_type_stories",
+        ],
+        locale,
     )
     msg_what_need = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
@@ -281,10 +310,18 @@ async def handle_order_agree_callback(
     await advertiser_registration_service.confirm_advertiser_agreement(
         user_id=user_id,
     )
+    if deps.get("order_intake_service") is not None:
+        await state_store.clear()
+        await state_store.update_data(user_id=str(user_id), locale=locale)
     await state_store.update_data(flow_type=None)
 
     order_type_texts = await bot_texts_service.get_many(
-        ["order_type_ugc_only", "order_type_ugc_placement"], locale
+        [
+            "order_type_ugc_only",
+            "order_type_ugc_placement",
+            "order_type_stories",
+        ],
+        locale,
     )
     msg_what = await bot_texts_service.get("msg_what_do_you_need", locale)
     await messenger_client.send_text(
@@ -300,7 +337,12 @@ async def handle_order_agree_callback(
 @router.callback_in_state(
     _STATE_ORDER_TYPE,
     lambda c: (
-        c.data in (CALLBACK_ORDER_TYPE_UGC, CALLBACK_ORDER_TYPE_PLACEMENT)
+        c.data
+        in (
+            CALLBACK_ORDER_TYPE_UGC,
+            CALLBACK_ORDER_TYPE_PLACEMENT,
+            CALLBACK_ORDER_TYPE_STORIES,
+        )
     ),
 )
 async def handle_order_type_callback(
@@ -315,6 +357,8 @@ async def handle_order_type_callback(
     data = incoming.data or ""
     if data == CALLBACK_ORDER_TYPE_UGC:
         order_type = OrderType.UGC_ONLY
+    elif data == CALLBACK_ORDER_TYPE_STORIES:
+        order_type = OrderType.STORIES
     elif data == CALLBACK_ORDER_TYPE_PLACEMENT:
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
@@ -346,11 +390,18 @@ async def handle_order_type_text(
     text = (incoming.text or "").strip()
     if text == ORDER_TYPE_UGC_ONLY:
         order_type = OrderType.UGC_ONLY
+    elif text == ORDER_TYPE_STORIES:
+        order_type = OrderType.STORIES
     elif text == ORDER_TYPE_UGC_PLUS_PLACEMENT:
         order_type = OrderType.UGC_PLUS_PLACEMENT
     else:
         order_type_texts = await bot_texts_service.get_many(
-            ["order_type_ugc_only", "order_type_ugc_placement"], locale
+            [
+                "order_type_ugc_only",
+                "order_type_ugc_placement",
+                "order_type_stories",
+            ],
+            locale,
         )
         msg_choose = await bot_texts_service.get(
             "msg_choose_from_keyboard", locale
@@ -568,6 +619,8 @@ async def handle_price(incoming: IncomingMessage, deps: dict[str, Any]) -> None:
     allowed_blogger_counts = deps.get(
         "allowed_blogger_counts", frozenset({1, 3, 5})
     )
+    if deps.get("order_intake_service") is not None:
+        allowed_blogger_counts = frozenset(range(10, 201))
     msg_barter = await bot_texts_service.get("msg_order_barter_ask", locale)
     msg_how_many = await bot_texts_service.get("msg_how_many_creators", locale)
 
@@ -603,6 +656,8 @@ async def handle_barter_description(
     allowed_blogger_counts = deps.get(
         "allowed_blogger_counts", frozenset({1, 3, 5})
     )
+    if deps.get("order_intake_service") is not None:
+        allowed_blogger_counts = frozenset(range(10, 201))
     validator_texts = await bot_texts_service.get_many(
         list(VALIDATOR_ERR_KEYS), locale
     )
@@ -650,6 +705,8 @@ async def handle_bloggers_needed_callback(
     allowed_blogger_counts = deps.get(
         "allowed_blogger_counts", frozenset({1, 3, 5})
     )
+    if deps.get("order_intake_service") is not None:
+        allowed_blogger_counts = frozenset(range(10, 201))
     bloggers_needed = _parse_bloggers_callback_data(incoming.data or "")
     if bloggers_needed is None or bloggers_needed not in allowed_blogger_counts:
         await messenger_client.answer_callback(callback_id=incoming.callback_id)
@@ -680,6 +737,8 @@ async def handle_bloggers_needed_text(
     allowed_blogger_counts = deps.get(
         "allowed_blogger_counts", frozenset({1, 3, 5})
     )
+    if deps.get("order_intake_service") is not None:
+        allowed_blogger_counts = frozenset(range(10, 201))
     raw = (incoming.text or "").strip()
     valid_strs = {str(c) for c in allowed_blogger_counts}
     if raw not in valid_strs:
@@ -946,6 +1005,22 @@ async def handle_geography(
         await state_store.clear()
         return
 
+    if deps.get("order_intake_service") is not None:
+        await state_store.update_data(geography=geography)
+        await record_activity(
+            incoming,
+            user_id,
+            deps.get("client_followup_service"),
+            "brief_changed",
+        )
+        await ask_platforms(
+            incoming,
+            state_store,
+            messenger_client,
+            deps["order_intake_service"],
+        )
+        return
+
     order_type_val = data.get("order_type", OrderType.UGC_ONLY.value)
     try:
         order_type = OrderType(order_type_val)
@@ -1032,4 +1107,163 @@ async def handle_geography(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=msg_order_created or ORDER_CREATED_MESSAGE,
+    )
+
+
+@router.message_in_state(cast(str, OrderCreationStates.platforms.state))
+async def handle_platforms(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    await choose_platforms(
+        incoming,
+        deps["state_store"],
+        deps["messenger_client"],
+        deps["order_intake_service"],
+    )
+
+
+@router.message_in_state(cast(str, OrderCreationStates.accompaniment.state))
+async def handle_accompaniment(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    result = await complete_intake(
+        incoming,
+        deps["state_store"],
+        deps["messenger_client"],
+        deps["order_intake_service"],
+        deps.get("client_followup_service"),
+    )
+    if result is None:
+        return
+    username = deps["config"].bot.bot_username.strip().lstrip("@")
+    keyboard = (
+        Keyboard(
+            kind=KeyboardKind.INLINE,
+            rows=[
+                [
+                    Button(
+                        text=customer_text(
+                            deps.get("locale", "ru"), "customer_telegram_button"
+                        ),
+                        url=f"https://t.me/{username}?start=pay_{result.order_id}",
+                    )
+                ]
+            ],
+        )
+        if username
+        else None
+    )
+    await deps["messenger_client"].send_text(
+        chat_id=incoming.chat_id,
+        text=customer_text(deps.get("locale", "ru"), "customer_telegram_pay"),
+        keyboard=keyboard,
+    )
+    await deps["state_store"].set_state(None)
+
+
+@router.message(lambda m: m.text == "/stop_reminders")
+async def handle_stop_reminders(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    await customer_actions.stop_reminders(
+        incoming,
+        deps["messenger_client"],
+        deps["user_role_service"],
+        deps.get("client_followup_service"),
+    )
+
+
+@router.message(lambda m: m.text == "/support_order")
+async def handle_customer_help(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    await customer_actions.show_help(
+        incoming,
+        deps["messenger_client"],
+        deps["user_role_service"],
+        deps["order_service"],
+    )
+
+
+@router.callback(lambda c: c.data == "customer:help")
+async def handle_customer_help_callback(
+    incoming: IncomingCallback, deps: dict[str, Any]
+) -> None:
+    await deps["messenger_client"].answer_callback(
+        callback_id=incoming.callback_id
+    )
+    await customer_actions.show_help(
+        incoming,
+        deps["messenger_client"],
+        deps["user_role_service"],
+        deps["order_service"],
+    )
+
+
+@router.callback(
+    lambda c: bool(
+        c.data and c.data.startswith(customer_actions.SUPPORT_PREFIX)
+    )
+)
+async def handle_customer_problem(
+    incoming: IncomingCallback, deps: dict[str, Any]
+) -> None:
+    await deps["messenger_client"].answer_callback(
+        callback_id=incoming.callback_id
+    )
+    await customer_actions.begin_support(
+        incoming,
+        deps["state_store"],
+        deps["messenger_client"],
+        deps["user_role_service"],
+        deps["order_service"],
+    )
+
+
+@router.message_in_state(customer_actions.SUPPORT_REASON)
+async def handle_customer_problem_reason(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    await customer_actions.support_reason(
+        incoming, deps["state_store"], deps["messenger_client"]
+    )
+
+
+@router.message_in_state(customer_actions.SUPPORT_CONTACT)
+async def handle_customer_problem_contact(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    await customer_actions.send_support(
+        incoming,
+        deps["state_store"],
+        deps["messenger_client"],
+        deps["user_role_service"],
+        deps.get("order_support_service"),
+    )
+
+
+@router.message(lambda m: m.text == "/services")
+async def handle_customer_services(
+    incoming: IncomingMessage, deps: dict[str, Any]
+) -> None:
+    await customer_actions.show_services(
+        incoming,
+        deps["messenger_client"],
+        deps["config"],
+        deps.get("locale", "ru"),
+    )
+
+
+@router.callback(lambda c: c.data == "customer:services")
+async def handle_customer_services_callback(
+    incoming: IncomingCallback, deps: dict[str, Any]
+) -> None:
+    await deps["messenger_client"].answer_callback(
+        callback_id=incoming.callback_id
+    )
+    await customer_actions.show_services(
+        incoming,
+        deps["messenger_client"],
+        deps["config"],
+        deps.get("locale", "ru"),
     )

@@ -72,6 +72,8 @@ class SqlAlchemyFinancialPolicyRepository:
                     ),
                     "terms_reference": policy.terms_reference,
                     "refund_rules": policy.refund_rules.to_document(),
+                    "selection_minor": policy.selection_minor,
+                    "accompaniment_minor": policy.accompaniment_minor,
                 },
             ),
             session=_session(session),
@@ -106,6 +108,8 @@ def decode_policy_version(
         or not terms.strip()
     ):
         raise ValueError("invalid_policy_document")
+    if ("selection_minor" in rules) != ("accompaniment_minor" in rules):
+        raise ValueError("invalid_policy_document")
     try:
         if any(not isinstance(client, str) for client in clients):
             raise ValueError("invalid_policy_document")
@@ -113,6 +117,8 @@ def decode_policy_version(
         if any(client.int == 0 for client in allowed):
             raise ValueError("invalid_policy_document")
         return FinancialPolicy(
+            selection_minor=rules.get("selection_minor", 50000),
+            accompaniment_minor=rules.get("accompaniment_minor", 120000),
             version=model.version,
             approved_by=model.approved_by,
             approved_at=model.approved_at,

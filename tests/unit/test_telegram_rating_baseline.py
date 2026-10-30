@@ -1,5 +1,6 @@
 """Rating FSM branch outcomes with real FSM storage and rating service."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace as NS
 from unittest.mock import AsyncMock, Mock
@@ -11,11 +12,16 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Message, User
 
+from ugc_bot.application.rating_eligibility_ports import RatingParticipant
 from ugc_bot.application.services.blogger_rating_service import (
     BloggerRatingService,
 )
 from ugc_bot.bot.telegram.handlers import blogger_rating as handlers
-from ugc_bot.domain.enums import MessengerType, RaterRole
+from ugc_bot.domain.entities import User as DomainUser
+from ugc_bot.domain.enums import MessengerType, RaterRole, UserStatus
+from ugc_bot.infrastructure.memory_rating_eligibility import (
+    InMemoryRatingEligibilityRepository,
+)
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryBloggerRatingRepository,
 )
@@ -33,7 +39,25 @@ def flow():
     )
     managers = NS(is_manager_for_order=AsyncMock(return_value=False))
     repo = InMemoryBloggerRatingRepository()
+    eligibility = InMemoryRatingEligibilityRepository(
+        users={
+            user_id: DomainUser(
+                user_id=user_id,
+                messenger_type=MessengerType.TELEGRAM,
+                username="Client",
+                status=UserStatus.ACTIVE,
+                issue_count=0,
+                created_at=datetime.now(timezone.utc),
+                telegram_id="3",
+            )
+        },
+        owners={order_id: user_id},
+        participants={
+            order_id: (RatingParticipant(blogger_id, "Creator", True),)
+        },
+    )
     return NS(
+        eligibility=eligibility,
         state=state,
         order_id=order_id,
         blogger_id=blogger_id,
@@ -41,7 +65,7 @@ def flow():
         roles=roles,
         managers=managers,
         repo=repo,
-        service=BloggerRatingService(repo),
+        service=BloggerRatingService(repo, eligibility_repo=eligibility),
     )
 
 
@@ -80,10 +104,10 @@ async def test_prompt_has_five_stars_and_preserves_identifiers(flow):
     assert args == ("Оцените работу креатора от 1 до 5:",)
     buttons = kwargs["reply_markup"].inline_keyboard[0]
     assert [b.text for b in buttons] == [f"{score} ⭐" for score in range(1, 6)]
-    assert [b.callback_data for b in buttons] == [
-        f"brs:{flow.order_id}:{flow.blogger_id}:{score}"
-        for score in range(1, 6)
-    ]
+    assert [
+        handlers.decode_rating_callback(b.callback_data) for b in buttons
+    ] == [(flow.order_id, flow.blogger_id, score) for score in range(1, 6)]
+    assert all(len(b.callback_data.encode()) <= 64 for b in buttons)
 
 
 @pytest.mark.asyncio
@@ -121,6 +145,14 @@ async def test_complete_rating_flow_persists_role_score_and_comment(
 ):
     flow.roles.get_user_by_id.return_value.admin = role == RaterRole.ADMIN
     flow.managers.is_manager_for_order.return_value = role == RaterRole.MANAGER
+    if role != RaterRole.ADVERTISER:
+        flow.eligibility.owners[flow.order_id] = uuid4()
+    if role == RaterRole.MANAGER:
+        flow.eligibility.managers.add((flow.user_id, flow.order_id))
+    if role == RaterRole.ADMIN:
+        flow.eligibility.users[flow.user_id] = replace(
+            flow.eligibility.users[flow.user_id], admin=True
+        )
     await select_score(flow)
     event = callback("brc:skip") if skip else message()
     handler = (
@@ -166,7 +198,7 @@ async def test_complete_rating_flow_persists_role_score_and_comment(
         ("expired", "Сессия оценки истекла. Попробуйте снова."),
         ("unknown", "Пользователь не найден."),
         ("invalid", "Оценка должна быть от 1 до 5."),
-        ("duplicate", "Оценка для этого заказа уже сохранена."),
+        ("repeat", "Спасибо, оценка сохранена."),
         ("anonymous", None),
     ],
 )
@@ -177,7 +209,7 @@ async def test_unsavable_rating_clears_session_and_reports_reason(
         await select_score(flow, score=8 if case == "invalid" else 4)
     if case == "unknown":
         flow.roles.get_user.return_value = None
-    if case == "duplicate":
+    if case == "repeat":
         await flow.service.rate_blogger(
             flow.blogger_id,
             flow.order_id,
@@ -189,7 +221,9 @@ async def test_unsavable_rating_clears_session_and_reports_reason(
     await handlers.handle_rating_comment(
         event, flow.state, flow.service, flow.roles, flow.managers
     )
-    assert len(flow.repo.ratings) == int(case == "duplicate")
+    assert len(flow.repo.ratings) == int(case == "repeat")
+    if case == "repeat":
+        assert flow.repo.ratings[0].score == 4
     assert await flow.state.get_data() == {}
     assert await flow.state.get_state() is None
     if expected:

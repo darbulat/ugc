@@ -66,6 +66,7 @@ _SEND_CONTACT_TEXTS_KEYS = (
     "lbl_telegram_dash",
     "msg_order_type_ugc",
     "msg_order_type_placement",
+    "order_type_stories",
     "btn_open_profile",
     "btn_write_telegram",
 )
@@ -866,6 +867,8 @@ async def handle_offer_cancel(
 def _format_ugc_type(order: Order, texts: dict[str, str] | None = None) -> str:
     """Return human-readable order/format type for advertiser message."""
     t = texts or {}
+    if order.order_type == OrderType.STORIES:
+        return t.get("order_type_stories", "Сторис")
     if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
         return t.get("msg_order_type_placement", "UGC + размещение")
     return t.get("msg_order_type_ugc", "UGC-видео для бренда")

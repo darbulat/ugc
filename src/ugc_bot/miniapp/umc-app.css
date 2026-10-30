@@ -312,3 +312,17 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-messenger-linking [hidden] { display: none !important; }
 .umc-messenger-linking-identity { padding: var(--space-16); border: 1px solid var(--line); border-radius: var(--radius-14); background: var(--card); font-weight: 600; }
 .umc-messenger-linking-identity:empty { display: none; }
+
+/* Customer workspace uses the same shell tokens and narrow-screen rhythm. */
+.umc-customer { overflow-wrap: anywhere; }
+.umc-customer article, .umc-customer-order { padding: 16px; margin-block: 14px; border: 1px solid var(--umc-border, #aaa6); border-radius: 16px; }
+.umc-customer h2 { font-size: 1.15rem; }
+.umc-customer label { display: block; margin-block: 12px; }
+.umc-customer label > span { display: block; margin-bottom: 6px; }
+.umc-customer input:not([type=checkbox]), .umc-customer select, .umc-customer textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+.umc-customer label:has(input[type=checkbox]) { display: flex; align-items: flex-start; gap: 10px; }
+.umc-customer label input[type=checkbox] { flex: 0 0 auto; width: auto; margin-top: 4px; }
+.umc-customer .btn { white-space: normal; }
+
+.umc-customer #orders-list { list-style: none; margin: 0; padding: 0; }
+.umc-customer #orders-list > li { margin: 0; padding: 0; border: 0; background: none; }

@@ -27,6 +27,7 @@ from ugc_bot.application.messenger.dto import (
     KeyboardKind,
 )
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.infrastructure.order_images import telegram_order_photo
 
 TELEGRAM_API_RETRY_ATTEMPTS = 3
 TELEGRAM_API_RETRY_DELAY_SECONDS = 0.5
@@ -121,7 +122,7 @@ class TelegramMessengerClient(MessengerClient):
         await self._with_retry(
             lambda: self._bot.send_photo(
                 chat_id=int(chat_id),
-                photo=file_id,
+                photo=telegram_order_photo(file_id),
                 caption=caption,
                 reply_markup=_build_markup(keyboard),
                 parse_mode=parse_mode,

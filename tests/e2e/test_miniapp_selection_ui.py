@@ -71,10 +71,11 @@ class SelectionNetwork(MiniAppNetwork):
         ]
 
     def created(self, payload):
+        count = payload.get("position_count", 30)
         selected = payload.get("accompaniment_ordinals")
         if selected is None:
             selected = (
-                list(range(1, 31))
+                list(range(1, count + 1))
                 if payload["service_mode"] == "with_manager"
                 else []
             )
@@ -93,12 +94,12 @@ class SelectionNetwork(MiniAppNetwork):
                     "selection_minor": 50000,
                     "accompaniment_minor": 120000 if n in selected else 0,
                 }
-                for n in range(1, 31)
+                for n in range(1, count + 1)
             ],
             "lead_id": str(UUID(int=31)) if selected else None,
             "honorarium_payment": "paid_direct",
-            "total_minor": 1500000 + 120000 * len(selected),
-            "selection_base_minor": 1500000,
+            "total_minor": 50000 * count + 120000 * len(selected),
+            "selection_base_minor": 50000 * count,
         }
 
     def route(self, route: Route):
@@ -111,7 +112,7 @@ class SelectionNetwork(MiniAppNetwork):
                     "country": "ru",
                     "currency_code": "RUB",
                     "currency_symbol": "₽",
-                    "has_advertiser_profile": True,
+                    "has_advertiser_profile": self.registered,
                     "has_blogger_profile": False,
                     "is_manager": False,
                 }
@@ -176,6 +177,7 @@ class SelectionNetwork(MiniAppNetwork):
 
 
 def fill(page, *, manager=False):
+    page.locator("#intake-count").fill("30")
     page.locator("#intake-policy").select_option(POLICY)
     page.locator("#intake-product").fill("https://example.test/real-product")
     page.locator("#intake-brief").fill("Actual synthetic requested brief")
@@ -194,17 +196,17 @@ def test_actual_intake_uses_server_policy_and_persisted_quote(
 ):
     network = SelectionNetwork(locale)
     errors = open_app(page, network, platform, init_data=SIGNED)
-    expect(page.locator("#btn-umc-intake")).to_be_visible()
-    page.locator("#btn-umc-intake").click()
+    expect(page.locator("#btn-show-create-order")).to_be_visible()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#screen-intake")).to_be_visible()
     fill(page, manager=True)
     expect(page.locator("#btn-intake-create")).to_have_text(
         {
-            "ru": "Создать заказ с подбором",
-            "en": "Create selection order",
-            "kk": "Іріктеуге тапсырыс жасау",
-            "be": "Стварыць заказ з падборам",
-            "uz": "Tanlov buyurtmasini yaratish",
+            "ru": "Перейти к оплате",
+            "en": "Continue to payment",
+            "kk": "Төлемге өту",
+            "be": "Перайсці да аплаты",
+            "uz": "To‘lovga o‘tish",
         }[locale]
     )
     page.locator("#intake-all-manager").uncheck()
@@ -254,14 +256,14 @@ def test_uncertain_create_keeps_same_payload_and_key_until_explicit_retry(page):
     network = SelectionNetwork()
     network.abort = True
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
     expect(page.locator("#btn-intake-new")).to_be_hidden()
     assert len(network.creates) == 1
     page.reload()
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
     expect(page.locator("#btn-intake-new")).to_be_hidden()
     assert len(network.creates) == 1
@@ -277,7 +279,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
 ):
     network = SelectionNetwork("en")
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     page.locator("#intake-all-manager").uncheck()
     page.locator("#intake-position-7").check()
@@ -289,7 +291,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
     expect(page.locator("#intake-result")).to_be_hidden()
     expect(page.locator("#intake-product")).to_have_value("")
     expect(page.locator("#intake-brief")).to_have_value("")
-    expect(page.locator("#intake-policy")).to_have_value("")
+    expect(page.locator("#intake-policy")).to_have_value(POLICY)
     expect(
         page.locator('input[name="intake-mode"][value="self_service"]')
     ).to_be_checked()
@@ -313,7 +315,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
 def test_completed_receipt_reset_requires_safe_pending_storage_cleanup(page):
     network = SelectionNetwork("en")
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-result")).to_be_visible()
@@ -350,7 +352,7 @@ def test_rejected_retry_cannot_discard_previously_unknown_original_request(
     network = SelectionNetwork()
     network.abort = True
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#btn-intake-create").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
@@ -374,7 +376,7 @@ def test_paused_intake_is_localized_readable_at_320px(page, locale):
     page.set_viewport_size({"width": 320, "height": 720})
     network = SelectionNetwork(locale, paused=True)
     errors = open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-paused")).to_be_visible()
     expect(page.locator("#form-umc-intake")).to_be_hidden()
     assert network.creates == []
@@ -398,7 +400,9 @@ def test_selection_replacement_never_claims_new_creator_delivered(page):
         page.locator('[data-position="1"] [data-delivery-history]')
     ).to_contain_text("previous_actual_synthetic")
     expect(page.locator("#selection-paused")).to_be_visible()
-    assert network.requests[-1][1] == {
+    assert [
+        body for path, body in network.requests if path.endswith("/selection")
+    ][-1] == {
         "init_data": SIGNED,
         "platform": "telegram",
     }
@@ -434,41 +438,46 @@ def test_v1_list_links_to_actual_selection_without_legacy_pay_control(page):
     }
     open_app(page, network, init_data=SIGNED)
     page.locator("#btn-show-orders-list").click()
-    expect(page.locator("[data-selection-open]")).to_be_visible()
+    expect(page.locator("#screen-customer-orders article")).to_be_visible()
     assert page.locator('#orders-list a[href*="pay_"]').count() == 0
-    page.locator("[data-selection-open]").click()
+    page.locator("#screen-customer-orders article button").first.click()
     expect(page.locator("#screen-selection")).to_be_visible()
 
 
 def test_pending_native_action_cannot_double_send_and_back_is_real(page):
     network = SelectionNetwork()
     network.hold = True
-    open_app(page, network, native=True, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
-    fill(page)
-    page.wait_for_function(
-        "window.__host.wa.MainButton.visible && "
-        "window.__host.wa.MainButton.params.is_active"
-    )
-    page.evaluate("window.__host.wa.MainButton.click()")
-    expect(page.locator("#screen-intake")).to_have_attribute(
-        "aria-busy", "true"
-    )
-    page.evaluate("window.__host.wa.MainButton.click()")
-    expect(page.locator("#intake-result")).to_be_hidden()
-    assert len(network.creates) == len(network.pending) == 1
-    route, payload = network.pending.pop()
-    route.fulfill(json=network.created(payload))
-    expect(page.locator("#intake-result")).to_be_visible()
-    page.evaluate("window.__host.wa.BackButton.click()")
-    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    try:
+        open_app(page, network, native=True, init_data=SIGNED)
+        page.wait_for_function("window.__host.wa.MainButton.visible")
+        page.evaluate("window.__host.wa.MainButton.click()")
+        fill(page)
+        page.wait_for_function(
+            "window.__host.wa.MainButton.visible && "
+            "window.__host.wa.MainButton.params.is_active"
+        )
+        page.evaluate("window.__host.wa.MainButton.click()")
+        expect(page.locator("#screen-intake")).to_have_attribute(
+            "aria-busy", "true"
+        )
+        page.evaluate("window.__host.wa.MainButton.click()")
+        expect(page.locator("#intake-result")).to_be_hidden()
+        assert len(network.creates) == len(network.pending) == 1
+        route, payload = network.pending.pop()
+        route.fulfill(json=network.created(payload))
+        expect(page.locator("#intake-result")).to_be_visible()
+        page.evaluate("window.__host.wa.BackButton.click()")
+        expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    finally:
+        for route, payload in network.pending:
+            route.fulfill(json=network.created(payload))
 
 
 def test_no_eligible_policy_never_shows_action_or_guesses_a_version(page):
     network = SelectionNetwork()
     network.policies = []
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-empty")).to_be_visible()
     expect(page.locator("#form-umc-intake")).to_be_hidden()
     assert network.creates == []
@@ -479,7 +488,7 @@ def test_opaque_published_terms_reference_remains_visible_literal_text(page):
     reference = "actual-published-reference:<b>terms</b>"
     network.policies[0]["terms_reference"] = reference
     open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     page.locator("#intake-policy").select_option(POLICY)
     expect(page.locator("#intake-terms")).to_contain_text(reference)
     assert page.locator("#intake-terms b").count() == 0
@@ -558,7 +567,7 @@ def test_dark_form_quote_and_selection_fit_320px(page, platform, locale):
         "window.__host.wa.colorScheme='dark'; "
         "window.__host.events.themeChanged()"
     )
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     expect(page.locator("html")).to_have_attribute("data-theme", "dark")
     expect(page.locator("#intake-terms")).to_be_visible()
@@ -589,7 +598,7 @@ def test_light_320px_subset_grid_supports_keyboard_and_exact_quote(page):
     page.set_viewport_size({"width": 320, "height": 720})
     network = SelectionNetwork("en")
     errors = open_app(page, network, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     page.locator("#intake-all-manager").uncheck()
     page.locator("#intake-position-1").focus()

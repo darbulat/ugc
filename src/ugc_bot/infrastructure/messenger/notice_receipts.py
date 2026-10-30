@@ -6,6 +6,9 @@ performed after network ambiguity or a missing/invalid provider reference.
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from math import ceil
 from typing import TypedDict
 from urllib.parse import urlsplit
 
@@ -71,6 +74,25 @@ def _action(message: ReceiptMessage) -> tuple[str, str] | None:
     return url, label
 
 
+def _retry_after_seconds(value: str | None) -> int | None:
+    if value is None:
+        return 30
+    value = value.strip()
+    try:
+        if value.isascii() and value.isdigit():
+            delay = int(value)
+        else:
+            target = parsedate_to_datetime(value)
+            if target.tzinfo is None:
+                return None
+            delay = max(
+                0, ceil((target - datetime.now(timezone.utc)).total_seconds())
+            )
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return delay if 0 <= delay <= 31_536_000 else None
+
+
 class _TelegramAction(TypedDict, total=False):
     reply_markup: InlineKeyboardMarkup
 
@@ -103,11 +125,21 @@ class TelegramNoticeReceipts:
             message = await self.bot.send_message(
                 chat_id=address, text=attempt.text, parse_mode=None, **kwargs
             )
+        except TelegramRetryAfter as exc:
+            delay = exc.retry_after
+            if not isinstance(delay, int) or not 0 <= delay <= 31_536_000:
+                raise DeliveryFailure(
+                    "telegram_rejected", uncertain=False
+                ) from exc
+            raise DeliveryFailure(
+                "telegram_rate_limited",
+                uncertain=False,
+                retry_after_seconds=delay,
+            ) from exc
         except (
             TelegramBadRequest,
             TelegramForbiddenError,
             TelegramNotFound,
-            TelegramRetryAfter,
             TelegramUnauthorizedError,
         ) as exc:
             raise DeliveryFailure("telegram_rejected", uncertain=False) from exc
@@ -163,6 +195,17 @@ class MaxNoticeReceipts:
                 json=request_body,
                 timeout=aiohttp.ClientTimeout(total=30),
             ) as response:
+                if response.status == 429:
+                    delay = _retry_after_seconds(
+                        getattr(response, "headers", {}).get("Retry-After")
+                    )
+                    if delay is None:
+                        raise DeliveryFailure("max_rejected", uncertain=False)
+                    raise DeliveryFailure(
+                        "max_rate_limited",
+                        uncertain=False,
+                        retry_after_seconds=delay,
+                    )
                 if not 200 <= response.status < 300:
                     raise DeliveryFailure(
                         "max_rejected"

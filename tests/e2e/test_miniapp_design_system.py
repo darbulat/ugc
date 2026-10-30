@@ -170,7 +170,10 @@ def test_local_registration_and_order_workflow(
     page: Page, platform: str, locale: str
 ) -> None:
     page.set_viewport_size({"width": 390, "height": 844})
-    network = MiniAppNetwork(locale)
+    from tests.e2e.test_miniapp_selection_ui import SelectionNetwork, fill
+
+    network = SelectionNetwork(locale)
+    network.registered = False
     errors = open_app(page, network, platform)
     expect(page.locator("#screen-role-choice")).to_be_visible()
     expect(page.locator("html")).to_have_attribute("lang", locale)
@@ -187,34 +190,17 @@ def test_local_registration_and_order_workflow(
     page.locator("#btn-confirm-adv-agreement").click()
     expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
     page.locator("#btn-show-orders-list").click()
-    expect(page.locator("#orders-list li")).to_have_count(1)
-    # Empty state is supplied by the existing translated workflow.
-    assert page.locator("#orders-list").inner_text().strip()
-    page.locator("#btn-show-create-order").click()
-    expect(page.locator("#block-create-order")).to_be_visible()
-    label = page.locator("#lbl-ord-price").inner_text()
-    assert ("руб." if locale == "ru" else network.symbol) in label
-    if locale != "ru":
-        assert "руб." not in label and "₽" not in label
-    page.locator("#ord-link").fill("https://example.test/synthetic-product")
-    page.locator("#ord-offer").fill("Synthetic UI regression offer")
-    page.locator("#ord-price").fill("15000")
-    page.locator("#btn-submit-order").click()
-    expect(page.locator("#ord-success")).to_contain_text("synthetic-order-1")
-    page.locator("#btn-show-orders-list").click()
-    row = page.locator('#orders-list [data-order-id="synthetic-order-1"]')
-    expect(row).to_have_attribute("role", "button")
-    row.focus()
-    row.press("Enter")
-    expect(page.locator("#screen-order-detail")).to_be_visible()
-    expect(page.locator("#ord-detail-offer")).to_have_value(
-        "Synthetic UI regression offer"
-    )
-    page.locator("#btn-order-detail-back").click()
-    expect(page.locator("#block-orders-list")).to_be_visible()
-    assert all(body["platform"] == platform for _, body in network.requests)
-    created = next(body for path, body in network.requests if path == "/orders")
-    assert created["price"] == 15000 and created["bloggers_needed"] == 1
+    expect(page.locator("#screen-customer-orders")).to_be_visible()
+    expect(page.locator("#screen-customer-orders article")).to_have_count(0)
+    page.locator("#screen-customer-orders button").nth(1).click()
+    expect(page.locator("#screen-intake")).to_be_visible()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert network.creates[0]["position_count"] == 30
+    assert network.creates[0]["platform"] == platform
+    page.locator("#btn-intake-selection").click()
+    expect(page.locator("#screen-selection")).to_be_visible()
     assert not errors
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"
@@ -476,7 +462,7 @@ def test_native_payment_mirrors_existing_link_without_simulating_success(
     errors = open_app(page, network, native=True)
     expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
     page.locator("#btn-show-orders-list").click()
-    page.locator("#orders-list li").first.click()
+    page.locator("#screen-customer-orders article button").first.click()
     expect(page.locator("#screen-order-detail")).to_be_visible()
     expect(page.locator("#btn-order-detail-pay")).to_be_hidden()
     page.evaluate("window.__host.wa.MainButton.click()")

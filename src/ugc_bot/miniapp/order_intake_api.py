@@ -14,6 +14,7 @@ from ugc_bot.application.native_principal_ports import (
 )
 from ugc_bot.application.services.order_intake_service import OrderIntakeService
 from ugc_bot.domain.enums import OrderType
+from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.domain.order_intake import (
     EligibleOrderPolicies,
     IntakeItem,
@@ -40,6 +41,7 @@ class IntakeTargeting(BaseModel):
         default=None, min_length=1, max_length=4000
     )
     brief_link: str | None = Field(default=None, min_length=1, max_length=2048)
+    deadlines: str | None = Field(default=None, min_length=1, max_length=4000)
 
     @model_validator(mode="after")
     def valid_targeting(self) -> Self:
@@ -58,13 +60,15 @@ class OrderIntakeRequest(SignedMiniAppRequest):
     selection_due_at: datetime
     contact_reference: str = Field(min_length=1, max_length=500)
     service_mode: Literal["self_service", "with_manager"]
+    position_count: StrictInt = Field(default=30, ge=10, le=200)
     accompaniment_ordinals: list[StrictInt] | None = Field(
-        default=None, max_length=30
+        default=None, max_length=200
     )
     order_type: OrderType = OrderType.UGC_ONLY
     barter_description: str | None = Field(default=None, max_length=4000)
     targeting: IntakeTargeting | None = None
     funnel_id: UUID | None = None
+    image_token: UUID | None = None
 
     @model_validator(mode="after")
     def unique_positions(self) -> Self:
@@ -82,6 +86,7 @@ class FunnelStage(SignedMiniAppRequest):
 class OrderIntakeResponse(BaseModel):
     request_id: UUID
     order_id: UUID
+    public_number: str
     requested_at: datetime
     currency: str
     policy_version: str
@@ -165,6 +170,7 @@ def create_order_intake_router(
         )
         return OrderIntakeResponse(
             **asdict(result),
+            public_number=public_order_number(result.order_id),
             total_minor=result.total_minor,
             selection_base_minor=result.selection_base_minor,
         )

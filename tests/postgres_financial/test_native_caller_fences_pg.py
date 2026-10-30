@@ -1276,7 +1276,11 @@ async def test_mounted_legacy_rating_carry_uses_actual_actor_and_sql(
     import httpx
     from fastapi import FastAPI
 
-    from ugc_bot.infrastructure.db.models import BloggerRatingModel
+    from ugc_bot.domain.enums import InteractionStatus
+    from ugc_bot.infrastructure.db.models import (
+        BloggerRatingModel,
+        InteractionModel,
+    )
     from ugc_bot.miniapp.api import router
 
     case = native_work
@@ -1314,11 +1318,25 @@ async def test_mounted_legacy_rating_carry_uses_actual_actor_and_sql(
                 )
                 == 0
             )
+        incomplete = await client.post(path, json=payload)
+        assert incomplete.status_code == 422, incomplete.text
+        assert incomplete.json() == {"detail": "rating_participant_required"}
+        async with case.factory.begin() as db:
+            db.add(
+                InteractionModel(
+                    interaction_id=uuid4(),
+                    order_id=case.ids["order"],
+                    blogger_id=case.ids["creator"],
+                    advertiser_id=case.ids["client"],
+                    status=InteractionStatus.OK,
+                )
+            )
         created = await client.post(path, json=payload)
         assert created.status_code == 200, created.text
         assert created.json()["ok"] is True
         duplicate = await client.post(path, json=payload)
-        assert duplicate.status_code == 409, duplicate.text
+        assert duplicate.status_code == 200, duplicate.text
+        assert duplicate.json()["rating_id"] == created.json()["rating_id"]
         rating = await client.get(
             f"/miniapp/api/bloggers/{case.ids['creator']}/rating",
             params=case.auth(platform),

@@ -2,8 +2,10 @@
 
 import html
 import logging
+from collections.abc import Mapping
 from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import urlsplit
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.messenger.ports import MessengerClient
@@ -13,11 +15,32 @@ from ugc_bot.application.services.content_moderation_service import (
 )
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.domain.entities import AdvertiserProfile, Complaint, Order, User
-from ugc_bot.domain.enums import MessengerType, OrderType
+from ugc_bot.domain.enums import MessengerType, OrderStatus, OrderType
 
 logger = logging.getLogger(__name__)
 
 MOD_ACTIVATE_CALLBACK_PREFIX = "mod_activate:"
+
+
+def order_admin_url(admin_base_url: str, order: Order) -> str | None:
+    """Use one concrete editable order card for every notification."""
+    base = admin_base_url.strip().rstrip("/")
+    if not base:
+        return None
+    if not urlsplit(base).path:
+        base += "/admin"
+    return f"{base}/order-model/edit/{order.order_id}"
+
+
+def _unique_admin_recipients(admins: list[User]) -> list[User]:
+    seen: set[str] = set()
+    result = []
+    for admin in admins:
+        address = (admin.telegram_id or admin.max_chat_id or "").strip()
+        if address and address not in seen:
+            seen.add(address)
+            result.append(admin)
+    return result
 
 
 async def _send_admin_text(
@@ -78,6 +101,8 @@ async def _send_admin_photo(
 
 def _format_order_type_for_moderation(order: Order) -> str:
     """Format order type for admin moderation message."""
+    if order.order_type == OrderType.STORIES:
+        return "Сторис"
     if order.order_type == OrderType.UGC_PLUS_PLACEMENT:
         return "UGC + размещение"
     return "UGC-видео для бренда"
@@ -127,7 +152,7 @@ async def notify_admins_about_complaint(
     if complaint.file_ids:
         text += f"\n*Фото:* {len(complaint.file_ids)} шт."
 
-    for admin in admins:
+    for admin in _unique_admin_recipients(admins):
         try:
             chat_id = admin.telegram_id or admin.max_chat_id or ""
             if complaint.file_ids:
@@ -186,6 +211,8 @@ def _build_order_admin_text(
     order_type_esc = html.escape(_format_order_type_for_moderation(order))
 
     return (
+        f"<b>Состояние:</b> {html.escape(order.status.value)}\n"
+        f"<b>ТЗ:</b> {html.escape(_format_optional_field(order.brief_link))}\n"
         f"<b>ID заказа:</b> <code>{order_id_esc}</code>\n"
         f"<b>Заказчик:</b> {advertiser_esc}\n"
         f"<b>Тип заказа:</b> {order_type_esc}\n"
@@ -201,6 +228,30 @@ def _build_order_admin_text(
     )
 
 
+def _order_quote_details(details: Mapping[str, Any] | None, symbol: str) -> str:
+    if not details:
+        return ""
+    lines = []
+    for key, label in (
+        ("contact_reference", "Контакт"),
+        ("format", "Формат"),
+        ("accompaniment_count", "С сопровождением"),
+    ):
+        if details.get(key) is not None:
+            lines.append(f"<b>{label}:</b> {html.escape(str(details[key]))}")
+    for key, label in (
+        ("selection_base_minor", "Подбор"),
+        ("accompaniment_minor", "Сопровождение"),
+        ("total_minor", "Сумма счёта"),
+    ):
+        value = details.get(key)
+        if value is not None:
+            lines.append(
+                f"<b>{label}:</b> {value / 100:.2f} {html.escape(symbol)}"
+            )
+    return "\n" + "\n".join(lines)
+
+
 class _VisibleTextParser(HTMLParser):
     """Count rendered UTF-16 units, conservatively accounting for emoji."""
 
@@ -212,13 +263,15 @@ class _VisibleTextParser(HTMLParser):
         self.units += len(data.encode("utf-16-le")) // 2
 
 
-def _order_photo_caption(text: str, order: Order, banned_warning: str) -> str:
+def _order_photo_caption(
+    text: str, order: Order, banned_warning: str, *, limit: int = 1024
+) -> str:
     """Shorten the offer to fit a Telegram photo caption where possible."""
 
     def fits(value: str) -> bool:
         parser = _VisibleTextParser()
         parser.feed(value)
-        return parser.units <= 1024
+        return parser.units <= limit
 
     if fits(text):
         return text
@@ -241,9 +294,11 @@ def _order_photo_caption(text: str, order: Order, banned_warning: str) -> str:
 
     # Other fields alone exceed the caption limit. Keep the photo and order ID
     # deliverable; full details remain in the order, accessible via the button.
+    header = text.partition("\n\n")[0]
     return (
+        f"{header}\n\n"
         f"📋 <b>Заказ:</b> <code>{html.escape(str(order.order_id))}</code>\n"
-        "Подробности слишком длинные для подписи к фото. "
+        "Полный бриф сохранён в карточке заказа. "
         "Откройте заказ в админке."
         f"{banned_warning}"
     )
@@ -260,6 +315,50 @@ async def _resolve_order_currency_symbol(
     return country.currency_symbol if country is not None else fallback
 
 
+async def _deliver_order_card(
+    order,
+    messenger_client,
+    admins,
+    text,
+    keyboard,
+    *,
+    event_kind,
+    raise_on_error,
+):
+    for admin in _unique_admin_recipients(admins):
+        try:
+            chat_id = (admin.telegram_id or admin.max_chat_id or "").strip()
+            if order.product_photo_file_id:
+                await _send_admin_photo(
+                    messenger_client,
+                    chat_id=chat_id,
+                    file_id=order.product_photo_file_id,
+                    caption=text,
+                    parse_mode="HTML",
+                    keyboard=keyboard,
+                )
+            else:
+                await _send_admin_text(
+                    messenger_client,
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode="HTML",
+                    keyboard=keyboard,
+                )
+        except Exception as exc:
+            logger.error(
+                "Failed to notify admin about order %s",
+                event_kind,
+                extra={
+                    "admin_id": str(admin.user_id),
+                    "order_id": str(order.order_id),
+                    "error": str(exc),
+                },
+            )
+            if raise_on_error:
+                raise
+
+
 async def notify_admins_about_order_created(
     order: Order,
     messenger_client: MessengerClient,
@@ -269,6 +368,8 @@ async def notify_admins_about_order_created(
     currency_symbol: str = "₽",
     country_repo: CountryRepository | None = None,
     advertiser_profile: AdvertiserProfile | None = None,
+    order_details: Mapping[str, Any] | None = None,
+    raise_on_error: bool = False,
 ) -> None:
     """Send new order notification to all Telegram admins (no Activate button).
 
@@ -325,48 +426,35 @@ async def notify_admins_about_order_created(
     contact_details = (
         f"<b>Телефон:</b> {html.escape(phone)}\n<b>Telegram:</b> {telegram}\n\n"
     )
-    text = "📋 <b>Новый заказ</b>\n\n" + contact_details + body
-    if order.product_photo_file_id:
-        text = _order_photo_caption(text, order, banned_warning)
+    text = (
+        "📋 <b>Новый заказ</b>\n\n"
+        + contact_details
+        + body
+        + _order_quote_details(order_details, currency_symbol)
+    )
+    text = _order_photo_caption(
+        text,
+        order,
+        banned_warning,
+        limit=1024 if order.product_photo_file_id else 4096,
+    )
 
     buttons: list[list[Button]] = []
-    if admin_base_url and admin_base_url.rstrip("/"):
-        base = admin_base_url.rstrip("/")
-        link_url = f"{base}/order-model/edit/{order.order_id}"
+    if link_url := order_admin_url(admin_base_url, order):
         buttons.append([Button(text="Открыть в админке", url=link_url)])
     reply_markup = (
         Keyboard(kind=KeyboardKind.INLINE, rows=buttons) if buttons else None
     )
 
-    for admin in admins:
-        try:
-            chat_id = admin.telegram_id or admin.max_chat_id or ""
-            if order.product_photo_file_id:
-                await _send_admin_photo(
-                    messenger_client,
-                    chat_id=chat_id,
-                    file_id=order.product_photo_file_id,
-                    caption=text,
-                    parse_mode="HTML",
-                    keyboard=reply_markup,
-                )
-            else:
-                await _send_admin_text(
-                    messenger_client,
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode="HTML",
-                    keyboard=reply_markup,
-                )
-        except Exception as exc:
-            logger.error(
-                "Failed to notify admin about order created",
-                extra={
-                    "admin_id": str(admin.user_id),
-                    "order_id": str(order.order_id),
-                    "error": str(exc),
-                },
-            )
+    await _deliver_order_card(
+        order,
+        messenger_client,
+        admins,
+        text,
+        reply_markup,
+        event_kind="created",
+        raise_on_error=raise_on_error,
+    )
 
 
 async def notify_admins_about_order_paid(
@@ -376,6 +464,9 @@ async def notify_admins_about_order_paid(
     content_moderation: ContentModerationService,
     admin_base_url: str = "",
     currency_symbol: str = "₽",
+    advertiser_profile: AdvertiserProfile | None = None,
+    order_details: Mapping[str, Any] | None = None,
+    raise_on_error: bool = False,
 ) -> None:
     """Send paid order notification to all Telegram admins for moderation.
 
@@ -412,53 +503,49 @@ async def notify_admins_about_order_paid(
     body = _build_order_admin_text(
         order, advertiser_name, currency_symbol, banned_warning
     )
-    text = "✅ <b>Заказ оплачен — на модерацию</b>\n\n" + body
+    contact = ""
+    if advertiser is not None:
+        address = advertiser.telegram or advertiser.telegram_id or "—"
+        contact = f"<b>Telegram:</b> {html.escape(address)}\n"
+    if advertiser_profile is not None:
+        contact += f"<b>Телефон:</b> {html.escape(advertiser_profile.phone)}\n"
+    text = (
+        "✅ <b>Заказ оплачен — на модерацию</b>\n\n"
+        + contact
+        + body
+        + _order_quote_details(order_details, currency_symbol)
+    )
+    text = _order_photo_caption(
+        text,
+        order,
+        banned_warning,
+        limit=1024 if order.product_photo_file_id else 4096,
+    )
 
     order_id_hex = order.order_id.hex
     buttons: list[list[Button]] = []
-    if admin_base_url and admin_base_url.rstrip("/"):
-        base = admin_base_url.rstrip("/")
-        link_url = f"{base}/order-model/edit/{order.order_id}"
+    if link_url := order_admin_url(admin_base_url, order):
         buttons.append([Button(text="Открыть в админке", url=link_url)])
-    buttons.append(
-        [
-            Button(
-                text="Активировать",
-                callback_data=f"{MOD_ACTIVATE_CALLBACK_PREFIX}{order_id_hex}",
-            )
-        ]
-    )
+    if order.status == OrderStatus.PENDING_MODERATION:
+        buttons.append(
+            [
+                Button(
+                    text="Активировать",
+                    callback_data=f"{MOD_ACTIVATE_CALLBACK_PREFIX}{order_id_hex}",
+                )
+            ]
+        )
     reply_markup = Keyboard(kind=KeyboardKind.INLINE, rows=buttons)
 
-    for admin in admins:
-        try:
-            chat_id = admin.telegram_id or admin.max_chat_id or ""
-            if order.product_photo_file_id:
-                await _send_admin_photo(
-                    messenger_client,
-                    chat_id=chat_id,
-                    file_id=order.product_photo_file_id,
-                    caption=text,
-                    parse_mode="HTML",
-                    keyboard=reply_markup,
-                )
-            else:
-                await _send_admin_text(
-                    messenger_client,
-                    chat_id=chat_id,
-                    text=text,
-                    parse_mode="HTML",
-                    keyboard=reply_markup,
-                )
-        except Exception as exc:
-            logger.error(
-                "Failed to notify admin about order paid",
-                extra={
-                    "admin_id": str(admin.user_id),
-                    "order_id": str(order.order_id),
-                    "error": str(exc),
-                },
-            )
+    await _deliver_order_card(
+        order,
+        messenger_client,
+        admins,
+        text,
+        reply_markup,
+        event_kind="paid",
+        raise_on_error=raise_on_error,
+    )
 
 
 async def notify_support_chat_about_new_order(
@@ -506,36 +593,19 @@ async def notify_support_chat_about_new_order(
         telegram = f'<a href="tg://user?id={advertiser_user.telegram_id}">tg://user?id={advertiser_user.telegram_id}</a>'
     else:
         telegram = "—"
-    order_type_label = _format_order_type_for_moderation(order)
-
-    offer_esc = html.escape(order.offer_text or "")
-    product_link_esc = html.escape(order.product_link)
-    barter_esc = html.escape(_format_optional_field(order.barter_description))
-    content_usage_esc = html.escape(_format_optional_field(order.content_usage))
-    deadlines_esc = html.escape(_format_optional_field(order.deadlines))
-    geography_esc = html.escape(_format_optional_field(order.geography))
-
     text = (
         "🆕 <b>Новый заказ</b>\n\n"
         f"<b>Телефон:</b> {html.escape(phone)}\n"
         f"<b>Telegram:</b> {telegram}\n"
-        f"<b>Заказчик:</b> {html.escape(advertiser_user.username)}\n\n"
-        f"<b>ID заказа:</b> <code>{html.escape(str(order.order_id))}</code>\n"
-        f"<b>Тип заказа:</b> {html.escape(order_type_label)}\n"
-        f"<b>Задача:</b> {offer_esc}\n"
-        f"<b>Ссылка на продукт:</b> {product_link_esc}\n"
-        f"<b>Бартер:</b> {barter_esc}\n"
-        f"<b>Бюджет:</b> {order.price} {currency_symbol}\n"
-        f"<b>Нужно креаторов:</b> {order.bloggers_needed}\n"
-        f"<b>Использование контента:</b> {content_usage_esc}\n"
-        f"<b>Сроки:</b> {deadlines_esc}\n"
-        f"<b>География:</b> {geography_esc}"
+        + _build_order_admin_text(
+            order, advertiser_user.username, currency_symbol, ""
+        )
     )
 
+    text = _order_photo_caption(text, order, "", limit=4096)
+
     buttons: list[list[Button]] = []
-    admin_base = (admin_base_url or "").strip().rstrip("/")
-    if admin_base:
-        link_url = f"{admin_base}/orders/{order.order_id}"
+    if link_url := order_admin_url(admin_base_url, order):
         buttons.append([Button(text="Открыть в админке", url=link_url)])
     reply_markup = (
         Keyboard(kind=KeyboardKind.INLINE, rows=buttons) if buttons else None

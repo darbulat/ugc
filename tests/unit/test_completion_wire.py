@@ -36,4 +36,5 @@ def test_targeting_wire_preserves_optional_exact_filters():
         platforms=[],
         content_usage=None,
         brief_link=None,
+        deadlines=None,
     )

@@ -33,9 +33,16 @@ class DeliveryReceipt:
 class DeliveryFailure(Exception):
     """Safe error code, with uncertainty when the provider may have accepted."""
 
-    def __init__(self, code: str, *, uncertain: bool):
+    def __init__(
+        self,
+        code: str,
+        *,
+        uncertain: bool,
+        retry_after_seconds: int | None = None,
+    ):
         self.code = code
         self.uncertain = uncertain
+        self.retry_after_seconds = retry_after_seconds
         super().__init__(code)
 
 

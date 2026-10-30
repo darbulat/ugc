@@ -92,6 +92,7 @@ async def _choose_advertiser_role_impl(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -290,6 +291,7 @@ async def handle_advertiser_start(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -354,6 +356,7 @@ async def handle_advertiser_start_callback(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -709,6 +712,7 @@ async def handle_agreements_confirm(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -774,6 +778,7 @@ async def handle_advertiser_agreements_callback(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",

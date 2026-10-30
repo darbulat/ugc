@@ -8,6 +8,33 @@
   </div>
 </div>
 {% endif %}
+{% if order_quote_details %}
+<div class="col-12 mb-3">
+  <div class="card">
+    <div class="card-header"><h3 class="card-title">Сохранённые условия заказа</h3></div>
+    <div class="card-body">
+      <dl class="row mb-0" id="order-saved-quote">
+        <dt class="col-sm-5">Контакт клиента</dt><dd class="col-sm-7">{{ order_quote_details.contact_reference }}</dd>
+        <dt class="col-sm-5">Формат работы</dt><dd class="col-sm-7">{{ 'С сопровождением менеджера' if order_quote_details.format == 'with_manager' else 'Самостоятельный подбор' }}</dd>
+        <dt class="col-sm-5">Количество авторов</dt><dd class="col-sm-7">{{ order_quote_details.position_count }}</dd>
+        <dt class="col-sm-5">С сопровождением</dt><dd class="col-sm-7">{{ order_quote_details.accompaniment_count }}</dd>
+        <dt class="col-sm-5">Подбор</dt><dd class="col-sm-7">{{ order_quote_details.selection_base_display }} {{ order_quote_details.currency }}</dd>
+        <dt class="col-sm-5">Сопровождение</dt><dd class="col-sm-7">{{ order_quote_details.accompaniment_display }} {{ order_quote_details.currency }}</dd>
+        <dt class="col-sm-5">Сумма счёта</dt><dd class="col-sm-7"><strong>{{ order_quote_details.total_display }} {{ order_quote_details.currency }}</strong></dd>
+      </dl>
+      <p class="text-muted mb-0 mt-2">Суммы сохранены при создании заказа.</p>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% if order_image_preview %}
+<div class="col-12 mb-3">
+  <div class="card"><div class="card-body">
+    <h3 class="card-title">Изображение товара</h3>
+    <img src="{{ order_image_preview }}" alt="Изображение товара из сохранённого заказа" class="img-fluid rounded" style="max-width: 360px; width: 100%;" loading="lazy">
+  </div></div>
+</div>
+{% endif %}
 <div class="col-12">
   <div class="card">
     <div class="card-header">

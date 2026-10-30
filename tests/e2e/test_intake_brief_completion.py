@@ -14,7 +14,7 @@ pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
 def test_full_brief_restores_and_submits_without_losing_filters(page, platform):
     network = SelectionNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     fill(page)
     for name, value in dict(
         city="Москва",
@@ -25,7 +25,7 @@ def test_full_brief_restores_and_submits_without_losing_filters(page, platform):
     page.locator("#intake-platform-youtube").check()
     page.locator("#intake-order-type").select_option("ugc_plus_placement")
     page.reload()
-    page.locator("#btn-umc-intake").click()
+    page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-city")).to_have_value("Москва")
     expect(page.locator("#intake-platform-youtube")).to_be_checked()
     expect(page.locator("#intake-order-type")).to_have_value(

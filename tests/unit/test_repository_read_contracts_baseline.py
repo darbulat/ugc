@@ -204,7 +204,10 @@ async def test_rating_lookup_filters_blogger_and_order_and_maps_all_fields(
     sql, params = compile_query(session)
     assert "blogger_ratings.blogger_id =" in sql
     assert "blogger_ratings.order_id =" in sql
-    assert set(params.values()) == {model.blogger_id, model.order_id}
+    assert params["blogger_id_1"] == model.blogger_id
+    assert params["order_id_1"] == model.order_id
+    assert params["rater_role_1"] == RaterRole.ADVERTISER
+    assert "ORDER BY CASE" in sql and "LIMIT" in sql
 
 
 @pytest.mark.asyncio
@@ -247,6 +250,10 @@ async def test_rating_batch_averages_group_by_blogger_and_skip_nulls(empty):
         session.execute.assert_not_awaited()
     else:
         sql, params = compile_query(session)
-        assert "avg(blogger_ratings.score)" in sql
-        assert "GROUP BY blogger_ratings.blogger_id" in sql
-        assert list(params.values()) == [ids]
+        assert "avg(anon_1.score)" in sql
+        assert "GROUP BY anon_1.blogger_id" in sql
+        assert "PARTITION BY blogger_ratings.blogger_id, " in sql
+        assert "blogger_ratings.order_id" in sql
+        assert params["blogger_id_1"] == ids
+        assert params["rater_role_1"] == RaterRole.ADVERTISER
+        assert params["position_1"] == 1

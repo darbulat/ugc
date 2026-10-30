@@ -14,7 +14,7 @@
     var next=identity();
     if(next===binding){if(context&&!context.isCurrent())newContext();return false;}
     newContext();binding=next;flow=null;restored=false;status.textContent='';
-    applying=true;try{form.reset();form.dispatchEvent(new Event('change',{bubbles:true}));}finally{applying=false;}
+    applying=true;try{form.reset();if(window.UMCSelection)window.UMCSelection.rebuildPositions();form.dispatchEvent(new Event('change',{bubbles:true}));}finally{applying=false;}
     restore(false);return true;
   }
   function operation(){if(!window.crypto||!crypto.getRandomValues)return null;return crypto.randomUUID?crypto.randomUUID():Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(n){return n.toString(16).padStart(2,'0');}).join('');}
@@ -26,7 +26,7 @@
       if(identity()===owner&&binding===owner&&flow===ownFlow&&observed===marks&&context===request&&generation===version&&request.isCurrent())delete marks[stage];
     });
   }
-  function fields(){return Array.from(form.querySelectorAll('input,textarea,select')).filter(function(n){return n.id||(n.type==='radio'&&n.name);});}
+  function fields(){return Array.from(form.querySelectorAll('input,textarea,select')).filter(function(n){return n.type!=='file'&&(n.id||(n.type==='radio'&&n.name));});}
   function fieldKey(n){return n.id||'radio:'+n.name+':'+n.value;}
   function save(){
     if(applying||bind()||!binding)return;
@@ -38,6 +38,10 @@
     try{
       var data=JSON.parse(sessionStorage.getItem(binding)||'null');
       if(data&&data.values){
+        // Build dependent controls before applying their saved checked states.
+        var savedCount=data.values['intake-count'],count=savedCount&&Number(savedCount.value);
+        if(Number.isInteger(count)&&count>=10&&count<=200)document.getElementById('intake-count').value=String(count);
+        if(window.UMCSelection)window.UMCSelection.rebuildPositions();
         fields().forEach(function(n){var v=data.values[fieldKey(n)];if(!v||typeof v.value!=='string')return;if(n.type==='radio'){if(v.value===n.value&&v.checked===true)n.checked=true;return;}if(n.tagName==='SELECT'&&!Array.from(n.options).some(function(o){return o.value===v.value;}))return;n.value=v.value;if(n.type==='checkbox'&&typeof v.checked==='boolean')n.checked=v.checked;});
         if(typeof data.flow==='string'&&/^[0-9a-f-]{32,36}$/i.test(data.flow))flow=data.flow;
         form.dispatchEvent(new Event('change',{bubbles:true}));status.textContent=words()[3];

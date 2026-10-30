@@ -29,6 +29,7 @@ class OrderTargeting:
     platforms: tuple[str, ...] = ()
     content_usage: str | None = None
     brief_link: str | None = None
+    deadlines: str | None = None
 
     def __post_init__(self):
         validate_range(self.min_followers, self.max_followers, 2147483647)
@@ -39,6 +40,7 @@ class OrderTargeting:
             ("city", 200),
             ("content_usage", 4000),
             ("brief_link", 2048),
+            ("deadlines", 4000),
         ):
             value = getattr(self, name)
             if value is not None:
@@ -71,10 +73,19 @@ class OrderTargeting:
 
     def order_fields(self) -> dict:
         values = asdict(self)
+        if values["deadlines"] is None:
+            values.pop("deadlines")
         values["geography"] = values.pop("city")
         values.pop("platforms")
         gender = values.pop("gender")
         values["required_blogger_gender"] = (
             BloggerGender(gender) if gender is not None else None
         )
+        return values
+
+    def payload(self) -> dict:
+        """Keep historical hashes stable when no preview deadline is set."""
+        values = asdict(self)
+        if values["deadlines"] is None:
+            values.pop("deadlines")
         return values

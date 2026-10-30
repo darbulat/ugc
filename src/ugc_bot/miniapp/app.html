@@ -31,6 +31,7 @@
   <script src="/miniapp/umc-replacements.js" defer></script>
   <script src="/miniapp/umc-selection.js" defer></script>
   <script src="/miniapp/umc-intake-progress.js" defer></script>
+  <script src="/miniapp/umc-order-images.js" defer></script>
   <script src="/miniapp/umc-subscriptions.js" defer></script>
   <script src="/miniapp/umc-checkout.js" defer></script>
   <script src="/miniapp/umc-messenger-linking.js" defer></script>
@@ -38,6 +39,7 @@
   <script src="/miniapp/umc-campaigns.js" defer></script>
   <script src="/miniapp/umc-campaign-workbench.js" defer></script>
   <script src="/miniapp/umc-analytics.js" defer></script>
+  <script src="/miniapp/umc-customer.js" defer></script>
   <script src="/miniapp/umc-corrections.js" defer></script>
   <script src="/miniapp/umc-finance-actions.js" defer></script>
   <script src="/miniapp/umc-manual-grants.js" defer></script>
@@ -212,6 +214,7 @@
         <select id="ord-type" name="order_type">
           <option value="ugc_only">Только UGC</option>
           <option value="ugc_plus_placement">UGC + размещение</option>
+          <option value="stories">Сторис</option>
         </select>
         <label id="lbl-ord-barter" for="ord-barter">Описание бартера (если бартер)</label>
         <input type="text" id="ord-barter" name="barter_description">
@@ -255,6 +258,7 @@
       <select id="ord-detail-type" name="order_type">
         <option value="ugc_only">Только UGC</option>
         <option value="ugc_plus_placement">UGC + размещение</option>
+          <option value="stories">Сторис</option>
       </select>
       <label id="lbl-ord-detail-barter" for="ord-detail-barter">Описание бартера (если бартер)</label>
       <input type="text" id="ord-detail-barter" name="barter_description">
@@ -473,8 +477,18 @@
       <input id="intake-product" type="url" required maxlength="2048">
       <label for="intake-brief" data-intake-copy="brief"></label>
       <textarea id="intake-brief" required maxlength="4000"></textarea>
+      <label for="intake-count" data-intake-copy="count"></label>
+      <input id="intake-count" type="number" min="10" max="200" step="1" value="10" inputmode="numeric" list="intake-count-presets" required>
+      <datalist id="intake-count-presets"><option value="10"><option value="20"><option value="30"><option value="50"><option value="100"><option value="200"></datalist>
+      <label for="intake-image" data-intake-copy="image"></label>
+      <p class="hint" id="intake-image-hint">JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт).</p>
+      <input id="intake-image" type="file" accept="image/jpeg" aria-describedby="intake-image-hint">
+      <input id="intake-image-token" type="hidden">
+      <img id="intake-image-preview" alt="" hidden width="160" height="160" style="object-fit:contain;max-width:100%;">
+      <button id="intake-image-remove" type="button" class="btn btn-secondary" data-intake-copy="removeImage" hidden></button>
+      <p id="intake-image-error" role="alert" class="error"></p>
       <label for="intake-honorarium" data-intake-copy="honorarium"></label>
-      <input id="intake-honorarium" type="number" required min="0.01" step="0.01" max="9999999999.99" inputmode="decimal">
+      <input id="intake-honorarium" type="number" required min="0" step="0.01" max="9999999999.99" inputmode="decimal">
       <p class="hint" data-intake-copy="direct"></p>
       <label for="intake-due" id="intake-due-label"></label>
       <input id="intake-due" type="datetime-local" required>
@@ -488,8 +502,8 @@
       <div id="intake-manager-options" hidden>
         <label class="umc-selection-choice"><input id="intake-all-manager" type="checkbox" checked><span data-intake-copy="all"></span></label>
         <fieldset id="intake-positions" hidden><legend data-intake-copy="positions"></legend><div class="umc-selection-position-grid" id="intake-position-options"></div></fieldset>
-        <p class="hint" data-intake-copy="leadHint"></p>
       </div>
+      <p class="hint" data-intake-copy="leadHint"></p>
       <div id="intake-preview" class="umc-selection-summary" hidden></div>
       <button id="btn-intake-create" type="submit" class="btn" data-umc-primary="40" data-intake-copy="create"></button>
     </form>
@@ -2066,10 +2080,7 @@
       });
 
       document.getElementById('btn-show-create-order').addEventListener('click', function() {
-        document.getElementById('block-create-order').style.display = 'block';
-        document.getElementById('block-orders-list').style.display = 'none';
-        if (!window._config) loadConfig().then(fillOrderConfig);
-        else fillOrderConfig(window._config);
+        if (window.UMCSelection) window.UMCSelection.create();
       });
       document.getElementById('hide-create-order').addEventListener('click', function() {
         document.getElementById('block-create-order').style.display = 'none';
@@ -3051,9 +3062,9 @@
       }
 
       function createRequestContext() {
-        var initial = getInitData(), platform = window.__miniapp_platform || 'telegram', invalid = !initial;
+        var initial = getInitData(), platform = window.__miniapp_platform || 'telegram', actor = (window._me || {}).user_id, invalid = !initial;
         function current() {
-          if (getInitData() !== initial || (window.__miniapp_platform || 'telegram') !== platform) invalid = true;
+          if (getInitData() !== initial || (window.__miniapp_platform || 'telegram') !== platform || (window._me || {}).user_id !== actor) invalid = true;
           return !invalid;
         }
         function changed() { var error = new Error('payout_context_changed'); error.code = 'payout_context_changed'; error.status = 401; return error; }
@@ -3071,7 +3082,7 @@
           }
         });
       }
-      window.__umcAppBridge = { request: api, showScreen: showScreen, createRequestContext: createRequestContext };
+      window.__umcAppBridge = { request: api, showScreen: showScreen, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       (window.__webAppReady || Promise.resolve()).then(function() {

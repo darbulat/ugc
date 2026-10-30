@@ -106,6 +106,7 @@ async def advertiser_command(incoming: IncomingMessage, deps: dict) -> None:
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -154,6 +155,7 @@ async def handle_role_advertiser_callback(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -234,6 +236,7 @@ async def handle_advertiser_start_callback(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
@@ -570,6 +573,7 @@ async def handle_agreements_callback(
         [
             "btn_create_order",
             "btn_my_orders",
+            "btn_rate_creators",
             "btn_my_profile",
             "btn_edit_profile",
             "btn_support",
