@@ -8,6 +8,91 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["created", "paid"])
+@pytest.mark.parametrize(
+    ("currency", "symbol", "expected"),
+    [("USD", "$", "$"), ("RUB", "₽", "₽"), ("EUR", None, "EUR")],
+)
+async def test_order_notice_uses_order_currency(
+    kind, currency, symbol, expected
+):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.application.order_notice_ports import OrderNoticeJob
+    from ugc_bot.config import AppConfig
+    from ugc_bot.container.order_notice_factory import (
+        build_order_notice_delivery,
+    )
+    from ugc_bot.domain.entities import Order, User
+    from ugc_bot.domain.enums import (
+        MessengerType,
+        OrderStatus,
+        OrderType,
+        UserStatus,
+    )
+
+    admin = User(
+        user_id=uuid4(),
+        telegram_id="123",
+        username="admin",
+        admin=True,
+        messenger_type=MessengerType.TELEGRAM,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    order = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.org",
+        offer_text="Brief",
+        barter_description=None,
+        price=123,
+        bloggers_needed=1,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        currency=currency,
+    )
+    repos = {
+        name: AsyncMock()
+        for name in (
+            "user_repo",
+            "order_repo",
+            "advertiser_repo",
+            "country_repo",
+        )
+    }
+    repos["user_repo"].list_admins.return_value = [admin]
+    repos["user_repo"].get_by_id.return_value = None
+    repos["order_repo"].get_by_id.return_value = order
+    repos["advertiser_repo"].get_by_user_id.return_value = None
+    repos["country_repo"].get_by_currency_code.return_value = (
+        SimpleNamespace(currency_symbol=symbol) if symbol else None
+    )
+
+    class Transactions:
+        @asynccontextmanager
+        async def transaction(self):
+            yield object()
+
+    messenger = FakeMessengerClient()
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "synthetic", "KAFKA_ENABLED": False}
+    )
+    worker = build_order_notice_delivery(
+        config, Transactions(), messenger, repos
+    )
+    worker.repository.begin = AsyncMock(return_value=True)
+    await worker.send(OrderNoticeJob(uuid4(), order.order_id, kind, "123", 1))
+    assert len(messenger.sent_text) == 1
+    assert f"<b>Бюджет:</b> 123 {expected}" in messenger.sent_text[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_order_notice_queue_keeps_one_card_per_recipient_event():
     from ugc_bot.application.services.order_notice_delivery import (
         OrderNoticeDelivery,
@@ -125,7 +210,7 @@ async def test_order_card_preparation_retry_and_send_uncertainty(
     config = AppConfig.model_validate(
         {"BOT_TOKEN": "synthetic", "KAFKA_ENABLED": False}
     )
-    order = SimpleNamespace(advertiser_id=uuid4())
+    order = SimpleNamespace(advertiser_id=uuid4(), currency="RUB")
     repos = {
         "user_repo": AsyncMock(),
         "order_repo": AsyncMock(),
@@ -343,7 +428,7 @@ async def test_telegram_rate_limit_is_known_rejection_with_provider_delay(
         "advertiser_repo": AsyncMock(),
     }
     repos["order_repo"].get_by_id.return_value = SimpleNamespace(
-        advertiser_id=uuid4()
+        advertiser_id=uuid4(), currency="RUB"
     )
     messenger = AsyncMock()
     messenger.send_text.side_effect = TelegramRetryAfter(

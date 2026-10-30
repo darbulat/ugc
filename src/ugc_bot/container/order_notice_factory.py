@@ -118,6 +118,19 @@ def _raise_classified_telegram_error(exc: Exception) -> None:
     raise exc
 
 
+async def _order_currency_symbol(
+    order: Order, config: AppConfig, repos: Mapping[str, Any]
+) -> str:
+    country_repo = repos.get("country_repo")
+    if country_repo is not None:
+        country = await country_repo.get_by_currency_code(order.currency)
+        if country is not None and country.currency_symbol:
+            return country.currency_symbol
+    if order.currency == config.market.payment_currency:
+        return config.market.currency_symbol
+    return order.currency
+
+
 def build_order_notice_delivery(
     config: AppConfig,
     transactions: TransactionManager,
@@ -157,6 +170,7 @@ def build_order_notice_delivery(
         profile = await repos["advertiser_repo"].get_by_user_id(
             order.advertiser_id
         )
+        currency_symbol = await _order_currency_symbol(order, config, repos)
         details = await details_loader(order) if details_loader else None
         notify = (
             notify_admins_about_order_paid
@@ -170,6 +184,7 @@ def build_order_notice_delivery(
                 _RecipientRoles(repos["user_repo"], job.recipient),
                 ContentModerationService(),
                 admin_base_url=config.admin.admin_base_url,
+                currency_symbol=currency_symbol,
                 advertiser_profile=profile,
                 order_details=details,
                 raise_on_error=True,
