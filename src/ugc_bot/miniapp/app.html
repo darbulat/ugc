@@ -3085,9 +3085,17 @@
       window.__umcAppBridge = { request: api, showScreen: showScreen, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
+      // Deferred modules subscribe to app-ready and selection events.
+      // Wait for them before opening a deep link, while loading account data in parallel.
+      var modulesReady = new Promise(function(resolve) {
+        if (document.readyState === 'complete') resolve();
+        else document.addEventListener('DOMContentLoaded', resolve, { once: true });
+      });
       (window.__webAppReady || Promise.resolve()).then(function() {
         var wa = _getWebApp();
         return Promise.all([loadMe(), loadConfig()]);
+      }).then(function(results) {
+        return modulesReady.then(function() { return results; });
       }).then(function(results) {
         var me = results[0];
         var cfg = results[1];
