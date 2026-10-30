@@ -1,7 +1,9 @@
 """E2E UI tests for Telegram Mini App."""
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from tests.e2e.miniapp_helpers import (
     MINIAPP_TEST_USER_IDS,
@@ -94,37 +96,59 @@ class TestMiniAppAdvertiser:
         # Already registered → should land on dashboard
         wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
 
-        # Open create order form
-        miniapp_page.locator("#btn-show-create-order").click()
-        miniapp_page.wait_for_selector("#block-create-order", state="visible")
-
-        # Wait for config to populate bloggers select
-        miniapp_page.wait_for_selector(
-            "#ord-bloggers option", state="attached", timeout=10000
-        )
-
-        # Fill order form
-        miniapp_page.locator("#ord-link").fill("https://example.com/product")
-        miniapp_page.locator("#ord-offer").fill(
-            "E2E test offer text for product review"
-        )
-        miniapp_page.locator("#ord-price").fill("5000")
-        miniapp_page.locator("#btn-submit-order").click()
-
-        # Wait for either success or error response
+        # The current purchase flow uses the signed financial intake.
+        with miniapp_page.expect_response(
+            lambda response: (
+                response.url.endswith("/financial/orders/policies")
+                and response.request.method == "POST"
+            )
+        ) as pending_policies:
+            miniapp_page.locator("#btn-show-create-order").click()
+        wait_for_screen(miniapp_page, "screen-intake")
+        policies_response = pending_policies.value
+        policies = policies_response.json()
+        assert policies_response.status == 200, policies
+        if locale == "en":
+            # Georgia uses GEL; the currently published financial policy is
+            # RUB-only and must not offer a misleading invoice.
+            assert policies["currency"] == "GEL"
+            assert policies["policies"] == []
+            expect(miniapp_page.locator("#intake-empty")).to_be_visible()
+            expect(miniapp_page.locator("#form-umc-intake")).to_be_hidden()
+            return
+        assert policies["currency"] == "RUB" and policies["policies"]
         miniapp_page.wait_for_function(
-            """() => {
-                const ok = document.getElementById('ord-success');
-                const err = document.getElementById('ord-error');
-                return (ok && ok.textContent.trim()) ||
-                       (err && err.textContent.trim());
-            }""",
-            timeout=15000,
+            "document.querySelectorAll('#intake-policy option').length > 1"
         )
-        err_text = miniapp_page.locator("#ord-error").inner_text()
-        assert not err_text, f"Order creation error: {err_text}"
-        success_text = miniapp_page.locator("#ord-success").inner_text()
-        assert success_text  # Non-empty success message
+        miniapp_page.locator("#intake-policy").select_option(index=1)
+        miniapp_page.locator("#intake-count").fill("10")
+        miniapp_page.locator("#intake-product").fill(
+            "https://example.test/product"
+        )
+        miniapp_page.locator("#intake-brief").fill(
+            "Synthetic E2E offer text for product review"
+        )
+        miniapp_page.locator("#intake-honorarium").fill("5000")
+        miniapp_page.locator("#intake-contact").fill("@synthetic_client")
+        due = datetime.now(timezone.utc) + timedelta(days=3)
+        miniapp_page.locator("#intake-due").fill(due.strftime("%Y-%m-%dT%H:%M"))
+        miniapp_page.locator(
+            'input[name="intake-mode"][value="with_manager"]'
+        ).check()
+        with miniapp_page.expect_response(
+            lambda response: (
+                response.url.endswith("/financial/orders")
+                and response.request.method == "POST"
+            )
+        ) as pending:
+            miniapp_page.locator("#btn-intake-create").click()
+        response = pending.value
+        body = response.json()
+        assert response.status == 200, body
+        assert len(body["items"]) == 10
+        assert body["total_minor"] > 0
+        expect(miniapp_page.locator("#intake-result")).to_be_visible()
+        expect(miniapp_page.locator("#umc-checkout-action")).to_be_visible()
 
     def test_view_orders(
         self,
@@ -144,22 +168,38 @@ class TestMiniAppAdvertiser:
 
         wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
 
-        # Open orders list
-        miniapp_page.locator("#btn-show-orders-list").click()
-        miniapp_page.wait_for_selector("#block-orders-list", state="visible")
-
-        # Should have at least one order from test_create_order
-        miniapp_page.wait_for_selector("#orders-list li", timeout=10000)
-        orders = miniapp_page.locator("#orders-list li")
-        assert orders.count() >= 1
-
-        # Click first order to open detail
-        orders.first.click()
-        wait_for_screen(miniapp_page, "screen-order-detail")
-
-        # Verify fields are populated
-        link_value = miniapp_page.locator("#ord-detail-link").input_value()
-        assert link_value  # Non-empty
+        # Open the persisted order and check its actual selection snapshot.
+        with miniapp_page.expect_response(
+            lambda response: (
+                response.url.endswith("/orders/list")
+                and response.request.method == "POST"
+            )
+        ) as pending_list:
+            miniapp_page.locator("#btn-show-orders-list").click()
+        wait_for_screen(miniapp_page, "screen-customer-orders")
+        listing = pending_list.value
+        listing_body = listing.json()
+        assert listing.status == 200, listing_body
+        orders = miniapp_page.locator("#orders-list [data-order-id]")
+        if locale == "en":
+            assert listing_body["orders"] == []
+            expect(orders).to_have_count(0)
+            return
+        expect(orders.first).to_be_visible()
+        order_id = orders.first.get_attribute("data-order-id")
+        with miniapp_page.expect_response(
+            lambda response: (
+                response.url.endswith("/selection")
+                and response.request.method == "POST"
+            )
+        ) as pending:
+            orders.first.locator("button").first.click()
+        response = pending.value
+        body = response.json()
+        assert response.status == 200, body
+        assert body["order_id"] == order_id
+        assert len(body["positions"]) == 10
+        wait_for_screen(miniapp_page, "screen-selection")
 
 
 @pytest.mark.e2e

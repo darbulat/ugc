@@ -33,13 +33,29 @@ from ugc_bot.miniapp.api import router
 
 __all__ = ["intake_env"]
 
+_CHECKOUT = {
+    "ru": ("Подготовить счёт", "Оплатить в Telegram"),
+    "en": ("Prepare invoice", "Pay in Telegram"),
+    "kk": ("Шот дайындау", "Telegram арқылы төлеу"),
+    "be": ("Падрыхтаваць рахунак", "Аплаціць у Telegram"),
+    "uz": ("Hisob tayyorlash", "Telegram orqali to‘lash"),
+}
+_SUPPORT = {
+    "ru": "Сообщить о проблеме",
+    "en": "Report a problem",
+    "kk": "Мәселе туралы хабарлау",
+    "be": "Паведаміць пра праблему",
+    "uz": "Muammo haqida xabar berish",
+}
+
 
 @pytest.mark.e2e
 @pytest.mark.asyncio
 @pytest.mark.timeout(90)
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz"])
 async def test_customer_creates_order_with_image_in_browser_and_postgres(
-    intake_env, monkeypatch, tmp_path, platform
+    intake_env, monkeypatch, tmp_path, platform, locale
 ):
     env = intake_env
     monkeypatch.setenv("ORDER_IMAGE_DIRECTORY", str(tmp_path / "images"))
@@ -52,7 +68,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
         db.execute(
             update(UserModel)
             .where(UserModel.user_id == env["user"].user_id)
-            .values(max_id=env["user"].telegram_id)
+            .values(max_id=env["user"].telegram_id, language=locale)
         )
     app = FastAPI()
     app.state.config = env["config"]
@@ -108,6 +124,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             template = "max_app.html" if platform == "max" else "app.html"
             await page.goto(f"http://127.0.0.1:{port}/miniapp/{template}")
             await expect(page.locator("#btn-show-create-order")).to_be_visible()
+            await expect(page.locator("html")).to_have_attribute("lang", locale)
             await page.locator("#btn-show-create-order").click()
             await page.locator("#intake-count").fill("10")
             await page.locator("#intake-policy").select_option(env["policy"])
@@ -153,7 +170,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             assert len(body["items"]) == 10
             if platform == "telegram":
                 action = page.locator("#umc-checkout-action")
-                await expect(action).to_have_text("Подготовить счёт")
+                await expect(action).to_have_text(_CHECKOUT[locale][0])
                 async with page.expect_response(
                     lambda r: (
                         r.url.endswith("/invoice")
@@ -171,7 +188,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                     "prices"
                 ]
                 assert [price.amount for price in prices] == [500000, 1200000]
-                await expect(action).to_have_text("Оплатить в Telegram")
+                await expect(action).to_have_text(_CHECKOUT[locale][1])
             with Session(env["pg"]) as db:
                 order = db.scalar(
                     select(OrderModel).where(
@@ -197,7 +214,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             await page.evaluate("window.UMCCustomer.orders()")
             card = page.locator(f'[data-order-id="{body["order_id"]}"]')
             await expect(card).to_be_visible()
-            await card.get_by_role("button", name="Сообщить о проблеме").click()
+            await card.get_by_role("button", name=_SUPPORT[locale]).click()
             await page.locator('#screen-customer-support [name="reason"]').fill(
                 "Synthetic support request"
             )
