@@ -409,10 +409,10 @@ def test_late_detail_does_not_reopen_screen_or_expose_admin_data(page):
     expect(page.locator("#correction-back")).to_be_visible()
     page.locator("#correction-back").click()
     page.locator("#correction-back").click()
-    expect(page.locator("#screen-admin-tools")).to_be_visible()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
     for held in network.held:
         held.fulfill(json=network.current)
-    expect(page.locator("#screen-admin-tools")).to_be_visible()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
     assert page.locator("#screen-corrections").inner_text() == ""
 
 
