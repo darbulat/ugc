@@ -635,6 +635,13 @@
       }
 
       var verifiedMeAuth = null, verifiedMePlatform = null;
+      function assertVerifiedMe(expected) {
+        var auth = expected || {initData: verifiedMeAuth, platform: verifiedMePlatform};
+        if (!auth.initData || auth.initData !== verifiedMeAuth || auth.platform !== verifiedMePlatform ||
+            getInitData() !== auth.initData || (window.__miniapp_platform || 'telegram') !== auth.platform) {
+          throw new Error('Откройте приложение заново, чтобы продолжить.');
+        }
+      }
       function loadMe() {
         var initial = getInitData(), platform = window.__miniapp_platform || 'telegram';
         return api('/me', {}, {initData: initial, platform: platform}).then(function(data) {
@@ -3040,9 +3047,7 @@
       }
 
       function showRoleOrDashboard(me) {
-        if (!verifiedMeAuth || getInitData() !== verifiedMeAuth || (window.__miniapp_platform || 'telegram') !== verifiedMePlatform) {
-          throw new Error('Откройте приложение заново, чтобы продолжить.');
-        }
+        assertVerifiedMe();
         updateRoleChoiceHint();
         updateRegisterButtonLabels();
         var managerBtn = document.getElementById('btn-manager-role');
@@ -3064,6 +3069,7 @@
       function showCountrySelector(countries, onSelected) {
         var grid = document.getElementById('country-grid');
         var errEl = document.getElementById('country-error');
+        var countryAuth = {initData: verifiedMeAuth, platform: verifiedMePlatform};
         grid.innerHTML = '';
         if (errEl) errEl.textContent = '';
         (countries || []).forEach(function(c) {
@@ -3073,9 +3079,14 @@
           btn.textContent = c.name_native;
           btn.addEventListener('click', function() {
             if (errEl) errEl.textContent = '';
+            try { assertVerifiedMe(countryAuth); } catch (err) {
+              if (errEl) errEl.textContent = err.message;
+              return;
+            }
             Array.from(grid.querySelectorAll('.btn')).forEach(function(b) { b.disabled = true; });
-            api('/set-country', { country_code: c.code }).then(function() {
-              onSelected();
+            api('/set-country', { country_code: c.code }, countryAuth).then(function() {
+              assertVerifiedMe(countryAuth);
+              return onSelected();
             }).catch(function(err) {
               if (errEl) errEl.textContent = err.message || 'Ошибка';
               Array.from(grid.querySelectorAll('.btn')).forEach(function(b) { b.disabled = false; });
@@ -3124,6 +3135,7 @@
       }).then(function(results) {
         var me = results[0];
         var cfg = results[1];
+        assertVerifiedMe();
         if (!me || typeof me !== 'object') {
           showScreen('screen-role-choice');
           return;
@@ -3135,7 +3147,7 @@
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {
-              loadMe().then(function(me2) {
+              return loadMe().then(function(me2) {
                 applyLocale();
                 fillBirthDateSelects();
                 updateCurrencyLabels(me2.currency_symbol);
