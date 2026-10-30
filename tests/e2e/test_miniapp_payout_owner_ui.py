@@ -728,7 +728,11 @@ def test_delayed_store_receipt_a_cannot_clear_new_private_form_b(
 def test_maximum_money_stays_on_one_line_at_320px(page, platform):
     page.set_viewport_size({"width": 320, "height": 760})
     enter(page, PayoutNetwork(), platform)
-    assert page.locator("#payout-balance .umc-payout-money").evaluate("""n => {
+    # An asynchronous refresh can replace the card after it becomes visible.
+    # Query and measure the current connected node in one browser operation.
+    page.wait_for_function("""() => {
+      const n=document.querySelector('#payout-balance .umc-payout-money');
+      if(!n || !n.isConnected) return false;
       const r=document.createRange();r.selectNodeContents(n);
       return r.getClientRects().length===1 && n.scrollWidth<=n.clientWidth;
     }""")
