@@ -189,7 +189,30 @@ async def _publish_order_activation(order_id: UUID) -> None:
         )
 
 
-async def _activate_paid_order(order_id: UUID) -> None:
+async def _resolve_order_location_geometry(geography_raw: Any) -> str | None:
+    """Resolve edited geography before locking the order for activation."""
+    spec = parse_geography((geography_raw or "").strip() or None)
+    queries = get_geometry_queries_from_spec(spec) if spec else []
+    if not queries:
+        return None
+    container = _get_admin_container()
+    if container is None:
+        raise ValueError("order_geography_update_failed")
+    geometry = (
+        await container.build_geocoder().get_multipolygon_wkt_for_queries(
+            queries
+        )
+    )
+    if not geometry:
+        raise ValueError("order_geography_update_failed")
+    return geometry
+
+
+async def _activate_paid_order(
+    order_id: UUID,
+    *,
+    geography_update: tuple[str | None, str | None] | None = None,
+) -> None:
     """Commit approval and activation delivery intent as one transaction."""
     container = _get_admin_container()
     if container is None or container.transaction_manager is None:
@@ -206,6 +229,11 @@ async def _activate_paid_order(order_id: UUID) -> None:
             return
         if order.status != OrderStatus.PENDING_MODERATION:
             raise ValueError("paid_pending_moderation_required")
+        if geography_update is not None:
+            geography, geometry = geography_update
+            if (order.geography or "").strip() != (geography or "").strip():
+                raise ValueError("order_geography_changed")
+            order = dataclasses.replace(order, location_geometry=geometry)
         payment = await payments.get_by_order(order_id, session=session)
         if payment is None or payment.status != PaymentStatus.PAID:
             raise ValueError("paid_pending_moderation_required")
@@ -220,6 +248,22 @@ async def _activate_paid_order(order_id: UUID) -> None:
         activated = dataclasses.replace(order, status=OrderStatus.ACTIVE)
         await orders.save(activated, session=session)
         await outbox.publish_order_activation(activated, session=session)
+
+
+async def _finish_order_geography_and_activation(
+    order_id: UUID, data: dict, *, activating: bool
+) -> None:
+    if activating and "geography" in data:
+        geometry = await _resolve_order_location_geometry(data.get("geography"))
+        await _activate_paid_order(
+            order_id, geography_update=(data.get("geography"), geometry)
+        )
+    elif activating:
+        await _activate_paid_order(order_id)
+    elif "geography" in data:
+        await _update_order_location_geometry_after_geography_change(
+            order_id, data.get("geography")
+        )
 
 
 async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
@@ -1828,13 +1872,9 @@ class OrderAdmin(ModelView, model=OrderModel):
             # payment check below can commit ACTIVE and its dispatch event.
             data = {**data, "status": OrderStatus.PENDING_MODERATION}
         result = await super().update_model(request, pk, data)
-        if activating:
-            await _activate_paid_order(pk_uuid)
-
-        if "geography" in data:
-            await _update_order_location_geometry_after_geography_change(
-                pk_uuid, data.get("geography")
-            )
+        await _finish_order_geography_and_activation(
+            pk_uuid, data, activating=activating
+        )
 
         try:
             await _update_order_managers(pk_uuid, managers_raw)

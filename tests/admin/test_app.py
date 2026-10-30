@@ -1152,6 +1152,168 @@ async def test_order_admin_activation_checks_payment(scenario):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("changed", [False, True])
+async def test_activation_publishes_only_matching_committed_geography(changed):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from ugc_bot.admin.app import _activate_paid_order
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import PaymentStatus
+    from ugc_bot.infrastructure.memory_repositories import (
+        InMemoryOrderRepository,
+    )
+
+    order_id = UUID(int=801)
+    orders = InMemoryOrderRepository()
+    await orders.save(
+        Order(
+            order_id=order_id,
+            advertiser_id=UUID(int=802),
+            order_type=OrderType.UGC_ONLY,
+            product_link="https://example.com",
+            offer_text="Brief",
+            barter_description=None,
+            price=100,
+            bloggers_needed=10,
+            status=OrderStatus.PENDING_MODERATION,
+            created_at=datetime.now(timezone.utc),
+            geography="Казань" if changed else "Москва",
+            location_geometry="OLD",
+        )
+    )
+    payment = SimpleNamespace(status=PaymentStatus.PAID)
+    payments = SimpleNamespace(get_by_order=AsyncMock(return_value=payment))
+    observed = []
+
+    async def publish(order, *, session):
+        saved = await orders.get_by_id(order_id)
+        observed.append(
+            (saved.status, saved.location_geometry, order.location_geometry)
+        )
+
+    outbox = SimpleNamespace(publish_order_activation=publish)
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+
+    @asynccontextmanager
+    async def transaction():
+        yield object()
+
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction),
+        build_repos=lambda: {"payment_repo": payments},
+    )
+    with (
+        patch("ugc_bot.admin.app._get_admin_container", return_value=container),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, outbox, orders),
+        ),
+    ):
+        if changed:
+            with pytest.raises(ValueError, match="order_geography_changed"):
+                await _activate_paid_order(
+                    order_id, geography_update=("Москва", "NEW")
+                )
+            assert observed == []
+            assert (
+                await orders.get_by_id(order_id)
+            ).status == OrderStatus.PENDING_MODERATION
+        else:
+            await _activate_paid_order(
+                order_id, geography_update=("Москва", "NEW")
+            )
+            assert observed == [(OrderStatus.ACTIVE, "NEW", "NEW")]
+
+
+@pytest.mark.asyncio
+async def test_activation_geocoder_failure_does_not_drop_geographic_filter():
+    from types import SimpleNamespace
+
+    from ugc_bot.admin.app import _resolve_order_location_geometry
+
+    geocoder = SimpleNamespace(
+        get_multipolygon_wkt_for_queries=AsyncMock(return_value=None)
+    )
+    container = SimpleNamespace(build_geocoder=lambda: geocoder)
+    with patch(
+        "ugc_bot.admin.app._get_admin_container", return_value=container
+    ):
+        with pytest.raises(ValueError, match="order_geography_update_failed"):
+            await _resolve_order_location_geometry("Москва")
+        assert await _resolve_order_location_geometry("весь мир") is None
+        assert await _resolve_order_location_geometry("") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("geometry_updated", [True, False])
+async def test_activation_waits_for_geography_update(geometry_updated):
+    order_id = UUID(int=800)
+    admin = OrderAdmin()
+    request = MagicMock()
+    request.form = AsyncMock(return_value={})
+    displayed = OrderModel(
+        order_id=order_id, status=OrderStatus.PENDING_MODERATION
+    )
+    steps = []
+
+    async def refresh(*args):
+        steps.append("geometry")
+        if not geometry_updated:
+            raise ValueError("order_geography_update_failed")
+        return "POLYGON"
+
+    async def activate(*args, **kwargs):
+        assert kwargs["geography_update"] == ("Москва", "POLYGON")
+        steps.append("activation")
+
+    moderation = MagicMock()
+    moderation.order_contains_banned_content.return_value = False
+    with (
+        patch(
+            "ugc_bot.admin.app._get_obj_by_pk",
+            AsyncMock(return_value=displayed),
+        ),
+        patch(
+            "ugc_bot.admin.app._get_admin_container", return_value=MagicMock()
+        ),
+        patch(
+            "ugc_bot.admin.app._get_order_moderation_deps",
+            return_value=(moderation, None, None),
+        ),
+        patch.object(
+            OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
+        ),
+        patch(
+            "ugc_bot.admin.app._resolve_order_location_geometry",
+            side_effect=refresh,
+        ),
+        patch("ugc_bot.admin.app._activate_paid_order", side_effect=activate),
+        patch(
+            "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
+        ),
+    ):
+        if geometry_updated:
+            await admin.update_model(
+                request,
+                str(order_id),
+                {"status": "active", "geography": "Москва"},
+            )
+            assert steps == ["geometry", "activation"]
+        else:
+            with pytest.raises(
+                ValueError, match="order_geography_update_failed"
+            ):
+                await admin.update_model(
+                    request,
+                    str(order_id),
+                    {"status": "active", "geography": "Москва"},
+                )
+            assert steps == ["geometry"]
+
+
+@pytest.mark.asyncio
 async def test_order_admin_geography_change_updates_location_geometry() -> None:
     """Geography in form data triggers location_geometry update via geocoder."""
     order_id = UUID("00000000-0000-0000-0000-000000000080")
