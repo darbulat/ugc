@@ -24,12 +24,17 @@ class FinancialPolicy:
     refund_rules: RefundRules | None = None
     selection_minor: int = 50000
     accompaniment_minor: int = 120000
+    all_clients: bool = False
 
     def __post_init__(self) -> None:
         require_tariff(self.selection_minor, self.accompaniment_minor)
+        if type(self.all_clients) is not bool:
+            raise ValueError("invalid_policy_access_scope")
         object.__setattr__(
             self, "allowed_clients", frozenset(self.allowed_clients)
         )
+        if self.all_clients and self.allowed_clients:
+            raise ValueError("invalid_policy_access_scope")
         if self.refund_rules is not None and (
             not isinstance(self.refund_rules, RefundRules)
             or self.selection_refund_window
@@ -38,6 +43,13 @@ class FinancialPolicy:
             )
         ):
             raise ValueError("refund_rules_window_mismatch")
+
+    def allows_client(self, client_id: UUID) -> bool:
+        return (
+            isinstance(client_id, UUID)
+            and client_id.int != 0
+            and (self.all_clients or client_id in self.allowed_clients)
+        )
 
 
 class FinancialPolicyReader(Protocol):
@@ -89,7 +101,7 @@ class FinancialPolicyService:
         created, captured = utc(order_created_at), utc(captured_at)
         if created < effective or captured < created:
             raise ValueError("legacy_order_not_eligible")
-        if client_id not in policy.allowed_clients:
+        if not policy.allows_client(client_id):
             raise ValueError("client_not_allowlisted")
         if (
             policy.selection_refund_window is None

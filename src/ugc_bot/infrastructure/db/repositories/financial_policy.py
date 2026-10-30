@@ -70,6 +70,7 @@ class SqlAlchemyFinancialPolicyRepository:
                     "allowed_clients": sorted(
                         str(client) for client in policy.allowed_clients
                     ),
+                    "all_clients": policy.all_clients,
                     "terms_reference": policy.terms_reference,
                     "refund_rules": policy.refund_rules.to_document(),
                     "selection_minor": policy.selection_minor,
@@ -101,9 +102,12 @@ def decode_policy_version(
     if not isinstance(rules, dict):
         raise ValueError("invalid_policy_document")
     clients = rules.get("allowed_clients")
+    all_clients = rules.get("all_clients", False)
     terms = rules.get("terms_reference")
     if (
         not isinstance(clients, list)
+        or type(all_clients) is not bool
+        or (all_clients and bool(clients))
         or not isinstance(terms, str)
         or not terms.strip()
     ):
@@ -127,6 +131,7 @@ def decode_policy_version(
                 seconds=model.refund_window_seconds
             ),
             allowed_clients=allowed,
+            all_clients=all_clients,
             terms_reference=terms,
             refund_rules=RefundRules.from_document(rules["refund_rules"])
             if "refund_rules" in rules

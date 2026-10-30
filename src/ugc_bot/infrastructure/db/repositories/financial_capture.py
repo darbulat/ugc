@@ -152,7 +152,7 @@ class SqlAlchemyFinancialCaptureRepository:
                     or policy.selection_refund_window is None
                     or policy.selection_refund_window <= timedelta(0)
                     or not policy.terms_reference
-                    or order.advertiser_id not in policy.allowed_clients
+                    or not policy.allows_client(order.advertiser_id)
                     or any(utc(i.selection_due_at) <= at for i in items)
                 ):
                     raise ValueError("invalid_capture_policy")
