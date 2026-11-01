@@ -156,7 +156,14 @@ async def stop_reminders(incoming, messenger, roles, service):
 async def show_services(incoming, messenger, config, locale="ru"):
     base = config.webhook.webhook_base_url.strip().rstrip("/")
     platform = incoming.user.messenger_type.value
-    shell = "max_app.html" if platform == "max" else "app.html"
+    username = (
+        (config.referral.max_referral_bot_username or "").strip().lstrip("@")
+        if platform == "max"
+        else ""
+    )
+    app_target = (
+        username if platform == "max" else f"{base}/miniapp/app.html#services"
+    )
     keyboard = (
         Keyboard(
             kind=KeyboardKind.INLINE,
@@ -164,12 +171,15 @@ async def show_services(incoming, messenger, config, locale="ru"):
                 [
                     Button(
                         text=customer_text(locale, "btn_all_services"),
-                        web_app_url=f"{base}/miniapp/{shell}#services",
+                        web_app_url=app_target,
+                        max_app_payload=(
+                            "services" if platform == "max" else None
+                        ),
                     )
                 ]
             ],
         )
-        if base
+        if base and (platform != "max" or username)
         else None
     )
     await messenger.send_text(

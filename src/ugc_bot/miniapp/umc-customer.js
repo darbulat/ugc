@@ -27,7 +27,7 @@
   function who(){return (window.__miniapp_platform||'telegram')+':'+((window._me||{}).user_id||'');}
   function fresh(){if(state.context)state.context.dispose();state.context=bridge.createRequestContext();state.generation++;return state.context;}
   function show(n){bridge.showScreen(n.id);if(window.UMCShell)window.UMCShell.syncControls();}
-  function back(){show(document.getElementById('screen-advertiser-dashboard'));}
+  function back(){var me=window._me||{},id=me.has_advertiser_profile?'screen-advertiser-dashboard':me.has_blogger_profile?'screen-blogger-dashboard':'screen-role-choice';show(document.getElementById(id));}
   function request(path,body){var ctx=state.context||fresh();return ctx.request(path,body);}
   function title(order){var name=order.public_title||order.offer_text&&order.offer_text.split('\n')[0].slice(0,90)||order.product_link||word('open');return order.public_number?order.public_number+' · '+name:name;}
   var orders=screen('screen-customer-orders',word('orders')),services=screen('screen-customer-services',word('services')),support=screen('screen-customer-support',word('problem')),ratings=screen('screen-customer-ratings',word('rating')),admin=screen('screen-admin-tools',word('admin'));
@@ -118,7 +118,7 @@
     var adminContext=bridge.createRequestContext(),adminOwner=who();
     adminContext.request('/admin/partners/context',{}).then(function(data){if(!adminContext.isCurrent()||adminOwner!==who()||!data.capabilities)return;var host=document.getElementById('screen-role-choice');if(!host.querySelector('[data-admin-tools]')){var entry=button(word('admin'),function(){show(admin);});entry.dataset.adminTools='';host.appendChild(entry);}}).catch(function(){}).finally(function(){adminContext.dispose();});
     if((window._me||{}).has_advertiser_profile){syncFollowupAfterActivity('menu');homeSummary();}
-    var params=new URLSearchParams(location.search),destination=params.get('screen');if(['orders','services','ratings'].indexOf(destination)>=0&&params.has('order_id')){var values=params.getAll('order_id');openOwnedDestination(destination,values.length===1?values[0]:null);}else if(location.hash==='#services'||destination==='services')openServices();else if(destination==='orders')openOrders();
+    var params=new URLSearchParams(location.search),destination=params.get('screen'),maxStart=window.__miniapp_platform==='max'&&window.WebApp?new URLSearchParams(window.WebApp.initData||'').get('start_param'):null;if(['orders','services','ratings'].indexOf(destination)>=0&&params.has('order_id')){var values=params.getAll('order_id');openOwnedDestination(destination,values.length===1?values[0]:null);}else if(location.hash==='#services'||destination==='services'||maxStart==='services')openServices();else if(destination==='orders')openOrders();
   }
   var ordersButton=document.getElementById('btn-show-orders-list');if(ordersButton)ordersButton.addEventListener('click',function(e){e.stopImmediatePropagation();openOrders();},true);
   document.addEventListener('umc:checkout-order',function(e){if(e.detail)state.current=e.detail.order_id||null;});

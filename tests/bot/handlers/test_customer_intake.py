@@ -639,15 +639,20 @@ async def test_service_link_uses_channel_and_locale(flow, channel, base):
     await show_services(
         IncomingMessage("12", IncomingUser("12", channel)),
         messenger,
-        SimpleNamespace(webhook=SimpleNamespace(webhook_base_url=base)),
+        SimpleNamespace(
+            webhook=SimpleNamespace(webhook_base_url=base),
+            referral=SimpleNamespace(max_referral_bot_username="example_bot"),
+        ),
         "en",
     )
     result = messenger.send_text.call_args.kwargs
     if base:
-        assert (
-            "max_app" if channel == MessengerType.MAX else "/app"
-        ) in result["keyboard"].rows[0][0].web_app_url
-        assert result["keyboard"].rows[0][0].web_app_url.endswith("#services")
+        button = result["keyboard"].rows[0][0]
+        if channel == MessengerType.MAX:
+            assert button.web_app_url == "example_bot"
+            assert button.max_app_payload == "services"
+        else:
+            assert button.web_app_url.endswith("/app.html#services")
     else:
         assert result["keyboard"] is None
 
@@ -753,7 +758,8 @@ async def test_actions_transport_wrappers(flow, channel):
         create=AsyncMock(return_value={"request_id": uuid4()})
     )
     config = SimpleNamespace(
-        webhook=SimpleNamespace(webhook_base_url="https://example.com")
+        webhook=SimpleNamespace(webhook_base_url="https://example.com"),
+        referral=SimpleNamespace(max_referral_bot_username="example_bot"),
     )
     funcs = [
         ("handle_stop_reminders", {}),
