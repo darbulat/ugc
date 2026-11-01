@@ -7,6 +7,8 @@ from tests.e2e.test_customer_workflows_ui import FullServiceCatalogNetwork
 from tests.e2e.test_miniapp_design_system import open_app
 from tests.e2e.test_miniapp_selection_ui import SIGNED
 
+pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
+
 
 def test_max_launch_payload_opens_services(page):
     errors = open_app(
