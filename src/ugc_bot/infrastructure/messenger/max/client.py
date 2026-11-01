@@ -74,6 +74,8 @@ def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
             if btn.web_app_url:
                 max_btn["type"] = "open_app"
                 max_btn["web_app"] = btn.web_app_url
+                if btn.max_app_payload:
+                    max_btn["payload"] = btn.max_app_payload
             elif btn.callback_data:
                 max_btn["type"] = "callback"
                 max_btn["payload"] = btn.callback_data
