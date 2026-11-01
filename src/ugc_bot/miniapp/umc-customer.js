@@ -27,7 +27,7 @@
   function who(){return (window.__miniapp_platform||'telegram')+':'+((window._me||{}).user_id||'');}
   function fresh(){if(state.context)state.context.dispose();state.context=bridge.createRequestContext();state.generation++;return state.context;}
   function show(n){bridge.showScreen(n.id);if(window.UMCShell)window.UMCShell.syncControls();}
-  function back(){show(document.getElementById('screen-advertiser-dashboard'));}
+  function back(){var me=window._me||{},id=me.has_advertiser_profile?'screen-advertiser-dashboard':me.has_blogger_profile?'screen-blogger-dashboard':'screen-role-choice';show(document.getElementById(id));}
   function request(path,body){var ctx=state.context||fresh();return ctx.request(path,body);}
   function title(order){var name=order.public_title||order.offer_text&&order.offer_text.split('\n')[0].slice(0,90)||order.product_link||word('open');return order.public_number?order.public_number+' · '+name:name;}
   var orders=screen('screen-customer-orders',word('orders')),services=screen('screen-customer-services',word('services')),support=screen('screen-customer-support',word('problem')),ratings=screen('screen-customer-ratings',word('rating')),admin=screen('screen-admin-tools',word('admin'));
