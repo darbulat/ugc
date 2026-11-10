@@ -1746,20 +1746,22 @@ def _order_duplicate_insert_data(source: OrderModel) -> dict[str, Any]:
 def _financial_order_admin_data(order, data):
     if order is None or getattr(order, "financial_version", None) is None:
         return data
-    for name, value in data.items():
-        if name == "status":
-            continue
+    # Keep the terms used to calculate and capture payment immutable, while
+    # allowing admins to correct the paid order brief and creator filters.
+    immutable_fields = {"order_type", "price", "bloggers_needed"}
+    for name in immutable_fields.intersection(data):
+        value = data[name]
         current = getattr(order, name, object())
         if current == value or current in (None, "") and value in (None, ""):
             continue
-        if name in ("price", "price_filter_delta", "min_rating"):
+        if name == "price":
             try:
                 if Decimal(str(current)) == Decimal(str(value)):
                     continue
             except (ArithmeticError, ValueError):
                 pass
         raise ValueError("financial_order_intake_immutable")
-    return {"status": data["status"]} if "status" in data else {}
+    return data
 
 
 class OrderAdmin(ModelView, model=OrderModel):
@@ -1868,22 +1870,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         managers_raw = str(form_data.get("managers", "") or "")
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
-        submitted = data
         data = _financial_order_admin_data(obj, data)
-        if (
-            obj is not None
-            and getattr(obj, "financial_version", None) is not None
-        ):
-            submitted = {
-                key: getattr(obj, key, None)
-                for key in (
-                    "product_link",
-                    "offer_text",
-                    "barter_description",
-                    "content_usage",
-                    "geography",
-                )
-            }
+        submitted = data
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
         new_status_active = (
