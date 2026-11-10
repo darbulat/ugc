@@ -340,10 +340,7 @@ async def _validate_paid_order_geography_edit(
         exact_city = await intake.exact_city_for_order(
             order.order_id, session=session, for_update=True
         )
-    if (
-        exact_city is not None
-        and (geography_raw or "").strip() != exact_city
-    ):
+    if exact_city is not None and (geography_raw or "").strip() != exact_city:
         raise ValueError(
             "Нельзя изменить город оплаченного заказа с точным подбором. "
             "Создайте новый заказ для другого города."
