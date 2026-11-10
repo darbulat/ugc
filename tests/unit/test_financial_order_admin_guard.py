@@ -86,5 +86,5 @@ async def test_financial_order_admin_moderation_preserves_sources(
         geography="Москва",
         filter_by_placement=False,
     )
-    geography.assert_awaited_once_with(order.order_id, "Москва")
+    geography.assert_not_awaited()
     managers.assert_awaited_once()

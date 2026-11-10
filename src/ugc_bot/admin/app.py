@@ -283,10 +283,10 @@ async def _finish_order_geography_and_activation(
     activating: bool,
     saved_geography: str | None,
     financial_version: str | None = None,
+    exact_city: str | None = None,
 ) -> None:
     if activating:
         geography = data.get("geography", saved_geography)
-        exact_city = None
         if financial_version is not None:
             container = _get_admin_container()
             if container is None or container.transaction_manager is None:
@@ -310,19 +310,26 @@ async def _finish_order_geography_and_activation(
             order_id, geography_update=(geography, geometry), **kwargs
         )
     elif "geography" in data:
+        if (data.get("geography") or "").strip() == (
+            saved_geography or ""
+        ).strip():
+            return
+        if exact_city is not None:
+            return
         await _update_order_location_geometry_after_geography_change(
             order_id, data.get("geography")
         )
 
 
-async def _validate_paid_order_geography_edit(order, geography_raw: Any) -> None:
+async def _validate_paid_order_geography_edit(
+    order, geography_raw: Any
+) -> str | None:
     """Keep exact-city targeting receipts in sync with editable order data."""
-    if (
-        order is None
-        or order.financial_version is None
-        or (order.geography or "").strip() == (geography_raw or "").strip()
-    ):
-        return
+    changed = order is not None and (
+        (order.geography or "").strip() != (geography_raw or "").strip()
+    )
+    if order is None or order.financial_version is None or not changed:
+        return None
     container = _get_admin_container()
     if container is None or container.transaction_manager is None:
         raise ValueError("order_geography_update_failed")
@@ -333,11 +340,15 @@ async def _validate_paid_order_geography_edit(order, geography_raw: Any) -> None
         exact_city = await intake.exact_city_for_order(
             order.order_id, session=session, for_update=True
         )
-    if exact_city is not None and (geography_raw or "").strip() != exact_city:
+    if (
+        exact_city is not None
+        and (geography_raw or "").strip() != exact_city
+    ):
         raise ValueError(
             "Нельзя изменить город оплаченного заказа с точным подбором. "
             "Создайте новый заказ для другого города."
         )
+    return exact_city
 
 
 async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
@@ -1901,8 +1912,11 @@ class OrderAdmin(ModelView, model=OrderModel):
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
         data = _financial_order_admin_data(obj, data)
+        exact_city = None
         if obj is not None and "geography" in data:
-            await _validate_paid_order_geography_edit(obj, data["geography"])
+            exact_city = await _validate_paid_order_geography_edit(
+                obj, data["geography"]
+            )
         submitted = data
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
@@ -1949,6 +1963,7 @@ class OrderAdmin(ModelView, model=OrderModel):
             activating=activating,
             saved_geography=getattr(obj, "geography", None),
             financial_version=getattr(obj, "financial_version", None),
+            exact_city=exact_city,
         )
 
         try:
