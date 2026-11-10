@@ -315,6 +315,31 @@ async def _finish_order_geography_and_activation(
         )
 
 
+async def _validate_paid_order_geography_edit(order, geography_raw: Any) -> None:
+    """Keep exact-city targeting receipts in sync with editable order data."""
+    if (
+        order is None
+        or order.financial_version is None
+        or (order.geography or "").strip() == (geography_raw or "").strip()
+    ):
+        return
+    container = _get_admin_container()
+    if container is None or container.transaction_manager is None:
+        raise ValueError("order_geography_update_failed")
+    intake = container.build_repos().get("order_intake_repo")
+    if intake is None:
+        raise ValueError("order_geography_update_failed")
+    async with container.transaction_manager.transaction() as session:
+        exact_city = await intake.exact_city_for_order(
+            order.order_id, session=session, for_update=True
+        )
+    if exact_city is not None and (geography_raw or "").strip() != exact_city:
+        raise ValueError(
+            "Нельзя изменить город оплаченного заказа с точным подбором. "
+            "Создайте новый заказ для другого города."
+        )
+
+
 async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
     """Parse managers field and update manager-order assignments.
 
@@ -1871,6 +1896,8 @@ class OrderAdmin(ModelView, model=OrderModel):
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
         data = _financial_order_admin_data(obj, data)
+        if obj is not None and "geography" in data:
+            await _validate_paid_order_geography_edit(obj, data["geography"])
         submitted = data
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
