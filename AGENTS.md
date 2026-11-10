@@ -5,7 +5,7 @@ These notes are for anyone developing this repository and deploying it to the pr
 ## Server and access
 
 - Host: `31.59.106.143`.
-- SSH account: `root`, key-based access. Use an individually provisioned SSH key; never put private keys in this repository or send them through chat.
+- SSH account: `deploy`, key-based access. This account has Docker access. Use an individually provisioned SSH key; never put private keys in this repository or send them through chat.
 - Application checkout and Compose project directory: `/opt/myapp/ugc`.
 - Compose project name: `ugc`.
 - The running containers were configured with `/opt/myapp/ugc/docker-compose.yml` and `/opt/myapp/ugc/docker-compose.dev.yml`. Confirm the current container labels and service/image mapping before deploying; do not assume the repo's `docker-compose.prod.yml` exists on the server.
@@ -30,7 +30,7 @@ For a release, use a clean source tree/archive from the intended merged commit a
 git fetch origin main
 REV=$(git rev-parse origin/main)
 REL="/tmp/ugc-release-${REV:0:7}"
-git archive --format=tar "$REV" | ssh root@31.59.106.143 \
+git archive --format=tar "$REV" | ssh deploy@31.59.106.143 \
   "mkdir -p '$REL' && tar -xf - -C '$REL'"
 ```
 
