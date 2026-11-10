@@ -1773,7 +1773,12 @@ def _financial_order_admin_data(order, data):
         return data
     # Keep the terms used to calculate and capture payment immutable, while
     # allowing admins to correct the paid order brief and creator filters.
-    immutable_fields = {"order_type", "price", "bloggers_needed"}
+    immutable_fields = {
+        "financial_version",
+        "order_type",
+        "price",
+        "bloggers_needed",
+    }
     for name in immutable_fields.intersection(data):
         value = data[name]
         current = getattr(order, name, object())

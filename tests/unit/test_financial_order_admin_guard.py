@@ -1,4 +1,4 @@
-"""The ordinary admin form cannot rewrite a frozen paid-intake contract."""
+"""Paid order edits preserve payment terms and allow brief corrections."""
 
 from decimal import Decimal
 from types import SimpleNamespace as NS
@@ -15,11 +15,9 @@ from ugc_bot.domain.enums import OrderStatus
 @pytest.mark.parametrize(
     "changes",
     [
+        dict(order_type="barter"),
         dict(price=9000),
         dict(bloggers_needed=100),
-        dict(geography="Казань"),
-        dict(min_followers=999),
-        dict(filter_by_placement=True),
         dict(financial_version=None),
     ],
 )
@@ -30,6 +28,7 @@ async def test_financial_order_admin_rejects_frozen_field_changes(
         order_id=uuid4(),
         financial_version="approved-v1",
         status=OrderStatus.NEW,
+        order_type="ugc_only",
         price=Decimal("1000.00"),
         bloggers_needed=30,
         geography="Москва",
@@ -81,6 +80,11 @@ async def test_financial_order_admin_moderation_preserves_sources(
             filter_by_placement=False,
         ),
     )
-    assert parent.await_args.args[-1] == dict(status="pending_moderation")
-    geography.assert_not_awaited()
+    assert parent.await_args.args[-1] == dict(
+        status="pending_moderation",
+        price="1000.00",
+        geography="Москва",
+        filter_by_placement=False,
+    )
+    geography.assert_awaited_once_with(order.order_id, "Москва")
     managers.assert_awaited_once()
