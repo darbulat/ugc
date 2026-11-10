@@ -283,10 +283,10 @@ async def _finish_order_geography_and_activation(
     activating: bool,
     saved_geography: str | None,
     financial_version: str | None = None,
+    exact_city: str | None = None,
 ) -> None:
     if activating:
         geography = data.get("geography", saved_geography)
-        exact_city = None
         if financial_version is not None:
             container = _get_admin_container()
             if container is None or container.transaction_manager is None:
@@ -310,9 +310,42 @@ async def _finish_order_geography_and_activation(
             order_id, geography_update=(geography, geometry), **kwargs
         )
     elif "geography" in data:
+        if (data.get("geography") or "").strip() == (
+            saved_geography or ""
+        ).strip():
+            return
+        if exact_city is not None:
+            return
         await _update_order_location_geometry_after_geography_change(
             order_id, data.get("geography")
         )
+
+
+async def _validate_paid_order_geography_edit(
+    order, geography_raw: Any
+) -> str | None:
+    """Keep exact-city targeting receipts in sync with editable order data."""
+    changed = order is not None and (
+        (order.geography or "").strip() != (geography_raw or "").strip()
+    )
+    if order is None or order.financial_version is None or not changed:
+        return None
+    container = _get_admin_container()
+    if container is None or container.transaction_manager is None:
+        raise ValueError("order_geography_update_failed")
+    intake = container.build_repos().get("order_intake_repo")
+    if intake is None:
+        raise ValueError("order_geography_update_failed")
+    async with container.transaction_manager.transaction() as session:
+        exact_city = await intake.exact_city_for_order(
+            order.order_id, session=session, for_update=True
+        )
+    if exact_city is not None and (geography_raw or "").strip() != exact_city:
+        raise ValueError(
+            "Нельзя изменить город оплаченного заказа с точным подбором. "
+            "Создайте новый заказ для другого города."
+        )
+    return exact_city
 
 
 async def _update_order_managers(order_id: UUID, managers_raw: str) -> None:
@@ -1746,20 +1779,27 @@ def _order_duplicate_insert_data(source: OrderModel) -> dict[str, Any]:
 def _financial_order_admin_data(order, data):
     if order is None or getattr(order, "financial_version", None) is None:
         return data
-    for name, value in data.items():
-        if name == "status":
-            continue
+    # Keep the terms used to calculate and capture payment immutable, while
+    # allowing admins to correct the paid order brief and creator filters.
+    immutable_fields = {
+        "financial_version",
+        "order_type",
+        "price",
+        "bloggers_needed",
+    }
+    for name in immutable_fields.intersection(data):
+        value = data[name]
         current = getattr(order, name, object())
         if current == value or current in (None, "") and value in (None, ""):
             continue
-        if name in ("price", "price_filter_delta", "min_rating"):
+        if name == "price":
             try:
                 if Decimal(str(current)) == Decimal(str(value)):
                     continue
             except (ArithmeticError, ValueError):
                 pass
         raise ValueError("financial_order_intake_immutable")
-    return {"status": data["status"]} if "status" in data else {}
+    return data
 
 
 class OrderAdmin(ModelView, model=OrderModel):
@@ -1868,22 +1908,13 @@ class OrderAdmin(ModelView, model=OrderModel):
         managers_raw = str(form_data.get("managers", "") or "")
 
         obj = await _get_obj_by_pk(self, OrderModel, pk_uuid)
-        submitted = data
         data = _financial_order_admin_data(obj, data)
-        if (
-            obj is not None
-            and getattr(obj, "financial_version", None) is not None
-        ):
-            submitted = {
-                key: getattr(obj, key, None)
-                for key in (
-                    "product_link",
-                    "offer_text",
-                    "barter_description",
-                    "content_usage",
-                    "geography",
-                )
-            }
+        exact_city = None
+        if obj is not None and "geography" in data:
+            exact_city = await _validate_paid_order_geography_edit(
+                obj, data["geography"]
+            )
+        submitted = data
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
         new_status_active = (
@@ -1929,6 +1960,7 @@ class OrderAdmin(ModelView, model=OrderModel):
             activating=activating,
             saved_geography=getattr(obj, "geography", None),
             financial_version=getattr(obj, "financial_version", None),
+            exact_city=exact_city,
         )
 
         try:
