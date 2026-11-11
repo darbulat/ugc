@@ -73,6 +73,7 @@ class OrderCreationStates(StatesGroup):
     geography = State()
     platforms = State()
     accompaniment = State()
+    accompaniment_choice = State()
 
 
 def order_type_keyboard(
