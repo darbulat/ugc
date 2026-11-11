@@ -1,5 +1,6 @@
 """Authenticated bot intake and customer actions on both channels."""
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import localcontext
 from types import SimpleNamespace
@@ -889,6 +890,17 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
         order_image_service=images,
     )
     assert state.state == OrderCreationStates.order_photo.state
+    eligible = intake.eligible_policies.return_value
+    intake.eligible_policies.return_value = replace(
+        eligible,
+        policies=(
+            replace(
+                eligible.policies[0],
+                selection_minor=50005,
+                accompaniment_minor=170003,
+            ),
+        ),
+    )
     await ask_platforms(incoming, state, messenger, intake)
     await tg.handle_platforms(
         FakeMessage("youtube", FakeUser(12)),
@@ -898,11 +910,11 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
         event_adapter=TelegramEventAdapter(),
     )
     prompt = messenger.send_text.call_args.kwargs
-    assert "Хотите, чтобы наш менеджер" in prompt["text"]
+    assert "Кто будет работать с ними после подбора?" in prompt["text"]
     buttons = [row[0] for row in prompt["keyboard"].rows]
     assert [button.text for button in buttons] == [
-        "🤝 Да, с менеджером",
-        "👤 Нет, самостоятельно",
+        "👤 Работаю с блогерами сам · 5 000,50 ₽",
+        "🤝 Работу ведёт менеджер · 22 000,80 ₽",
     ]
     assert all(len(button.callback_data.encode()) <= 64 for button in buttons)
     assert state.state == OrderCreationStates.accompaniment_choice.state
@@ -920,14 +932,14 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
     intake.create.return_value = SimpleNamespace(
         order_id=uuid4(),
         items=tuple(range(10)),
-        selection_base_minor=500025,
-        total_minor=2200055 if with_manager else 500025,
+        selection_base_minor=500050,
+        total_minor=2200080 if with_manager else 500050,
     )
     deps = dict(
         messenger_client=messenger,
         event_adapter=TelegramEventAdapter(),
     )
-    choice = buttons[0 if with_manager else 1].callback_data
+    choice = buttons[1 if with_manager else 0].callback_data
     stale = f"{choice.rsplit(':', 1)[0]}:{uuid4()}"
     await tg.handle_accompaniment_choice(
         FakeCallback(stale, FakeUser(12)), state, intake, **deps
@@ -943,11 +955,11 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
         frozenset(range(1, 11)) if with_manager else frozenset()
     )
     confirmation = messenger.send_text.call_args.kwargs
-    assert "Подбор 10 блогеров — 5 000,25 ₽" in confirmation["text"]
+    assert "Подбор 10 блогеров — 5 000,50 ₽" in confirmation["text"]
     assert (
         "Сопровождение менеджера — 17 000,30 ₽" in confirmation["text"]
     ) == with_manager
-    total = "22 000,55" if with_manager else "5 000,25"
+    total = "22 000,80" if with_manager else "5 000,50"
     assert f"Итого: {total} ₽" in confirmation["text"]
     pay_button = confirmation["keyboard"].rows[0][0]
     assert pay_button.text == f"💳 Оплатить {total} ₽"
