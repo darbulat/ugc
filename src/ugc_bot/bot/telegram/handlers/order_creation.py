@@ -2,14 +2,13 @@
 
 import logging
 from typing import Any
-from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from ugc_bot.application.messenger.dto import IncomingCallback
+from ugc_bot.application.messenger.dto import Button, IncomingCallback
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
@@ -35,6 +34,7 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot import customer_actions
 from ugc_bot.bot.customer_intake import (
+    ACCOMPANIMENT_CALLBACK_PREFIX,
     ask_platforms,
     begin_intake,
     choose_platforms,
@@ -43,10 +43,10 @@ from ugc_bot.bot.customer_intake import (
     upload_telegram_image,
 )
 from ugc_bot.bot.telegram.filters import TextEqualsKey
-from ugc_bot.bot.telegram.handlers.checkout import send_checkout_if_v1
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_ORDER_AGREE,
     CALLBACK_PROFILE_MENU_CREATE_ORDER,
+    PAY_ORDER_CALLBACK_PREFIX,
     confirm_agreement_inline_keyboard,
     flow_inline_keyboard,
     flow_keyboard_remove,
@@ -1726,7 +1726,80 @@ async def handle_platforms(
         AiogramStateStore(state),
         messenger_client,
         order_intake_service,
+        accompaniment_buttons=True,
     )
+
+
+def _rubles(minor: int) -> str:
+    whole, cents = divmod(minor, 100)
+    amount = f"{whole:,}".replace(",", " ")
+    return f"{amount},{cents:02d}" if cents else amount
+
+
+async def _confirm_customer_order(
+    incoming,
+    state,
+    messenger,
+    intake,
+    followup,
+    *,
+    selected_count=None,
+    expected_key=None,
+):
+    locale = (await state.get_data()).get("locale", "ru")
+    result = await complete_intake(
+        incoming,
+        AiogramStateStore(state),
+        messenger,
+        intake,
+        followup,
+        selected_count=selected_count,
+        expected_key=expected_key,
+        send_receipt=False,
+    )
+    if result is None:
+        return
+    total = _rubles(result.total_minor)
+    accompaniment = result.total_minor - result.selection_base_minor
+    manager_line = (
+        customer_text(
+            locale,
+            "customer_confirmation_manager",
+            amount=_rubles(accompaniment),
+        )
+        if accompaniment
+        else ""
+    )
+    await messenger.send_text(
+        chat_id=incoming.chat_id,
+        text=customer_text(
+            locale,
+            "customer_confirmation",
+            count=len(result.items),
+            base=_rubles(result.selection_base_minor),
+            manager_line=manager_line,
+            total=total,
+        ),
+        parse_mode="HTML",
+        keyboard=flow_inline_keyboard(
+            [
+                [
+                    Button(
+                        text=customer_text(
+                            locale, "customer_confirmation_pay", total=total
+                        ),
+                        callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
+                    )
+                ]
+            ]
+        ),
+    )
+    # Keep the stored order ID and retry data for the current brief.
+    if (
+        expected_key is None
+        or (await state.get_data()).get("intake_operation_key") == expected_key
+    ):
+        await state.set_state(None)
 
 
 @router.message(OrderCreationStates.accompaniment)
@@ -1734,46 +1807,61 @@ async def handle_accompaniment(
     message: Message,
     state: FSMContext,
     order_intake_service: Any,
-    user_role_service: UserRoleService,
-    payment_service: PaymentService,
-    config: AppConfig,
-    bot_texts_service: BotTextsService,
-    checkout_service: Any = None,
     client_followup_service: Any = None,
-    user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
+    """Finish briefs whose numeric prompt was sent before the update."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
-    incoming = event_adapter.from_message(message)
-    result = await complete_intake(
-        incoming,
-        AiogramStateStore(state),
+    await _confirm_customer_order(
+        event_adapter.from_message(message),
+        state,
         messenger_client,
         order_intake_service,
         client_followup_service,
     )
-    if result is None:
-        return
+
+
+@router.callback_query(
+    lambda c: (c.data or "").startswith(ACCOMPANIMENT_CALLBACK_PREFIX)
+)
+async def handle_accompaniment_choice(
+    callback: CallbackQuery,
+    state: FSMContext,
+    order_intake_service: Any = None,
+    client_followup_service: Any = None,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    choice, _, key = (incoming.data or "")[
+        len(ACCOMPANIMENT_CALLBACK_PREFIX) :
+    ].partition(":")
     data = await state.get_data()
-    user = await user_role_service.get_user_by_id(UUID(str(data["user_id"])))
-    if user is not None:
-        await send_checkout_if_v1(
-            result.order_id,
-            user,
-            incoming,
-            message,
-            messenger_client,
-            payment_service,
-            checkout_service,
-            config,
-            user_locale,
-        )
-    # FSMContext.set_state preserves data; AiogramStateStore.set_state(None)
-    # clears it, so use the native context here to retain the retry snapshot.
-    await state.set_state(None)
+    if (
+        order_intake_service is None
+        or choice not in {"yes", "no"}
+        or not key
+        or key != data.get("intake_operation_key")
+        or await state.get_state()
+        != OrderCreationStates.accompaniment_choice.state
+    ):
+        return
+    await _confirm_customer_order(
+        incoming,
+        state,
+        messenger_client,
+        order_intake_service,
+        client_followup_service,
+        selected_count=data["bloggers_needed"] if choice == "yes" else 0,
+        expected_key=key,
+    )
 
 
 @router.callback_query(lambda c: c.data == "customer:help")

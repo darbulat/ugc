@@ -838,13 +838,15 @@ async def test_actions_transport_wrappers(flow, channel):
 
 
 @pytest.mark.asyncio
-async def test_telegram_save_reuses_native_checkout_and_image_handler(
-    flow, monkeypatch
+@pytest.mark.parametrize("with_manager", [False, True])
+async def test_telegram_confirms_saved_order_before_native_checkout(
+    flow, monkeypatch, with_manager
 ):
     from io import BytesIO
 
-    from tests.helpers.fakes import FakeMessage, FakeUser
+    from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
     from ugc_bot.bot.telegram.handlers import order_creation as tg
+    from ugc_bot.bot.telegram.handlers import payments
     from ugc_bot.infrastructure.messenger.telegram.adapter import (
         TelegramEventAdapter,
     )
@@ -895,42 +897,77 @@ async def test_telegram_save_reuses_native_checkout_and_image_handler(
         messenger_client=messenger,
         event_adapter=TelegramEventAdapter(),
     )
-    roles = SimpleNamespace(
-        get_user_by_id=AsyncMock(return_value=SimpleNamespace(user_id=user_id))
+    prompt = messenger.send_text.call_args.kwargs
+    assert "Хотите, чтобы наш менеджер" in prompt["text"]
+    buttons = [row[0] for row in prompt["keyboard"].rows]
+    assert [button.text for button in buttons] == [
+        "🤝 Да, с менеджером",
+        "👤 Нет, самостоятельно",
+    ]
+    assert all(len(button.callback_data.encode()) <= 64 for button in buttons)
+    assert state.state == OrderCreationStates.accompaniment_choice.state
+    intake.create.assert_not_awaited()
+
+    messenger.answer_callback = AsyncMock()
+    user = SimpleNamespace(user_id=user_id)
+    monkeypatch.setattr(
+        payments,
+        "get_user_and_ensure_allowed_callback",
+        AsyncMock(return_value=user),
     )
     checkout = AsyncMock()
-    monkeypatch.setattr(tg, "send_checkout_if_v1", checkout)
+    monkeypatch.setattr(payments, "send_checkout_if_v1", checkout)
     intake.create.return_value = SimpleNamespace(
-        order_id=uuid4(), total_minor=500000, selection_base_minor=500000
+        order_id=uuid4(),
+        items=tuple(range(10)),
+        selection_base_minor=500025,
+        total_minor=2200055 if with_manager else 500025,
     )
-    await tg.handle_accompaniment(
-        FakeMessage("0", FakeUser(12)),
-        state,
-        intake,
-        roles,
-        None,
-        None,
-        texts,
+    deps = dict(
         messenger_client=messenger,
         event_adapter=TelegramEventAdapter(),
     )
+    choice = buttons[0 if with_manager else 1].callback_data
+    stale = f"{choice.rsplit(':', 1)[0]}:{uuid4()}"
+    await tg.handle_accompaniment_choice(
+        FakeCallback(stale, FakeUser(12)), state, intake, **deps
+    )
+    intake.create.assert_not_awaited()
+    callback = FakeCallback(choice, FakeUser(12))
+    await tg.handle_accompaniment_choice(callback, state, intake, **deps)
     assert state.state is None
-    assert state._data["saved_order_id"]
-    checkout.assert_awaited_once()
-    assert checkout.call_args.args[0] == intake.create.return_value.order_id
-    intake.create.side_effect = ValueError("unavailable")
-    await tg.handle_accompaniment(
-        FakeMessage("0", FakeUser(12)),
-        state,
-        intake,
-        roles,
+    order_id = intake.create.return_value.order_id
+    assert state._data["saved_order_id"] == str(order_id)
+    command = intake.create.call_args.args[0]
+    assert command.accompaniment_ordinals == (
+        frozenset(range(1, 11)) if with_manager else frozenset()
+    )
+    confirmation = messenger.send_text.call_args.kwargs
+    assert "Подбор 10 блогеров — 5 000,25 ₽" in confirmation["text"]
+    assert (
+        "Сопровождение менеджера — 17 000,30 ₽" in confirmation["text"]
+    ) == with_manager
+    total = "22 000,55" if with_manager else "5 000,25"
+    assert f"Итого: {total} ₽" in confirmation["text"]
+    pay_button = confirmation["keyboard"].rows[0][0]
+    assert pay_button.text == f"💳 Оплатить {total} ₽"
+    await tg.handle_accompaniment_choice(callback, state, intake, **deps)
+    intake.create.assert_awaited_once()
+    checkout.assert_not_awaited()
+
+    await payments.pay_order_callback(
+        FakeCallback(pay_button.callback_data, FakeUser(12)),
+        None,
+        SimpleNamespace(
+            get_advertiser_profile=AsyncMock(return_value=object())
+        ),
         None,
         None,
         texts,
-        messenger_client=messenger,
-        event_adapter=TelegramEventAdapter(),
+        **deps,
     )
-    assert checkout.await_count == 1
+    checkout.assert_awaited_once()
+    assert checkout.call_args.args[0] == order_id
 
 
 @pytest.mark.asyncio

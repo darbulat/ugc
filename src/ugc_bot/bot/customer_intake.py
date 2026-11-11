@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
@@ -19,6 +20,7 @@ from ugc_bot.domain.order_targeting import OrderTargeting
 from ugc_bot.domain.social import SocialPlatform
 
 IMAGE_REQUIREMENTS = "JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт)"
+ACCOMPANIMENT_CALLBACK_PREFIX = "order:manager:"
 logger = logging.getLogger(__name__)
 UNAVAILABLE = (
     "Оформление сейчас недоступно. Обратитесь в поддержку через «Помощь». "
@@ -123,7 +125,9 @@ async def ask_platforms(incoming, state, messenger, intake):
     await state.set_state(OrderCreationStates.platforms.state)
 
 
-async def choose_platforms(incoming, state, messenger, intake):
+async def choose_platforms(
+    incoming, state, messenger, intake, *, accompaniment_buttons=False
+):
     data = await state.get_data()
     raw = (incoming.text or "").lower().replace(" ", "")
     try:
@@ -139,6 +143,30 @@ async def choose_platforms(incoming, state, messenger, intake):
     await state.update_data(platforms=list(platforms))
     data = await state.get_data()
     count = data["bloggers_needed"]
+    if accompaniment_buttons:
+        locale = data.get("locale", "ru")
+        key = data["intake_operation_key"]
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=customer_text(locale, "customer_manager_choice", count=count),
+            parse_mode="HTML",
+            keyboard=Keyboard(
+                kind=KeyboardKind.INLINE,
+                rows=[
+                    [
+                        Button(
+                            text=customer_text(
+                                locale, f"customer_manager_{choice}"
+                            ),
+                            callback_data=f"{ACCOMPANIMENT_CALLBACK_PREFIX}{choice}:{key}",
+                        )
+                    ]
+                    for choice in ("yes", "no")
+                ],
+            ),
+        )
+        await state.set_state(OrderCreationStates.accompaniment_choice.state)
+        return
     selection = _minor_as_decimal(data["intake_selection_minor"] * count)
     unit = _minor_as_decimal(data["intake_accompaniment_minor"])
     await messenger.send_text(
@@ -188,9 +216,26 @@ def command_from_state(data, incoming):
     )
 
 
-async def complete_intake(incoming, state, messenger, intake, followup=None):
+async def complete_intake(
+    incoming,
+    state,
+    messenger,
+    intake,
+    followup=None,
+    *,
+    selected_count=None,
+    expected_key=None,
+    send_receipt=True,
+):
     data = await state.get_data()
-    if "accompaniment_count" not in data:
+    if (
+        expected_key is not None
+        and data.get("intake_operation_key") != expected_key
+    ):
+        return None
+    if selected_count is not None:
+        data["accompaniment_count"] = selected_count
+    elif "accompaniment_count" not in data:
         try:
             count = int(incoming.text or "")
             if not 0 <= count <= data["bloggers_needed"]:
@@ -220,7 +265,11 @@ async def complete_intake(incoming, state, messenger, intake, followup=None):
             ),
         )
         return None
-    await state.update_data(saved_order_id=str(result.order_id))
+    if (
+        expected_key is None
+        or (await state.get_data()).get("intake_operation_key") == expected_key
+    ):
+        await state.update_data(saved_order_id=str(result.order_id))
     await record_activity(
         incoming,
         command.client_id,
@@ -229,6 +278,8 @@ async def complete_intake(incoming, state, messenger, intake, followup=None):
         result.order_id,
         intent_id=command.funnel_id,
     )
+    if not send_receipt:
+        return result
     await messenger.send_text(
         chat_id=incoming.chat_id,
         text=customer_text(
