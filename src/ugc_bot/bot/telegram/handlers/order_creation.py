@@ -39,6 +39,7 @@ from ugc_bot.bot.customer_intake import (
     begin_intake,
     choose_platforms,
     complete_intake,
+    format_rubles,
     record_activity,
     upload_telegram_image,
 )
@@ -1730,12 +1731,6 @@ async def handle_platforms(
     )
 
 
-def _rubles(minor: int) -> str:
-    whole, cents = divmod(minor, 100)
-    amount = f"{whole:,}".replace(",", " ")
-    return f"{amount},{cents:02d}" if cents else amount
-
-
 async def _confirm_customer_order(
     incoming,
     state,
@@ -1759,13 +1754,13 @@ async def _confirm_customer_order(
     )
     if result is None:
         return
-    total = _rubles(result.total_minor)
+    total = format_rubles(result.total_minor)
     accompaniment = result.total_minor - result.selection_base_minor
     manager_line = (
         customer_text(
             locale,
             "customer_confirmation_manager",
-            amount=_rubles(accompaniment),
+            amount=format_rubles(accompaniment),
         )
         if accompaniment
         else ""
@@ -1776,7 +1771,7 @@ async def _confirm_customer_order(
             locale,
             "customer_confirmation",
             count=len(result.items),
-            base=_rubles(result.selection_base_minor),
+            base=format_rubles(result.selection_base_minor),
             manager_line=manager_line,
             total=total,
         ),

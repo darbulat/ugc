@@ -33,6 +33,12 @@ def _minor_as_decimal(value: int) -> Decimal:
     return Decimal(f"{whole}.{cents:02d}")
 
 
+def format_rubles(minor: int) -> str:
+    whole, cents = divmod(minor, 100)
+    amount = f"{whole:,}".replace(",", " ")
+    return f"{amount},{cents:02d}" if cents else amount
+
+
 def principal_for(incoming, user_id):
     return AuthenticatedMessengerPrincipal(
         user_id, incoming.user.messenger_type.value, incoming.user.external_id
@@ -146,6 +152,8 @@ async def choose_platforms(
     if accompaniment_buttons:
         locale = data.get("locale", "ru")
         key = data["intake_operation_key"]
+        selection = data["intake_selection_minor"] * count
+        with_manager = selection + data["intake_accompaniment_minor"] * count
         await messenger.send_text(
             chat_id=incoming.chat_id,
             text=customer_text(locale, "customer_manager_choice", count=count),
@@ -156,12 +164,17 @@ async def choose_platforms(
                     [
                         Button(
                             text=customer_text(
-                                locale, f"customer_manager_{choice}"
+                                locale,
+                                f"customer_manager_{choice}",
+                                total=format_rubles(total),
                             ),
                             callback_data=f"{ACCOMPANIMENT_CALLBACK_PREFIX}{choice}:{key}",
                         )
                     ]
-                    for choice in ("yes", "no")
+                    for choice, total in (
+                        ("no", selection),
+                        ("yes", with_manager),
+                    )
                 ],
             ),
         )
