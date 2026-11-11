@@ -92,6 +92,7 @@ async def test_mounted_sql_refund_ui_retains_exact_evidence_without_application(
     rt = correction_env
     app, own, admin = application(rt, platform)
     command = await rt.request()
+    rejected_key = "ui-sql-request"
     before = {
         kind: len(rt.rows(kind))
         for kind in ("cases", "commands", "observations", "matches")
@@ -127,7 +128,7 @@ async def test_mounted_sql_refund_ui_retains_exact_evidence_without_application(
             own,
             "request",
             **values,
-            operation_key="ui-sql-request",
+            operation_key=rejected_key,
             reason="Five expired undelivered positions",
         )
         assert requested.status_code == 404
@@ -193,11 +194,25 @@ async def test_mounted_sql_refund_ui_retains_exact_evidence_without_application(
         assert own_list.json()["entries"][0]["case_id"] == state["case_id"]
         assert "PRIVATE" not in own_list.text
         original = await post(
-            client, own, "operations/status", operation_key="ui-sql-request"
+            client,
+            own,
+            "operations/status",
+            operation_key=command.operation_key,
         )
+        assert original.status_code == 200, original.text
+        assert original.json()["recorded"] is True
         assert original.json()["original_result"] == state
         assert original.json()["current"]["version"] == 4
         assert original.headers["cache-control"] == "no-store"
+        rejected = await post(
+            client, own, "operations/status", operation_key=rejected_key
+        )
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json() == {
+            "recorded": False,
+            "original_result": None,
+            "current": None,
+        }
 
 
 @pytest.mark.asyncio
