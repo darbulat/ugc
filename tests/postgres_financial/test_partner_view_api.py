@@ -232,12 +232,16 @@ async def test_own_network_identity_counts_and_pending_only_name_owned_members(
     )
     factory, _, _, clock, data = collaboration_pg
     current = await start(collaboration_pg)
+    app = application(container, config)
+    app.state.dispatcher["partner_view_service"].clock = clock
     async with factory.begin() as db:
         await db.execute(
             update(UserModel)
             .where(UserModel.user_id == data["creator"])
             .values(
-                username="Own invited author", telegram="own_invited_author"
+                username="Own invited author",
+                telegram="own_invited_author",
+                created_at=clock.at - timedelta(days=2),
             )
         )
         await FinancialLedgerService(
@@ -245,7 +249,7 @@ async def test_own_network_identity_counts_and_pending_only_name_owned_members(
         ).issue(await basis(collaboration_pg), recorded_at=clock.at, session=db)
     try:
         async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=application(container, config)),
+            transport=httpx.ASGITransport(app=app),
             base_url="http://testserver",
         ) as client:
             result = await client.post(PATH, json=body)
