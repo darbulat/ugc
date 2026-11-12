@@ -127,3 +127,102 @@ def test_sqladmin_list_views(admin_server, page, base_url) -> None:
     response = page.goto(f"{base_url}/admin/user-model/list")
     assert response is not None
     assert response.status in (200, 304)
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(45)
+def test_order_worklist_search_and_hide(
+    admin_server, page, base_url, test_database
+):
+    """A long geography stays in the table and hiding requires confirmation."""
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from playwright.sync_api import expect
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+    from ugc_bot.infrastructure.db.models import (
+        AdvertiserProfileModel,
+        OrderModel,
+        UserModel,
+    )
+
+    if not test_database:
+        pytest.skip("Requires the isolated local browser test database")
+
+    engine = create_engine(test_database)
+    now = datetime.now(timezone.utc)
+    user_id, order_id = uuid4(), uuid4()
+    brand = f"Workbench-{order_id.hex[:8]}"
+    geography = "Новосибирская область, Свердловская область, " * 20
+    with Session(engine) as session, session.begin():
+        session.add(
+            UserModel(
+                user_id=user_id,
+                username="test-merchant",
+                messenger_type=MessengerType.TELEGRAM,
+                status=UserStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            AdvertiserProfileModel(
+                user_id=user_id,
+                contact="test-contact",
+                brand=brand,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        session.add(
+            OrderModel(
+                order_id=order_id,
+                advertiser_id=user_id,
+                status=OrderStatus.NEW,
+                offer_text="Браузерный тест черновика",
+                product_link="https://example.com",
+                geography=geography,
+                price=1850,
+                bloggers_needed=5,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    engine.dispose()
+
+    _login(page, base_url)
+    page.goto(f"{base_url}/admin/order-model/list")
+    page.get_by_label("Поиск").fill(brand)
+    page.get_by_role("button", name="Найти").click()
+    row = page.get_by_role("row").filter(has_text=brand)
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text("1 850,00 RUB")
+    geography_cell = row.locator("td").first.locator("span")
+    for width in (1440, 820):
+        page.set_viewport_size({"width": width, "height": 800})
+        assert geography_cell.evaluate(
+            "(cell) => getComputedStyle(cell).webkitLineClamp === '2' "
+            "&& cell.scrollHeight > cell.clientHeight"
+        )
+        assert page.evaluate(
+            "document.documentElement.scrollWidth <= window.innerWidth"
+        )
+    hide = row.get_by_role("button", name="Убрать из списка")
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    hide.click()
+    expect(row).to_be_visible()
+    messages = []
+
+    def confirm(dialog):
+        messages.append(dialog.message)
+        dialog.accept()
+
+    page.once("dialog", confirm)
+    hide.click()
+    expect(page.get_by_role("status")).to_have_text("Заказ убран из списка.")
+    assert messages and order_id.hex[:8] in messages[0]
+    expect(page.get_by_label("Поиск")).to_have_value(brand)
+    expect(page.get_by_text("Заказы не найдены")).to_be_visible()
