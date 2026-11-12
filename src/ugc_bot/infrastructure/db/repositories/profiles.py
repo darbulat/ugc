@@ -262,7 +262,7 @@ class SqlAlchemyBloggerProfileRepository(
         if location_geometry_wkt and location_geometry_wkt.strip():
             try:
                 dialect = db_session.sync_session.get_bind().dialect.name
-            except AttributeError as exc:
+            except (AttributeError, ValueError) as exc:
                 raise OrderGeographyUnavailableError(
                     "Order geography filter is unavailable."
                 ) from exc
