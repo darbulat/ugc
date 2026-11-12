@@ -131,10 +131,10 @@ def test_sqladmin_list_views(admin_server, page, base_url) -> None:
 
 @pytest.mark.e2e
 @pytest.mark.timeout(45)
-def test_order_worklist_search_and_hide(
+def test_order_worklist_search_hide_and_restore(
     admin_server, page, base_url, test_database
 ):
-    """A long geography stays in the table and hiding requires confirmation."""
+    """Long geography stays in the table and visibility can be changed."""
     from datetime import datetime, timezone
     from uuid import uuid4
 
@@ -226,3 +226,17 @@ def test_order_worklist_search_and_hide(
     assert messages and order_id.hex[:8] in messages[0]
     expect(page.get_by_label("Поиск")).to_have_value(brand)
     expect(page.get_by_text("Заказы не найдены")).to_be_visible()
+
+    page.get_by_role("link", name="Скрытые").click()
+    expect(page.get_by_label("Поиск")).to_have_value(brand)
+    restore = row.get_by_role("button", name="Вернуть в список")
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    restore.click()
+    expect(row).to_be_visible()
+    page.once("dialog", confirm)
+    restore.click()
+    expect(page.get_by_role("status")).to_have_text("Заказ возвращён в список.")
+    assert len(messages) == 2 and order_id.hex[:8] in messages[1]
+    expect(row).to_have_count(0)
+    page.get_by_role("link", name="В работе").click()
+    expect(row).to_be_visible()
