@@ -3,9 +3,11 @@
 import asyncio
 import dataclasses
 import logging
+from collections.abc import Sequence
 from decimal import Decimal
 from enum import Enum
 from pathlib import Path
+from secrets import compare_digest, token_urlsafe
 from typing import Any, Optional, TypeVar, cast
 from uuid import UUID
 
@@ -16,6 +18,8 @@ from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -38,6 +42,13 @@ from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
     PeriodKey,
+)
+from ugc_bot.admin.order_worklist import (
+    ORDER_STATUS_LABELS,
+    change_order_worklist,
+    search_orders,
+    worklist_conditions,
+    worklist_row_details,
 )
 from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
@@ -1812,6 +1823,17 @@ class OrderAdmin(ModelView, model=OrderModel):
     list_template = "order_list.html"
     page_size = 25
     page_size_options = [25, 50, 100]
+    worklist_status_labels = ORDER_STATUS_LABELS
+    worklist_columns = {
+        "geography": "География",
+        "price": "Цена",
+        "status": "Статус",
+        "username": "Заказчик",
+        "brand": "Компания / бренд",
+        "bloggers_needed": "Нужно блогеров",
+        "offer_text": "Оффер",
+        "created_at": "Создан",
+    }
     column_list = [
         OrderModel.order_id,
         OrderModel.advertiser_id,
@@ -1986,11 +2008,65 @@ class OrderAdmin(ModelView, model=OrderModel):
 
     def list_query(self, request: Request):
         stmt = super().list_query(request)
-        return stmt.where(OrderModel.status != OrderStatus.DELETED)
+        if "export_type" in request.path_params:
+            return stmt.where(OrderModel.status != OrderStatus.DELETED)
+        return stmt.where(
+            *worklist_conditions(
+                request.query_params.get("group", "work"),
+                request.query_params.get("status", ""),
+            )
+        )
 
     def count_query(self, request: Request):
-        stmt = super().count_query(request)
-        return stmt.where(OrderModel.status != OrderStatus.DELETED)
+        stmt = (
+            super()
+            .count_query(request)
+            .where(
+                *worklist_conditions(
+                    request.query_params.get("group", "work"),
+                    request.query_params.get("status", ""),
+                )
+            )
+        )
+        if term := request.query_params.get("search", "").strip():
+            stmt = stmt.where(search_orders(term))
+        return stmt
+
+    def search_query(self, stmt, term: str):
+        return stmt.where(search_orders(term)) if term.strip() else stmt
+
+    async def list(self, request: Request):
+        pagination = await super().list(request)
+        page_size = pagination.page_size
+        last_page = max(1, (pagination.count + page_size - 1) // page_size)
+        pagination.page = min(pagination.page, last_page)
+        return pagination
+
+    def sort_query(self, stmt, request: Request):
+        sort_by = request.query_params.get("sortBy")
+        if sort_by in self.worklist_columns and sort_by not in {
+            "username",
+            "brand",
+        }:
+            return (
+                super().sort_query(stmt, request).order_by(OrderModel.order_id)
+            )
+        return stmt.order_by(OrderModel.created_at.desc(), OrderModel.order_id)
+
+    async def worklist_details(self, rows: Sequence[OrderModel]):
+        def load():
+            with self.session_maker() as session:
+                return worklist_row_details(
+                    session, [row.order_id for row in rows]
+                )
+
+        return await asyncio.to_thread(load)
+
+    @staticmethod
+    def worklist_csrf_token(request: Request) -> str:
+        if "order_worklist_csrf" not in request.session:
+            request.session["order_worklist_csrf"] = token_urlsafe()
+        return request.session["order_worklist_csrf"]
 
     def form_edit_query(self, request: Request):
         stmt = super().form_edit_query(request)
@@ -2982,6 +3058,43 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(AuditLogAdmin)
 
 
+def _register_order_worklist_action(
+    app: FastAPI, auth: AdminAuth, engine: Engine
+) -> None:
+    @app.post(
+        "/admin/order-worklist/{order_id}/{operation}",
+        dependencies=[Depends(_make_require_admin(auth))],
+    )
+    async def update_order_worklist(
+        request: Request, order_id: UUID, operation: str
+    ) -> Response:
+        if operation not in {"close", "hide"}:
+            raise HTTPException(status_code=404)
+        form = await request.form()
+        expected = request.session.get("order_worklist_csrf", "")
+        submitted = form.get("csrf_token")
+        if (
+            not expected
+            or not isinstance(submitted, str)
+            or not compare_digest(expected.encode(), submitted.encode())
+        ):
+            raise HTTPException(
+                status_code=403, detail="Обновите список заказов."
+            )
+
+        def update() -> str:
+            with Session(engine) as session, session.begin():
+                return change_order_worklist(session, order_id, operation)
+
+        request.session["order_worklist_message"] = await asyncio.to_thread(
+            update
+        )
+        target = request.url_for("admin:list", identity=OrderAdmin.identity)
+        return RedirectResponse(
+            target.replace(query=request.url.query), status_code=303
+        )
+
+
 def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
@@ -3032,6 +3145,8 @@ def create_admin_app() -> FastAPI:
         return await _handle_order_image_preview(
             request, auth, container, order_id
         )
+
+    _register_order_worklist_action(app, auth, engine)
 
     admin = EnumAwareAdmin(
         app,
