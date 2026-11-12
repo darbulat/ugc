@@ -261,6 +261,7 @@ async def test_populated_foundation_upgrade_preserves_history_and_stops_money(
     with isolated_financial_database(
         os.environ["FINANCIAL_TEST_DATABASE_URL"],
         target_revision="campaign_foundation_v1",
+        current_order_model=True,
     ) as engine:
         async with asynccontextmanager(capture_env.__wrapped__)(
             engine,

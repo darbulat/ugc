@@ -223,6 +223,7 @@ async def test_real_old_parent_producer_survives_upgrade(
     with isolated_financial_database(
         os.environ["FINANCIAL_TEST_DATABASE_URL"],
         target_revision="campaign_drafts_v1",
+        current_order_model=True,
     ) as engine:
         capture = asynccontextmanager(capture_env.__wrapped__)
         payout = asynccontextmanager(payout_env.__wrapped__)

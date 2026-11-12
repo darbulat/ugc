@@ -36,6 +36,7 @@ def financial_pg_engine(request):
         target_revision=getattr(
             request, "param", "0118_financial_review_restore"
         ),
+        current_order_model=True,
     ) as engine:
         yield engine
 

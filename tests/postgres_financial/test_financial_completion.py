@@ -43,7 +43,9 @@ def financial_pg_engine():
     if not url:
         pytest.skip("Explicit isolated financial test PostgreSQL is required")
     with isolated_financial_database(
-        url, target_revision="00e0_financial_completion"
+        url,
+        target_revision="00e0_financial_completion",
+        current_order_model=True,
     ) as engine:
         yield engine
 

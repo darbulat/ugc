@@ -35,12 +35,19 @@ def require_test_database(value: str | None) -> str:
 
 
 @contextmanager
-def isolated_financial_database(value: str, *, target_revision: str = "head"):
+def isolated_financial_database(
+    value: str,
+    *,
+    target_revision: str = "head",
+    current_order_model: bool = False,
+):
     """Migrate a fresh UUID schema; teardown only that schema, never public.
 
     PostGIS types/functions live in public; application tables and Alembic's
     version table use the private first search_path entry. A worker/CI migration
     invocation always gets its own schema, including on migration failure.
+    Historical scenarios that run the current order ORM can supply its newer
+    order columns separately when testing migrations that predate them.
     """
     value = require_test_database(value)
     schema = "financial_test_" + uuid4().hex
@@ -104,6 +111,17 @@ def isolated_financial_database(value: str, *, target_revision: str = "head"):
             max_overflow=0,
             connect_args={"connect_timeout": 5},
         )
+        if current_order_model:
+            with engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "ALTER TABLE orders "
+                        "ADD COLUMN IF NOT EXISTS complimentary "
+                        "boolean NOT NULL DEFAULT false, "
+                        "ADD COLUMN IF NOT EXISTS dispatch_stopped "
+                        "boolean NOT NULL DEFAULT false"
+                    )
+                )
         yield engine
     finally:
         if engine is not None:

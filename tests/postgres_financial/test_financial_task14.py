@@ -98,7 +98,9 @@ def migration_engine(financial_pg_engine):
 
     url = os.environ["FINANCIAL_TEST_DATABASE_URL"]
     with isolated_financial_database(
-        url, target_revision="financial_ledger"
+        url,
+        target_revision="financial_ledger",
+        current_order_model=True,
     ) as engine:
         yield engine
 

@@ -39,6 +39,7 @@ def financial_pg_engine():
     with isolated_financial_database(
         os.environ["FINANCIAL_TEST_DATABASE_URL"],
         target_revision="0113_campaign_analytics",
+        current_order_model=True,
     ) as engine:
         yield engine
 

@@ -202,6 +202,7 @@ async def test_archived_writer_upgrade_preserves_history_without_backfill(
     with isolated_financial_database(
         os.environ["FINANCIAL_TEST_DATABASE_URL"],
         target_revision="campaign_drafts_v1",
+        current_order_model=True,
     ) as engine:
         install_archived_correction_schema(engine)
         with engine.connect() as db:
@@ -427,7 +428,9 @@ async def test_metadata_final_guard_matches_migration_and_repeated_creation(
     ) as companion:
         historical_boundary = installed_approval_guard(companion)
     with isolated_financial_database(
-        url, target_revision="campaign_drafts_v1"
+        url,
+        target_revision="campaign_drafts_v1",
+        current_order_model=True,
     ) as engine:
         if construction == "full":
             Base.metadata.create_all(engine)

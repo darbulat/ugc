@@ -28,7 +28,9 @@ def test_upgrade_keeps_old_receipt_hash_and_rejects_forged_item_price():
     if not url:
         pytest.skip("Explicit isolated PostgreSQL required")
     with isolated_financial_database(
-        url, target_revision="0119_accompaniment_prior"
+        url,
+        target_revision="0119_accompaniment_prior",
+        current_order_model=True,
     ) as engine:
         data = seed.__wrapped__(engine, SimpleNamespace())
         due = data["now"] + timedelta(days=2)
