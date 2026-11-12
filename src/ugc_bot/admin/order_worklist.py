@@ -1,10 +1,10 @@
 """Queries and single-order actions for the SQLAdmin orders list."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from sqlalchemy import String, cast, false, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from ugc_bot.domain.enums import AuditAction, OrderStatus
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS
@@ -71,23 +71,33 @@ def _can_close():
     )
 
 
-def _has_hide_record():
+def _latest_visibility_event(order_id: UUID | InstrumentedAttribute[UUID]):
     return (
-        select(AuditLogModel.id)
+        select(AuditLogModel)
         .where(
             AuditLogModel.entity_type == _VISIBILITY_ENTITY,
-            AuditLogModel.entity_id == OrderModel.order_id,
+            AuditLogModel.entity_id == order_id,
         )
-        .exists()
+        .order_by(AuditLogModel.changed_at.desc(), AuditLogModel.id.desc())
+        .limit(1)
     )
 
 
 def worklist_conditions(group: str, status: str):
+    latest_visibility = (
+        _latest_visibility_event(OrderModel.order_id)
+        .with_only_columns(AuditLogModel.new_values["visible"].as_boolean())
+        .correlate(OrderModel)
+        .scalar_subquery()
+    )
+    # A hidden legacy order can still receive payment and resurface.
+    hidden = _can_hide() & latest_visibility.is_(False)
+    if group == "hidden":
+        return [hidden]
+
     conditions = [
         OrderModel.status != OrderStatus.DELETED,
-        # A legacy invoice can be in flight before a payment row exists.
-        # A list-only hide lets the normal checkout proceed and resurface.
-        ~(_can_hide() & _has_hide_record()),
+        ~hidden,
     ]
     if group == "closed":
         conditions.append(OrderModel.status == OrderStatus.CLOSED)
@@ -165,27 +175,42 @@ def change_order_worklist(
     session: Session, order_id: UUID, operation: str
 ) -> str:
     order = session.get(OrderModel, order_id, with_for_update=True)
-    if order is None:
+    if order is None or order.status == OrderStatus.DELETED:
         return "Заказ не найден."
-    if operation == "hide":
-        if not session.scalar(
+    if operation in {"hide", "restore"}:
+        visible = operation == "restore"
+        if not visible and not session.scalar(
             select(_can_hide()).where(OrderModel.order_id == order_id)
         ):
             return (
                 "Заказ уже в работе или связан с оплатой. Скрытие недоступно."
             )
-        if not session.scalar(
-            select(_has_hide_record()).where(OrderModel.order_id == order_id)
-        ):
+        previous = session.scalar(_latest_visibility_event(order_id))
+        was_visible = (
+            previous is None or previous.new_values.get("visible") is not False
+        )
+        if was_visible != visible:
+            changed_at = datetime.now(timezone.utc)
+            if previous is not None:
+                # Keep event order when app clocks differ or timestamps tie.
+                last_change = previous.changed_at
+                if last_change.tzinfo is None:
+                    last_change = last_change.replace(tzinfo=timezone.utc)
+                changed_at = max(
+                    changed_at, last_change + timedelta(microseconds=1)
+                )
             session.add(
                 AuditLogModel(
                     entity_type=_VISIBILITY_ENTITY,
                     entity_id=order_id,
                     action=AuditAction.UPDATE,
-                    old_values={"visible": True},
-                    new_values={"visible": False},
+                    old_values={"visible": was_visible},
+                    new_values={"visible": visible},
+                    changed_at=changed_at,
                 )
             )
+        if visible:
+            return "Заказ возвращён в список."
         return "Заказ убран из списка."
     if not session.scalar(
         select(_can_close()).where(OrderModel.order_id == order_id)

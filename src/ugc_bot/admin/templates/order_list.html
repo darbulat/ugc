@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'closed', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ('work', 'closed', 'hidden', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
 {% set details = model_view.worklist_details(pagination.rows) %}
 {% set csrf_token = model_view.worklist_csrf_token(request) %}
@@ -31,7 +31,7 @@
     <div class="card-body border-bottom py-3">
       {% if message %}<div class="alert alert-info" role="status">{{ message }}</div>{% endif %}
       <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('closed', 'Закрытые'), ('all', 'Все')] %}
+        {% for key, label in [('work', 'В работе'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('all', 'Все')] %}
         <a class="nav-link{% if group == key %} active{% endif %}"
            {% if group == key %}aria-current="page"{% endif %}
            href="{{ request.url.remove_query_params(['page', 'status']).include_query_params(group=key) }}">
@@ -52,7 +52,7 @@
                  placeholder="География, заказчик, бренд, оффер или ID"
                  value="{{ request.query_params.get('search', '') }}">
         </div>
-        {% if group != 'closed' %}
+        {% if group in ('work', 'all') %}
         <div>
           <label class="form-label" for="order-status">Статус</label>
           <select class="form-select" id="order-status" name="status">
@@ -134,14 +134,14 @@
                     <button type="submit" class="btn btn-sm btn-outline-primary">{{ 'Возобновить рассылку' if info.dispatch_paused else 'Пауза рассылки' }}</button>
                   </form>
                 {% endif %}
-                {% if info.can_close or info.can_hide %}
-                  {% set operation = 'close' if info.can_close else 'hide' %}
-                  {% set label = 'Закрыть' if info.can_close else 'Убрать из списка' %}
+                {% set operation = 'restore' if group == 'hidden' else ('close' if info.can_close else ('hide' if info.can_hide else none)) %}
+                {% if operation %}
+                  {% set label = {'close': 'Закрыть', 'hide': 'Убрать из списка', 'restore': 'Вернуть в список'}[operation] %}
                   {% set confirm_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=operation) %}
                   <form method="post" action="{{ confirm_url.replace(query=request.url.query) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="button" class="btn btn-sm btn-outline-primary"
-                            data-order-confirm="{{ label }} заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }})?{% if info.can_hide %} Запись сохранится.{% endif %}">
+                            data-order-confirm="Заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }}). {{ label }}?{% if operation == 'hide' %} Запись сохранится.{% endif %}">
                       {{ label }}
                     </button>
                   </form>
