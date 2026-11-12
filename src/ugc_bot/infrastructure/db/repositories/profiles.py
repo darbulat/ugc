@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.identity_history_ports import current_identity_evidence
 from ugc_bot.application.legacy_link_ports import LegacySqlParticipant
 from ugc_bot.application.ports import (
@@ -260,36 +261,22 @@ class SqlAlchemyBloggerProfileRepository(
         )
         if location_geometry_wkt and location_geometry_wkt.strip():
             try:
-                bind = db_session.sync_session.get_bind()
-                if (
-                    getattr(bind, "dialect", None)
-                    and getattr(bind.dialect, "name", None) == "postgresql"
-                ):
-                    order_geom = WKTElement(
-                        location_geometry_wkt.strip(), srid=4326
-                    )
-                    stmt = stmt.where(
-                        BloggerProfileModel.location_geometry.isnot(None),
-                        ST_Intersects(
-                            BloggerProfileModel.location_geometry,
-                            order_geom,
-                        ),
-                    )
-            except AttributeError:
-                pass
-            except Exception as e:
-                wkt_preview = (
-                    (location_geometry_wkt or "")[:100]
-                    if location_geometry_wkt
-                    else ""
+                dialect = db_session.sync_session.get_bind().dialect.name
+            except AttributeError as exc:
+                raise OrderGeographyUnavailableError(
+                    "Order geography filter is unavailable."
+                ) from exc
+            if dialect != "postgresql":
+                raise OrderGeographyUnavailableError(
+                    "Order geography filter requires PostGIS."
                 )
-                logger.warning(
-                    "Invalid order location_geometry WKT, returning no "
-                    "bloggers: %s",
-                    e,
-                    extra={"wkt_preview": wkt_preview},
-                )
-                return []
+            order_geom = WKTElement(location_geometry_wkt.strip(), srid=4326)
+            stmt = stmt.where(
+                BloggerProfileModel.location_geometry.isnot(None),
+                ST_Intersects(
+                    BloggerProfileModel.location_geometry, order_geom
+                ),
+            )
         exec_result = await db_session.execute(stmt)
         result = list(exec_result.scalars())
         if len(result) > 5000:

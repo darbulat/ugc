@@ -1,7 +1,13 @@
 {% extends "sqladmin/layout.html" %}
 {% from 'sqladmin/_macros.html' import render_form_fields %}
 {% block content %}
-{% if eligible_bloggers_count is not none %}
+{% if order_geography_unavailable %}
+<div class="col-12 mb-2">
+  <div class="alert alert-danger py-2 mb-0" role="alert">
+    Не удалось применить географию заказа. Рассылка заблокирована до исправления геофильтра.
+  </div>
+</div>
+{% elif eligible_bloggers_count is not none %}
 <div class="col-12 mb-2">
   <div class="alert alert-info py-2 mb-0" role="status">
     Креаторов под выборку: <strong>{{ eligible_bloggers_count }}</strong>

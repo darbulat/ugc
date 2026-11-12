@@ -26,6 +26,7 @@ from ugc_bot.admin.app import (
     _update_order_location_geometry_after_geography_change,
     create_admin_app,
 )
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
@@ -2303,7 +2304,12 @@ async def test_inject_order_eligible_count_none_without_container() -> None:
 
 
 @pytest.mark.asyncio
-async def test_inject_order_eligible_bloggers_count_none_on_exception() -> None:
+@pytest.mark.parametrize(
+    "error", [RuntimeError, OrderGeographyUnavailableError]
+)
+async def test_inject_order_eligible_bloggers_count_none_on_exception(
+    error,
+) -> None:
     """eligible_bloggers_count is None when count_eligible_bloggers raises."""
     context = {}
     model_view = OrderAdmin()
@@ -2312,7 +2318,7 @@ async def test_inject_order_eligible_bloggers_count_none_on_exception() -> None:
 
     mock_dispatch = MagicMock()
     mock_dispatch.count_eligible_bloggers = AsyncMock(
-        side_effect=RuntimeError("db error")
+        side_effect=error("selection error")
     )
     mock_container = MagicMock()
     mock_container.session_factory = True
@@ -2327,6 +2333,9 @@ async def test_inject_order_eligible_bloggers_count_none_on_exception() -> None:
         await _inject_order_eligible_bloggers_count(context, model_view, model)
 
     assert context["eligible_bloggers_count"] is None
+    assert context.get("order_geography_unavailable", False) == (
+        error is OrderGeographyUnavailableError
+    )
 
 
 def test_user_admin_list_count_form_edit_query_exclude_deleted() -> None:

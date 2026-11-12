@@ -15,8 +15,12 @@ from tests.helpers.factories import (
 )
 from tests.postgres_financial.test_order_intake import command, service
 from tests.postgres_financial.test_order_intake import intake_env as _intake_env
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.domain.enums import OrderType, WorkFormat
 from ugc_bot.domain.order_targeting import OrderTargeting
+from ugc_bot.infrastructure.db.order_intake_models import (
+    ORDER_DISPATCH_CITY_OVERRIDES,
+)
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 intake_env = _intake_env
@@ -90,10 +94,14 @@ async def test_paid_city_activation_keeps_creator_without_coordinates(
 
 
 @pytest.mark.asyncio
-async def test_paid_brief_replay_and_actual_city_platform_matching(intake_env):
+@pytest.mark.parametrize("use_override", [False, True])
+async def test_paid_brief_replay_and_actual_city_platform_matching(
+    intake_env, use_override
+):
     env = intake_env
+    place = {"geography" if use_override else "city": "Москва"}
     target = OrderTargeting(
-        city="Москва",
+        **place,
         platforms=("youtube",),
         content_usage="Вертикальное видео 30 секунд",
         brief_link="https://example.com/detailed-brief",
@@ -101,8 +109,13 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(intake_env):
     requested = replace(
         command(env), targeting=target, order_type=OrderType.UGC_PLUS_PLACEMENT
     )
-    result = await service(env).create(requested)
-    assert await service(env).create(requested) == result
+    intake = service(env)
+    if use_override:
+        intake.orders.geocoder = SimpleNamespace(
+            get_multipolygon_wkt_for_queries=AsyncMock(return_value=None)
+        )
+    result = await intake.create(requested)
+    assert await intake.create(requested) == result
     assert result.targeting["platforms"] == ["youtube"]
     saved = await env["repos"]["order_repo"].get_by_id(result.order_id)
     assert saved.order_type == OrderType.UGC_PLUS_PLACEMENT
@@ -145,6 +158,20 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(intake_env):
             )
         ids.append(user.user_id)
     tm = env["container"].transaction_manager
+    dispatcher = env["container"].build_offer_dispatch_service()
+    if use_override:
+        with pytest.raises(OrderGeographyUnavailableError):
+            await dispatcher.count_eligible_bloggers(result.order_id)
+        async with tm.transaction() as db:
+            await db.execute(
+                ORDER_DISPATCH_CITY_OVERRIDES.insert().values(
+                    order_id=result.order_id,
+                    city="Москва",
+                    reason="Manual correction",
+                )
+            )
+        assert await intake.create(requested) == result
+        assert result.targeting["city"] is None
     async with tm.transaction() as db:
         assert (
             await env["repos"]["order_intake_repo"].filter_candidates(
@@ -158,13 +185,7 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(intake_env):
             )
             == ids
         )
-    dispatcher = env["container"].build_bot_services()
-    assert (
-        await dispatcher["offer_dispatch_service"].count_eligible_bloggers(
-            result.order_id
-        )
-        == 1
-    )
+    assert await dispatcher.count_eligible_bloggers(result.order_id) == 1
     with pytest.raises(ValueError, match="idempotency"):
         await service(env).create(
             replace(requested, targeting=replace(target, platforms=("tiktok",)))

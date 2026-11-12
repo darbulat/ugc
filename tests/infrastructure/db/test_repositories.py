@@ -8,6 +8,7 @@ from uuid import UUID
 
 import pytest
 
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.domain.entities import (
     AdvertiserProfile,
     BloggerProfile,
@@ -1679,17 +1680,16 @@ async def test_blogger_repository_list_confirmed_user_ids_with_geometry() -> (
 
 
 @pytest.mark.asyncio
-async def test_blogger_repo_list_confirmed_ids_geometry_attr_err_skipped() -> (
-    None
-):
-    """When get_bind raises AttributeError, geometry filter skipped."""
-    user_id_1 = UUID("00000000-0000-0000-0000-000000000222")
-    session = FakeAsyncSessionCompat([user_id_1])
+@pytest.mark.parametrize("missing_bind", [True, False])
+async def test_blogger_repo_blocks_unavailable_geometry(missing_bind) -> None:
+    session = FakeAsyncSessionCompat([])
 
-    def get_bind_raises():  # noqa: B902
-        raise AttributeError("no bind")
+    def get_bind():
+        if missing_bind:
+            raise AttributeError("no bind")
+        return SimpleNamespace(dialect=SimpleNamespace(name="sqlite"))
 
-    session.sync_session = SimpleNamespace(get_bind=get_bind_raises)
+    session.sync_session = SimpleNamespace(get_bind=get_bind)
     with patch(
         "ugc_bot.infrastructure.db.repositories.profiles.AsyncSession",
         FakeAsyncSessionCompat,
@@ -1697,11 +1697,11 @@ async def test_blogger_repo_list_confirmed_ids_geometry_attr_err_skipped() -> (
         repo = SqlAlchemyBloggerProfileRepository(
             session_factory=lambda: session  # type: ignore[return-value]
         )
-        result = await repo.list_confirmed_user_ids(
-            session=session,
-            location_geometry_wkt="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
-        )
-    assert result == [user_id_1]
+        with pytest.raises(OrderGeographyUnavailableError):
+            await repo.list_confirmed_user_ids(
+                session=session,
+                location_geometry_wkt="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+            )
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,29 @@ INTAKE_RECEIPTS = sa.Table(
     ),
 )
 
+ORDER_DISPATCH_CITY_OVERRIDES = sa.Table(
+    "order_dispatch_city_overrides",
+    metadata,
+    sa.Column(
+        "order_id",
+        UUID(as_uuid=True),
+        sa.ForeignKey("order_intake_receipts.order_id"),
+        primary_key=True,
+    ),
+    sa.Column("city", sa.String(200), nullable=False),
+    sa.Column("reason", sa.Text(), nullable=False),
+    sa.Column(
+        "created_at",
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    ),
+    sa.CheckConstraint(
+        "length(trim(city)) > 0 AND length(trim(reason)) > 0",
+        name="ck_order_dispatch_city_override",
+    ),
+)
+
 ACCOMPANIMENT_LEADS = sa.Table(
     "accompaniment_leads",
     metadata,

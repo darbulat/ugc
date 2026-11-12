@@ -6,9 +6,11 @@ from decimal import Decimal
 from uuid import UUID
 
 from ugc_bot.application.errors import (
+    OrderGeographyUnavailableError,
     OrderNotActiveError,
     OrderNotFoundError,
 )
+from ugc_bot.application.geography import parse_geography
 from ugc_bot.application.order_intake_ports import OrderIntakeRepository
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
@@ -387,13 +389,27 @@ class OfferDispatchService:
         """Load confirmed ids and exclusion sets (no status check)."""
         if order is None:
             return None, [], frozenset(), frozenset()
+        intake = self.intake_repository if order.financial_version else None
+        geography = (order.geography or "").strip()
+        required_city = None
+        if geography and not (order.location_geometry or "").strip():
+            spec = parse_geography(geography)
+            if spec is None or spec.type != "world":
+                required_city = geography
+        if required_city is not None and intake is None:
+            raise OrderGeographyUnavailableError(
+                "Order geography filter is unavailable."
+            )
         confirmed_ids = await self.blogger_repo.list_confirmed_user_ids(
             session=session,
             location_geometry_wkt=order.location_geometry,
         )
-        if self.intake_repository is not None and order.financial_version:
-            confirmed_ids = await self.intake_repository.filter_candidates(
-                order.order_id, confirmed_ids, session=session
+        if intake is not None:
+            confirmed_ids = await intake.filter_candidates(
+                order_id,
+                confirmed_ids,
+                session=session,
+                required_city=required_city,
             )
         if not confirmed_ids:
             return order, [], frozenset(), frozenset()

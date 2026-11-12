@@ -17,7 +17,12 @@ class OrderIntakeRepository(Protocol):
     ) -> str | None: ...
 
     async def filter_candidates(
-        self, order_id: UUID, creator_ids: list[UUID], *, session: object
+        self,
+        order_id: UUID,
+        creator_ids: list[UUID],
+        *,
+        session: object,
+        required_city: str | None = None,
     ) -> list[UUID]: ...
 
     async def policy_versions(
