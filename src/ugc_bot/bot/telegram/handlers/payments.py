@@ -458,6 +458,8 @@ async def pre_checkout_query_handler(
                         incoming.currency,
                     )
                 elif payment_service is not None:
+                    if incoming.total_amount is None or not incoming.currency:
+                        raise ValueError("legacy_checkout_amount_required")
                     await payment_service.authorize_legacy_checkout(
                         order_id,
                         incoming.user.external_id,
