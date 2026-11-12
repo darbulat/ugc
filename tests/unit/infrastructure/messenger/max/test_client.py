@@ -367,12 +367,15 @@ async def test_request_5xx_retries_then_returns(make_response):
 
 
 @pytest.mark.asyncio
-async def test_request_network_error_retries_then_raises(make_response):
+@pytest.mark.parametrize("attempts", [1, 3])
+async def test_request_network_error_retries_then_raises(attempts):
     session = AsyncMock()
     session.request = AsyncMock(
         side_effect=aiohttp.ClientError("connection failed")
     )
-    client = MaxMessengerClient(token="tok", session=session)
+    client = MaxMessengerClient(
+        token="tok", session=session, retry_attempts=attempts
+    )
     with (
         patch(
             "ugc_bot.infrastructure.messenger.max.client.asyncio.sleep",
@@ -380,7 +383,8 @@ async def test_request_network_error_retries_then_raises(make_response):
         ),
         pytest.raises(aiohttp.ClientError),
     ):
-        await client._request("GET", "/test")
+        await client._request("POST", "/messages")
+    assert session.request.await_count == attempts
 
 
 @pytest.mark.asyncio

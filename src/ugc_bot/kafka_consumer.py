@@ -8,6 +8,11 @@ from uuid import UUID
 
 import aiohttp
 from aiogram import Bot
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramForbiddenError,
+    TelegramRetryAfter,
+)
 from aiokafka import (  # type: ignore[import-untyped]
     AIOKafkaConsumer,
     AIOKafkaProducer,
@@ -29,12 +34,15 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import UserStatus
+from ugc_bot.domain.enums import OrderStatus, UserStatus
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
 )
-from ugc_bot.infrastructure.messenger.max.client import MaxMessengerClient
+from ugc_bot.infrastructure.messenger.max.client import (
+    MaxAPIError,
+    MaxMessengerClient,
+)
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
     is_user_blocked_bot,
@@ -133,6 +141,12 @@ def _offer_message_parts(text: str, *, photo: bool) -> list[str]:
     return parts
 
 
+def _definitely_rejected(exc: Exception) -> bool:
+    return isinstance(
+        exc, (TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter)
+    ) or (isinstance(exc, MaxAPIError) and exc.status in {400, 403, 404, 429})
+
+
 async def _send_offer_via_client(
     chat_id: str,
     messenger_client: MessengerClient,
@@ -147,7 +161,9 @@ async def _send_offer_via_client(
     dlq_topic: str,
     messenger_label: str,
     user_role_service: UserRoleService | None = None,
-) -> bool:
+    *,
+    guarded: bool = False,
+) -> bool | None:
     """Send offer to one chat_id via one messenger client with retries.
 
     Returns True if the message was delivered, False otherwise.
@@ -156,7 +172,7 @@ async def _send_offer_via_client(
         offer_text, photo=bool(order.product_photo_file_id)
     )
     delivered_parts = 0
-    for attempt in range(1, retries + 1):
+    for attempt in range(1, (1 if guarded else retries) + 1):
         try:
             while delivered_parts < len(parts):
                 part = parts[delivered_parts]
@@ -196,9 +212,15 @@ async def _send_offer_via_client(
                     "blogger_id": blogger.user_id,
                     "messenger": messenger_label,
                     "attempt": attempt,
-                    "error": str(exc),
+                    "error": type(exc).__name__ if guarded else str(exc),
                 },
             )
+            if guarded:
+                return (
+                    False
+                    if delivered_parts == 0 and _definitely_rejected(exc)
+                    else None
+                )
             if is_user_blocked_bot(exc):
                 if user_role_service is not None:
                     try:
@@ -251,14 +273,16 @@ async def _send_offer_to_blogger(
     locale: str = "ru",
     bot_texts_service: BotTextsService | None = None,
     user_role_service: UserRoleService | None = None,
-) -> None:
+    *,
+    guarded: bool = False,
+) -> bool | None:
     """Send offer to one blogger via all available messengers."""
     if blogger.user_id == order.advertiser_id:
         logger.debug(
             "Skipping blogger: is advertiser",
             extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
         )
-        return
+        return False if guarded else None
 
     # Build list of (chat_id, client, label) for all available messengers
     targets: list[tuple[str, MessengerClient, str]] = []
@@ -274,7 +298,7 @@ async def _send_offer_to_blogger(
             "Skipping blogger: no valid messenger IDs",
             extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
         )
-        return
+        return False if guarded else None
 
     offer_text = await offer_dispatch_service.format_offer(
         order,
@@ -324,14 +348,29 @@ async def _send_offer_to_blogger(
             dlq_topic,
             label,
             user_role_service=user_role_service,
+            guarded=guarded,
         )
-        if sent:
-            any_sent = True
+        if guarded and sent is None:
+            return None
+        any_sent = any_sent or bool(sent)
+        if guarded and sent:
+            break
 
     if any_sent:
         await offer_dispatch_service.record_offer_sent(
             order.order_id, blogger.user_id
         )
+    return any_sent if guarded else None
+
+
+async def _claim_offer(service, order_id, blogger, run):
+    if run is None:
+        return (
+            "stop" if await service.is_dispatch_stopped(order_id) else "claimed"
+        )
+    return await service.claim_dispatch_recipient(
+        order_id, blogger.user_id, run
+    )
 
 
 async def _send_offers(
@@ -345,6 +384,8 @@ async def _send_offers(
     bot_texts_service: BotTextsService | None = None,
     default_locale: str = "ru",
     user_role_service: UserRoleService | None = None,
+    *,
+    dispatch_run: int | None = None,
 ) -> None:
     order, advertiser = await offer_dispatch_service.get_order_and_advertiser(
         order_id
@@ -361,10 +402,16 @@ async def _send_offers(
         )
         return
 
-    if order.dispatch_stopped:
+    if order.dispatch_stopped or (
+        dispatch_run is not None and order.status != OrderStatus.ACTIVE
+    ):
         return
     advertisers_status = advertiser.status.value.upper()
     bloggers = await offer_dispatch_service.dispatch(order_id)
+    if dispatch_run is not None:
+        bloggers = await offer_dispatch_service.prepare_dispatch_audience(
+            order_id, bloggers, dispatch_run
+        )
     logger.info(
         "Processing order activation",
         extra={
@@ -379,10 +426,15 @@ async def _send_offers(
         return
 
     for blogger in bloggers:
-        if await offer_dispatch_service.is_dispatch_stopped(order_id):
+        claim = await _claim_offer(
+            offer_dispatch_service, order_id, blogger, dispatch_run
+        )
+        if claim == "stop":
             break
+        if claim == "skip":
+            continue
         locale = blogger.language if blogger.language else default_locale
-        await _send_offer_to_blogger(
+        result = await _send_offer_to_blogger(
             blogger,
             order,
             advertisers_status,
@@ -395,7 +447,12 @@ async def _send_offers(
             locale=locale,
             bot_texts_service=bot_texts_service,
             user_role_service=user_role_service,
+            guarded=dispatch_run is not None,
         )
+        if dispatch_run is not None and result is False:
+            await offer_dispatch_service.reject_dispatch_recipient(
+                order_id, blogger.user_id, dispatch_run
+            )
 
 
 async def _commit_message_offset(consumer: AIOKafkaConsumer, msg: Any) -> None:
@@ -459,6 +516,7 @@ async def _consume_forever(
     bot_texts_service: BotTextsService | None = None,
     default_locale: str = "ru",
     user_role_service: UserRoleService | None = None,
+    tracked_clients: dict[str, MessengerClient] | None = None,
 ) -> None:
     """Start Kafka clients and process activation events forever."""
     producer_started = False
@@ -494,9 +552,27 @@ async def _consume_forever(
                         "offset": getattr(msg, "offset", None),
                     },
                 )
+                dispatch_run = val.get("dispatch_run")
+                if (
+                    dispatch_run is None
+                    and await offer_dispatch_service.has_tracked_dispatch(
+                        order_id
+                    )
+                ):
+                    await _commit_message_offset(consumer, msg)
+                    continue
+                clients = messenger_clients
+                if dispatch_run is not None:
+                    if (
+                        type(dispatch_run) is not int
+                        or dispatch_run < 1
+                        or not tracked_clients
+                    ):
+                        raise ValueError("invalid_tracked_dispatch")
+                    clients = tracked_clients
                 await _send_offers(
                     order_id,
-                    messenger_clients,
+                    clients,
                     offer_dispatch_service,
                     dlq_producer,
                     config.kafka.kafka_dlq_topic,
@@ -505,6 +581,7 @@ async def _consume_forever(
                     bot_texts_service=bot_texts_service,
                     default_locale=default_locale,
                     user_role_service=user_role_service,
+                    dispatch_run=dispatch_run,
                 )
                 await _commit_message_offset(consumer, msg)
             except Exception:
@@ -561,11 +638,17 @@ async def run_consumer() -> None:
     messenger_clients: dict[str, MessengerClient] = {
         "telegram": TelegramMessengerClient(bot),
     }
+    tracked_clients: dict[str, MessengerClient] = {
+        "telegram": TelegramMessengerClient(bot, retry_attempts=1),
+    }
     max_session: aiohttp.ClientSession | None = None
     if config.max_bot and config.max_bot.token:
         max_session = aiohttp.ClientSession()
         messenger_clients["max"] = MaxMessengerClient(
             token=config.max_bot.token, session=max_session
+        )
+        tracked_clients["max"] = MaxMessengerClient(
+            token=config.max_bot.token, session=max_session, retry_attempts=1
         )
     try:
         await _consume_forever(
@@ -578,6 +661,7 @@ async def run_consumer() -> None:
             bot_texts_service=bot_texts_service,
             default_locale=config.market.default_locale,
             user_role_service=user_role_service,
+            tracked_clients=tracked_clients,
         )
     finally:
         if max_session:

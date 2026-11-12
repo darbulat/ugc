@@ -279,6 +279,7 @@ class Container:
             outbox_repo=repos["outbox_repo"],
             order_repo=repos["order_repo"],
             transaction_manager=self._transaction_manager,
+            dispatch_control=repos.get("dispatch_control"),
         )
 
     def build_outbox_deps(
@@ -467,6 +468,7 @@ class Container:
             outbox_repo=repos["outbox_repo"],
             order_repo=repos["order_repo"],
             transaction_manager=self._transaction_manager,
+            dispatch_control=repos.get("dispatch_control"),
         )
         bot_services = service_factory.build_bot_services(
             self._config,

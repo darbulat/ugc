@@ -145,7 +145,7 @@ def test_database(
     db_dir = tmp_path_factory.mktemp("e2e_db")
     db_path = db_dir / "e2e.db"
 
-    from ugc_bot.infrastructure.db import models  # noqa: F401
+    from ugc_bot.infrastructure.db import dispatch_control, models  # noqa: F401
 
     engine = create_engine(f"sqlite:///{db_path}", echo=False)
     tables_to_create = legacy_sqlite_tables(Base.metadata)

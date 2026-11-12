@@ -224,3 +224,48 @@ def test_worklist_actions_preserve_records_and_protect_payments(worklist):
         assert len(audit) == 2
         session.add(_payment(hidden.order_id))
     assert "Draft example" in client.get(LIST).text
+
+
+def test_worklist_pause_and_resume_keep_active_order(worklist, monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy import insert
+
+    from ugc_bot.container import Container
+    from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
+
+    resume = AsyncMock()
+    publisher = SimpleNamespace(resume_order_dispatch=resume)
+    monkeypatch.setattr(
+        Container, "build_outbox_publisher", lambda self: publisher
+    )
+    client, engine, ids = worklist
+    order_id = ids["Active example"]
+    with Session(engine) as session, session.begin():
+        session.execute(
+            insert(CONTROLS).values(
+                order_id=order_id,
+                run=1,
+                paused=False,
+                audience_ready=False,
+            )
+        )
+    _login(client)
+    html = client.get(LIST).text
+    assert html.count("Пауза рассылки") == 1
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', html)[1]
+    url = f"/admin/order-worklist/{order_id}"
+    assert client.post(f"{url}/pause").status_code == 403
+    paused = client.post(f"{url}/pause", data={"csrf_token": csrf}).text
+    assert "Возобновить рассылку" in paused
+    with Session(engine) as session:
+        assert session.get(OrderModel, order_id).status == OrderStatus.ACTIVE
+    resume.assert_not_awaited()
+    for _ in range(2):
+        resumed = client.post(f"{url}/resume", data={"csrf_token": csrf})
+        assert resumed.status_code == 200
+    assert "Пауза рассылки" in resumed.text
+    resume.assert_awaited_once()
+    order, run = resume.await_args.args
+    assert order.order_id == order_id and run == 2

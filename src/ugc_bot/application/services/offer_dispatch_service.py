@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from ugc_bot.application.errors import (
@@ -300,6 +301,7 @@ class OfferDispatchService:
     transaction_manager: TransactionManager | None = None
     currency_symbol: str = "₽"
     intake_repository: OrderIntakeRepository | None = None
+    dispatch_control: Any = None
 
     async def get_order_and_advertiser(
         self, order_id: UUID
@@ -323,6 +325,52 @@ class OfferDispatchService:
             return order is None or order.dispatch_stopped
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def has_tracked_dispatch(self, order_id: UUID) -> bool:
+        if self.dispatch_control is None:
+            return False
+
+        async def _run(session):
+            return (
+                await self.dispatch_control.current(order_id, session=session)
+                is not None
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def prepare_dispatch_audience(
+        self, order_id: UUID, bloggers: list[User], run: int
+    ) -> list[User]:
+        async def _run(session):
+            allowed = await self.dispatch_control.prepare_audience(
+                order_id,
+                [user.user_id for user in bloggers],
+                run,
+                session=session,
+            )
+            return [user for user in bloggers if user.user_id in allowed]
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def claim_dispatch_recipient(
+        self, order_id: UUID, blogger_id: UUID, run: int
+    ) -> str:
+        async def _run(session):
+            return await self.dispatch_control.claim(
+                order_id, blogger_id, run, session=session
+            )
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
+    async def reject_dispatch_recipient(
+        self, order_id: UUID, blogger_id: UUID, run: int
+    ) -> None:
+        async def _run(session):
+            await self.dispatch_control.reject(
+                order_id, blogger_id, run, session=session
+            )
+
+        await with_optional_tx(self.transaction_manager, _run)
 
     async def dispatch(self, order_id: UUID) -> list[User]:
         """Return eligible bloggers for an active order."""

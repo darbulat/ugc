@@ -2,6 +2,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from ugc_bot.infrastructure.db.dispatch_control import SqlDispatchControl
 from ugc_bot.infrastructure.db.repositories import (
     SqlAlchemyAdvertiserProfileRepository,
     SqlAlchemyBloggerProfileRepository,
@@ -159,6 +160,7 @@ def build_repos(
         "order_repo": SqlAlchemyOrderRepository(
             session_factory=session_factory
         ),
+        "dispatch_control": SqlDispatchControl(),
         "offer_dispatch_repo": SqlAlchemyOfferDispatchRepository(
             session_factory=session_factory
         ),

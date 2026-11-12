@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from ugc_bot.domain.enums import AuditAction, OrderStatus
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS
+from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
@@ -146,8 +147,10 @@ def worklist_row_details(session: Session, order_ids: list[UUID]):
             AdvertiserProfileModel.brand,
             _can_close().label("can_close"),
             _can_hide().label("can_hide"),
+            CONTROLS.c.paused.label("dispatch_paused"),
         )
         .select_from(OrderModel)
+        .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
         .outerjoin(UserModel, UserModel.user_id == OrderModel.advertiser_id)
         .outerjoin(
             AdvertiserProfileModel,

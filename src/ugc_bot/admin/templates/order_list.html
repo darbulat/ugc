@@ -105,7 +105,7 @@
           <tr>
             <td><span class="order-clamp" title="{{ row.geography or '' }}">{{ row.geography or '—' }}</span></td>
             <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
-            <td><span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span></td>
+            <td><span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>{% if info.dispatch_paused and row.status == "active" %}<br><small>Рассылка на паузе</small>{% endif %}</td>
             <td><span class="order-clamp" title="{{ info.username or '' }}">{{ info.username or '—' }}</span></td>
             <td><span class="order-clamp" title="{{ info.brand or '' }}">{{ info.brand or '—' }}</span></td>
             <td class="order-number">{{ row.bloggers_needed }}</td>
@@ -126,6 +126,14 @@
                    title="Дублировать заказ" aria-label="Дублировать заказ">
                   <i class="fa-solid fa-copy" aria-hidden="true"></i>
                 </a>
+                {% if row.status == 'active' and not row.dispatch_stopped and info.dispatch_paused is not none %}
+                  {% set dispatch_action = 'resume' if info.dispatch_paused else 'pause' %}
+                  {% set dispatch_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=dispatch_action) %}
+                  <form method="post" action="{{ dispatch_url.replace(query=request.url.query) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">{{ 'Возобновить рассылку' if info.dispatch_paused else 'Пауза рассылки' }}</button>
+                  </form>
+                {% endif %}
                 {% if info.can_close or info.can_hide %}
                   {% set operation = 'close' if info.can_close else 'hide' %}
                   {% set label = 'Закрыть' if info.can_close else 'Убрать из списка' %}
