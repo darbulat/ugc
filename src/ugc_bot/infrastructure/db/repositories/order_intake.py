@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy import func, insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.domain.order_intake import (
     AccompanimentLead,
     IntakeClient,
@@ -28,6 +29,7 @@ from ugc_bot.infrastructure.db.order_intake_models import (
     ACCOMPANIMENT_LEADS,
     INTAKE_RECEIPTS,
     LEAD_OUTBOX,
+    ORDER_DISPATCH_CITY_OVERRIDES,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
@@ -70,33 +72,53 @@ def result_from_payload(payload: dict[str, Any]) -> OrderIntakeResult:
 
 
 class SqlAlchemyOrderIntakeRepository:
+    async def _dispatch_targeting(self, order_id, session, *, for_update=False):
+        statement = (
+            select(
+                INTAKE_RECEIPTS.c.result, ORDER_DISPATCH_CITY_OVERRIDES.c.city
+            )
+            .outerjoin(ORDER_DISPATCH_CITY_OVERRIDES)
+            .where(INTAKE_RECEIPTS.c.order_id == order_id)
+        )
+        if for_update:
+            statement = statement.with_for_update(of=INTAKE_RECEIPTS)
+        row = (await _session(session).execute(statement)).one_or_none()
+        if row is None:
+            return {}
+        result, city_override = row
+        values = dict(result.get("targeting") or {})
+        if city_override is not None:
+            values["city"] = city_override
+            values.pop("geography", None)
+        return values
+
     async def exact_city_for_order(
         self, order_id, *, session, for_update=False
     ):
-        statement = select(INTAKE_RECEIPTS.c.result).where(
-            INTAKE_RECEIPTS.c.order_id == order_id
+        values = await self._dispatch_targeting(
+            order_id, session, for_update=for_update
         )
-        if for_update:
-            statement = statement.with_for_update()
-        result = await _session(session).scalar(statement)
-        targeting = result.get("targeting") if result else None
-        city = targeting.get("city") if targeting else None
+        city = values.get("city")
         if city is not None and (not isinstance(city, str) or not city.strip()):
             raise ValueError("invalid_targeting_city")
         return city.strip() if city is not None else None
 
-    async def filter_candidates(self, order_id, creator_ids, *, session):
+    async def filter_candidates(
+        self, order_id, creator_ids, *, session, required_city=None
+    ):
         db = _session(session)
-        result = await db.scalar(
-            select(INTAKE_RECEIPTS.c.result).where(
-                INTAKE_RECEIPTS.c.order_id == order_id
-            )
-        )
-        if not result or not result.get("targeting"):
-            return creator_ids
-        values = dict(result["targeting"])
+        values = await self._dispatch_targeting(order_id, session)
         values["platforms"] = tuple(values.get("platforms", ()))
         criteria = OrderTargeting(**values)
+        if required_city is not None and (
+            criteria.city is None
+            or criteria.city.casefold() != required_city.casefold()
+        ):
+            raise OrderGeographyUnavailableError(
+                "Order geography filter is unavailable."
+            )
+        if not creator_ids or not (criteria.city or criteria.platforms):
+            return creator_ids
         statement = select(BloggerProfileModel.user_id).where(
             BloggerProfileModel.user_id.in_(creator_ids)
         )

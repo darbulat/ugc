@@ -33,6 +33,10 @@ class OrderNotFoundError(OrderCreationError):
     """Raised when an order cannot be found."""
 
 
+class OrderGeographyUnavailableError(OrderCreationError):
+    """The order requires a geography filter that cannot be applied."""
+
+
 class OrderNotActiveError(OrderCreationError):
     """Raised when an order is not in ACTIVE status."""
 

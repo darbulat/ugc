@@ -50,6 +50,7 @@ from ugc_bot.admin.order_worklist import (
     worklist_conditions,
     worklist_row_details,
 )
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
     parse_geography,
@@ -1936,6 +1937,16 @@ class OrderAdmin(ModelView, model=OrderModel):
             exact_city = await _validate_paid_order_geography_edit(
                 obj, data["geography"]
             )
+        if (
+            obj is not None
+            and "geography" in data
+            and (
+                (data["geography"] or "").strip()
+                != (obj.geography or "").strip()
+            )
+        ):
+            # Drop the previous boundaries in the same write as the new label.
+            data = {**data, "location_geometry": None}
         submitted = data
         old_status = obj.status if obj else None
         new_status_raw = data.get("status")
@@ -2790,6 +2801,9 @@ async def _inject_order_eligible_bloggers_count(
             context["eligible_bloggers_count"] = count
         else:
             context["eligible_bloggers_count"] = None
+    except OrderGeographyUnavailableError:
+        context["eligible_bloggers_count"] = None
+        context["order_geography_unavailable"] = True
     except Exception:
         context["eligible_bloggers_count"] = None
 

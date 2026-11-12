@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.domain.enums import RaterRole, WorkFormat
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -50,21 +51,25 @@ async def test_confirmed_blogger_geometry_errors_and_large_result_warning(
     result.scalars.return_value = ids
     session.execute = AsyncMock(return_value=result)
     repo = SqlAlchemyBloggerProfileRepository(Mock())
+    if failure != "large":
+        with pytest.raises(OrderGeographyUnavailableError):
+            await repo.list_confirmed_user_ids(
+                session=session, location_geometry_wkt="POINT(1 2)"
+            )
+        session.execute.assert_not_awaited()
+        return
+
+    session.sync_session.get_bind.return_value = NS(
+        dialect=NS(name="postgresql")
+    )
     actual = await repo.list_confirmed_user_ids(
         session=session, location_geometry_wkt="POINT(1 2)"
     )
-    if failure == "invalid":
-        assert actual == []
-        session.execute.assert_not_awaited()
-        assert "Invalid order location_geometry WKT" in caplog.text
-    else:
-        assert actual == ids
-        sql, params = compile_query(session)
-        assert "blogger_profiles.confirmed IS true" in sql
-        assert "ST_Intersects" not in sql
-        assert params == {}
-        if failure == "large":
-            assert "Large confirmed user ID set: 5001 bloggers" in caplog.text
+    assert actual == ids
+    sql, _ = compile_query(session)
+    assert "blogger_profiles.confirmed IS true" in sql
+    assert "ST_Intersects" in sql
+    assert "Large confirmed user ID set: 5001 bloggers" in caplog.text
 
 
 def blogger_model():

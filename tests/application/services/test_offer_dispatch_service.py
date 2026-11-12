@@ -1,5 +1,6 @@
 """Tests for offer dispatch service."""
 
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
@@ -8,6 +9,7 @@ from uuid import UUID
 import pytest
 
 from ugc_bot.application.errors import (
+    OrderGeographyUnavailableError,
     OrderNotActiveError,
     OrderNotFoundError,
 )
@@ -622,8 +624,8 @@ async def test_dispatch_no_profiles_returns_empty() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_geography_country_includes_all() -> None:
-    """With order geography 'РФ', all confirmed bloggers are returned."""
+async def test_dispatch_geography_country_without_geometry_is_blocked() -> None:
+    """A named country without boundaries requires a geography filter."""
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
     order_repo = InMemoryOrderRepository()
@@ -691,9 +693,8 @@ async def test_dispatch_geography_country_includes_all() -> None:
             )
         )
 
-    result = await service.dispatch(order.order_id)
-    assert len(result) == 2
-    assert {u.user_id for u in result} == {blogger1.user_id, blogger2.user_id}
+    with pytest.raises(OrderGeographyUnavailableError):
+        await service.dispatch(order.order_id)
 
 
 @pytest.mark.asyncio
@@ -2882,6 +2883,19 @@ async def test_count_eligible_bloggers_returns_count_for_new_order() -> None:
         order.order_id, session=object()
     )
     assert count_with_session == 1
+
+    await order_repo.save(replace(order, geography="Весь мир"))
+    assert await service.count_eligible_bloggers(order.order_id) == 1
+
+    await order_repo.save(replace(order, geography="Казань"))
+    with pytest.raises(OrderGeographyUnavailableError):
+        await service.count_eligible_bloggers(order.order_id)
+
+    await order_repo.save(
+        replace(order, geography="Казань", status=OrderStatus.ACTIVE)
+    )
+    with pytest.raises(OrderGeographyUnavailableError):
+        await service.dispatch(order.order_id)
 
 
 @pytest.mark.asyncio
