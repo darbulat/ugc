@@ -1,7 +1,7 @@
 """Exercise order-list queries and actions through the authenticated admin."""
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.domain.enums import (
+    AuditAction,
     MessengerType,
     OrderStatus,
     PaymentStatus,
@@ -224,3 +225,68 @@ def test_worklist_actions_preserve_records_and_protect_payments(worklist):
         assert len(audit) == 2
         session.add(_payment(hidden.order_id))
     assert "Draft example" in client.get(LIST).text
+    assert (
+        "Draft example" not in client.get(LIST, params={"group": "hidden"}).text
+    )
+
+
+def test_restore_legacy_hidden_order_keeps_visibility_history(worklist):
+    client, engine, ids = worklist
+    order_id = ids["Draft example"]
+    # The first event uses the production format before restore was introduced.
+    # A timestamp ahead of the app clock must still sort before the new event.
+    with Session(engine) as session, session.begin():
+        session.add(
+            AuditLogModel(
+                entity_type="order_worklist_visibility",
+                entity_id=order_id,
+                action=AuditAction.UPDATE,
+                old_values={"visible": True},
+                new_values={"visible": False},
+                changed_at=datetime.now(timezone.utc) + timedelta(minutes=1),
+            )
+        )
+    _login(client)
+    hidden = {"group": "hidden", "search": str(order_id)}
+    hidden_page = client.get(LIST, params=hidden)
+    assert "Draft example" in hidden_page.text
+    assert "Вернуть в список" in hidden_page.text
+    assert "Draft example" not in client.get(LIST).text
+    assert (
+        "Dispatch example"
+        not in client.get(LIST, params={"group": "hidden"}).text
+    )
+    token = re.search(r'name="csrf_token" value="([^"]+)"', hidden_page.text)
+    assert token is not None
+    restore_url = f"/admin/order-worklist/{order_id}/restore"
+    assert client.post(restore_url, params=hidden).status_code == 403
+    restored = client.post(
+        restore_url, params=hidden, data={"csrf_token": token[1]}
+    )
+    assert "Заказ возвращён в список." in restored.text
+    assert "Draft example" not in restored.text
+    assert "Draft example" in client.get(LIST).text
+    client.post(restore_url, params=hidden, data={"csrf_token": token[1]})
+
+    def history():
+        with Session(engine) as session:
+            order = session.get(OrderModel, order_id)
+            assert order.status == OrderStatus.NEW
+            assert order.completed_at is None
+            events = session.scalars(
+                select(AuditLogModel)
+                .where(AuditLogModel.entity_id == order_id)
+                .order_by(AuditLogModel.changed_at)
+            )
+            return [
+                (event.old_values["visible"], event.new_values["visible"])
+                for event in events
+            ]
+
+    assert history() == [(True, False), (False, True)]
+    client.post(
+        f"/admin/order-worklist/{order_id}/hide",
+        data={"csrf_token": token[1]},
+    )
+    assert "Draft example" in client.get(LIST, params=hidden).text
+    assert history() == [(True, False), (False, True), (True, False)]

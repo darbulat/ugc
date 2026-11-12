@@ -3127,7 +3127,7 @@ def _register_order_worklist_action(
     async def update_order_worklist(
         request: Request, order_id: UUID, operation: str
     ) -> Response:
-        if operation not in {"close", "hide"}:
+        if operation not in {"close", "hide", "restore"}:
             raise HTTPException(status_code=404)
         form = await request.form()
         expected = request.session.get("order_worklist_csrf", "")
