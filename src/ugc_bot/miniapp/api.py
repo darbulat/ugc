@@ -1687,9 +1687,11 @@ async def list_orders(
             price=float(o.price),
             order_type=o.order_type.value,
             created_at=o.created_at.isoformat(),
-            financial_version=o.financial_version,
+            financial_version=None if o.complimentary else o.financial_version,
             payment_link=_payment_link_for_order(str(o.order_id), bot_username)
-            if o.status == OrderStatus.NEW and o.financial_version is None
+            if o.status == OrderStatus.NEW
+            and o.financial_version is None
+            and not o.complimentary
             else "",
             currency_symbol=cur_map.get(o.currency, "₽"),
         )
@@ -1765,7 +1767,9 @@ async def get_order(
     cfg = request.app.state.config
     payment_link = (
         _payment_link_for_order(str(order.order_id), cfg.bot.bot_username)
-        if order.status == OrderStatus.NEW and order.financial_version is None
+        if order.status == OrderStatus.NEW
+        and order.financial_version is None
+        and not order.complimentary
         else ""
     )
     return OrderDetailResponse(
@@ -1782,7 +1786,9 @@ async def get_order(
         geography=order.geography,
         created_at=order.created_at.isoformat(),
         payment_link=payment_link,
-        financial_version=order.financial_version,
+        financial_version=None
+        if order.complimentary
+        else order.financial_version,
     )
 
 

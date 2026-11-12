@@ -1570,3 +1570,29 @@ async def test_run_consumer_creates_max_client_when_configured(
 
     assert "max" in captured_clients
     assert max_session_closed["value"] is True
+
+
+@pytest.mark.asyncio
+async def test_send_offers_stops_before_next_recipient_after_admin_stop():
+    order_id = UUID(int=101)
+    recipients = [
+        SimpleNamespace(user_id=UUID(int=index), language="ru")
+        for index in (1, 2)
+    ]
+    service = SimpleNamespace(
+        get_order_and_advertiser=AsyncMock(
+            return_value=(
+                SimpleNamespace(dispatch_stopped=False),
+                SimpleNamespace(status=UserStatus.ACTIVE),
+            )
+        ),
+        dispatch=AsyncMock(return_value=recipients),
+        is_dispatch_stopped=AsyncMock(side_effect=[False, True]),
+    )
+    with patch(
+        "ugc_bot.kafka_consumer._send_offer_to_blogger", new_callable=AsyncMock
+    ) as send:
+        await _send_offers(order_id, {}, service, None, "", 1, 0)
+    assert service.is_dispatch_stopped.await_count == 2
+    assert send.await_count == 1
+    assert send.await_args.args[0] is recipients[0]

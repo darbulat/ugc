@@ -18,7 +18,7 @@ from ugc_bot.infrastructure.db.repositories.financial_items import _session
 class SqlAlchemyClientOrderViewRepository:
     async def _progress(self, order, session):
         db = _session(session)
-        if order.financial_version:
+        if order.financial_version and not order.complimentary:
             active = (
                 select(ItemAssignmentModel.assignment_id)
                 .join(
@@ -87,6 +87,8 @@ class SqlAlchemyClientOrderViewRepository:
                 ).where(OrderItemModel.order_id == order.order_id)
             )
         ).one()
+        if order.complimentary:
+            totals = (0, 0, None)
         progress = await self._progress(order, session)
         status = order.status.value
         customer_status = (
@@ -107,13 +109,19 @@ class SqlAlchemyClientOrderViewRepository:
             "price": float(order.price),
             "order_type": order.order_type.value,
             "created_at": order.created_at.isoformat(),
-            "financial_version": order.financial_version,
+            "financial_version": None
+            if order.complimentary
+            else order.financial_version,
             "bloggers_needed": order.bloggers_needed,
             "deadlines": order.deadlines,
             "selection_due_at": totals[2].isoformat() if totals[2] else None,
-            "payment_state": "paid"
-            if payment == PaymentStatus.PAID
-            else str(payment or "unpaid"),
+            "payment_state": "complimentary"
+            if order.complimentary
+            else (
+                "paid"
+                if payment == PaymentStatus.PAID
+                else str(payment or "unpaid")
+            ),
             "progress": progress,
             "selection_base_minor": totals[0],
             "accompaniment_minor": totals[1],

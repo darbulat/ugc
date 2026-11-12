@@ -24,7 +24,7 @@ from ugc_bot.application.ports import (
     UserRepository,
 )
 from ugc_bot.domain.entities import Order, Payment
-from ugc_bot.domain.enums import OrderStatus, PaymentStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 if TYPE_CHECKING:
@@ -152,7 +152,9 @@ class PaymentService:
         user_country: str | None,
         config: AppConfig,
     ) -> InvoiceData | None:
-        """Build invoice data for an order. Returns None if pricing missing."""
+        """Build invoice data for a payable order."""
+        if order.complimentary:
+            return None
         if order.financial_version is not None:
             if (
                 self.capture_repository is None
@@ -336,6 +338,61 @@ class PaymentService:
             )
         return payment
 
+    async def authorize_legacy_checkout(
+        self,
+        order_id: UUID,
+        external_id: str,
+        query_id: str,
+        total_amount: int,
+        currency: str,
+    ) -> None:
+        """Record the pre-checkout before allowing Telegram to collect money."""
+        if self.transaction_manager is None:
+            raise OrderCreationError("payment_authorization_unavailable")
+        async with self.transaction_manager.transaction() as session:
+            user = await self.user_repo.get_by_external(
+                external_id, MessengerType.TELEGRAM, session=session
+            )
+            if user is None:
+                raise UserNotFoundError("User not found.")
+            order = await self._locked_payment_order(
+                order_id, user.user_id, session
+            )
+            if (
+                order.status != OrderStatus.NEW
+                or order.financial_version is not None
+            ):
+                raise OrderCreationError("order_not_payable")
+            await self._validate_payment_amount(
+                user, order, total_amount, session
+            )
+            authorization = f"precheckout:{query_id}"
+            payment = await self.payment_repo.get_by_order(
+                order_id, session=session
+            )
+            if payment is not None:
+                if (
+                    payment.status == PaymentStatus.PENDING
+                    and payment.external_id == authorization
+                ):
+                    return
+                raise OrderCreationError("payment_authorization_pending")
+            await self.payment_repo.save(
+                Payment(
+                    payment_id=uuid4(),
+                    order_id=order_id,
+                    provider=PROVIDER_RU
+                    if (user.country or "ru").lower() == "ru"
+                    else PROVIDER_INTL,
+                    status=PaymentStatus.PENDING,
+                    amount=total_amount / 100,
+                    currency=currency,
+                    external_id=authorization,
+                    created_at=datetime.now(timezone.utc),
+                ),
+                session=session,
+            )
+
     async def _locked_payment_order(
         self, order_id: UUID, user_id: UUID, session: object
     ) -> Order:
@@ -350,6 +407,8 @@ class PaymentService:
             raise OrderCreationError("Order not found.")
         if order.advertiser_id != user_id:
             raise OrderCreationError("Order does not belong to advertiser.")
+        if order.complimentary:
+            raise OrderCreationError("complimentary_order_not_payable")
         return order
 
     async def _confirm_telegram_payment_impl(

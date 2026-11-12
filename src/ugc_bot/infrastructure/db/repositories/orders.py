@@ -301,6 +301,8 @@ def _to_order_entity(model: OrderModel) -> Order:
         last_round_robin_index=model.last_round_robin_index,
         brief_link=model.brief_link,
         financial_version=model.financial_version,
+        complimentary=model.complimentary is True,
+        dispatch_stopped=model.dispatch_stopped is True,
     )
 
 
@@ -340,6 +342,8 @@ def _to_order_model(order: Order) -> OrderModel:
         last_round_robin_index=order.last_round_robin_index,
         brief_link=order.brief_link,
         financial_version=order.financial_version,
+        complimentary=order.complimentary is True,
+        dispatch_stopped=order.dispatch_stopped is True,
     )
 
 

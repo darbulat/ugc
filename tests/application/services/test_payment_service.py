@@ -62,6 +62,21 @@ async def test_confirm_payment_success(
         pricing_repo,
         fake_tm,
     )
+    user = await user_repo.get_by_id(user_id)
+    await service.authorize_legacy_checkout(
+        order_id, user.telegram_id, "q1", 100000, "RUB"
+    )
+    await service.authorize_legacy_checkout(
+        order_id, user.telegram_id, "q1", 100000, "RUB"
+    )
+    pending = await payment_repo.get_by_order(order_id)
+    assert pending.status == PaymentStatus.PENDING
+    with pytest.raises(
+        OrderCreationError, match="payment_authorization_pending"
+    ):
+        await service.authorize_legacy_checkout(
+            order_id, user.telegram_id, "q2", 100000, "RUB"
+        )
     payment = await service.confirm_telegram_payment(
         user_id=user_id,
         order_id=order_id,
@@ -70,6 +85,7 @@ async def test_confirm_payment_success(
         currency="RUB",
     )
 
+    assert payment.payment_id == pending.payment_id
     assert payment.status == PaymentStatus.PAID
     assert payment.amount == 1000.0
     assert payment.provider == "yookassa_telegram"

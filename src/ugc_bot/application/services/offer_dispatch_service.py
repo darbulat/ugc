@@ -317,6 +317,13 @@ class OfferDispatchService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def is_dispatch_stopped(self, order_id: UUID) -> bool:
+        async def _run(session):
+            order = await self.order_repo.get_by_id(order_id, session=session)
+            return order is None or order.dispatch_stopped
+
+        return await with_optional_tx(self.transaction_manager, _run)
+
     async def dispatch(self, order_id: UUID) -> list[User]:
         """Return eligible bloggers for an active order."""
 

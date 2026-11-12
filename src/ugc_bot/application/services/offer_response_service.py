@@ -170,7 +170,7 @@ class OfferResponseService:
             )
             if order is None:
                 raise OrderNotFoundError("Order not found.")
-            if order.financial_version is not None:
+            if order.financial_version is not None and not order.complimentary:
                 raise OrderCreationError("paid_selection_runtime_unavailable")
             accepted_count = await self.dispatch_repo.count_accepted_by_order(
                 order_id, session=session

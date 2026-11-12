@@ -14,6 +14,9 @@
   </div>
 </div>
 {% endif %}
+{% if obj.complimentary %}
+<div class="alert alert-info" role="status">Запущен администратором без оплаты.</div>
+{% endif %}
 {% if order_quote_details %}
 <div class="col-12 mb-3">
   <div class="card">

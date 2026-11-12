@@ -1036,10 +1036,11 @@ async def test_order_admin_update_model_banned_content_rejected() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "scenario", ["paid", "unpaid", "missing", "publish_failure"]
+    "scenario",
+    ["paid", "unpaid", "unpaid_new", "in_flight", "missing", "publish_failure"],
 )
 async def test_order_admin_activation_checks_payment(scenario):
-    """The edit flow commits activation through a locked paid-order check."""
+    """Status Save publishes once, with or without a captured payment."""
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
 
@@ -1053,6 +1054,11 @@ async def test_order_admin_activation_checks_payment(scenario):
     )
 
     order_id = UUID("00000000-0000-0000-0000-000000000050")
+    status = (
+        OrderStatus.NEW
+        if scenario == "unpaid_new"
+        else OrderStatus.PENDING_MODERATION
+    )
     order = Order(
         order_id=order_id,
         advertiser_id=UUID(int=51),
@@ -1062,7 +1068,7 @@ async def test_order_admin_activation_checks_payment(scenario):
         barter_description=None,
         price=100,
         bloggers_needed=10,
-        status=OrderStatus.PENDING_MODERATION,
+        status=status,
         created_at=datetime.now(timezone.utc),
     )
     orders, payments, events = (
@@ -1088,7 +1094,10 @@ async def test_order_admin_activation_checks_payment(scenario):
 
     @asynccontextmanager
     async def transaction():
-        yield object()
+        yield SimpleNamespace(
+            scalar=AsyncMock(return_value=scenario == "in_flight"),
+            add=MagicMock(),
+        )
 
     tm = SimpleNamespace(transaction=transaction)
     outbox = OutboxPublisher(events, orders)
@@ -1106,9 +1115,7 @@ async def test_order_admin_activation_checks_payment(scenario):
     admin = OrderAdmin()
     request = MagicMock()
     request.form = AsyncMock(return_value={})
-    displayed = OrderModel(
-        order_id=order_id, status=OrderStatus.PENDING_MODERATION
-    )
+    displayed = OrderModel(order_id=order_id, status=status)
     with (
         patch("ugc_bot.admin.app._get_admin_container", return_value=container),
         patch(
@@ -1120,13 +1127,15 @@ async def test_order_admin_activation_checks_payment(scenario):
             OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
         ) as save,
     ):
-        if scenario == "paid":
+        if scenario in {"paid", "unpaid", "unpaid_new"}:
             await admin.update_model(
                 request, str(order_id), {"status": "active"}
             )
-            assert (
-                await orders.get_by_id(order_id)
-            ).status == OrderStatus.ACTIVE
+            activated = await orders.get_by_id(order_id)
+            assert activated.status == OrderStatus.ACTIVE
+            assert activated.complimentary is (scenario != "paid")
+            payment = await payments.get_by_order(order_id)
+            assert (payment is None) is (scenario != "paid")
             assert len(await events.get_pending_events()) == 1
             # A second approval does not publish the activation twice.
             await admin.update_model(
@@ -1140,7 +1149,7 @@ async def test_order_admin_activation_checks_payment(scenario):
                 if scenario == "missing"
                 else "Publish failed"
                 if scenario == "publish_failure"
-                else "paid_pending_moderation_required"
+                else "Оплата уже обрабатывается"
             )
             with pytest.raises((ValueError, RuntimeError), match=expected):
                 await admin.update_model(
@@ -1155,7 +1164,7 @@ async def test_activation_publishes_only_matching_committed_geography(changed):
     from contextlib import asynccontextmanager
     from types import SimpleNamespace
 
-    from ugc_bot.admin.app import _activate_paid_order
+    from ugc_bot.admin.app import _activate_order
     from ugc_bot.domain.entities import Order
     from ugc_bot.domain.enums import PaymentStatus
     from ugc_bot.infrastructure.memory_repositories import (
@@ -1211,7 +1220,7 @@ async def test_activation_publishes_only_matching_committed_geography(changed):
     ):
         if changed:
             with pytest.raises(ValueError, match="order_geography_changed"):
-                await _activate_paid_order(
+                await _activate_order(
                     order_id, geography_update=("Москва", "NEW")
                 )
             assert observed == []
@@ -1219,9 +1228,7 @@ async def test_activation_publishes_only_matching_committed_geography(changed):
                 await orders.get_by_id(order_id)
             ).status == OrderStatus.PENDING_MODERATION
         else:
-            await _activate_paid_order(
-                order_id, geography_update=("Москва", "NEW")
-            )
+            await _activate_order(order_id, geography_update=("Москва", "NEW"))
             assert observed == [(OrderStatus.ACTIVE, "NEW", "NEW")]
 
 
@@ -1287,7 +1294,7 @@ async def test_activation_waits_for_geography_update(geometry_updated):
             "ugc_bot.admin.app._resolve_order_location_geometry",
             side_effect=refresh,
         ),
-        patch("ugc_bot.admin.app._activate_paid_order", side_effect=activate),
+        patch("ugc_bot.admin.app._activate_order", side_effect=activate),
         patch(
             "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
         ),
@@ -1462,7 +1469,7 @@ async def test_activation_without_geography_field_refreshes_saved_geography():
             AsyncMock(return_value="NEW"),
         ) as resolve,
         patch(
-            "ugc_bot.admin.app._activate_paid_order", new_callable=AsyncMock
+            "ugc_bot.admin.app._activate_order", new_callable=AsyncMock
         ) as activate,
         patch(
             "ugc_bot.admin.app._update_order_managers", new_callable=AsyncMock
@@ -2732,9 +2739,9 @@ def test_admin_flowchart_returns_html_when_authenticated(
 
 
 @pytest.mark.asyncio
-async def test_order_admin_cannot_activate_unpaid_new_order():
+async def test_order_admin_cannot_activate_closed_order():
     order_id = UUID("00000000-0000-0000-0000-000000000123")
-    order = OrderModel(order_id=order_id, status=OrderStatus.NEW)
+    order = OrderModel(order_id=order_id, status=OrderStatus.CLOSED)
     admin = OrderAdmin()
     request = MagicMock()
     request.form = AsyncMock(return_value={})
@@ -2745,7 +2752,9 @@ async def test_order_admin_cannot_activate_unpaid_new_order():
         patch.object(
             OrderAdmin.__bases__[0], "update_model", new_callable=AsyncMock
         ) as save,
-        pytest.raises(ValueError, match="paid_pending_moderation_required"),
+        pytest.raises(
+            ValueError, match="order_activation_requires_new_or_pending"
+        ),
     ):
         await admin.update_model(request, str(order_id), {"status": "active"})
     save.assert_not_called()

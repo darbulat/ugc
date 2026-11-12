@@ -191,6 +191,7 @@ def change_order_worklist(
 
     now = datetime.now(timezone.utc)
     order.status = OrderStatus.CLOSED
+    order.dispatch_stopped = True
     order.completed_at = now
     order.updated_at = now
     session.add(

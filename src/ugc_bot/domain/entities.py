@@ -241,6 +241,8 @@ class Order:
     last_round_robin_index: int = 0
     brief_link: Optional[str] = None
     financial_version: Optional[str] = None
+    complimentary: bool = False
+    dispatch_stopped: bool = False
 
 
 @dataclass(frozen=True)

@@ -62,13 +62,15 @@ class SqlAlchemyPaidSelectionRepository:
         row = (
             await db.execute(
                 select(
-                    OrderModel.advertiser_id, OrderModel.financial_version
+                    OrderModel.advertiser_id,
+                    OrderModel.financial_version,
+                    OrderModel.complimentary,
                 ).where(OrderModel.order_id == order_id)
             )
         ).one_or_none()
         if row is None:
             raise ValueError("order_not_found")
-        if row.financial_version is None:
+        if row.financial_version is None or row.complimentary:
             return None
         managers = await db.scalars(
             select(ManagerOrderModel.user_id).where(
@@ -150,7 +152,8 @@ class SqlAlchemyPaidSelectionRepository:
             "selection_scope_changed_retry_required",
         )
         _require(
-            order["financial_version"] is not None,
+            order["financial_version"] is not None
+            and not order["complimentary"],
             "selection_scope_changed_retry_required",
         )
         # Preserve the current client role through commit. Take this child-row
