@@ -5,14 +5,14 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from tests.helpers.factories import create_test_user
 from tests.postgres_financial.test_order_intake import command, service
 from tests.postgres_financial.test_order_intake import intake_env as _intake_env
 from ugc_bot.admin.app import _activate_order, _change_order_dispatch
 from ugc_bot.domain.enums import OrderStatus
-from ugc_bot.infrastructure.db.models import OutboxEventModel
+from ugc_bot.infrastructure.db.models import OrderModel, OutboxEventModel
 
 intake_env = _intake_env  # expose the shared fixture to pytest
 
@@ -105,3 +105,11 @@ async def test_resume_keeps_audience_and_never_reclaims_unknown(intake_env):
         claim(unattempted, 2), claim(unattempted, 2)
     )
     assert sorted(concurrent) == ["claimed", "skip"]
+
+    async with tm.transaction() as db:
+        await db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == order_id)
+            .values(status=OrderStatus.CLOSED)
+        )
+    assert await claim(unknown, 2) == "stop"

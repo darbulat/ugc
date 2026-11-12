@@ -1,8 +1,7 @@
 """Add durable order dispatch control and delivery claims."""
 
+import sqlalchemy as sa
 from alembic import op
-
-from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
 
 revision = "0131_dispatch_pause"
 down_revision = "0130_complimentary_order"
@@ -11,8 +10,37 @@ depends_on = None
 
 
 def upgrade() -> None:
-    CONTROLS.create(op.get_bind())
-    CLAIMS.create(op.get_bind())
+    op.create_table(
+        "order_dispatch_controls",
+        sa.Column(
+            "order_id",
+            sa.Uuid(),
+            sa.ForeignKey("orders.order_id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("run", sa.Integer(), nullable=False),
+        sa.Column("paused", sa.Boolean(), nullable=False),
+        sa.Column("audience_ready", sa.Boolean(), nullable=False),
+    )
+    op.create_table(
+        "order_dispatch_claims",
+        sa.Column(
+            "order_id",
+            sa.Uuid(),
+            sa.ForeignKey(
+                "order_dispatch_controls.order_id", ondelete="CASCADE"
+            ),
+            primary_key=True,
+        ),
+        sa.Column(
+            "blogger_id",
+            sa.Uuid(),
+            sa.ForeignKey("users.user_id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
+        sa.Column("run", sa.Integer(), nullable=False),
+        sa.Column("rejected", sa.Boolean(), nullable=False),
+    )
 
 
 def downgrade() -> None:
@@ -24,5 +52,5 @@ def downgrade() -> None:
         "SELECT 1 FROM order_dispatch_controls LIMIT 1"
     ).first():
         raise RuntimeError("Cannot discard dispatch history")
-    CLAIMS.drop(bind)
-    CONTROLS.drop(bind)
+    op.drop_table("order_dispatch_claims")
+    op.drop_table("order_dispatch_controls")
