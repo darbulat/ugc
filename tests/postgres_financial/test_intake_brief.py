@@ -99,7 +99,9 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(
     intake_env, use_override
 ):
     env = intake_env
-    place = {"geography" if use_override else "city": "Москва"}
+    # The PostgreSQL fixture retains creators between parameter cases.
+    city = "Зеленодольск" if use_override else "Москва"
+    place = {"geography" if use_override else "city": city}
     target = OrderTargeting(
         **place,
         platforms=("youtube",),
@@ -120,15 +122,14 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(
     saved = await env["repos"]["order_repo"].get_by_id(result.order_id)
     assert saved.order_type == OrderType.UGC_PLUS_PLACEMENT
     assert (
-        saved.geography == "Москва"
-        and saved.content_usage == target.content_usage
+        saved.geography == city and saved.content_usage == target.content_usage
     )
     assert saved.brief_link == target.brief_link and saved.filter_by_placement
     ids = []
-    for city, platform in [
-        ("Москва", "youtube"),
+    for profile_city, platform in [
+        (city, "youtube"),
         ("Казань", "youtube"),
-        ("Москва", "tiktok"),
+        (city, "tiktok"),
     ]:
         user = await create_test_user(
             env["repos"]["user_repo"],
@@ -138,7 +139,7 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(
         await create_test_blogger_profile(
             env["repos"]["blogger_repo"],
             user.user_id,
-            city=city,
+            city=profile_city,
             instagram_url="https://instagram.com/" + user.user_id.hex,
             work_format=WorkFormat.ADS_IN_ACCOUNT,
         )
@@ -166,7 +167,7 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(
             await db.execute(
                 ORDER_DISPATCH_CITY_OVERRIDES.insert().values(
                     order_id=result.order_id,
-                    city="Москва",
+                    city=city,
                     reason="Manual correction",
                 )
             )
