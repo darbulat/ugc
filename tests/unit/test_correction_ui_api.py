@@ -4,6 +4,7 @@ import importlib
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from types import SimpleNamespace
+from urllib.parse import parse_qs
 from uuid import UUID
 
 import httpx
@@ -183,6 +184,7 @@ async def request_ui(app, auth, **changes):
         if auth["platform"] == "telegram"
         else "synthetic-max-token"
     )
+    auth_date = int(parse_qs(auth["init_data"])["auth_date"][0])
     actor = next(
         row
         for row in repo.actors.values()
@@ -194,6 +196,7 @@ async def request_ui(app, auth, **changes):
                 else row["max_id"]
             ),
             "Synthetic",
+            auth_date=auth_date,
         )
         == auth["init_data"]
     )

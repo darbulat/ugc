@@ -16,7 +16,9 @@ MINIAPP_TEST_USER_IDS: dict[str, dict[str, int]] = {
 }
 
 
-def generate_init_data(bot_token: str, user_id: int, username: str) -> str:
+def generate_init_data(
+    bot_token: str, user_id: int, username: str, *, auth_date: int | None = None
+) -> str:
     """Generate a valid Telegram WebApp initData string with HMAC signature.
 
     Uses the same algorithm as miniapp/auth.py for validation.
@@ -25,9 +27,9 @@ def generate_init_data(bot_token: str, user_id: int, username: str) -> str:
         {"id": user_id, "first_name": "Test", "username": username},
         separators=(",", ":"),
     )
-    auth_date = str(int(time.time()))
+    timestamp = int(time.time()) if auth_date is None else auth_date
 
-    params = {"auth_date": auth_date, "user": user_obj}
+    params = {"auth_date": str(timestamp), "user": user_obj}
 
     # Build data_check_string: sorted key=value pairs joined by \n
     data_check_parts = sorted(
