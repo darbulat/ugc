@@ -361,6 +361,8 @@ async def _send_offers(
         )
         return
 
+    if order.dispatch_stopped:
+        return
     advertisers_status = advertiser.status.value.upper()
     bloggers = await offer_dispatch_service.dispatch(order_id)
     logger.info(
@@ -377,6 +379,8 @@ async def _send_offers(
         return
 
     for blogger in bloggers:
+        if await offer_dispatch_service.is_dispatch_stopped(order_id):
+            break
         locale = blogger.language if blogger.language else default_locale
         await _send_offer_to_blogger(
             blogger,

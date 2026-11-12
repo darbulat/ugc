@@ -392,6 +392,13 @@ class OrderModel(Base):
 
     __tablename__ = "orders"
 
+    complimentary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    dispatch_stopped: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+
     financial_version: Mapped[Optional[str]] = mapped_column(
         String, nullable=True
     )

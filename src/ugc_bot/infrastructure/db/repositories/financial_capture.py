@@ -104,6 +104,8 @@ class SqlAlchemyFinancialCaptureRepository:
         )
         if order is None or order.advertiser_id != client_id:
             raise OrderCreationError("capture_order_owner_mismatch")
+        if order.complimentary:
+            raise OrderCreationError("complimentary_order_not_payable")
         if order.financial_version is None:
             raise OrderCreationError("financial_order_required")
         items = list(

@@ -16,8 +16,8 @@ from aiogram.types import BufferedInputFile
 from fastapi import Depends, FastAPI, HTTPException
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
+from sqlalchemy import exists, select, text
 from sqlalchemy import inspect as sa_inspect
-from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -72,6 +72,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.enums import (
+    AuditAction,
     ComplaintStatus,
     InteractionStatus,
     OrderStatus,
@@ -79,6 +80,7 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
     UserStatus,
 )
+from ugc_bot.infrastructure.db.checkout_models import AUTHORIZATIONS, INBOX
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
@@ -247,13 +249,36 @@ async def _checked_activation_geography(
     return dataclasses.replace(order, location_geometry=geometry)
 
 
-async def _activate_paid_order(
+_ACTIVATABLE_ORDER_STATUSES = frozenset(
+    (OrderStatus.NEW, OrderStatus.PENDING_MODERATION)
+)
+
+
+async def _guard_complimentary_activation(order, payment, session) -> None:
+    """A provider authorization can still turn into a real charge."""
+    if (
+        order.financial_version is None
+        and payment is not None
+        and payment.status == PaymentStatus.PENDING
+    ):
+        raise ValueError("Оплата уже обрабатывается. Дождитесь её результата.")
+    payment_in_flight = await session.scalar(
+        select(
+            exists().where(AUTHORIZATIONS.c.order_id == order.order_id)
+            | exists().where(INBOX.c.order_id == order.order_id)
+        )
+    )
+    if payment_in_flight:
+        raise ValueError("Оплата уже обрабатывается. Дождитесь её результата.")
+
+
+async def _activate_order(
     order_id: UUID,
     *,
     geography_update: tuple[str | None, str | None] | None = None,
     exact_city: str | None = None,
 ) -> None:
-    """Commit approval and activation delivery intent as one transaction."""
+    """Save administrative approval and queue the offers atomically."""
     container = _get_admin_container()
     if container is None or container.transaction_manager is None:
         raise ValueError("order_activation_unavailable")
@@ -267,14 +292,15 @@ async def _activate_paid_order(
             raise ValueError("order_not_found")
         if order.status == OrderStatus.ACTIVE:
             return
-        if order.status != OrderStatus.PENDING_MODERATION:
-            raise ValueError("paid_pending_moderation_required")
+        if order.status not in _ACTIVATABLE_ORDER_STATUSES:
+            raise ValueError("order_activation_requires_new_or_pending")
         order = await _checked_activation_geography(
             order, container, geography_update, exact_city, session
         )
         payment = await payments.get_by_order(order_id, session=session)
-        if payment is None or payment.status != PaymentStatus.PAID:
-            raise ValueError("paid_pending_moderation_required")
+        complimentary = payment is None or payment.status != PaymentStatus.PAID
+        if complimentary:
+            await _guard_complimentary_activation(order, payment, session)
         if content_moderation.order_contains_banned_content(
             product_link=order.product_link,
             offer_text=order.offer_text,
@@ -283,9 +309,27 @@ async def _activate_paid_order(
             geography=order.geography,
         ):
             raise ValueError("Запрещённый контент. Отредактируйте заявку.")
-        activated = dataclasses.replace(order, status=OrderStatus.ACTIVE)
+        activated = dataclasses.replace(
+            order,
+            status=OrderStatus.ACTIVE,
+            complimentary=complimentary,
+            dispatch_stopped=False,
+        )
         await orders.save(activated, session=session)
         await outbox.publish_order_activation(activated, session=session)
+        if complimentary:
+            session.add(
+                AuditLogModel(
+                    entity_type="order",
+                    entity_id=order_id,
+                    action=AuditAction.UPDATE,
+                    old_values={"status": order.status.value},
+                    new_values={
+                        "status": OrderStatus.ACTIVE.value,
+                        "complimentary": True,
+                    },
+                )
+            )
 
 
 async def _finish_order_geography_and_activation(
@@ -318,7 +362,7 @@ async def _finish_order_geography_and_activation(
         kwargs = (
             {"exact_city": exact_city} if financial_version is not None else {}
         )
-        await _activate_paid_order(
+        await _activate_order(
             order_id, geography_update=(geography, geometry), **kwargs
         )
     elif "geography" in data:
@@ -1781,6 +1825,8 @@ def _order_duplicate_insert_data(source: OrderModel) -> dict[str, Any]:
             continue
         if key == "status":
             data[key] = OrderStatus.NEW
+        elif key in {"complimentary", "dispatch_stopped"}:
+            data[key] = False
         elif key == "last_round_robin_index":
             data[key] = 0
         else:
@@ -1812,6 +1858,29 @@ def _financial_order_admin_data(order, data):
                 pass
         raise ValueError("financial_order_intake_immutable")
     return data
+
+
+def _validate_activation_submission(submitted: dict) -> None:
+    container = _get_admin_container()
+    if container is None:
+        return
+    content_moderation, _, _ = _get_order_moderation_deps(container)
+    content = {
+        name: submitted.get(name)
+        for name in (
+            "product_link",
+            "offer_text",
+            "barter_description",
+            "content_usage",
+            "geography",
+        )
+    }
+    if content_moderation.order_contains_banned_content(**content):
+        matches = content_moderation.get_order_banned_matches(**content)
+        raise ValueError(
+            f"Запрещённый контент. Найдено: {', '.join(matches)}. "
+            "Отредактируйте заявку."
+        )
 
 
 class OrderAdmin(ModelView, model=OrderModel):
@@ -1955,34 +2024,24 @@ class OrderAdmin(ModelView, model=OrderModel):
         )
 
         activating = new_status_active and old_status != OrderStatus.ACTIVE
-        if activating and old_status != OrderStatus.PENDING_MODERATION:
-            raise ValueError("paid_pending_moderation_required")
-        if new_status_active and old_status == OrderStatus.PENDING_MODERATION:
-            container = _get_admin_container()
-            if container:
-                content_moderation, _, _ = _get_order_moderation_deps(container)
-                if content_moderation.order_contains_banned_content(
-                    product_link=submitted.get("product_link"),
-                    offer_text=submitted.get("offer_text"),
-                    barter_description=submitted.get("barter_description"),
-                    content_usage=submitted.get("content_usage"),
-                    geography=submitted.get("geography"),
-                ):
-                    matches = content_moderation.get_order_banned_matches(
-                        product_link=submitted.get("product_link"),
-                        offer_text=submitted.get("offer_text"),
-                        barter_description=submitted.get("barter_description"),
-                        content_usage=submitted.get("content_usage"),
-                        geography=submitted.get("geography"),
-                    )
-                    raise ValueError(
-                        f"Запрещённый контент. Найдено: {', '.join(matches)}. "
-                        "Отредактируйте заявку."
-                    )
-
+        if activating and old_status not in _ACTIVATABLE_ORDER_STATUSES:
+            raise ValueError("order_activation_requires_new_or_pending")
+        if (
+            obj is not None
+            and getattr(obj, "complimentary", False) is True
+            and new_status_raw in _ACTIVATABLE_ORDER_STATUSES
+        ):
+            raise ValueError("Заказ уже запущен без оплаты.")
         if activating:
-            # Save edits while keeping the pending state. Only the locked
-            # payment check below can commit ACTIVE and its dispatch event.
+            _validate_activation_submission(submitted)
+
+        if old_status == OrderStatus.ACTIVE and new_status_raw in {
+            OrderStatus.CLOSED,
+            OrderStatus.DELETED,
+        }:
+            data = {**data, "dispatch_stopped": True}
+        if new_status_active:
+            # Only the locked transition may commit ACTIVE and its event.
             data = {
                 key: value for key, value in data.items() if key != "status"
             }

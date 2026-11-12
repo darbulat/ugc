@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from tests.helpers.factories import (
@@ -350,3 +350,74 @@ async def test_geocoding_exception_leaves_no_financial_order(intake_env):
     assert (
         await env["repos"]["order_repo"].get_by_id(requested.order_id) is None
     )
+
+
+@pytest.mark.asyncio
+async def test_admin_starts_unpaid_financial_order_with_working_responses(
+    intake_env,
+):
+    from ugc_bot.admin.app import _activate_order
+    from ugc_bot.domain.enums import OrderStatus
+    from ugc_bot.infrastructure.db.models import AuditLogModel, OutboxEventModel
+    from ugc_bot.infrastructure.db.repositories.client_order_views import (
+        SqlAlchemyClientOrderViewRepository,
+    )
+
+    env = intake_env
+    container = env["container"]
+    result = await service(env).create(command(env))
+    order_id = result.order_id
+    creator = await create_test_user(
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        country="ru",
+    )
+    await create_test_blogger_profile(
+        env["repos"]["blogger_repo"],
+        creator.user_id,
+        instagram_url="https://instagram.com/" + creator.user_id.hex,
+    )
+
+    with patch(
+        "ugc_bot.admin.app._get_admin_container", return_value=container
+    ):
+        await _activate_order(order_id, geography_update=(None, None))
+        await _activate_order(order_id, geography_update=(None, None))
+
+    async with container.transaction_manager.transaction() as db:
+        order = await env["repos"]["order_repo"].get_by_id(order_id, session=db)
+        assert order.status == OrderStatus.ACTIVE
+        assert order.complimentary and order.financial_version
+        assert (
+            await env["repos"]["payment_repo"].get_by_order(
+                order_id, session=db
+            )
+            is None
+        )
+        audit = await db.scalar(
+            select(AuditLogModel).where(AuditLogModel.entity_id == order_id)
+        )
+        assert audit.new_values == {"status": "active", "complimentary": True}
+        events = (
+            await db.scalars(
+                select(OutboxEventModel).where(
+                    OutboxEventModel.aggregate_id == str(order_id),
+                    OutboxEventModel.event_type == "order.activated",
+                )
+            )
+        ).all()
+        assert len(events) == 1
+        view = await SqlAlchemyClientOrderViewRepository()._summary(order, db)
+        assert view["payment_state"] == "complimentary"
+        assert view["financial_version"] is None
+        assert view["total_minor"] == 0
+
+    services = container.build_bot_services()
+    await services["offer_dispatch_service"].record_offer_sent(
+        order_id, creator.user_id
+    )
+    accepted = await services["offer_response_service"].respond_and_finalize(
+        order_id, creator.user_id
+    )
+    assert accepted.accepted and accepted.response_count == 1
+    assert accepted.selection_assignment_id is None
