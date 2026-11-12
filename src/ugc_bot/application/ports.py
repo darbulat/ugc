@@ -908,8 +908,10 @@ class OrderActivationPublisher(ABC):
     """Port for publishing order activation events."""
 
     @abstractmethod
-    async def publish(self, order: Order) -> None:
-        """Publish order activation message."""
+    async def publish(
+        self, order: Order, *, dispatch_run: int | None = None
+    ) -> None:
+        """Publish order activation or a tracked dispatch run."""
 
 
 class OutboxRepository(ABC):

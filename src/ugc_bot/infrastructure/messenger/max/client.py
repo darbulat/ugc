@@ -92,10 +92,17 @@ def _build_inline_keyboard(keyboard: Keyboard) -> dict[str, Any]:
 
 
 class MaxMessengerClient(MessengerClient):
-    def __init__(self, token: str, session: aiohttp.ClientSession) -> None:
+    def __init__(
+        self,
+        token: str,
+        session: aiohttp.ClientSession,
+        *,
+        retry_attempts: int = MAX_RETRY_ATTEMPTS,
+    ) -> None:
         self._token = token
         self._session = session
         self._base_url = MAX_API_BASE_URL
+        self._retry_attempts = retry_attempts
 
     async def _request(
         self,
@@ -109,13 +116,15 @@ class MaxMessengerClient(MessengerClient):
         last_exc: Exception | None = None
         last_body: str | None = None
 
-        for attempt in range(MAX_RETRY_ATTEMPTS):
+        for attempt in range(self._retry_attempts):
             try:
                 resp = await self._session.request(
                     method, url, json=json_body, headers=headers, params=params
                 )
                 async with resp:
                     if resp.status == 429:
+                        if self._retry_attempts == 1:
+                            raise MaxAPIError(429, "Rate limited")
                         retry_after = float(
                             resp.headers.get("Retry-After", "1")
                         )
@@ -158,7 +167,7 @@ class MaxMessengerClient(MessengerClient):
 
         logger.error(
             "Max API request failed after %d attempts: %s %s",
-            MAX_RETRY_ATTEMPTS,
+            self._retry_attempts,
             method,
             path,
         )
@@ -166,7 +175,7 @@ class MaxMessengerClient(MessengerClient):
             raise last_exc
         raise RuntimeError(
             f"Max API request {method} {path} failed after "
-            f"{MAX_RETRY_ATTEMPTS} attempts"
+            f"{self._retry_attempts} attempts"
             f"{f': {last_body}' if last_body else ''}"
         )
 

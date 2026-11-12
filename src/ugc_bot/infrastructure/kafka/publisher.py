@@ -34,7 +34,9 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             await self._producer.start()
             self._started = True
 
-    async def publish(self, order: Order) -> None:
+    async def publish(
+        self, order: Order, *, dispatch_run: int | None = None
+    ) -> None:
         """Publish order activation message."""
 
         payload = {
@@ -47,6 +49,8 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
             "status": order.status.value,
             "created_at": order.created_at.isoformat(),
         }
+        if dispatch_run is not None:
+            payload["dispatch_run"] = dispatch_run
         try:
             await self._ensure_started()
             await self._producer.send_and_wait(self._topic, payload)
@@ -67,7 +71,9 @@ class KafkaOrderActivationPublisher(OrderActivationPublisher):
 class NoopOrderActivationPublisher(OrderActivationPublisher):
     """No-op publisher used when Kafka is disabled."""
 
-    async def publish(self, order: Order) -> None:
+    async def publish(
+        self, order: Order, *, dispatch_run: int | None = None
+    ) -> None:
         """Skip publishing."""
 
         return

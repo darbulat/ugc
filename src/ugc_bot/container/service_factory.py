@@ -273,6 +273,7 @@ def build_offer_dispatch_service(
         transaction_manager=transaction_manager,
         currency_symbol=currency_symbol,
         intake_repository=repos.get("order_intake_repo"),
+        dispatch_control=repos.get("dispatch_control"),
     )
 
 

@@ -32,6 +32,7 @@ def items_revision_engine(financial_pg_engine):
     with isolated_financial_database(
         os.environ["FINANCIAL_TEST_DATABASE_URL"],
         target_revision="financial_items",
+        current_order_model=True,
     ) as engine:
         with engine.connect() as conn:
             assert conn.scalar(

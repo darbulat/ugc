@@ -475,8 +475,15 @@ async def test_run_consumer_database_url_missing(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("dispatch_run", "tracked", "should_send"),
+    [(None, False, True), (None, True, False), (2, True, True)],
+)
 async def test_run_consumer_processes_activation_message(
     monkeypatch: pytest.MonkeyPatch,
+    dispatch_run,
+    tracked,
+    should_send,
 ) -> None:
     """run_consumer processes activation message and invokes _send_offers."""
 
@@ -498,7 +505,9 @@ async def test_run_consumer_processes_activation_message(
         "ugc_bot.kafka_consumer.configure_logging", lambda *_, **__: None
     )
 
-    mock_offer = type("Offer", (), {})()
+    mock_offer = SimpleNamespace(
+        has_tracked_dispatch=AsyncMock(return_value=tracked)
+    )
     mock_container = type("Container", (), {})()
     mock_container.build_offer_dispatch_service = lambda: mock_offer  # type: ignore[attr-defined]
     mock_container.build_bot_texts_service = lambda: None  # type: ignore[attr-defined]
@@ -512,6 +521,7 @@ async def test_run_consumer_processes_activation_message(
     send_called = {"value": False}
 
     async def fake_send(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        assert _kwargs["dispatch_run"] == dispatch_run
         send_called["value"] = True
 
     monkeypatch.setattr("ugc_bot.kafka_consumer._send_offers", fake_send)
@@ -548,6 +558,7 @@ async def test_run_consumer_processes_activation_message(
                     value={
                         "event": "order_activated",
                         "order_id": "00000000-0000-0000-0000-000000000999",
+                        "dispatch_run": dispatch_run,
                     },
                 )
             raise asyncio.CancelledError
@@ -589,7 +600,7 @@ async def test_run_consumer_processes_activation_message(
     with pytest.raises(asyncio.CancelledError):
         await run_consumer()
 
-    assert send_called["value"] is True
+    assert send_called["value"] is should_send
     assert commit_called["value"] is True
     assert fake_consumer.started is True
     assert fake_consumer.stopped is True
@@ -1596,3 +1607,40 @@ async def test_send_offers_stops_before_next_recipient_after_admin_stop():
     assert service.is_dispatch_stopped.await_count == 2
     assert send.await_count == 1
     assert send.await_args.args[0] is recipients[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("partially_sent", "definitive", "expected"),
+    [(False, False, None), (False, True, False), (True, True, None)],
+)
+async def test_tracked_send_does_not_retry_uncertain_or_partial_delivery(
+    partially_sent, definitive, expected
+):
+    from aiogram.exceptions import TelegramNetworkError
+
+    method = SendMessage(chat_id=1, text="offer")
+    error = (
+        TelegramForbiddenError(method=method, message="blocked")
+        if definitive
+        else TelegramNetworkError(method=method, message="lost response")
+    )
+    send = AsyncMock(side_effect=[None, error] if partially_sent else [error])
+    text = "a" * 4001 if partially_sent else "offer"
+    outcome = await _send_offer_via_client(
+        "1",
+        SimpleNamespace(send_text=send),
+        text,
+        Keyboard(kind=KeyboardKind.INLINE, rows=[]),
+        SimpleNamespace(product_photo_file_id=None, order_id=UUID(int=5)),
+        SimpleNamespace(user_id=UUID(int=1)),
+        3,
+        0,
+        Mock(),
+        None,
+        "",
+        "telegram",
+        guarded=True,
+    )
+    assert outcome is expected
+    assert send.await_count == (2 if partially_sent else 1)

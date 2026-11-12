@@ -4,7 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 
 from ugc_bot.application.ports import (
@@ -43,31 +43,39 @@ class OutboxPublisher:
     transaction_manager: Optional[TransactionManager] = None
     financial_delivery: "OutboxPublisher | None" = None
     financial_router: FinancialEventRouter | None = None
+    dispatch_control: Any = None
 
     async def publish_order_activation(
         self, order: Order, session: object | None = None
     ) -> None:
         """Publish order activation event to outbox."""
 
-        event = OutboxEvent(
-            event_id=uuid4(),
-            event_type="order.activated",
-            aggregate_id=str(order.order_id),
-            aggregate_type="order",
-            payload={
-                "order_id": str(order.order_id),
-                "advertiser_id": str(order.advertiser_id),
-                "product_link": order.product_link,
-                "offer_text": order.offer_text,
-                "bloggers_needed": order.bloggers_needed,
-                "price": order.price,
-            },
-            status=OutboxEventStatus.PENDING,
-            created_at=datetime.now(timezone.utc),
-            processed_at=None,
-            retry_count=0,
-            last_error=None,
-        )
+        async def publish(sess: object | None) -> None:
+            if self.dispatch_control is None:
+                await self._enqueue_activation(order, session=sess)
+                return
+            run = await self.dispatch_control.start(
+                order.order_id, session=sess
+            )
+            if run is not None:
+                await self._enqueue_activation(order, run=run, session=sess)
+
+        if session is None and self.dispatch_control is not None:
+            await with_optional_tx(self.transaction_manager, publish)
+        else:
+            await publish(session)
+
+    async def resume_order_dispatch(
+        self, order: Order, run: int, *, session: object
+    ) -> None:
+        await self._enqueue_activation(order, run=run, session=session)
+
+    async def _enqueue_activation(
+        self, order: Order, *, run: int | None = None, session: object | None
+    ) -> None:
+        event = self._create_event_from_order(order)
+        if run is not None:
+            event.payload["dispatch_run"] = run
         await self.outbox_repo.save(event, session=session)
 
     def _create_event_from_order(self, order: Order) -> OutboxEvent:
@@ -233,6 +241,15 @@ class OutboxPublisher:
         order = await self.order_repo.get_by_id(order_id, session=session)
         if order is None:
             raise ValueError(f"Order {order_id} not found")
+
+        run = event.payload.get("dispatch_run")
+        if run is not None:
+            if (
+                order.status == OrderStatus.ACTIVE
+                and not order.dispatch_stopped
+            ):
+                await kafka_publisher.publish(order, dispatch_run=run)
+            return
 
         activated_order = replace(order, status=OrderStatus.ACTIVE)
         await self.order_repo.save(activated_order, session=session)

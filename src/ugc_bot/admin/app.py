@@ -3117,6 +3117,33 @@ def _add_admin_views(admin: Admin) -> None:
     admin.add_view(AuditLogAdmin)
 
 
+async def _change_order_dispatch(order_id: UUID, operation: str) -> str:
+    container = _get_admin_container()
+    if container is None or container.transaction_manager is None:
+        return "Управление рассылкой недоступно."
+    repos = container.build_repos()
+    control = repos.get("dispatch_control")
+    if control is None:
+        return "Управление рассылкой недоступно."
+    paused = operation == "pause"
+    async with container.transaction_manager.transaction() as session:
+        run = await control.change(order_id, paused=paused, session=session)
+        if run is None:
+            return "Действие недоступно для текущего состояния рассылки."
+        if not paused:
+            order = await repos["order_repo"].get_by_id(
+                order_id, session=session
+            )
+            await container.build_outbox_publisher().resume_order_dispatch(
+                order, run, session=session
+            )
+    return (
+        "Рассылка на паузе."
+        if paused
+        else "Продолжение рассылки поставлено в очередь."
+    )
+
+
 def _register_order_worklist_action(
     app: FastAPI, auth: AdminAuth, engine: Engine
 ) -> None:
@@ -3127,7 +3154,7 @@ def _register_order_worklist_action(
     async def update_order_worklist(
         request: Request, order_id: UUID, operation: str
     ) -> Response:
-        if operation not in {"close", "hide", "restore"}:
+        if operation not in {"close", "hide", "restore", "pause", "resume"}:
             raise HTTPException(status_code=404)
         form = await request.form()
         expected = request.session.get("order_worklist_csrf", "")
@@ -3145,9 +3172,11 @@ def _register_order_worklist_action(
             with Session(engine) as session, session.begin():
                 return change_order_worklist(session, order_id, operation)
 
-        request.session["order_worklist_message"] = await asyncio.to_thread(
-            update
-        )
+        if operation in {"pause", "resume"}:
+            message = await _change_order_dispatch(order_id, operation)
+        else:
+            message = await asyncio.to_thread(update)
+        request.session["order_worklist_message"] = message
         target = request.url_for("admin:list", identity=OrderAdmin.identity)
         return RedirectResponse(
             target.replace(query=request.url.query), status_code=303
