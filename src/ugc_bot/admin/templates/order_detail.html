@@ -1,8 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Заказ {{ order.order_id }}{% endblock %}
 {% block content %}
+  {% set back_url = order_return_url(request) %}
+  {% set status = order.lifecycle_status|default(order.status_label) %}
+  <div class="admin-actions">
+    <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
+    <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
+  </div>
   <section class="section">
-    <h1>Заказ</h1>
+    <div class="card order-summary">
+      <span class="badge">{{ status_labels.get(status, status) }}</span>
+      <h1>{{ order.offer_text or order.description or 'Заказ' }}</h1>
+      {% if order.advertiser_id %}
+        <a href="{{ request.url_for('admin_user_card', user_id=order.advertiser_id).include_query_params(from_order=order.order_id, return_to=back_url) }}">{{ order.advertiser }}</a>
+      {% else %}
+        {{ order.advertiser }}
+      {% endif %}
+      {% if order.geography %}<span> · {{ order.geography }}</span>{% endif %}
+      <dl class="order-summary__progress">
+        <div><dt>Нужно</dt><dd>{{ order.bloggers_needed }}</dd></div>
+        <div><dt>Подобрано</dt><dd>{{ order.picked_count }}</dd></div>
+        <div><dt>Откликнулось</dt><dd>{{ order.accepted_count|default('—') }}</dd></div>
+      </dl>
+    </div>
     <div class="card">
       <h2 class="card__subtitle">Идентификация</h2>
       <div class="detail-row">
@@ -36,7 +56,7 @@
       </div>
       <div class="detail-row">
         <div class="detail-label">Цена</div>
-        <div class="detail-value">{{ order.price }}</div>
+        <div class="detail-value">{{ order.price }} {{ order.currency|default('') }}</div>
       </div>
       <div class="detail-row">
         <div class="detail-label">Использование контента</div>
@@ -130,7 +150,7 @@
       <div class="detail-row">
         <div class="detail-label">Статус</div>
         <div class="detail-value">
-          {{ status_labels.get(order.status_label, order.status_label) }}
+          {{ status_labels.get(status, status) }}
         </div>
       </div>
       <div class="detail-row">
@@ -163,26 +183,28 @@
     {% if order.responses_list %}
     <div class="card">
       <h2>Креаторы, готовые снять UGC</h2>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Креатор</th>
-            <th>Дата отклика</th>
-            <th>Статус</th>
-            <th>UGC видео</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in order.responses_list %}
-          <tr>
-            <td><a href="/admin/users/{{ r.blogger_id }}">{{ r.blogger_id }}</a></td>
-            <td>{{ r.responded_at }}</td>
-            <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
-            <td>{% if r.ugc_video_url %}<a href="{{ r.ugc_video_url }}" target="_blank">Ссылка</a>{% else %}—{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="admin-table-scroll" role="region" aria-label="Отклики на заказ" tabindex="0">
+        <table class="table">
+            <thead>
+              <tr>
+                <th>Креатор</th>
+                <th>Дата отклика</th>
+                <th>Статус</th>
+                <th>UGC видео</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in order.responses_list %}
+              <tr>
+                <td><a href="/admin/users/{{ r.blogger_id }}">{{ r.blogger_id }}</a></td>
+                <td>{{ r.responded_at }}</td>
+                <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
+                <td>{% if r.ugc_video_url %}<a href="{{ r.ugc_video_url }}" target="_blank">Ссылка</a>{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+      </div>
     </div>
     {% endif %}
   </section>

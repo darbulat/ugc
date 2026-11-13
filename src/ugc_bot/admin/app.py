@@ -10,6 +10,7 @@ from pathlib import Path
 from secrets import compare_digest, token_urlsafe
 from typing import Any, Optional, TypeVar, cast
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from aiogram.types import BufferedInputFile
@@ -20,6 +21,7 @@ from sqlalchemy import exists, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
+from starlette.datastructures import URL
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -39,9 +41,12 @@ from ugc_bot.admin.auth import (
     safe_admin_return_to,
 )
 from ugc_bot.admin.dashboard_service import (
+    OPEN_COMPLAINT_STATUSES,
     AdminDashboardService,
     DelayThresholds,
     PeriodKey,
+    dashboard_period_window,
+    paid_in_period,
 )
 from ugc_bot.admin.order_worklist import (
     ORDER_STATUS_LABELS,
@@ -503,10 +508,35 @@ _USER_STATUS_LABELS = {
     "limited": "Ограничен",
 }
 _DELAY_REASON_LABELS = {
-    "active_overdue": "Слишком долго активен",
+    "active_overdue": "Долгий подбор",
     "no_responses": "Нет откликов",
     "low_picked": "Мало подобрано",
+    "dispatch_paused": "Рассылка на паузе",
+    "waiting_moderation": "Ожидает модерации",
+    "waiting_payment": "Ожидает оплаты",
 }
+
+_ORDER_LIST_PATH = "/admin/order-model/list"
+_ORDER_RETURN_PATHS = {_ORDER_LIST_PATH, "/admin/orders", "/admin/dashboard"}
+
+
+def _order_return_url(request: Request) -> str:
+    target = safe_admin_return_to(request.query_params.get("return_to"))
+    if target and URL(target).path in _ORDER_RETURN_PATHS:
+        return target
+    return _ORDER_LIST_PATH
+
+
+def _customer_order_url(request: Request) -> URL | None:
+    order_id = request.query_params.get("from_order")
+    if not order_id:
+        return None
+    try:
+        return request.url_for(
+            "admin_order_detail", order_id=UUID(order_id)
+        ).include_query_params(return_to=_order_return_url(request))
+    except ValueError:
+        return None
 
 
 def _normalize_period(period: str) -> PeriodKey:
@@ -547,6 +577,7 @@ def _build_templates(app: FastAPI) -> Jinja2Templates:
     templates = Jinja2Templates(
         directory=str(Path(__file__).parent / "templates")
     )
+    templates.env.globals["order_return_url"] = _order_return_url
     app.mount(
         "/admin/mvp-static",
         StaticFiles(directory=str(Path(__file__).parent / "static")),
@@ -637,7 +668,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v2:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -906,7 +937,7 @@ async def _render_orders_page(
     period_key = _normalize_period(period)
     search_term = search.strip() if search else ""
     cache_key = (
-        f"orders:{period_key}:{status or ''}"
+        f"orders:v2:{period_key}:{status or ''}"
         f":{page}:{per_page}:{sort}:{order}"
         f":{search_term}"
         if cache
@@ -966,7 +997,7 @@ async def _render_order_detail_page(
         "order_detail.html",
         {
             "order": order,
-            "status_labels": _STATUS_LABELS,
+            "status_labels": ORDER_STATUS_LABELS,
         },
     )
 
@@ -990,6 +1021,7 @@ async def _render_user_card_page(
         {
             "user": user_card,
             "user_status_labels": _USER_STATUS_LABELS,
+            "order_url": _customer_order_url(request),
         },
     )
 
@@ -1006,7 +1038,9 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:{period_key}" if cache and not include_timings else None
+        f"dashboard_api:v2:{period_key}"
+        if cache and not include_timings
+        else None
     )
     if cache and not include_timings and cache_key:
         raw = await cache.get(cache_key)
@@ -1035,7 +1069,7 @@ async def _api_charts_json(
     """Charts payload as JSON."""
     period_key = _normalize_period(period)
     if cache:
-        cache_key = f"charts:{period_key}"
+        cache_key = f"charts:v2:{period_key}"
         raw = await cache.get(cache_key)
         if raw is not None:
             return cast(
@@ -1132,7 +1166,8 @@ async def _api_orders_json(
     """Orders list as JSON."""
     period_key = _normalize_period(period)
     cache_key = (
-        f"orders:{period_key}:{status or ''}:{page}:{per_page}:{sort}:{order}"
+        f"orders:v2:{period_key}:{status or ''}"
+        f":{page}:{per_page}:{sort}:{order}"
         if cache
         else None
     )
@@ -2416,12 +2451,20 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
         return result
 
     def list_query(self, request: Request):
-        stmt = super().list_query(request)
-        return stmt.where(ComplaintModel.status != ComplaintStatus.DELETED)
+        return (
+            super().list_query(request).where(self._status_condition(request))
+        )
 
     def count_query(self, request: Request):
-        stmt = super().count_query(request)
-        return stmt.where(ComplaintModel.status != ComplaintStatus.DELETED)
+        return (
+            super().count_query(request).where(self._status_condition(request))
+        )
+
+    @staticmethod
+    def _status_condition(request: Request):
+        if request.query_params.get("status") == "open":
+            return ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES)
+        return ComplaintModel.status != ComplaintStatus.DELETED
 
     def form_edit_query(self, request: Request):
         stmt = super().form_edit_query(request)
@@ -2664,6 +2707,25 @@ class ReferralIncomeEntryAdmin(ModelView, model=ReferralIncomeEntryModel):
 
 class PaymentAdmin(ModelView, model=PaymentModel):
     """Admin view for payments."""
+
+    dashboard_timezone = ZoneInfo("Europe/Moscow")
+
+    def list_query(self, request: Request):
+        return self._for_paid_period(super().list_query(request), request)
+
+    def count_query(self, request: Request):
+        return self._for_paid_period(super().count_query(request), request)
+
+    def _for_paid_period(self, stmt, request: Request):
+        if period := request.query_params.get("paid_period"):
+            return stmt.where(
+                paid_in_period(
+                    dashboard_period_window(
+                        _normalize_period(period), self.dashboard_timezone
+                    )
+                )
+            )
+        return stmt
 
     @staticmethod
     def _v1_order_ids(data: dict, existing: PaymentModel | None) -> list[UUID]:
@@ -2974,6 +3036,29 @@ class EnumAwareAdmin(Admin):
     enum.value in form data so the select shows the correct option.
     """
 
+    def init_templating_engine(self):
+        templates = super().init_templating_engine()
+        templates.env.globals["order_return_url"] = _order_return_url
+        return templates
+
+    @login_required
+    async def index(self, request: Request):
+        return RedirectResponse("/admin/dashboard", status_code=302)
+
+    def get_save_redirect_url(self, request, form, model_view, obj):
+        url = super().get_save_redirect_url(request, form, model_view, obj)
+        if not isinstance(model_view, OrderAdmin) or request.method != "POST":
+            return url
+        if "return_to" not in request.query_params:
+            return url
+        if form.get("save") == "Save":
+            return _order_return_url(request)
+        if form.get("save") == "Save and continue editing":
+            return URL(str(url)).include_query_params(
+                return_to=_order_return_url(request)
+            )
+        return url
+
     async def login(self, request: Request):
         """Preserve a validated local destination across SQLAdmin login."""
         supplied: object = request.query_params.get("return_to")
@@ -3247,6 +3332,9 @@ def create_admin_app() -> FastAPI:
     global _admin_container
     _admin_container = container
 
+    PaymentAdmin.dashboard_timezone = ZoneInfo(
+        config.admin.admin_dashboard_timezone
+    )
     _add_admin_views(admin)
 
     @app.on_event("shutdown")

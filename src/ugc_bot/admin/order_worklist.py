@@ -36,6 +36,7 @@ def _without_payment():
     return (
         ~select(PaymentModel.payment_id)
         .where(PaymentModel.order_id == OrderModel.order_id)
+        .correlate(OrderModel)
         .exists()
     )
 
@@ -48,6 +49,7 @@ def _can_hide():
             *(
                 select(table.c.order_id)
                 .where(table.c.order_id == OrderModel.order_id)
+                .correlate(OrderModel)
                 .exists()
                 for table in (
                     CHECKOUTS,

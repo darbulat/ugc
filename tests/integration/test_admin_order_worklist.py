@@ -2,6 +2,8 @@
 
 import re
 from datetime import datetime, timedelta, timezone
+from html import unescape
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import pytest
@@ -165,6 +167,27 @@ def test_worklist_filters_search_and_pagination(worklist):
     assert {name for name in ids if name in first.text} != {
         name for name in ids if name in second.text
     }
+
+
+def test_order_links_preserve_list_search_and_reject_external_return(worklist):
+    client, _, ids = worklist
+    _login(client)
+    oid = ids["Draft example"]
+    query = urlencode({"group": "all", "search": "Draft example", "page": 1})
+    source = f"{LIST}?{query}"
+    page = client.get(source)
+    link = re.search(r'href="([^"]*/admin/orders/[^"]+)"', page.text)
+    assert link is not None
+    detail = client.get(unescape(link[1]))
+    assert detail.status_code == 200
+    assert "Назад к списку" in detail.text and source in unescape(detail.text)
+    assert "Редактировать заказ" in detail.text and "from_order=" in detail.text
+    external = "https://example.com/admin/order-model/list"
+    denied = client.get(
+        f"/admin/orders/{oid}",
+        params={"return_to": external},
+    )
+    assert f'href="{external}"' not in denied.text
 
 
 def test_worklist_actions_preserve_records_and_protect_payments(worklist):

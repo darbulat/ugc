@@ -96,6 +96,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "delayed_orders": [],
             "open_complaints_list": [],
             "turnover_period": 0,
+            "paid_orders": 3,
+            "payments_by_currency": [
+                {"currency": "RUB", "amount": "139000.00", "count": 2},
+                {"currency": "USD", "amount": "250.10", "count": 1},
+            ],
             "referrals": {
                 "referrers": [],
                 "total_earned": None,
@@ -115,7 +120,12 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert response.status_code == 200
     assert "Дашборд" in response.text
     assert "Админка" in response.text
-    assert 'href="/admin/"' in response.text
+    assert 'href="/admin/order-model/list"' in response.text
+    assert 'href="/admin/orders?period=today"' in response.text
+    assert "139 000,00" in response.text and "250,10" in response.text
+    assert response.text.index("Требует внимания") < response.text.index(
+        "Динамика за период"
+    )
     assert "Подобранных креаторов" in response.text
     assert "100 / 1000" in response.text
     assert "progress-bar" in response.text

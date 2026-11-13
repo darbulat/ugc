@@ -1,29 +1,14 @@
 <!doctype html>
 <html lang="ru">
   <head>
-    <meta charset="utf-8" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Админка{% endblock %}</title>
-    <link
-      rel="stylesheet"
-      href="{{ request.url_for('admin_mvp_static', path='admin.css') }}"
-    />
+    <link rel="stylesheet" href="{{ request.url_for('admin_mvp_static', path='admin-shell.css') }}">
+    <link rel="stylesheet" href="{{ request.url_for('admin_mvp_static', path='admin.css') }}">
   </head>
   <body>
-    <nav class="nav">
-      <div class="nav__title">UGC Админка</div>
-      <div class="nav__links">
-        <a href="/admin/">Админка</a>
-        <a href="/admin/dashboard">Дашборд</a>
-        <a href="/admin/referrers">Рефералы</a>
-        <a href="/admin/users/creators">Креаторы</a>
-        <a href="/admin/users/advertisers">Заказчики</a>
-        <a href="/admin/orders">Заказы</a>
-        <form class="nav__search" action="/admin/search" method="get" role="search">
-          <input type="search" name="q" placeholder="Ник / Telegram ID" value="{{ request.query_params.get('q', '') }}" />
-          <button type="submit">Найти</button>
-        </form>
-      </div>
-    </nav>
-    <main class="container">{% block content %}{% endblock %}</main>
+    {% include 'admin_nav.html' %}
+    <main class="container" id="admin-content">{% block content %}{% endblock %}</main>
   </body>
 </html>

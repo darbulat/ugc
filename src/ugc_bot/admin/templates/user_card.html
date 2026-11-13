@@ -1,6 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Карточка пользователя {{ user.user_id }}{% endblock %}
 {% block content %}
+  {% if order_url %}
+  <div class="admin-actions">
+    <a class="admin-button" href="{{ order_url }}">← К заказу</a>
+  </div>
+  {% endif %}
   <section class="section">
     <h1>Карточка пользователя</h1>
     <div class="card">
