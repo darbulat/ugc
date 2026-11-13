@@ -486,11 +486,8 @@ class OrderService:
     ) -> Order:
         """Update order if it belongs to advertiser and status allows edit."""
 
-        async def _run(session: object | None) -> Order:
-            order = await self.order_repo.get_by_id(order_id, session=session)
-            if order is None:
-                raise OrderNotFoundError("Order not found.")
-            if order.advertiser_id != advertiser_id:
+        def editable(order: Order | None) -> Order:
+            if order is None or order.advertiser_id != advertiser_id:
                 raise OrderNotFoundError("Order not found.")
             if order.financial_version is not None:
                 raise OrderCreationError("financial_order_intake_immutable")
@@ -498,6 +495,10 @@ class OrderService:
                 raise OrderCreationError(
                     "Order cannot be edited in current status."
                 )
+            return order
+
+        async def _run(session: object | None) -> Order:
+            editable(await self.order_repo.get_by_id(order_id, session=session))
             product_link_clean, offer_text_clean, barter_clean = (
                 _validate_order_input(
                     product_link,
@@ -510,18 +511,28 @@ class OrderService:
                 )
             )
             geography_clean = (geography or "").strip() or None
-            order_location_geometry = order.location_geometry
-            if geography_clean and self.geocoder:
-                spec = parse_geography(geography_clean)
-                if spec is not None:
-                    queries = get_geometry_queries_from_spec(spec)
-                    if queries:
-                        geocoder = self.geocoder
-                        order_location_geometry = (
-                            await geocoder.get_multipolygon_wkt_for_queries(
-                                queries
-                            )
-                        )
+            spec = parse_geography(geography_clean)
+            geography_queries = (
+                get_geometry_queries_from_spec(spec)
+                if spec is not None and self.geocoder is not None
+                else []
+            )
+            new_geometry = (
+                await self.geocoder.get_multipolygon_wkt_for_queries(
+                    geography_queries
+                )
+                if geography_queries and self.geocoder
+                else None
+            )
+            # Recheck lifecycle under the write lock after slow geocoding.
+            order = editable(
+                await self.order_repo.get_by_id_for_update(
+                    order_id, session=session
+                )
+            )
+            order_location_geometry = (
+                new_geometry if geography_queries else order.location_geometry
+            )
             updated = replace(
                 order,
                 product_link=product_link_clean,
