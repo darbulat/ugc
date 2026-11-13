@@ -7,7 +7,7 @@ from sqlalchemy import String, cast, false, or_, select, text
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
-from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS
+from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS, INBOX
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -44,28 +44,28 @@ def _without_payment():
     )
 
 
-def _can_hide():
-    return (
-        (OrderModel.status == OrderStatus.NEW)
-        & _without_payment()
-        & ~or_(
-            *(
-                select(table.c.order_id)
-                .where(table.c.order_id == OrderModel.order_id)
-                .correlate(OrderModel)
-                .exists()
-                for table in (
-                    CHECKOUTS,
-                    ACCOMPANIMENT_LEADS,
-                    OfferDispatchModel.__table__,
-                    BloggerRatingModel.__table__,
-                    InteractionModel.__table__,
-                    ManagerOrderModel.__table__,
-                    ComplaintModel.__table__,
-                )
+def _without_order_activity():
+    return _without_payment() & ~or_(
+        *(
+            select(table.c.order_id)
+            .where(table.c.order_id == OrderModel.order_id)
+            .correlate(OrderModel)
+            .exists()
+            for table in (
+                CHECKOUTS,
+                ACCOMPANIMENT_LEADS,
+                OfferDispatchModel.__table__,
+                BloggerRatingModel.__table__,
+                InteractionModel.__table__,
+                ManagerOrderModel.__table__,
+                ComplaintModel.__table__,
             )
         )
     )
+
+
+def _can_hide():
+    return (OrderModel.status == OrderStatus.NEW) & _without_order_activity()
 
 
 def _can_close():
@@ -91,12 +91,15 @@ def _is_test_order():
     )
 
 
-def _can_delete_test_order(*, postgresql: bool):
+def can_delete_order(*, postgresql: bool):
     eligible = (
-        _can_hide()
-        & _is_test_order()
-        & OrderModel.financial_version.is_(None)
+        OrderModel.status.in_((OrderStatus.NEW, OrderStatus.PENDING_MODERATION))
+        & _without_order_activity()
         & OrderModel.complimentary.is_(False)
+        & ~select(INBOX.c.order_id)
+        .where(INBOX.c.order_id == OrderModel.order_id)
+        .correlate(OrderModel)
+        .exists()
         & ~select(CONTROLS.c.order_id)
         .where(CONTROLS.c.order_id == OrderModel.order_id)
         .correlate(OrderModel)
@@ -230,9 +233,9 @@ def worklist_row_details(session: Session, order_ids: list[UUID]):
             _can_close().label("can_close"),
             _can_hide().label("can_hide"),
             _is_test_order().label("is_test"),
-            _can_delete_test_order(
+            can_delete_order(
                 postgresql=session.get_bind().dialect.name == "postgresql"
-            ).label("can_delete_test"),
+            ).label("can_delete"),
             CONTROLS.c.paused.label("dispatch_paused"),
         )
         .select_from(OrderModel)
@@ -270,31 +273,45 @@ def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
     )
 
 
-def _delete_test_order(session: Session, order: OrderModel) -> str:
+def _delete_order(
+    session: Session, order: OrderModel, *, test_only: bool
+) -> str:
+    eligible = can_delete_order(
+        postgresql=session.get_bind().dialect.name == "postgresql"
+    )
+    if test_only:
+        eligible = eligible & _is_test_order()
     if not session.scalar(
-        select(
-            _can_delete_test_order(
-                postgresql=session.get_bind().dialect.name == "postgresql"
-            )
-        ).where(OrderModel.order_id == order.order_id)
+        select(eligible).where(OrderModel.order_id == order.order_id)
     ):
         return (
             "Удалить можно только тестовый черновик "
             "без оплаты и связанных действий."
+            if test_only
+            else "Удалить можно только заказ без оплаты, "
+            "рассылки и связанных действий."
         )
+    previous_status = order.status.value
     order.status = OrderStatus.DELETED
     order.dispatch_stopped = True
     order.updated_at = datetime.now(timezone.utc)
+    values: dict[str, str | bool] = {"status": OrderStatus.DELETED.value}
+    if test_only:
+        values["test"] = True
     session.add(
         AuditLogModel(
             entity_type="order",
             entity_id=order.order_id,
             action=AuditAction.DELETE,
-            old_values={"status": OrderStatus.NEW.value},
-            new_values={"status": OrderStatus.DELETED.value, "test": True},
+            old_values={"status": previous_status},
+            new_values=values,
         )
     )
-    return "Тестовый заказ удалён. История сохранена."
+    return (
+        "Тестовый заказ удалён."
+        if test_only
+        else "Заказ удалён. История сохранена."
+    )
 
 
 def _set_order_visibility(
@@ -335,7 +352,7 @@ def change_order_worklist(
     session: Session, order_id: UUID, operation: str
 ) -> str:
     if (
-        operation == "delete-test"
+        operation in {"delete", "delete-test"}
         and session.get_bind().dialect.name == "postgresql"
     ):
         # Use the same lock order as native checkout and customer cancellation.
@@ -348,8 +365,10 @@ def change_order_worklist(
         return "Заказ не найден."
     if operation in {"mark-test", "unmark-test"}:
         return _mark_test_order(session, order_id, operation == "mark-test")
-    if operation == "delete-test":
-        return _delete_test_order(session, order)
+    if operation in {"delete", "delete-test"}:
+        return _delete_order(
+            session, order, test_only=operation == "delete-test"
+        )
     if operation in {"hide", "restore"}:
         return _set_order_visibility(session, order_id, operation == "restore")
     if not session.scalar(

@@ -187,11 +187,11 @@
                     {% endif %}
                   </form>
                 {% endif %}
-                {% if info.can_delete_test %}
-                  <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='delete-test').replace(query=request.url.query) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button type="button" class="btn btn-sm btn-outline-danger" data-admin-confirm="Удалить тестовый заказ «{{ row.offer_text|truncate(70) }}»? Запись в журнале сохранится.">Удалить тестовый</button>
-                  </form>
+                {% if info.can_delete %}
+                  {% set delete_url = request.url_for('update_order_worklist', order_id=row.order_id, operation='delete').replace(query=request.url.query) %}
+                  {% set delete_title = row.offer_text or 'Заказ' %}
+                  {% set delete_button_class = 'btn btn-sm btn-outline-danger' %}
+                  {% include 'order_delete_button.html' %}
                 {% endif %}
               </div>
             </td>

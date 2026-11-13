@@ -21,6 +21,7 @@ from ugc_bot.admin.complaints import (
 )
 from ugc_bot.admin.order_worklist import (
     aging_unpaid_condition,
+    can_delete_order,
     worklist_conditions,
 )
 from ugc_bot.domain.enums import (
@@ -1791,6 +1792,9 @@ class AdminDashboardService:
         query = (
             select(
                 OrderModel,
+                can_delete_order(
+                    postgresql=session.get_bind().dialect.name == "postgresql"
+                ).label("can_delete"),
                 func.coalesce(responses.c.responses, 0).label("responses"),
                 func.coalesce(open_complaints.c.open_complaints, 0).label(
                     "open_complaints"
@@ -1823,7 +1827,10 @@ class AdminDashboardService:
                 open_complaints,
                 open_complaints.c.order_id == OrderModel.order_id,
             )
-            .where(OrderModel.order_id == order_id)
+            .where(
+                OrderModel.order_id == order_id,
+                OrderModel.status != OrderStatus.DELETED,
+            )
         )
         result = await session.execute(query)
         row = result.one_or_none()
@@ -1831,6 +1838,7 @@ class AdminDashboardService:
             return None
         (
             order,
+            can_delete,
             responses_count,
             open_count,
             advertiser_name,
@@ -1865,6 +1873,7 @@ class AdminDashboardService:
         )
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
+            "can_delete": bool(can_delete),
             "advertiser_id": str(order.advertiser_id),
             "advertiser": advertiser_name,
             "order_type": order.order_type.value,

@@ -130,7 +130,7 @@ def test_sqladmin_list_views(admin_server, page, base_url) -> None:
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(45)
+@pytest.mark.timeout(60)
 def test_order_worklist_search_hide_and_restore(
     admin_server, page, base_url, test_database
 ):
@@ -248,3 +248,33 @@ def test_order_worklist_search_hide_and_restore(
     expect(row).to_have_count(0)
     page.get_by_role("link", name="В работе").click()
     expect(row).to_be_visible()
+
+    row.get_by_role("link", name="Редактировать", exact=True).click()
+    expect(page.get_by_role("heading", name="Бриф заказа")).to_be_visible()
+    expect(page.get_by_role("heading", name="Подбор креаторов")).to_be_visible()
+    expect(page.get_by_role("link", name=brand)).to_be_visible()
+    barter = page.get_by_label("Описание бартера", exact=True)
+    barter.fill("я" * 4001)
+    expect(page.locator("#barter_description-count")).to_contain_text(
+        "4001 / 4000"
+    )
+    assert barter.evaluate("(field) => !field.validity.valid")
+    barter.fill("Билеты")
+    page.get_by_label("География", exact=True).fill("Казань")
+    expect(page.locator("#order-audience-dirty")).to_be_visible()
+    page.get_by_role(
+        "button", name="Сохранить и продолжить", exact=True
+    ).click()
+    expect(page.get_by_label("География", exact=True)).to_have_value("Казань")
+    expect(page.locator("#order-audience-dirty")).to_be_hidden()
+    page.get_by_role("link", name="Карточка заказа").click()
+    delete = page.get_by_role("button", name="Удалить заказ", exact=True)
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    delete.click()
+    expect(delete).to_be_visible()
+    page.once("dialog", confirm)
+    delete.click()
+    expect(page.get_by_role("status")).to_have_text(
+        "Заказ удалён. История сохранена."
+    )
+    expect(row).to_have_count(0)
