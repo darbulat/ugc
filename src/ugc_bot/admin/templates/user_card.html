@@ -1,149 +1,194 @@
 {% extends "base.html" %}
-{% block title %}Карточка пользователя {{ user.user_id }}{% endblock %}
+{% from "people_parts.html" import telegram, instagram, stars, count, pager %}
+{% set creator = user.blogger_profile %}
+{% set customer = user.advertiser_profile %}
+{% set name = (customer.brand if customer else none) or user.username or user.telegram or 'Карточка пользователя' %}
+{% block title %}{{ name }} · Карточка пользователя{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ admin_asset(request, 'people.css') }}">{% endblock %}
+{% macro fact(label, value) %}
+  <div><dt>{{ label }}</dt><dd>{{ value if value is defined and value is not none and value != '' else '—' }}</dd></div>
+{% endmacro %}
+{% macro order_link(order_id, label) %}
+  <a href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">{{ label or 'Заказ' }}</a>
+{% endmacro %}
+{% macro person_link(user_id, name) %}
+  <a href="{{ request.url_for('admin_user_card', user_id=user_id) }}">{{ name or 'Профиль' }}</a>
+{% endmacro %}
+{% macro history_pager(section, data) %}
+  {{ pager(request, data.page, data.has_next, section ~ '_page', '#' ~ section) }}
+{% endmacro %}
 {% block content %}
-  {% if order_url %}
-  <div class="admin-actions">
-    <a class="admin-button" href="{{ order_url }}">← К заказу</a>
-  </div>
-  {% endif %}
-  <section class="section">
-    <h1>Карточка пользователя</h1>
-    <div class="card">
-      <div class="detail-row">
-        <div class="detail-label">ID пользователя</div>
-        <div class="detail-value">{{ user.user_id }}</div>
+  <article class="people people-profile">
+    <a href="{{ order_url or directory_url }}">{{ '← К заказу' if order_url else '← Назад к списку' }}</a>
+    <header class="people-heading">
+      <div>
+        <h1>{{ name }}</h1>
+        <div class="people-contacts">
+          {% if customer %}<span>Заказчик</span>{% endif %}
+          {% if creator %}<span>Креатор{% if creator.city %} · {{ creator.city.strip().title() }}{% endif %}</span>{% endif %}
+          {% if user.telegram %}<span><small>TG</small> {{ telegram(user.telegram) }}</span>{% endif %}
+          {% if creator and creator.instagram_url %}<span><small>IG</small> {{ instagram(creator.instagram_url) }}</span>{% endif %}
+        </div>
       </div>
-      <div class="detail-row">
-        <div class="detail-label">Telegram</div>
-        <div class="detail-value">{{ user.telegram or '—' }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Имя (username)</div>
-        <div class="detail-value">{{ user.username }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Telegram ID</div>
-        <div class="detail-value">{{ user.telegram_id }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Max ID</div>
-        <div class="detail-value">{{ user.max_id }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Мессенджер</div>
-        <div class="detail-value">{{ user.messenger_type }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Статус</div>
-        <div class="detail-value">{{ user_status_labels.get(user.status, user.status) }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Счётчик обращений</div>
-        <div class="detail-value">{{ user.issue_count }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Дата регистрации</div>
-        <div class="detail-value">{{ user.created_at }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Роль выбрана</div>
-        <div class="detail-value">{{ user.role_chosen_at or '—' }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Напоминание о роли</div>
-        <div class="detail-value">{{ user.last_role_reminder_at or '—' }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Админ</div>
-        <div class="detail-value">{{ 'Да' if user.admin else 'Нет' }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Реферальный код</div>
-        <div class="detail-value">{{ user.referral_code or '—' }}</div>
-      </div>
-    </div>
+      <span class="people-pill{% if user.status_label|default(user.status) == 'active' %} people-pill--active{% endif %}">{{ user_status_labels.get(user.status_label|default(user.status), user.status) }}</span>
+    </header>
 
-    {% if user.blogger_profile %}
-      <h2>Профиль креатора</h2>
-      <div class="card">
-        <div class="detail-row">
-          <div class="detail-label">Instagram</div>
-          <div class="detail-value">{{ user.blogger_profile.instagram_url }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Подтверждён</div>
-          <div class="detail-value">{{ 'Да' if user.blogger_profile.confirmed else 'Нет' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Город</div>
-          <div class="detail-value">{{ user.blogger_profile.city or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Пол</div>
-          <div class="detail-value">{{ user.blogger_profile.blogger_gender or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Темы</div>
-          <div class="detail-value">{{ user.blogger_profile.topics or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Пол аудитории</div>
-          <div class="detail-value">{{ user.blogger_profile.audience_gender }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Возраст аудитории</div>
-          <div class="detail-value">{{ user.blogger_profile.audience_age_min }}–{{ user.blogger_profile.audience_age_max }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Гео аудитории</div>
-          <div class="detail-value">{{ user.blogger_profile.audience_geo or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Цена</div>
-          <div class="detail-value">{{ user.blogger_profile.price }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Бартер</div>
-          <div class="detail-value">{{ 'Да' if user.blogger_profile.barter else 'Нет' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Формат работы</div>
-          <div class="detail-value">{{ user.blogger_profile.work_format }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Обновлён</div>
-          <div class="detail-value">{{ user.blogger_profile.updated_at }}</div>
-        </div>
-      </div>
+    {% if creator %}
+      <dl class="people-summary">
+        <div class="people-panel"><dt>Подписчики Instagram</dt><dd>{{ count(creator.followers) if creator.followers is not none else '—' }}</dd></div>
+        <div class="people-panel"><dt>Отклики</dt><dd>{{ count(user.responses) }}</dd></div>
+        <div class="people-panel"><dt>Рейтинг за заказы</dt><dd>{% if user.creator_rating is not none %}<a href="#ratings">{{ stars(user.creator_rating) }}</a>{% else %}—{% endif %}</dd></div>
+      </dl>
+    {% endif %}
+    {% if user.feedback is defined %}
+      <nav class="people-jump" aria-label="Разделы профиля">
+        {% if customer %}<a class="people-button" href="#orders">Заказы</a>{% endif %}
+        <a class="people-button" href="#feedback">Отзывы о работе</a>
+        <a class="people-button" href="#ratings">Оценки за заказы</a>
+        <a class="people-button" href="#complaints">Жалобы</a>
+        <a class="people-button" href="#nps">Ответы NPS</a>
+      </nav>
     {% endif %}
 
-    {% if user.advertiser_profile %}
-      <div class="page-heading profile-heading">
-        <h2>Профиль заказчика</h2>
-        <a class="admin-button" href="/admin/order-model/list?group=all&amp;advertiser_id={{ user.user_id }}">Все заказы заказчика</a>
-      </div>
-      <div class="card">
-        <div class="detail-row">
-          <div class="detail-label">Контакт (телефон)</div>
-          <div class="detail-value">{{ user.advertiser_profile.contact }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Бренд</div>
-          <div class="detail-value">{{ user.advertiser_profile.brand or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Сайт</div>
-          <div class="detail-value">{{ user.advertiser_profile.site_link or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Город</div>
-          <div class="detail-value">{{ user.advertiser_profile.city or '—' }}</div>
-        </div>
-        <div class="detail-row">
-          <div class="detail-label">Деятельность компании</div>
-          <div class="detail-value">{{ user.advertiser_profile.company_activity or '—' }}</div>
-        </div>
-      </div>
+    {% if customer %}
+      <section class="people-panel" id="orders">
+        <header class="people-section-heading">
+          <h2>Заказы заказчика</h2>
+          <a class="people-button" href="{{ request.url_for('admin:list', identity='order-model').include_query_params(group='all', advertiser_id=user.user_id) }}">Все заказы заказчика</a>
+        </header>
+        {% if user.orders['items'] %}
+          <ul class="people-history">
+            {% for (order,) in user.orders['items'] %}
+              <li>{{ order_link(order.order_id, order.offer_text) }}
+                <div class="people-secondary">{{ order_status_labels.get(order.status, order.status) }} · {{ order.created_at|admin_date }}</div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="people-empty">Заказов пока нет.</p>{% endif %}
+        {{ history_pager('orders', user.orders) }}
+      </section>
     {% endif %}
-  </section>
+
+    {% if user.feedback is defined %}
+      <section class="people-panel" id="feedback">
+        <header class="people-section-heading"><h2>Отзывы о работе</h2></header>
+        {% if user.feedback['items'] %}
+          <ul class="people-history">
+            {% for row in user.feedback['items'] %}
+              <li>
+                <strong>{% if row.author_id|string == user.user_id %}Оставил отзыв о {{ person_link(row.target_id, row.target) }}{% else %}Отзыв от {{ person_link(row.author_id, row.author) }}{% endif %}</strong>
+                <div class="people-secondary">{{ order_link(row.order_id, row.offer_text) }} · {{ row.date|admin_date }}</div>
+                <p>{{ row.message }}</p>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="people-empty">Отзывов о работе пока нет.</p>{% endif %}
+        {{ history_pager('feedback', user.feedback) }}
+      </section>
+
+      <section class="people-panel" id="ratings">
+        <header class="people-section-heading"><h2>Оценки за заказы</h2></header>
+        {% if user.ratings['items'] %}
+          <ul class="people-history">
+            {% for rating, author, offer, recipient in user.ratings['items'] %}
+              <li>
+                <strong>{{ stars(rating.score) }}</strong>
+                {% if rating.rater_id|string == user.user_id %}
+                  · Оценил {{ person_link(rating.blogger_id, recipient) }}
+                {% else %}
+                  · {{ person_link(rating.rater_id, author) }} ({{ rater_roles.get(rating.rater_role, rating.rater_role) }})
+                {% endif %}
+                <div class="people-secondary">{{ order_link(rating.order_id, offer) }} · {{ (rating.updated_at or rating.created_at)|admin_date }}</div>
+                {% if rating.comment %}<p>{{ rating.comment }}</p>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="people-empty">Оценок за заказы пока нет.</p>{% endif %}
+        {{ history_pager('ratings', user.ratings) }}
+      </section>
+
+      <section class="people-panel" id="complaints">
+        <header class="people-section-heading"><h2>Жалобы</h2></header>
+        {% if user.complaints['items'] %}
+          <ul class="people-history">
+            {% for complaint, author, target in user.complaints['items'] %}
+              <li>
+                <strong>{% if complaint.reporter_id|string == user.user_id %}Подал жалобу на {{ person_link(complaint.reported_id, target) }}{% else %}Жалоба от {{ person_link(complaint.reporter_id, author) }}{% endif %}</strong>
+                <span class="people-pill">{{ complaint_status_labels.get(complaint.status, complaint.status) }}</span>
+                <div class="people-secondary">
+                  <a href="{{ request.url_for('admin:details', identity='complaint-model', pk=complaint.complaint_id) }}">Открыть жалобу</a>
+                  · {{ order_link(complaint.order_id, none) }} · {{ complaint.created_at|admin_date }}
+                </div>
+                <p>{{ complaint.reason }}</p>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="people-empty">Жалоб пока нет.</p>{% endif %}
+        {{ history_pager('complaints', user.complaints) }}
+      </section>
+
+      <section class="people-panel" id="nps">
+        <header class="people-section-heading"><h2>Ответы NPS об UMC</h2></header>
+        {% if user.nps['items'] %}
+          <ul class="people-history">
+            {% for (response,) in user.nps['items'] %}
+              <li>
+                <strong>{{ stars(response.score) }}</strong> <span class="people-secondary">· {{ response.created_at|admin_date }}</span>
+                {% if response.comment %}<p>{{ response.comment }}</p>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}<p class="people-empty">Ответов NPS пока нет.</p>{% endif %}
+        {{ history_pager('nps', user.nps) }}
+      </section>
+    {% endif %}
+
+    {% if customer %}
+      <section class="people-panel">
+        <header class="people-section-heading"><h2>Профиль заказчика</h2></header>
+        <dl class="people-facts">
+          {{ fact('Имя', user.username) }}
+          {{ fact('Компания', customer.brand) }}
+          {{ fact('Контакт', customer.contact) }}
+          {{ fact('Сайт', customer.site_link) }}
+          {{ fact('Город', customer.city) }}
+          {{ fact('Деятельность компании', customer.company_activity) }}
+        </dl>
+      </section>
+    {% endif %}
+    {% if creator %}
+      <section class="people-panel">
+        <header class="people-section-heading"><h2>Профиль креатора</h2></header>
+        <dl class="people-facts">
+          {{ fact('Instagram подтверждён', 'Да' if creator.confirmed else 'Нет') }}
+          {{ fact('Город', creator.city) }}
+          {{ fact('Пол', {'f': 'Женский', 'm': 'Мужской'}.get(creator.blogger_gender)) }}
+          {{ fact('Темы', creator.topics|join(', ')) }}
+          {{ fact('Пол аудитории', {'all': 'Любой', 'f': 'Женский', 'm': 'Мужской'}.get(creator.audience_gender)) }}
+          {{ fact('Возраст аудитории', creator.audience_age_min ~ '–' ~ creator.audience_age_max) }}
+          {{ fact('География аудитории', creator.audience_geo) }}
+          {{ fact('Цена', creator.price) }}
+          {{ fact('Бартер', 'Да' if creator.barter else 'Нет') }}
+          {{ fact('Формат работы', {'ugc_only': 'UGC', 'ads_in_account': 'Реклама в аккаунте'}.get(creator.work_format, creator.work_format)) }}
+          {{ fact('Обновлён', creator.updated_at|admin_date) }}
+        </dl>
+      </section>
+    {% endif %}
+
+    <details class="people-panel">
+      <summary>Служебные данные</summary>
+      <dl class="people-facts">
+        {{ fact('ID пользователя', user.user_id) }}
+        {{ fact('Telegram ID', user.telegram_id) }}
+        {{ fact('Max ID', user.max_id) }}
+        {{ fact('Мессенджер', user.messenger_type) }}
+        {{ fact('Обращений', user.issue_count) }}
+        {{ fact('Зарегистрирован', user.created_at|default(none)|admin_date) }}
+        {{ fact('Роль выбрана', user.role_chosen_at|default(none)|admin_date) }}
+        {{ fact('Напоминание о роли', user.last_role_reminder_at|default(none)|admin_date) }}
+        {{ fact('Администратор', 'Да' if user.admin else 'Нет') }}
+        {{ fact('Реферальный код', user.referral_code) }}
+      </dl>
+    </details>
+  </article>
 {% endblock %}

@@ -1,76 +1,42 @@
-{% extends "base.html" %}
-{% block title %}Заказчики{% endblock %}
-{% macro sort_header(key, label) %}
-  {% set selected = sort == key %}
-  <th scope="col"{% if selected %} aria-sort="{{ 'ascending' if order == 'asc' else 'descending' }}"{% endif %}>
-    <a href="{{ request.url.remove_query_params('page').include_query_params(sort=key, order='asc' if selected and order == 'desc' else 'desc') }}">
-      {{ label }}{% if selected %}<span aria-hidden="true"> {{ '↑' if order == 'asc' else '↓' }}</span>{% endif %}
-    </a>
-  </th>
-{% endmacro %}
-{% block content %}
-  <section class="section">
-    <h1>Заказчики</h1>
-    <form class="filters filters--search" action="/admin/users/advertisers" method="get">
-      <input type="hidden" name="per_page" value="{{ per_page }}" />
-      <input type="hidden" name="sort" value="{{ sort }}" />
-      <input type="hidden" name="order" value="{{ order }}" />
-      <input type="search" name="q" aria-label="Поиск заказчиков" placeholder="Ник / Telegram ID" value="{{ search_query | default('') }}" />
-      <button type="submit">Искать</button>
-    </form>
-  </section>
-
-  <section class="section">
-    <div class="admin-table-scroll" role="region" aria-label="Заказчики" tabindex="0">
-      <table class="table">
-        <thead>
-          <tr>
-            {{ sort_header('name', 'Имя / компания') }}
-            {{ sort_header('last_order_at', 'Последний заказ') }}
-            {{ sort_header('orders_total', 'Заказов создано') }}
-            {{ sort_header('orders_completed', 'Заказов завершено') }}
-            {{ sort_header('created_at', 'Дата регистрации') }}
-            {{ sort_header('complaints', 'Жалоб') }}
-            <th scope="col">Telegram</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for advertiser in advertisers %}
-            <tr>
-              <td><a href="{{ request.url_for('admin_user_card', user_id=advertiser.user_id) }}">{{ advertiser.name }}</a></td>
-              <td>
-                {% if advertiser.last_order_at %}
-                  <a href="/admin/order-model/list?group=all&amp;advertiser_id={{ advertiser.user_id }}">{{ advertiser.last_order_at|admin_date }}</a>
-                {% else %}—{% endif %}
-              </td>
-              <td><a href="/admin/order-model/list?group=all&amp;advertiser_id={{ advertiser.user_id }}" aria-label="Заказы · {{ advertiser.name }}">{{ advertiser.orders_total }}</a></td>
-              <td>{{ advertiser.orders_completed }}</td>
-              <td>{{ advertiser.created_at|admin_date }}</td>
-              <td>{{ advertiser.complaints }}</td>
-              <td>{% if advertiser.telegram %}<a href="https://t.me/{{ advertiser.telegram.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ advertiser.telegram.replace('@', '') }}</a>{% else %}—{% endif %}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% if advertisers|length == 0 %}
-      <div class="empty">Заказчики не найдены.</div>
-    {% endif %}
-    {% if total_pages > 1 %}
-      <nav class="pagination" aria-label="Пагинация заказчиков">
-        <span class="pagination__info">
-          {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
-        </span>
-        <div class="pagination__links">
-          {% if page > 1 %}
-            <a class="pagination__link" href="{{ request.url.include_query_params(page=page - 1) }}">← Назад</a>
-          {% endif %}
-          <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
-          {% if page < total_pages %}
-            <a class="pagination__link" href="{{ request.url.include_query_params(page=page + 1) }}">Вперёд →</a>
-          {% endif %}
-        </div>
-      </nav>
-    {% endif %}
-  </section>
+{% extends "people_directory.html" %}
+{% from "people_parts.html" import telegram, count %}
+{% set title = 'Заказчики' %}
+{% set entries = advertisers %}
+{% set search_placeholder = 'Имя, компания, сайт, Telegram или ID' %}
+{% set empty_message = 'Заказчики не найдены. Попробуйте изменить поиск или сбросить фильтры.' %}
+{% set extra_filters = activity %}
+{% block fields %}
+  <div class="people-field">
+    <label for="people-activity">Заказы</label>
+    <select name="activity" id="people-activity">
+      <option value="">Любая активность</option>
+      <option value="with_orders"{% if activity == 'with_orders' %} selected{% endif %}>Есть заказы</option>
+      <option value="without_orders"{% if activity == 'without_orders' %} selected{% endif %}>Без заказов</option>
+    </select>
+  </div>
 {% endblock %}
+{% block columns %}
+  {{ sort_header('name', 'Заказчик / компания', 'asc') }}
+  {{ sort_header('last_order_at', 'Последний заказ') }}
+  {{ sort_header('orders_total', 'Заказов') }}
+  {{ sort_header('orders_completed', 'Завершено') }}
+  {{ sort_header('complaints', 'Жалобы') }}
+  {{ sort_header('created_at', 'Регистрация') }}
+{% endblock %}
+{% macro cells(person, profile_url) %}
+  {% set order_url = request.url_for('admin:list', identity='order-model').include_query_params(group='all', advertiser_id=person.user_id) %}
+  <td class="people-identity">
+    <a class="people-name" href="{{ profile_url }}">{{ person.name or person.telegram or 'Профиль заказчика' }}</a>
+    {% if person.telegram or (person.username and person.username != person.name) %}
+      <div class="people-contacts">
+        {% if person.username and person.username != person.name %}<span>{{ person.username }}</span>{% endif %}
+        {% if person.telegram %}<span><small>TG</small> {{ telegram(person.telegram) }}</span>{% endif %}
+      </div>
+    {% endif %}
+  </td>
+  <td class="people-date">{% if person.last_order_at %}<a href="{{ order_url }}">{{ person.last_order_at|admin_date }}</a>{% else %}—{% endif %}</td>
+  <td class="people-number">{% if person.orders_total %}<a href="{{ order_url }}" aria-label="Заказы · {{ person.name }}">{{ count(person.orders_total) }}</a>{% else %}0{% endif %}</td>
+  <td class="people-number">{{ count(person.orders_completed) }}</td>
+  <td class="people-number">{% if person.complaints %}<a class="people-pill people-pill--alert" href="{{ profile_url }}#complaints">{{ count(person.complaints) }}</a>{% else %}0{% endif %}</td>
+  <td class="people-date">{{ person.created_at|admin_date }}</td>
+{% endmacro %}

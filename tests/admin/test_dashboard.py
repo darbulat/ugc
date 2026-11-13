@@ -156,8 +156,8 @@ def test_admin_dashboard_mvp_redirects_to_dashboard(monkeypatch) -> None:
     assert response.headers.get("location") == "/admin/dashboard"
 
 
-def test_admin_creators_page_creators_by_city_section(monkeypatch) -> None:
-    """Creators page renders Креаторы по городам section below pagination."""
+def test_admin_creators_page_offers_city_filter(monkeypatch) -> None:
+    """Nonempty cities appear as selectable filters."""
     get_creators_by_city_mock = AsyncMock(
         return_value=[
             {"city": "Moscow", "count": 5},
@@ -179,11 +179,8 @@ def test_admin_creators_page_creators_by_city_section(monkeypatch) -> None:
     )
     response = client.get("/admin/users/creators?period=today")
     assert response.status_code == 200
-    assert "Креаторы по городам" in response.text
-    assert "Moscow" in response.text
-    assert "Не указан" in response.text
-    assert "5" in response.text
-    assert "2" in response.text
+    assert 'name="city"' in response.text
+    assert '<option value="moscow">Moscow</option>' in response.text
     get_creators_by_city_mock.assert_called_once()
 
 
@@ -238,9 +235,14 @@ def test_admin_creators_html_with_filters(monkeypatch) -> None:
     creators = [
         {
             "user_id": "u1",
-            "instagram_url": "https://instagram.com/u",
+            "username": "Creator",
+            "instagram": "https://instagram.com/u",
+            "city": "Moscow",
             "created_at": "2026-01-01",
-            "has_complaints": True,
+            "instagram_followers_count": 0,
+            "responses": 1,
+            "complaints": 1,
+            "status": "active",
         }
     ]
     client = _build_admin_client(
@@ -261,7 +263,15 @@ def test_admin_creators_html_with_filters(monkeypatch) -> None:
 def test_admin_advertisers_html(monkeypatch) -> None:
     """Advertisers page renders with mocked data."""
     advertisers = [
-        {"user_id": "a1", "brand": "Brand", "created_at": "2026-01-01"}
+        {
+            "user_id": "a1",
+            "name": "Brand",
+            "username": "Customer",
+            "created_at": "2026-01-01",
+            "orders_total": 0,
+            "orders_completed": 0,
+            "complaints": 0,
+        }
     ]
     client = _build_admin_client(
         monkeypatch,
@@ -969,7 +979,7 @@ def test_admin_creators_html_uses_cache_on_second_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Creators list HTML cache hit on second request; list_creators once."""
-    cached = _paginated([{"user_id": "c1", "nickname": "creator1"}])
+    cached = _paginated([])
     serialized = serialize_admin_payload(cached)
     mock_cache = MagicMock()
     mock_cache.get = AsyncMock(side_effect=[None, serialized])
