@@ -77,24 +77,10 @@ def isolated_financial_database(
         env.pop("MIGRATION_SCHEMA", None)
         env["DATABASE_URL"] = scoped_url.render_as_string(hide_password=False)
         root = Path(__file__).resolve().parents[2]
-        # Commit each revision: legacy enum additions must commit before later
-        # revisions reference their values (PG UnsafeNewEnumValueUsage).
+        # Alembic's transaction_per_migration commits enum changes before
+        # subsequent revisions use the new values.
         result = subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import sys; from alembic import command; "
-                    "from alembic.config import Config; "
-                    "from alembic.script import ScriptDirectory; "
-                    "c = Config('alembic.ini'); "
-                    "s = ScriptDirectory.from_config(c); "
-                    "revs = list(s.walk_revisions("
-                    "base='base', head=sys.argv[1])); "
-                    "[command.upgrade(c, r.revision) for r in reversed(revs)]"
-                ),
-                target_revision,
-            ],
+            [sys.executable, "-m", "alembic", "upgrade", target_revision],
             cwd=root,
             env=env,
             capture_output=True,
@@ -201,27 +187,7 @@ def upgrade_financial_schema(engine, *, target_revision: str):
     scoped_url = engine.url.render_as_string(hide_password=False)
     env["DATABASE_URL"] = scoped_url
     result = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            (
-                "import sys; from alembic import command; "
-                "from alembic.config import Config; "
-                "from alembic.script import ScriptDirectory; "
-                "from alembic.migration import MigrationContext; "
-                "from sqlalchemy import create_engine; import os; "
-                "e=create_engine(os.environ['DATABASE_URL']); "
-                "c=Config('alembic.ini'); s=ScriptDirectory.from_config(c); "
-                "db=e.connect(); current=MigrationContext.configure(db)"
-                ".get_current_revision(); "
-                "db.close(); e.dispose(); "
-                "revs=list(s.walk_revisions(base=current or 'base',"
-                "head=sys.argv[1])); "
-                "[command.upgrade(c,r.revision) for r in reversed(revs) "
-                "if r.revision!=current]"
-            ),
-            target_revision,
-        ],
+        [sys.executable, "-m", "alembic", "upgrade", target_revision],
         cwd=Path(__file__).resolve().parents[2],
         env=env,
         capture_output=True,
