@@ -45,6 +45,9 @@ from ugc_bot.selection_maturity_scheduler import (
     run_loop as selection_maturity_loop,
 )
 from ugc_bot.startup_logging import log_startup_info
+from ugc_bot.unpaid_reminder_scheduler import (
+    run_enabled as unpaid_reminder_loop,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +72,16 @@ def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
             asyncio.create_task(
                 order_summary_loop(config, container, bot),
                 name="telegram-order-summary",
+            )
+        )
+    order_config = getattr(config, "order", None)
+    if getattr(order_config, "unpaid_reminders_enabled", False) and getattr(
+        order_config, "unpaid_reminders_start_at", None
+    ):
+        tasks.append(
+            asyncio.create_task(
+                unpaid_reminder_loop(config, container, bot),
+                name="unpaid-order-reminders",
             )
         )
     return tasks

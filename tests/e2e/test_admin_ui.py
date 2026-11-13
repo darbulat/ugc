@@ -92,6 +92,38 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
 @requires_postgres
+def test_dashboard_chart_range_and_values(admin_server: str, page) -> None:
+    """Show all 30 calendar days and let the operator zoom in and reset."""
+    from playwright.sync_api import expect
+
+    # The daily table also works if the chart CDN is unavailable.
+    page.route(
+        "https://cdn.jsdelivr.net/npm/chart.js@*/**",
+        lambda route: route.abort(),
+    )
+    _login(page, admin_server)
+    response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
+    assert response is not None and response.ok
+    page.locator('[data-chart="orders"] .chart-expand').click()
+    detail = page.get_by_role("dialog")
+    expect(detail).to_be_visible()
+    rows = detail.locator("tbody tr")
+    expect(rows).to_have_count(30)
+    detail.get_by_role("button", name="Последние 7 дней").click()
+    expect(rows).to_have_count(7)
+    detail.get_by_role("button", name="Весь период").click()
+    expect(rows).to_have_count(30)
+    page.keyboard.press("Escape")
+    expect(detail).not_to_be_visible()
+    page.locator(".payout-jump").click()
+    expect(page.locator("#payout-requests details")).to_have_attribute(
+        "open", ""
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(30)
+@requires_postgres
 def test_navigation_creators(admin_server: str, page) -> None:
     """Creators page loads (requires PostgreSQL, blogger_profiles)."""
     _login(page, admin_server)

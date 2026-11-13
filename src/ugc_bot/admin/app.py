@@ -116,6 +116,9 @@ from ugc_bot.infrastructure.db.models import (
     ReferralIncomeEntryModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.repositories.unpaid_reminders import (
+    reminder_statuses,
+)
 from ugc_bot.infrastructure.redis_cache import (
     AdminCache,
     deserialize_admin_payload,
@@ -738,7 +741,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v3:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v4:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -1108,7 +1111,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v3:{period_key}"
+        f"dashboard_api:v4:{period_key}"
         if cache and not include_timings
         else None
     )
@@ -1139,7 +1142,7 @@ async def _api_charts_json(
     """Charts payload as JSON."""
     period_key = _normalize_period(period)
     if cache:
-        cache_key = f"charts:v2:{period_key}"
+        cache_key = f"charts:v3:{period_key}"
         raw = await cache.get(cache_key)
         if raw is not None:
             return cast(
@@ -1998,6 +2001,7 @@ class OrderAdmin(ModelView, model=OrderModel):
     page_size = 25
     page_size_options = [25, 50, 100]
     unpaid_age_hours = 24
+    unpaid_reminders_enabled = False
     worklist_status_labels = ORDER_STATUS_LABELS
     worklist_columns = {
         "geography": "География",
@@ -2250,6 +2254,15 @@ class OrderAdmin(ModelView, model=OrderModel):
         def load():
             with self.session_maker() as session:
                 return worklist_row_details(
+                    session, [row.order_id for row in rows]
+                )
+
+        return await asyncio.to_thread(load)
+
+    async def unpaid_reminder_statuses(self, rows: Sequence[OrderModel]):
+        def load():
+            with self.session_maker() as session:
+                return reminder_statuses(
                     session, [row.order_id for row in rows]
                 )
 
@@ -3510,6 +3523,10 @@ def create_admin_app() -> FastAPI:
     for view in admin.views:
         if isinstance(view, OrderAdmin):
             view.unpaid_age_hours = config.admin.admin_no_responses_hours
+            view.unpaid_reminders_enabled = bool(
+                config.order.unpaid_reminders_enabled
+                and config.order.unpaid_reminders_start_at
+            )
 
     @app.on_event("shutdown")
     async def _dispose_container() -> None:

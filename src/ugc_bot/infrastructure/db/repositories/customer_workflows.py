@@ -44,6 +44,11 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
+from ugc_bot.infrastructure.db.reminder_coordination import (
+    CLIENT_REMINDER,
+    lock_customer_reminders,
+    moscow_day_start,
+)
 from ugc_bot.infrastructure.db.repositories.financial_capture import PROVIDER
 from ugc_bot.infrastructure.db.repositories.financial_items import (
     SqlAlchemyFinancialItemRepository,
@@ -777,6 +782,7 @@ class SqlAlchemyCustomerWorkflowRepository:
         db = _session(session)
         # Activity takes series before delivery rows. Keep the same lock order.
         if job["series_id"]:
+            await lock_customer_reminders(db, job["recipient_id"])
             await db.execute(
                 select(SERIES.c.series_id)
                 .where(SERIES.c.series_id == job["series_id"])
@@ -849,12 +855,8 @@ class SqlAlchemyCustomerWorkflowRepository:
         )
         if channel not in ("telegram", "max") or not address:
             return None
-        if mark_sending:
-            await db.execute(
-                update(JOBS)
-                .where(JOBS.c.job_id == job["job_id"])
-                .values(state="sending")
-            )
+        if mark_sending and not await self._begin_delivery(db, job, at):
+            return None
         return result | dict(
             channel=channel,
             address=address,
@@ -863,6 +865,41 @@ class SqlAlchemyCustomerWorkflowRepository:
             else "chat_id",
             language=user["language"] or "ru",
         )
+
+    async def _begin_delivery(self, db, job: dict, at: datetime) -> bool:
+        if job["series_id"] and await self._defer_recent_reminder(db, job, at):
+            return False
+        await db.execute(
+            update(JOBS)
+            .where(JOBS.c.job_id == job["job_id"])
+            .values(state="sending")
+        )
+        return True
+
+    async def _defer_recent_reminder(self, db, job: dict, at: datetime) -> bool:
+        day_start = moscow_day_start(at)
+        sent = await db.scalar(
+            select(AuditLogModel.id)
+            .where(
+                AuditLogModel.entity_type == CLIENT_REMINDER,
+                AuditLogModel.entity_id == job["recipient_id"],
+                AuditLogModel.changed_at >= day_start,
+            )
+            .limit(1)
+        )
+        if sent is None:
+            return False
+        await db.execute(
+            update(JOBS)
+            .where(JOBS.c.job_id == job["job_id"])
+            .values(
+                state="ready",
+                due_at=day_start + timedelta(days=1),
+                lease_token=None,
+                lease_until=None,
+            )
+        )
+        return True
 
     async def retry_preparation(
         self,
