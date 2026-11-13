@@ -32,6 +32,9 @@ from ugc_bot.application.native_principal_ports import (
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
+from ugc_bot.application.services.order_support_service import (
+    OrderSupportService,
+)
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
 from ugc_bot.bot.telegram.order_summary_runtime import run_once
 from ugc_bot.config import AppConfig
@@ -498,3 +501,20 @@ async def check_small_package(summary, oid, interests, principal, bot, env):
         )
         assert report["state"] == "review"
         assert report["review_reason"] == "replacement_reserve_limit_reached"
+        request_id = report["support_request_id"]
+        admin = db.scalar(select(UserModel).where(UserModel.admin.is_(True)))
+        admin_principal = AuthenticatedMessengerPrincipal(
+            admin.user_id, "telegram", admin.telegram_id
+        )
+    support = OrderSupportService(
+        summary.repository, summary.transactions, summary.clock
+    )
+    await support.update_status(
+        admin_principal.user_id,
+        request_id,
+        "resolved",
+        principal=admin_principal,
+    )
+    data = await summary.view(principal, oid)
+    assert data["positions"][0]["report_state"] == "reviewed"
+    assert data["positions"][0]["work_state"] is None

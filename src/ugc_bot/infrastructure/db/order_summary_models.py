@@ -55,7 +55,7 @@ def summary_tables(metadata):
         sa.Column("replacement_id", sa.Uuid()),
         sa.Column("automatic_request_id", sa.Uuid(), unique=True),
         sa.Column("review_reason", sa.String(150)),
-        sa.Column("review_notified_at", sa.DateTime(timezone=True)),
+        sa.Column("support_request_id", sa.Uuid()),
         sa.CheckConstraint(
             "reason IN ('no_answer','refused','not_done','other')"
         ),

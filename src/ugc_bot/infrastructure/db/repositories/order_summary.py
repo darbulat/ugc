@@ -3,7 +3,7 @@
 from datetime import timedelta
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from sqlalchemy import and_, exists, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.enums import OrderStatus
@@ -37,6 +37,16 @@ def funded_order():
             OrderItemModel.order_id == OrderModel.order_id,
             OrderItemModel.captured_at.is_not(None),
         ),
+    )
+
+
+def report_state():
+    return case(
+        (
+            (REPORTS.c.state == "review") & (REQUESTS.c.state == "resolved"),
+            "reviewed",
+        ),
+        else_=REPORTS.c.state,
     )
 
 
@@ -118,7 +128,7 @@ class SqlOrderSummary:
                         work.due_at,
                         work.record_payload,
                         REPORTS.c.report_id,
-                        REPORTS.c.state.label("report_state"),
+                        report_state().label("report_state"),
                         REPORTS.c.answer_due_at,
                         REPLACEMENTS["allocations"].c.replacement_id,
                         delivered_at.label("contact_at"),
@@ -141,6 +151,10 @@ class SqlOrderSummary:
                     .outerjoin(
                         REPORTS,
                         REPORTS.c.assignment_id == assignment.assignment_id,
+                    )
+                    .outerjoin(
+                        REQUESTS,
+                        REQUESTS.c.request_id == REPORTS.c.support_request_id,
                     )
                     .outerjoin(
                         REPLACEMENTS["allocations"],
@@ -265,7 +279,7 @@ class SqlOrderSummary:
                     select(REPORTS)
                     .where(
                         REPORTS.c.state == "review",
-                        REPORTS.c.review_notified_at.is_(None),
+                        REPORTS.c.support_request_id.is_(None),
                     )
                     .order_by(REPORTS.c.created_at, REPORTS.c.report_id)
                     .limit(limit)
@@ -281,7 +295,7 @@ class SqlOrderSummary:
                 row
             )
         for (order_id, client_id), entries in grouped.items():
-            await self.enqueue_review(
+            request_id = await self.enqueue_review(
                 order_id,
                 client_id,
                 str(entries[0]["report_id"]),
@@ -302,7 +316,7 @@ class SqlOrderSummary:
                 .where(
                     REPORTS.c.report_id.in_([r["report_id"] for r in entries])
                 )
-                .values(review_notified_at=at)
+                .values(support_request_id=request_id)
             )
 
     async def enqueue_review(
@@ -330,6 +344,7 @@ class SqlOrderSummary:
             )
             .on_conflict_do_nothing()
         )
+        return request_id
 
     async def order_for_position(self, paid_item_id, *, session):
         return await _session(session).scalar(
@@ -384,9 +399,14 @@ class SqlOrderSummary:
 
     async def assignment_report_state(self, assignment_id, *, session):
         return await _session(session).scalar(
-            select(REPORTS.c.state).where(
-                REPORTS.c.assignment_id == assignment_id
+            select(report_state())
+            .select_from(
+                REPORTS.outerjoin(
+                    REQUESTS,
+                    REQUESTS.c.request_id == REPORTS.c.support_request_id,
+                )
             )
+            .where(REPORTS.c.assignment_id == assignment_id)
         )
 
     async def add_report(
