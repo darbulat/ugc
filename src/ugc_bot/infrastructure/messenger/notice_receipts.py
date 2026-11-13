@@ -100,6 +100,7 @@ class _TelegramAction(TypedDict, total=False):
 @dataclass(slots=True)
 class TelegramNoticeReceipts:
     bot: Bot
+    use_web_app: bool = True
 
     async def send(self, attempt: ReceiptMessage) -> DeliveryReceipt:
         address = _address(attempt, "telegram")
@@ -112,14 +113,13 @@ class TelegramNoticeReceipts:
                     uncertain=False,
                 )
             url, label = action
+            button = (
+                InlineKeyboardButton(text=label, web_app=WebAppInfo(url=url))
+                if self.use_web_app
+                else InlineKeyboardButton(text=label, url=url)
+            )
             kwargs["reply_markup"] = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(
-                            text=label, web_app=WebAppInfo(url=url)
-                        )
-                    ]
-                ]
+                inline_keyboard=[[button]]
             )
         try:
             message = await self.bot.send_message(
