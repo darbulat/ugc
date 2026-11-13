@@ -256,3 +256,131 @@ async def test_card_sending_never_repeats_uncertain_delivery(
     assert screen.service.summaries.patch_card.await_count == int(released)
     assert screen.telegram.send_message.await_count <= 1
     screen.service.record_card_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_runtime_respects_flags_and_recovers_after_transient_failure(
+    monkeypatch, screen, caplog
+):
+    from ugc_bot.container import order_summary_factory
+
+    config = NS(
+        financial=NS(core_enabled=False),
+        order=NS(customer_workflows_enabled=True),
+    )
+    container = NS(transaction_manager=object())
+    build = Mock(return_value=None)
+    monkeypatch.setattr(order_summary_factory, "build_order_summary", build)
+    await runtime.run_enabled(config, container, screen.telegram)
+    build.assert_not_called()
+
+    config.financial.core_enabled = True
+    await runtime.run_enabled(config, container, screen.telegram)
+    build.assert_called_once_with(config, container.transaction_manager)
+
+    build.return_value = screen.service
+    run = AsyncMock(side_effect=[TimeoutError(), None])
+    monkeypatch.setattr(runtime, "run_once", run)
+
+    class Finished(Exception):
+        pass
+
+    pause = AsyncMock(side_effect=[None, Finished()])
+    monkeypatch.setattr(runtime.asyncio, "sleep", pause)
+    with pytest.raises(Finished):
+        await runtime.run_enabled(config, container, screen.telegram)
+    assert run.await_count == 2
+    assert [call.args[0] for call in pause.await_args_list] == [60, 60]
+    assert "Telegram order summary batch failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_stale_creator_and_resolved_order_reminder_are_skipped(screen):
+    summaries = screen.service.summaries
+    summaries.user = AsyncMock(
+        return_value=NS(
+            user_id=screen.data["client_id"], status="active", telegram_id="123"
+        )
+    )
+    summaries.card = AsyncMock(
+        return_value=(
+            None,
+            {"responded_at": screen.service.now(), "message_id": "30"},
+        )
+    )
+    summaries.report = AsyncMock(return_value={"state": "withdrawn"})
+    summaries.report_context = AsyncMock()
+    screen.service.is_resolved = Mock(return_value=False)
+    job = dict(
+        order_id=screen.order,
+        recipient_id=screen.data["client_id"],
+        report_id=uuid4(),
+        kind="creator",
+    )
+    assert await runtime._prepare(screen.service, job) is None
+    summaries.report_context.assert_not_awaited()
+    summaries.report.return_value = {
+        "state": "queued",
+        "client_id": job["recipient_id"],
+    }
+    summaries.report_context.return_value = {"valid_to": screen.service.now()}
+    assert await runtime._prepare(screen.service, job) is None
+
+    job.update(kind="summary")
+    assert await runtime._prepare(screen.service, job) is None
+    summaries.claim_message.assert_not_awaited()
+    summaries.card.side_effect = PermissionError
+    assert await runtime._prepare(screen.service, job) is None
+
+    summaries.card.side_effect = None
+    job.update(kind="reminder", requested=False)
+    assert await runtime._prepare(screen.service, job) is None
+    job.update(requested=True)
+    screen.service.is_resolved.return_value = True
+    assert await runtime._prepare(screen.service, job) is None
+    summaries.user.return_value.telegram_id = "invalid"
+    assert await runtime._prepare(screen.service, job) is None
+
+
+@pytest.mark.asyncio
+async def test_worker_records_definite_failure_and_lost_job_claim(
+    screen, monkeypatch
+):
+    prepare = AsyncMock(return_value=("123", "synthetic", None, screen.order))
+    monkeypatch.setattr(runtime, "_prepare", prepare)
+    summaries = screen.service.summaries
+    summaries.finish_job = AsyncMock(side_effect=[True, False])
+    screen.telegram.send_message.side_effect = TelegramForbiddenError(
+        method=SendMessage(chat_id=123, text="synthetic"), message="blocked"
+    )
+    job = dict(job_id=uuid4(), kind="summary")
+    await runtime._deliver(screen.service, screen.telegram, job)
+    assert summaries.finish_job.await_args.args[1:3] == ("failed", None)
+    summaries.patch_card.assert_awaited_once()
+    assert summaries.patch_card.await_args.kwargs["message_claimed_at"] is None
+
+    screen.telegram.send_message.side_effect = None
+    await runtime._deliver(screen.service, screen.telegram, job)
+    assert summaries.finish_job.await_args.args[1:3] == ("sent", "30")
+    screen.service.record_card_delivery.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_continues_after_obsolete_order(screen):
+    summaries = screen.service.summaries
+    summaries.discover = AsyncMock()
+    summaries.claim_jobs = AsyncMock(return_value=[])
+    summaries.expired = AsyncMock(return_value=[])
+    summaries.notify_reviews = AsyncMock()
+    other_order = uuid4()
+    customer = screen.data["client_id"]
+    summaries.closing_candidates = AsyncMock(
+        return_value=[(screen.order, customer), (other_order, customer)]
+    )
+    screen.service.close_if_resolved = AsyncMock(
+        side_effect=[PermissionError(), None]
+    )
+    await runtime.run_once(screen.service, screen.telegram)
+    assert [
+        item.args for item in screen.service.close_if_resolved.await_args_list
+    ] == [(screen.order, customer), (other_order, customer)]
