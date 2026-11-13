@@ -532,6 +532,7 @@ class ReplacementService:
                 assignment_id=assignment,
                 assignment_version=scope.assignment_version + 1,
                 candidate_interest_id=candidate.interest_id,
+                manager_id=manager,
                 movement_ids=list(movements),
                 allocated_at=now,
             ),

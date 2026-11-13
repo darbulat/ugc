@@ -42,6 +42,7 @@ from ugc_bot.infrastructure.clock import SystemClock
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.models import (
     ItemAssignmentModel,
+    ManagerOrderModel,
     OrderItemModel,
     PaymentModel,
     UserModel,
@@ -71,8 +72,16 @@ def financial_pg_engine():
 
 
 async def setup(env):
-    creators = seed_creators(env, count=4)
+    *creators, manager = seed_creators(env, count=5)
     await capture(env)
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            ManagerOrderModel(
+                order_id=env["order"],
+                user_id=manager,
+                created_at=env["now"],
+            )
+        )
     interests = [
         await service(env).respond(env["order"], creator)
         for creator in creators
@@ -265,6 +274,15 @@ async def test_real_reserve_cancels_before_assignment_without_new_paid_position(
             and new.version == 2
         )
         assert new.creator_id == interests[2].creator_id
+        assert new.manager_id == old.manager_id and old.manager_id is not None
+        assert (
+            db.scalar(
+                select(TABLES["allocations"].c.manager_id).where(
+                    TABLES["allocations"].c.assignment_id == new.assignment_id
+                )
+            )
+            == old.manager_id
+        )
         assert (
             db.scalar(
                 select(func.count())
