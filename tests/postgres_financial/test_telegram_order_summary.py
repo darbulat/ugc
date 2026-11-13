@@ -79,7 +79,7 @@ def fake_telegram():
     )
 
 
-async def paid_order(env, *, size=10):
+async def paid_order(env, *, size=10, interested_creators=None):
     oid = (
         await service(env).create(command(env, position_count=size))
     ).order_id
@@ -123,7 +123,9 @@ async def paid_order(env, *, size=10):
 
     creators = []
     with env["pg"].begin() as db:
-        for _ in range(size + 3):
+        for _ in range(
+            interested_creators if interested_creators is not None else size + 3
+        ):
             cid = seed_profile(db, stable_id=uuid4().hex)
             db.execute(
                 update(UserModel)
@@ -518,3 +520,64 @@ async def check_small_package(summary, oid, interests, principal, bot, env):
     data = await summary.view(principal, oid)
     assert data["positions"][0]["report_state"] == "reviewed"
     assert data["positions"][0]["work_state"] is None
+
+
+@pytest.mark.asyncio
+async def test_withdrawn_draft_and_unfilled_paid_positions(intake_env):
+    env = intake_env
+    summary, oid, interests, principal, bot = await paid_order(
+        env, interested_creators=2
+    )
+    data = await summary.view(principal, oid, action="exceptions")
+    draft = data["draft_id"]
+    assignment = interests[0].assignment_id
+    for _ in range(2):
+        await summary.view(
+            principal,
+            None,
+            action="pick",
+            draft_id=draft,
+            assignment_id=assignment,
+            reason="no_answer",
+        )
+    await summary.view(principal, None, action="discard", draft_id=draft)
+    with pytest.raises(PermissionError, match="summary_order_unavailable"):
+        await summary.view(principal, None, action="save", draft_id=draft)
+
+    data = await summary.view(principal, oid, action="exceptions")
+    draft = data["draft_id"]
+    await summary.view(
+        principal,
+        None,
+        action="pick",
+        draft_id=draft,
+        assignment_id=assignment,
+        reason="no_answer",
+    )
+    data = await summary.view(principal, None, action="save", draft_id=draft)
+    await summary.view(
+        principal,
+        None,
+        action="withdraw",
+        report_id=data["positions"][0]["report_id"],
+    )
+    await run_once(summary, bot)
+    bot.send_message.assert_not_awaited()
+
+    env["clock"].at += timedelta(days=4)
+    await run_once(summary, bot)
+    await run_once(summary, bot)
+    with Session(env["pg"]) as db:
+        assert db.get(OrderModel, oid).status == OrderStatus.ACTIVE
+        reviews = (
+            db.execute(
+                select(REQUESTS.c.payload).where(REQUESTS.c.order_id == oid)
+            )
+            .scalars()
+            .all()
+        )
+    assert len(reviews) == 1
+    assert len(reviews[0]["reports"]) == 8
+    assert {r["reason"] for r in reviews[0]["reports"]} == {
+        "contact_or_refund_unconfirmed"
+    }
