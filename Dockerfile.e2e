@@ -9,8 +9,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH=/opt/venv/bin:$PATH \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# Node is also used by the payout JavaScript unit tests.
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client gzip && \
+    apt-get install -y --no-install-recommends postgresql-client gzip nodejs && \
     rm -rf /var/lib/apt/lists/*
 RUN python -m pip install --no-cache-dir uv==0.13.7
 COPY pyproject.toml uv.lock ./
