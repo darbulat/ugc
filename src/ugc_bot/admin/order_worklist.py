@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy import String, cast, false, or_, select, text
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
-from ugc_bot.domain.enums import AuditAction, OrderStatus
+from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
@@ -32,6 +32,7 @@ ORDER_STATUS_LABELS = {
 }
 _VISIBILITY_ENTITY = "order_worklist_visibility"
 _TEST_ORDER_ENTITY = "order_test_marker"
+UNPAID_GROUP = "unpaid"
 
 
 def _without_payment():
@@ -124,6 +125,28 @@ def _latest_visibility_event(order_id: UUID | InstrumentedAttribute[UUID]):
         )
         .order_by(AuditLogModel.changed_at.desc(), AuditLogModel.id.desc())
         .limit(1)
+    )
+
+
+def aging_unpaid_condition(now: datetime, hours: int):
+    paid = (
+        select(PaymentModel.payment_id)
+        .where(
+            PaymentModel.order_id == OrderModel.order_id,
+            or_(
+                PaymentModel.status == PaymentStatus.PAID,
+                PaymentModel.paid_at.is_not(None),
+                PaymentModel.captured_minor > 0,
+            ),
+        )
+        .correlate(OrderModel)
+        .exists()
+    )
+    return (
+        (OrderModel.status == OrderStatus.NEW)
+        & (OrderModel.created_at <= now - timedelta(hours=hours))
+        & ~paid
+        & ~_is_test_order()
     )
 
 

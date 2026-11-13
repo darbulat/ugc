@@ -58,6 +58,8 @@
         {% endif %}
         {% if key == 'complaints' and count %}
           <a class="attention-queue__link" href="/admin/complaint-model/list?status=open">Все открытые жалобы</a>
+        {% elif key == 'unpaid' %}
+          <a class="attention-queue__link" href="/admin/order-model/list?group=unpaid">Открыть список заявок без оплаты</a>
         {% endif %}
       </details>
       {% endfor %}

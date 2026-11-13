@@ -1,11 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Заказчики{% endblock %}
+{% macro sort_header(key, label) %}
+  {% set selected = sort == key %}
+  <th scope="col"{% if selected %} aria-sort="{{ 'ascending' if order == 'asc' else 'descending' }}"{% endif %}>
+    <a href="{{ request.url.remove_query_params('page').include_query_params(sort=key, order='asc' if selected and order == 'desc' else 'desc') }}">
+      {{ label }}{% if selected %}<span aria-hidden="true"> {{ '↑' if order == 'asc' else '↓' }}</span>{% endif %}
+    </a>
+  </th>
+{% endmacro %}
 {% block content %}
   <section class="section">
     <h1>Заказчики</h1>
     <form class="filters filters--search" action="/admin/users/advertisers" method="get">
       <input type="hidden" name="per_page" value="{{ per_page }}" />
-      <input type="search" name="q" placeholder="Ник / Telegram ID" value="{{ search_query | default('') }}" />
+      <input type="hidden" name="sort" value="{{ sort }}" />
+      <input type="hidden" name="order" value="{{ order }}" />
+      <input type="search" name="q" aria-label="Поиск заказчиков" placeholder="Ник / Telegram ID" value="{{ search_query | default('') }}" />
       <button type="submit">Искать</button>
     </form>
   </section>
@@ -15,21 +25,27 @@
       <table class="table">
         <thead>
           <tr>
-            <th><a href="/admin/users/advertisers?sort=name&order={% if sort == 'name' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Имя / компания</a></th>
-            <th><a href="/admin/users/advertisers?sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
-            <th><a href="/admin/users/advertisers?sort=orders_total&order={% if sort == 'orders_total' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов создано</a></th>
-            <th><a href="/admin/users/advertisers?sort=orders_completed&order={% if sort == 'orders_completed' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов завершено</a></th>
-            <th><a href="/admin/users/advertisers?sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
-            <th>Telegram</th>
+            {{ sort_header('name', 'Имя / компания') }}
+            {{ sort_header('last_order_at', 'Последний заказ') }}
+            {{ sort_header('orders_total', 'Заказов создано') }}
+            {{ sort_header('orders_completed', 'Заказов завершено') }}
+            {{ sort_header('created_at', 'Дата регистрации') }}
+            {{ sort_header('complaints', 'Жалоб') }}
+            <th scope="col">Telegram</th>
           </tr>
         </thead>
         <tbody>
           {% for advertiser in advertisers %}
             <tr>
               <td><a href="{{ request.url_for('admin_user_card', user_id=advertiser.user_id) }}">{{ advertiser.name }}</a></td>
-              <td>{{ advertiser.created_at|admin_date }}</td>
+              <td>
+                {% if advertiser.last_order_at %}
+                  <a href="/admin/order-model/list?group=all&amp;advertiser_id={{ advertiser.user_id }}">{{ advertiser.last_order_at|admin_date }}</a>
+                {% else %}—{% endif %}
+              </td>
               <td><a href="/admin/order-model/list?group=all&amp;advertiser_id={{ advertiser.user_id }}" aria-label="Заказы · {{ advertiser.name }}">{{ advertiser.orders_total }}</a></td>
               <td>{{ advertiser.orders_completed }}</td>
+              <td>{{ advertiser.created_at|admin_date }}</td>
               <td>{{ advertiser.complaints }}</td>
               <td>{% if advertiser.telegram %}<a href="https://t.me/{{ advertiser.telegram.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ advertiser.telegram.replace('@', '') }}</a>{% else %}—{% endif %}</td>
             </tr>
@@ -47,11 +63,11 @@
         </span>
         <div class="pagination__links">
           {% if page > 1 %}
-            <a class="pagination__link" href="/admin/users/advertisers?page={{ page - 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">← Назад</a>
+            <a class="pagination__link" href="{{ request.url.include_query_params(page=page - 1) }}">← Назад</a>
           {% endif %}
           <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
           {% if page < total_pages %}
-            <a class="pagination__link" href="/admin/users/advertisers?page={{ page + 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">Вперёд →</a>
+            <a class="pagination__link" href="{{ request.url.include_query_params(page=page + 1) }}">Вперёд →</a>
           {% endif %}
         </div>
       </nav>

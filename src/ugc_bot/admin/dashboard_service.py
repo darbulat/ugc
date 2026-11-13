@@ -19,7 +19,10 @@ from ugc_bot.admin.complaints import (
     COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
 )
-from ugc_bot.admin.order_worklist import worklist_conditions
+from ugc_bot.admin.order_worklist import (
+    aging_unpaid_condition,
+    worklist_conditions,
+)
 from ugc_bot.domain.enums import (
     OrderStatus,
     PaymentStatus,
@@ -1135,6 +1138,7 @@ class AdminDashboardService:
 
     async def _get_order_attention(self, session: AsyncSession) -> dict:
         """Group current orders by the action they are waiting for."""
+        now = datetime.now(timezone.utc)
         responses = self._order_responses_subquery()
         complaint_counts = self._open_complaints_subquery()
         query = (
@@ -1149,6 +1153,9 @@ class AdminDashboardService:
                 ).label("advertiser_name"),
                 PaymentModel.status.label("payment_status"),
                 CONTROLS.c.paused.label("paused"),
+                aging_unpaid_condition(
+                    now, self._thresholds.no_responses_hours
+                ).label("aging_unpaid"),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
             .outerjoin(
@@ -1172,18 +1179,25 @@ class AdminDashboardService:
         )
         result = await session.execute(query)
         rows = result.all()
-        now = datetime.now(self._timezone)
         attention: dict[str, Any] = {
             "active": 0,
             "delayed": [],
             "unpaid": [],
             "moderation": [],
         }
-        for order, picked, open_count, name, payment_status, paused in rows:
+        for (
+            order,
+            picked,
+            open_count,
+            name,
+            payment_status,
+            paused,
+            unpaid,
+        ) in rows:
             if order.status == OrderStatus.ACTIVE:
                 attention["active"] += 1
             queue, reasons = self._attention_reasons(
-                now, order, picked, payment_status, paused
+                now, order, picked, payment_status, paused, unpaid
             )
             if queue is None:
                 continue
@@ -1209,6 +1223,7 @@ class AdminDashboardService:
         picked: int,
         payment_status: PaymentStatus | None,
         paused: bool | None,
+        aging_unpaid: bool,
     ) -> tuple[str | None, list[str]]:
         if order.status == OrderStatus.PENDING_MODERATION or (
             order.status == OrderStatus.NEW
@@ -1216,10 +1231,7 @@ class AdminDashboardService:
         ):
             return "moderation", ["waiting_moderation"]
         if order.status == OrderStatus.NEW:
-            if (
-                self._age_hours(now, order.created_at)
-                >= self._thresholds.no_responses_hours
-            ):
+            if aging_unpaid:
                 return "unpaid", ["waiting_payment"]
             return None, []
         if order.dispatch_stopped or picked >= order.bloggers_needed:
@@ -1505,6 +1517,8 @@ class AdminDashboardService:
             )
         if sort_by == "orders_total":
             return func.coalesce(orders.c.orders_total, 0)
+        if sort_by == "last_order_at":
+            return orders.c.last_order_at
         if sort_by == "orders_completed":
             return func.coalesce(orders.c.orders_completed, 0)
         if sort_by == "complaints":
@@ -1526,6 +1540,7 @@ class AdminDashboardService:
             select(
                 OrderModel.advertiser_id.label("advertiser_id"),
                 func.count(OrderModel.order_id).label("orders_total"),
+                func.max(OrderModel.created_at).label("last_order_at"),
                 func.sum(
                     case(
                         (
@@ -1558,6 +1573,7 @@ class AdminDashboardService:
                     "orders_completed"
                 ),
                 func.coalesce(complaints.c.complaints, 0).label("complaints"),
+                orders.c.last_order_at,
             )
             .join(
                 AdvertiserProfileModel,
@@ -1574,16 +1590,25 @@ class AdminDashboardService:
         )
         if order_column is not None:
             query = query.order_by(
-                order_column.asc() if order_asc else order_column.desc()
+                (
+                    order_column.asc() if order_asc else order_column.desc()
+                ).nulls_last()
             )
         else:
             query = query.order_by(UserModel.created_at.desc())
-        query = query.limit(limit).offset(offset)
+        query = query.order_by(UserModel.user_id).limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
         payload: list[dict] = []
         for row in rows:
-            user, brand, orders_total, orders_completed, complaints_count = row
+            (
+                user,
+                brand,
+                orders_total,
+                orders_completed,
+                complaints_count,
+                last_order_at,
+            ) = row
             payload.append(
                 {
                     "user_id": str(user.user_id),
@@ -1592,6 +1617,7 @@ class AdminDashboardService:
                     "created_at": user.created_at,
                     "orders_total": int(orders_total),
                     "orders_completed": int(orders_completed),
+                    "last_order_at": last_order_at,
                     "complaints": int(complaints_count),
                 }
             )

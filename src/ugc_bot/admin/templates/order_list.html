@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'closed', 'hidden', 'test', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
 {% set advertiser_id = model_view.customer_filter(request) %}
 {% set customer = model_view.customer_context(advertiser_id) if advertiser_id else none %}
@@ -39,14 +39,17 @@
         </div>
       {% endif %}
       <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('all', 'Все')] %}
+        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('all', 'Все')] %}
         <a class="nav-link{% if group == key %} active{% endif %}"
            {% if group == key %}aria-current="page"{% endif %}
-           href="{{ request.url.remove_query_params(['page', 'status']).include_query_params(group=key) }}">
+           href="{{ request.url.remove_query_params(['page', 'status', 'sortBy', 'sort'] if key == 'unpaid' else ['page', 'status']).include_query_params(group=key) }}">
           {{ label }}
         </a>
         {% endfor %}
       </nav>
+      {% if group == 'unpaid' %}
+        <p class="text-muted mb-3">Новые заявки, ожидающие оплаты от {{ model_view.unpaid_age_hours }} ч.</p>
+      {% endif %}
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="group" value="{{ group }}">
         {% if advertiser_id %}<input type="hidden" name="advertiser_id" value="{{ advertiser_id }}">{% endif %}
@@ -93,7 +96,7 @@
           <tr>
             {% for name, label in model_view.worklist_columns.items() %}
             {% set sorted = request.query_params.get('sortBy', 'created_at') == name %}
-            {% set direction = request.query_params.get('sort', 'desc' if name == 'created_at' else 'asc') %}
+            {% set direction = request.query_params.get('sort', 'desc' if name == 'created_at' and group != 'unpaid' else 'asc') %}
             <th scope="col" {% if sorted %}aria-sort="{{ 'ascending' if direction == 'asc' else 'descending' }}"{% endif %}>
               {% if name in ('username', 'brand') %}
                 {{ label }}

@@ -211,6 +211,115 @@ def test_customer_history_filters_by_account_and_keeps_search(worklist):
     )
 
 
+def test_unpaid_queue_keeps_search_and_excludes_ineligible_orders(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        draft = session.get(OrderModel, ids["Draft example"])
+        draft.created_at = now - timedelta(hours=26)
+        new_ids = {}
+        for title, age in (
+            ("Older unpaid", 52),
+            ("Fresh unpaid", 2),
+            ("Paid new", 30),
+            ("Captured new", 34),
+            ("Hidden unpaid", 32),
+            ("Test unpaid", 36),
+        ):
+            order = OrderModel(
+                order_id=uuid4(),
+                advertiser_id=draft.advertiser_id,
+                offer_text=title,
+                product_link="https://example.com",
+                price=1200,
+                bloggers_needed=4,
+                created_at=now - timedelta(hours=age),
+                updated_at=now,
+                status=OrderStatus.NEW,
+            )
+            session.add(order)
+            new_ids[title] = order.order_id
+        session.add(_payment(new_ids["Paid new"]))
+        captured = _payment(new_ids["Captured new"])
+        captured.status = PaymentStatus.PENDING
+        captured.paid_at = None
+        captured.captured_minor = 20000
+        session.add(captured)
+        for title, entity, values in (
+            ("Hidden unpaid", "order_worklist_visibility", {"visible": False}),
+            ("Test unpaid", "order_test_marker", {"test": True}),
+        ):
+            session.add(
+                AuditLogModel(
+                    entity_type=entity,
+                    entity_id=new_ids[title],
+                    action=AuditAction.UPDATE,
+                    new_values=values,
+                )
+            )
+    page = client.get(LIST, params={"group": "unpaid"})
+    assert page.status_code == 200 and "Всего заказов: 2" in page.text
+    assert page.text.index("Older unpaid") < page.text.index("Draft example")
+    for title in (
+        "Fresh unpaid",
+        "Paid new",
+        "Captured new",
+        "Hidden unpaid",
+        "Test unpaid",
+    ):
+        assert title not in page.text
+    query = urlencode({"group": "unpaid", "search": "Draft"})
+    source = f"{LIST}?{query}"
+    filtered = client.get(source)
+    assert "Всего заказов: 1" in filtered.text
+    link = re.search(r'href="([^"]*/admin/orders/[^"]+)"', filtered.text)
+    assert link is not None
+    detail = client.get(unescape(link[1]))
+    assert detail.status_code == 200 and source in unescape(detail.text)
+
+
+def test_advertiser_recency_uses_visible_order_history(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    newer = datetime(2025, 2, 12, 12, tzinfo=timezone.utc)
+    older = datetime(2025, 1, 10, 10, tzinfo=timezone.utc)
+    with Session(engine) as session, session.begin():
+        other = session.get(OrderModel, ids["Closed example"])
+        other.created_at = newer
+        session.add(
+            AdvertiserProfileModel(
+                user_id=other.advertiser_id,
+                contact="synthetic",
+                brand="Newest customer",
+                created_at=older,
+                updated_at=older,
+            )
+        )
+        owner = session.get(OrderModel, ids["Draft example"]).advertiser_id
+        for order in session.scalars(
+            select(OrderModel).where(OrderModel.advertiser_id == owner)
+        ):
+            if order.status != OrderStatus.DELETED:
+                order.created_at = older
+
+    url = "/admin/users/advertisers"
+    params = {"sort": "last_order_at", "order": "desc"}
+    descending = client.get(url, params=params)
+    assert (
+        descending.status_code == 200 and "Последний заказ" in descending.text
+    )
+    assert descending.text.index("Newest customer") < descending.text.index(
+        "Northwind"
+    )
+    assert "12.02.2025, 15:00" in descending.text
+    assert "10.01.2025, 13:00" in descending.text
+    ascending = client.get(url, params={**params, "order": "asc"})
+    assert ascending.text.index("Northwind") < ascending.text.index(
+        "Newest customer"
+    )
+
+
 def test_test_order_requires_marker_and_keeps_audit(worklist):
     client, engine, ids = worklist
     _login(client)
