@@ -38,6 +38,9 @@ from ugc_bot.bot.telegram.handlers.offer_responses import (
     router as offer_response_router,
 )
 from ugc_bot.bot.telegram.handlers.order_creation import router as order_router
+from ugc_bot.bot.telegram.handlers.order_summary import (
+    router as order_summary_router,
+)
 from ugc_bot.bot.telegram.handlers.payments import router as payments_router
 from ugc_bot.bot.telegram.handlers.profile import router as profile_router
 from ugc_bot.bot.telegram.handlers.referral import router as referral_router
@@ -121,6 +124,11 @@ def build_dispatcher(
     # Register all services in dispatcher
     for key, service in services.items():
         dispatcher[key] = service
+    from ugc_bot.container.order_summary_factory import build_order_summary
+
+    dispatcher["order_summary_service"] = build_order_summary(
+        config, getattr(container, "transaction_manager", None)
+    )
     register_checkout_lifecycle(dispatcher, config)
     if include_routers:
         dispatcher.include_router(
@@ -138,6 +146,7 @@ def build_dispatcher(
         dispatcher.include_router(profile_router)
         dispatcher.include_router(instagram_router)
         dispatcher.include_router(my_orders_router)
+        dispatcher.include_router(order_summary_router)
         dispatcher.include_router(order_router)
         dispatcher.include_router(feedback_router)
         dispatcher.include_router(offer_response_router)

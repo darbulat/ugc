@@ -8,6 +8,9 @@ from aiogram import Bot
 
 from ugc_bot.accompaniment_lead_scheduler import run_enabled as lead_loop
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.bot.telegram.order_summary_runtime import (
+    run_enabled as order_summary_loop,
+)
 from ugc_bot.campaign_digest_scheduler import run_enabled as feedback_loop
 from ugc_bot.campaign_scheduler import run_loop as campaign_loop
 from ugc_bot.client_followup_scheduler import (
@@ -49,7 +52,7 @@ logger = logging.getLogger(__name__)
 def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
     if getattr(container, "transaction_manager", None) is None:
         return []
-    return [
+    tasks = [
         asyncio.create_task(loop(config, container, bot), name=name)
         for name, loop in (
             ("order-notice-delivery", order_notice_loop),
@@ -57,6 +60,18 @@ def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
             ("order-image-cleanup", image_cleanup_loop),
         )
     ]
+    if getattr(
+        getattr(config, "financial", None), "core_enabled", False
+    ) and getattr(
+        getattr(config, "order", None), "customer_workflows_enabled", False
+    ):
+        tasks.append(
+            asyncio.create_task(
+                order_summary_loop(config, container, bot),
+                name="telegram-order-summary",
+            )
+        )
+    return tasks
 
 
 async def _run_all(config, container: Container, bot: Bot) -> None:

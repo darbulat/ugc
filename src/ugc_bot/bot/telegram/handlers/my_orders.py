@@ -48,6 +48,7 @@ from ugc_bot.bot.telegram.handlers.order_controls import (
     payment_help_button,
     payment_help_keyboard,
 )
+from ugc_bot.bot.telegram.handlers.order_summary import summary_button
 from ugc_bot.bot.telegram.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
     _BLOGGER_AGREEMENTS_STATE,
@@ -178,6 +179,7 @@ async def _send_my_orders_content(
     locale: str,
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
+    order_summary_service=None,
 ) -> None:
     """Send fill profile, agreement, or order lists depending on user state."""
     if advertiser is None and blogger is None:
@@ -245,6 +247,7 @@ async def _send_my_orders_content(
                 texts=order_texts,
                 locale=locale,
                 cancellation=order_cancellation_service,
+                summary_enabled=order_summary_service is not None,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -306,6 +309,7 @@ async def show_my_orders(
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
+    order_summary_service=None,
 ) -> None:
     """Show advertiser and blogger orders in two separate messages."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -348,6 +352,7 @@ async def show_my_orders(
         locale,
         country_repo=country_repo,
         order_cancellation_service=order_cancellation_service,
+        order_summary_service=order_summary_service,
     )
 
 
@@ -366,6 +371,7 @@ async def show_my_orders_from_profile_callback(
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
+    order_summary_service=None,
 ) -> None:
     """Show my orders from profile inline menu."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -408,6 +414,7 @@ async def show_my_orders_from_profile_callback(
         locale,
         country_repo=country_repo,
         order_cancellation_service=order_cancellation_service,
+        order_summary_service=order_summary_service,
     )
 
 
@@ -433,6 +440,7 @@ async def paginate_orders(
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
+    order_summary_service=None,
 ) -> None:
     """Handle pagination for advertiser and blogger orders."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -529,6 +537,7 @@ async def paginate_orders(
             texts=order_texts,
             locale=locale,
             cancellation=order_cancellation_service,
+            summary_enabled=order_summary_service is not None,
         )
 
     if incoming.message_id:
@@ -632,6 +641,7 @@ async def _render_page(
     *,
     locale: str = "ru",
     cancellation: OrderCancellationService | None = None,
+    summary_enabled: bool = False,
 ) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
     t = texts or {}
@@ -701,6 +711,16 @@ async def _render_page(
             link_line,
         ]
         lines.append("\n".join(order_lines))
+        if (
+            summary_enabled
+            and order.financial_version is not None
+            and not order.complimentary
+            and order.status in (OrderStatus.ACTIVE, OrderStatus.CLOSED)
+            and order.order_id not in cancelled
+        ):
+            buttons_rows.append(
+                [summary_button(order.order_id, creation_number)]
+            )
         if order.status == OrderStatus.NEW:
             pay_btn_tpl = t.get(
                 "btn_pay_order", "💳 Оплатить №{creation_number}"

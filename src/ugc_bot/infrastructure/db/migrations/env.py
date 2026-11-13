@@ -6,7 +6,11 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from ugc_bot.infrastructure.db import dispatch_control, models  # noqa: F401
+from ugc_bot.infrastructure.db import (  # noqa: F401
+    dispatch_control,
+    models,
+    order_summary_models,
+)
 from ugc_bot.infrastructure.db.base import Base
 
 config = context.config

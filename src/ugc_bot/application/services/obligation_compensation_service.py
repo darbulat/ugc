@@ -71,12 +71,18 @@ class ObligationCompensationService:
         actor_id,
         now,
         session,
+        system_actor=None,
     ) -> tuple[UUID, ...]:
         now = utc(now)
         basis = original.basis
         if any(
             not isinstance(value, UUID) or not value.int
-            for value in (case_id, refund_id, actor_id, basis.recipient_id)
+            for value in (
+                case_id,
+                refund_id,
+                basis.recipient_id,
+                *(() if system_actor else (actor_id,)),
+            )
         ):
             raise ValueError("correction_authority_reference_required")
         repo = self.ledger.repository
@@ -130,7 +136,8 @@ class ObligationCompensationService:
                 effective_at=now,
                 recorded_at=now,
                 actor_id=actor_id,
-                actor_kind="admin",
+                actor_kind="system" if system_actor else "admin",
+                system_actor=system_actor,
                 reason="Reviewed cumulative liability correction",
                 bucket_from=bucket,
                 bucket_to="cancelled" if bucket else None,

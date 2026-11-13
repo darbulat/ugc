@@ -216,8 +216,8 @@ def migration_metadata():
     return metadata
 
 
-def authority_sql():
-    return """
+def review_guard_sql(*, automatic=False):
+    sql = """
 CREATE OR REPLACE FUNCTION paid_replacement_review_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$ DECLARE request paid_replacement_requests; total integer;
 BEGIN
@@ -253,6 +253,66 @@ i.paid_item_id=payment_item_allocations.paid_item_id);
  END IF;
  RETURN NEW;
 END $$;
+"""
+    if not automatic:
+        return sql
+    manual_guard = (
+        "OR NOT EXISTS(SELECT 1 FROM users WHERE user_id=NEW.actor_id\n"
+        "                AND admin AND status='active')"
+    )
+    sql = sql.replace(
+        "total integer;",
+        "total integer; automatic_review boolean;",
+    ).replace(
+        " IF NOT FOUND OR request.paid_item_id",
+        """ automatic_review := EXISTS(
+ SELECT 1 FROM telegram_order_exceptions
+ WHERE automatic_request_id=NEW.request_id);
+ IF request.request_id IS NULL OR request.paid_item_id""",
+    )
+    return sql.replace(
+        manual_guard,
+        """
+  OR (NOT automatic_review AND NOT EXISTS(
+      SELECT 1 FROM users WHERE user_id=NEW.actor_id
+        AND admin AND status='active'))
+  OR (automatic_review AND (
+      NEW.action<>'approve' OR NEW.exception_reason IS NOT NULL
+      OR NEW.prior_replacements>=NEW.reserve_limit
+      OR request.reason_code<>'lost_contact'
+      OR NOT EXISTS (
+        SELECT 1 FROM telegram_order_exceptions e
+        JOIN telegram_order_summary_jobs j ON j.report_id=e.report_id
+        JOIN orders o ON o.order_id=e.order_id
+        JOIN item_assignments original ON original.assignment_id=e.assignment_id
+        JOIN users client ON client.user_id=e.client_id
+        WHERE e.automatic_request_id=NEW.request_id
+          AND e.order_id=NEW.order_id AND e.paid_item_id=NEW.paid_item_id
+          AND e.assignment_id=request.old_assignment_id
+          AND e.client_id=request.client_id AND e.client_id=NEW.actor_id
+          AND o.advertiser_id=e.client_id AND o.status='active'
+          AND client.status='active'
+          AND original.creator_id=e.creator_id
+          AND j.order_id=e.order_id AND j.recipient_id=e.creator_id
+          AND e.reason='no_answer' AND e.state='waiting'
+          AND e.answer_due_at=j.delivered_at+interval '24 hours'
+          AND e.answer_due_at<=NEW.reviewed_at
+          AND j.kind='creator' AND j.state='sent'
+          AND j.provider_reference IS NOT NULL
+      )
+      OR NEW.prior_replacements <> (
+          SELECT count(*) FROM paid_replacement_allocations a
+          JOIN paid_replacement_decisions d USING (replacement_id)
+          WHERE d.order_id=NEW.order_id
+      )
+  ))""",
+    )
+
+
+def authority_sql(*, automatic=False):
+    return (
+        review_guard_sql(automatic=automatic)
+        + """
 CREATE TRIGGER paid_replacement_review_source BEFORE INSERT
  ON paid_replacement_decisions FOR EACH ROW
  EXECUTE FUNCTION paid_replacement_review_guard();
@@ -308,3 +368,4 @@ CREATE TRIGGER paid_replacement_allocation_source BEFORE INSERT
  ON paid_replacement_allocations FOR EACH ROW
  EXECUTE FUNCTION paid_replacement_allocation_guard();
 """
+    )
