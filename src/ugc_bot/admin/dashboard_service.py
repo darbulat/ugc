@@ -15,9 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
+from ugc_bot.admin.complaints import (
+    COMPLAINT_STATUS_LABELS,
+    OPEN_COMPLAINT_STATUSES,
+)
 from ugc_bot.admin.order_worklist import worklist_conditions
 from ugc_bot.domain.enums import (
-    ComplaintStatus,
     OrderStatus,
     PaymentStatus,
     PayoutRequestStatus,
@@ -50,10 +53,6 @@ _ACTIVE_ORDER_STATUSES = (
     OrderStatus.NEW,
     OrderStatus.PENDING_MODERATION,
     OrderStatus.ACTIVE,
-)
-OPEN_COMPLAINT_STATUSES = (
-    ComplaintStatus.PENDING,
-    ComplaintStatus.REVIEWED,
 )
 
 PICKED_CREATORS_TARGET = 1000
@@ -758,10 +757,6 @@ class AdminDashboardService:
         )
         result = await session.execute(query)
         rows = result.all()
-        status_labels = {
-            ComplaintStatus.PENDING: "На рассмотрении",
-            ComplaintStatus.REVIEWED: "Просмотрена",
-        }
         return [
             {
                 "complaint_id": str(row.complaint_id),
@@ -769,7 +764,7 @@ class AdminDashboardService:
                 "reason": row.reason or "",
                 "created_at": row.created_at,
                 "status": row.status.value if row.status else "",
-                "status_label": status_labels.get(
+                "status_label": COMPLAINT_STATUS_LABELS.get(
                     row.status, row.status.value if row.status else ""
                 ),
                 "reporter": row.reporter_telegram
@@ -1542,6 +1537,7 @@ class AdminDashboardService:
                 ).label("orders_completed"),
             )
             .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
+            .where(*worklist_conditions("all", ""))
             .group_by(OrderModel.advertiser_id)
             .subquery()
         )
@@ -2110,7 +2106,9 @@ class AdminDashboardService:
         )
         return {
             "order_id": str(order.order_id),
+            "advertiser_id": str(order.advertiser_id),
             "advertiser": advertiser_name,
+            "offer_text": order.offer_text,
             "advertiser_telegram": advertiser_telegram,
             "status_label": status_label,
             "picked_count": int(responses),

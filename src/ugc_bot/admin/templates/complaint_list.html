@@ -1,0 +1,94 @@
+{% extends "sqladmin/layout.html" %}
+{% from "complaint_actions.html" import close_form with context %}
+{% block content %}
+{% set status = request.query_params.get('status', 'open') %}
+{% set search = request.query_params.get('search', '') %}
+{% set source = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+{% set context = model_view.contexts(pagination.rows) %}
+{% set message = request.session.pop('complaint_message', '') %}
+<section class="col-12">
+  <div class="card">
+    <div class="card-header d-flex flex-wrap gap-2 justify-content-between">
+      <h1 class="card-title">Жалобы</h1>
+      <div class="d-flex flex-wrap gap-2">
+        {% if model_view.can_export %}
+          {% for export_type in model_view.export_types %}
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin:export', identity=model_view.identity, export_type=export_type).include_query_params(status=status) }}">Экспорт {{ export_type|upper }}</a>
+          {% endfor %}
+        {% endif %}
+        {% if model_view.can_create %}
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin:create', identity=model_view.identity) }}">Новая жалоба</a>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-body border-bottom">
+      {% if message %}<p class="alert alert-info" role="status">{{ message }}</p>{% endif %}
+      <nav class="nav nav-pills flex-wrap gap-2 mb-3" aria-label="Статусы жалоб">
+        {% for key, label in [('open', 'Открытые'), ('closed', 'Закрытые'), ('all', 'Все')] %}
+          <a class="nav-link{% if key == status %} active{% endif %}"{% if key == status %} aria-current="page"{% endif %}
+             href="{{ request.url.remove_query_params('page').include_query_params(status=key) }}">{{ label }}</a>
+        {% endfor %}
+      </nav>
+      <form class="d-flex flex-wrap align-items-end gap-2" method="get" role="search">
+        <input type="hidden" name="status" value="{{ status }}">
+        <div class="ugc-complaint-search">
+          <label class="form-label" for="complaint-search">Поиск жалоб</label>
+          <input class="form-control" id="complaint-search" type="search" name="search" value="{{ search }}" placeholder="Текст, участник, заказ или ID">
+        </div>
+        <button class="btn btn-primary" type="submit">Найти</button>
+        {% if search %}<a class="btn btn-outline-secondary" href="{{ request.url.remove_query_params(['page', 'search']) }}">Сбросить</a>{% endif %}
+      </form>
+    </div>
+    <div class="table-responsive" tabindex="0" role="region" aria-label="Список жалоб">
+      <table class="table card-table table-vcenter ugc-complaint-table" role="table">
+        <thead>
+          <tr><th scope="col">Жалоба и заказ</th><th scope="col">Участники</th><th scope="col">Статус и дата</th><th scope="col">Действия</th></tr>
+        </thead>
+        <tbody role="rowgroup">
+          {% for row in pagination.rows %}
+          {% set info = context.get(row.complaint_id) %}
+          {% set detail = url_for('admin:details', identity=model_view.identity, pk=row.complaint_id).include_query_params(return_to=source) %}
+          <tr role="row">
+            <td role="cell">
+              <a class="ugc-complaint-preview fw-semibold" href="{{ detail }}">{{ row.reason|truncate(160, true) or 'Открыть жалобу' }}</a>
+              <small class="d-block text-muted">{{ (info.offer_text or 'Заказ')|truncate(80) }}</small>
+            </td>
+            <td role="cell">
+              <small class="d-block text-muted">Кто подал</small>
+              <a href="{{ request.url_for('admin_user_card', user_id=row.reporter_id) }}">{{ info.reporter or 'Профиль' }}</a>
+              <small class="d-block text-muted mt-2">На кого</small>
+              <a href="{{ request.url_for('admin_user_card', user_id=row.reported_id) }}">{{ info.reported or 'Профиль' }}</a>
+            </td>
+            <td role="cell">
+              <span class="badge {% if row.status in model_view.open_statuses %}bg-yellow-lt{% else %}bg-secondary-lt{% endif %}">{{ model_view.status_labels.get(row.status, row.status) }}</span>
+              <small class="d-block mt-1">{{ row.created_at|admin_date }}</small>
+            </td>
+            <td role="cell">
+              <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-outline-secondary btn-sm" href="{{ detail }}">Читать</a>
+                {% if row.status in model_view.open_statuses %}{{ close_form(row, source) }}{% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-muted text-center py-4">Жалобы не найдены</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer d-flex flex-wrap align-items-center gap-2">
+      <span class="text-muted">Всего жалоб: {{ pagination.count }}</span>
+      {% if pagination.has_previous %}
+        <a class="btn btn-sm" href="{{ pagination.previous_page.url }}">Назад</a>
+      {% endif %}
+      {% if pagination.has_next %}
+        <a class="btn btn-sm" href="{{ pagination.next_page.url }}">Далее</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+<script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
+{% endblock %}

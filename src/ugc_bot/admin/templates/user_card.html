@@ -118,7 +118,10 @@
     {% endif %}
 
     {% if user.advertiser_profile %}
-      <h2>Профиль заказчика</h2>
+      <div class="page-heading profile-heading">
+        <h2>Профиль заказчика</h2>
+        <a class="admin-button" href="/admin/order-model/list?group=all&amp;advertiser_id={{ user.user_id }}">Все заказы заказчика</a>
+      </div>
       <div class="card">
         <div class="detail-row">
           <div class="detail-label">Контакт (телефон)</div>

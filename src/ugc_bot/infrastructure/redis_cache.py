@@ -115,3 +115,24 @@ class AdminCache:
                 "Admin cache set failed",
                 extra={"key": key, "error": str(exc)},
             )
+
+    async def invalidate_prefixes(self, *prefixes: str) -> None:
+        """Expire cached admin views affected by an action."""
+        redis = self._get_redis()
+        if redis is None:
+            return
+        try:
+            for prefix in prefixes:
+                cursor = 0
+                while True:
+                    cursor, keys = await redis.scan(
+                        cursor,
+                        match=f"{_ADMIN_CACHE_PREFIX}{prefix}*",
+                        count=100,
+                    )
+                    if keys:
+                        await redis.delete(*keys)
+                    if cursor == 0:
+                        break
+        except Exception:
+            logger.warning("Admin cache invalidation failed", exc_info=True)

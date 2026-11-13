@@ -466,6 +466,28 @@ body {
   min-width: 38rem;
 }
 
+.admin-table-scroll .orders-analytics {
+  min-width: 52rem;
+  table-layout: fixed;
+}
+
+.orders-analytics th:nth-child(-n+2) { width: 17%; }
+.orders-analytics th:nth-child(7) { width: 12%; }
+
+.orders-analytics :is(th, td) {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.table-note {
+  display: block;
+  margin-top: .25rem;
+}
+
+.profile-heading {
+  margin-top: 1.5rem;
+}
+
 .attention-queues {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

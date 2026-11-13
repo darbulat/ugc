@@ -1,0 +1,6 @@
+{% macro close_form(complaint, source) %}
+<form method="post" action="{{ request.url_for('close_complaint', complaint_id=complaint.complaint_id).include_query_params(return_to=source) }}">
+  <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+  <button class="btn btn-outline-primary btn-sm" type="button" data-admin-confirm="Закрыть жалобу без мер? Текст и история останутся в разделе «Закрытые».">Закрыть без мер</button>
+</form>
+{% endmacro %}

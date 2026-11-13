@@ -130,6 +130,86 @@
   margin-bottom: 0;
 }
 
+.ugc-complaint-search {
+  flex: 0 1 28rem;
+  min-width: min(100%, 16rem);
+}
+
+.ugc-complaint-table {
+  min-width: 42rem;
+  table-layout: fixed;
+}
+
+.ugc-complaint-table th:first-child { width: 38%; }
+.ugc-complaint-table th:nth-child(2) { width: 23%; }
+.ugc-complaint-table th:nth-child(3) { width: 19%; }
+
+.ugc-complaint-table :is(th, td) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+
+.ugc-complaint-preview {
+  display: block;
+  margin-bottom: .35rem;
+}
+
+.ugc-complaint-detail {
+  max-width: 64rem;
+}
+
+.ugc-complaint-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  max-width: 76ch;
+}
+
+.ugc-complaint-people {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: .75rem;
+  margin: 1.25rem 0 0;
+}
+
+.ugc-complaint-people div {
+  padding: .75rem;
+  border-radius: .5rem;
+  background: var(--tblr-bg-surface-secondary, #f4f6f8);
+}
+
+.ugc-complaint-people dd { margin: .25rem 0 0; }
+
+@media (max-width: 44rem) {
+  .ugc-complaint-table,
+  .ugc-complaint-table tbody {
+    display: block;
+    min-width: 0;
+  }
+
+  .ugc-complaint-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .ugc-complaint-table tbody tr {
+    display: grid;
+    gap: .65rem;
+    padding: 1rem;
+    border-bottom: 1px solid var(--tblr-border-color, #dce1e7);
+  }
+
+  .ugc-complaint-table tbody td {
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+}
+
 @media (max-width: 50rem) {
   .ugc-nav__links {
     order: 1;

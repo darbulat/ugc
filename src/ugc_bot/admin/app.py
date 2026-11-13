@@ -4,8 +4,10 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
+from hashlib import sha256
 from pathlib import Path
 from secrets import compare_digest, token_urlsafe
 from typing import Any, Optional, TypeVar, cast
@@ -40,8 +42,14 @@ from ugc_bot.admin.auth import (
     admin_login_redirect,
     safe_admin_return_to,
 )
-from ugc_bot.admin.dashboard_service import (
+from ugc_bot.admin.complaints import (
+    COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
+    complaint_context,
+    dismiss_open_complaint,
+    search_complaints,
+)
+from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
     PeriodKey,
@@ -517,7 +525,37 @@ _DELAY_REASON_LABELS = {
 }
 
 _ORDER_LIST_PATH = "/admin/order-model/list"
-_ORDER_RETURN_PATHS = {_ORDER_LIST_PATH, "/admin/orders", "/admin/dashboard"}
+_COMPLAINT_LIST_PATH = "/admin/complaint-model/list"
+_ORDER_RETURN_PATHS = {
+    _ORDER_LIST_PATH,
+    _COMPLAINT_LIST_PATH,
+    "/admin/orders",
+    "/admin/dashboard",
+}
+
+
+def _admin_action_token(request: Request) -> str:
+    if "order_worklist_csrf" not in request.session:
+        request.session["order_worklist_csrf"] = token_urlsafe()
+    return request.session["order_worklist_csrf"]
+
+
+async def _require_action_token(request: Request) -> None:
+    submitted = (await request.form()).get("csrf_token")
+    expected = request.session.get("order_worklist_csrf", "")
+    if (
+        not expected
+        or not isinstance(submitted, str)
+        or not compare_digest(expected.encode(), submitted.encode())
+    ):
+        raise HTTPException(status_code=403, detail="Обновите страницу.")
+
+
+def _complaint_return_url(request: Request) -> str:
+    target = safe_admin_return_to(request.query_params.get("return_to"))
+    if target and URL(target).path == _COMPLAINT_LIST_PATH:
+        return target
+    return _COMPLAINT_LIST_PATH
 
 
 def _order_return_url(request: Request) -> str:
@@ -572,15 +610,45 @@ def _build_dashboard_service(
     )
 
 
-def _build_templates(app: FastAPI) -> Jinja2Templates:
+_ADMIN_STATIC = Path(__file__).parent / "static"
+_ADMIN_ASSET_VERSIONS = {
+    asset.name: sha256(asset.read_bytes()).hexdigest()[:12]
+    for asset in _ADMIN_STATIC.iterdir()
+    if asset.suffix in {".css", ".js"}
+}
+
+
+def _admin_asset(request: Request, name: str) -> URL:
+    return request.url_for("admin_mvp_static", path=name).include_query_params(
+        v=_ADMIN_ASSET_VERSIONS[name]
+    )
+
+
+def _admin_date(value: datetime | str | None, zone: ZoneInfo) -> str:
+    if not value:
+        return "—"
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            return value
+        value = parsed
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(zone).strftime("%d.%m.%Y, %H:%M")
+
+
+def _build_templates(app: FastAPI, zone: ZoneInfo) -> Jinja2Templates:
     """Attach static assets and return templates instance."""
     templates = Jinja2Templates(
         directory=str(Path(__file__).parent / "templates")
     )
     templates.env.globals["order_return_url"] = _order_return_url
+    templates.env.globals["admin_asset"] = _admin_asset
+    templates.env.filters["admin_date"] = lambda value: _admin_date(value, zone)
     app.mount(
         "/admin/mvp-static",
-        StaticFiles(directory=str(Path(__file__).parent / "static")),
+        StaticFiles(directory=str(_ADMIN_STATIC)),
         name="admin_mvp_static",
     )
     return templates
@@ -937,7 +1005,7 @@ async def _render_orders_page(
     period_key = _normalize_period(period)
     search_term = search.strip() if search else ""
     cache_key = (
-        f"orders:v2:{period_key}:{status or ''}"
+        f"orders:v3:{period_key}:{status or ''}"
         f":{page}:{per_page}:{sort}:{order}"
         f":{search_term}"
         if cache
@@ -1166,7 +1234,7 @@ async def _api_orders_json(
     """Orders list as JSON."""
     period_key = _normalize_period(period)
     cache_key = (
-        f"orders:v2:{period_key}:{status or ''}"
+        f"orders:v3:{period_key}:{status or ''}"
         f":{page}:{per_page}:{sort}:{order}"
         if cache
         else None
@@ -2104,12 +2172,37 @@ class OrderAdmin(ModelView, model=OrderModel):
         stmt = super().list_query(request)
         if "export_type" in request.path_params:
             return stmt.where(OrderModel.status != OrderStatus.DELETED)
+        if advertiser_id := self.customer_filter(request):
+            stmt = stmt.where(OrderModel.advertiser_id == advertiser_id)
         return stmt.where(
             *worklist_conditions(
                 request.query_params.get("group", "work"),
                 request.query_params.get("status", ""),
             )
         )
+
+    @staticmethod
+    def customer_filter(request: Request) -> UUID | None:
+        identifier = request.query_params.get("advertiser_id")
+        if identifier is None:
+            return None
+        try:
+            return UUID(identifier)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400, detail="Некорректный ID заказчика."
+            ) from exc
+
+    async def customer_context(self, advertiser_id: UUID):
+        rows = await self._run_arbitrary_query(
+            select(UserModel.username, AdvertiserProfileModel.brand)
+            .outerjoin(
+                AdvertiserProfileModel,
+                AdvertiserProfileModel.user_id == UserModel.user_id,
+            )
+            .where(UserModel.user_id == advertiser_id)
+        )
+        return rows[0] if rows else None
 
     def count_query(self, request: Request):
         stmt = (
@@ -2124,6 +2217,8 @@ class OrderAdmin(ModelView, model=OrderModel):
         )
         if term := request.query_params.get("search", "").strip():
             stmt = stmt.where(search_orders(term))
+        if advertiser_id := self.customer_filter(request):
+            stmt = stmt.where(OrderModel.advertiser_id == advertiser_id)
         return stmt
 
     def search_query(self, stmt, term: str):
@@ -2156,11 +2251,7 @@ class OrderAdmin(ModelView, model=OrderModel):
 
         return await asyncio.to_thread(load)
 
-    @staticmethod
-    def worklist_csrf_token(request: Request) -> str:
-        if "order_worklist_csrf" not in request.session:
-            request.session["order_worklist_csrf"] = token_urlsafe()
-        return request.session["order_worklist_csrf"]
+    worklist_csrf_token = staticmethod(_admin_action_token)
 
     def form_edit_query(self, request: Request):
         stmt = super().form_edit_query(request)
@@ -2364,6 +2455,11 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
     can_delete = False
     name = "Жалоба"
     name_plural = "Жалобы"
+    list_template = "complaint_list.html"
+    details_template = "complaint_detail.html"
+    page_size = 25
+    status_labels = COMPLAINT_STATUS_LABELS
+    open_statuses = OPEN_COMPLAINT_STATUSES
     column_list = [
         ComplaintModel.complaint_id,
         ComplaintModel.reporter_id,
@@ -2462,9 +2558,32 @@ class ComplaintAdmin(ModelView, model=ComplaintModel):
 
     @staticmethod
     def _status_condition(request: Request):
-        if request.query_params.get("status") == "open":
-            return ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES)
-        return ComplaintModel.status != ComplaintStatus.DELETED
+        status = request.query_params.get("status", "open")
+        if status == "all":
+            return ComplaintModel.status != ComplaintStatus.DELETED
+        if status == "closed":
+            return ComplaintModel.status.in_(
+                (ComplaintStatus.DISMISSED, ComplaintStatus.ACTION_TAKEN)
+            )
+        return ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES)
+
+    def search_query(self, stmt, term: str):
+        return stmt.where(search_complaints(term)) if term.strip() else stmt
+
+    def sort_query(self, stmt, request: Request):
+        return (
+            super()
+            .sort_query(stmt, request)
+            .order_by(ComplaintModel.complaint_id)
+        )
+
+    async def contexts(self, rows: Sequence[ComplaintModel]):
+        if not rows:
+            return {}
+        result = await self._run_arbitrary_query(
+            complaint_context([row.complaint_id for row in rows])
+        )
+        return {row.complaint_id: row for row in result}
 
     def form_edit_query(self, request: Request):
         stmt = super().form_edit_query(request)
@@ -3039,6 +3158,9 @@ class EnumAwareAdmin(Admin):
     def init_templating_engine(self):
         templates = super().init_templating_engine()
         templates.env.globals["order_return_url"] = _order_return_url
+        templates.env.globals["admin_asset"] = _admin_asset
+        templates.env.globals["admin_action_token"] = _admin_action_token
+        templates.env.globals["complaint_return_url"] = _complaint_return_url
         return templates
 
     @login_required
@@ -3230,7 +3352,7 @@ async def _change_order_dispatch(order_id: UUID, operation: str) -> str:
 
 
 def _register_order_worklist_action(
-    app: FastAPI, auth: AdminAuth, engine: Engine
+    app: FastAPI, auth: AdminAuth, engine: Engine, cache: AdminCache
 ) -> None:
     @app.post(
         "/admin/order-worklist/{order_id}/{operation}",
@@ -3239,19 +3361,18 @@ def _register_order_worklist_action(
     async def update_order_worklist(
         request: Request, order_id: UUID, operation: str
     ) -> Response:
-        if operation not in {"close", "hide", "restore", "pause", "resume"}:
+        if operation not in {
+            "close",
+            "hide",
+            "restore",
+            "pause",
+            "resume",
+            "mark-test",
+            "unmark-test",
+            "delete-test",
+        }:
             raise HTTPException(status_code=404)
-        form = await request.form()
-        expected = request.session.get("order_worklist_csrf", "")
-        submitted = form.get("csrf_token")
-        if (
-            not expected
-            or not isinstance(submitted, str)
-            or not compare_digest(expected.encode(), submitted.encode())
-        ):
-            raise HTTPException(
-                status_code=403, detail="Обновите список заказов."
-            )
+        await _require_action_token(request)
 
         def update() -> str:
             with Session(engine) as session, session.begin():
@@ -3261,11 +3382,46 @@ def _register_order_worklist_action(
             message = await _change_order_dispatch(order_id, operation)
         else:
             message = await asyncio.to_thread(update)
+        if operation == "delete-test":
+            await cache.invalidate_prefixes(
+                "dashboard:",
+                "dashboard_api:",
+                "orders:",
+                "charts:",
+                "advertisers:",
+            )
         request.session["order_worklist_message"] = message
         target = request.url_for("admin:list", identity=OrderAdmin.identity)
         return RedirectResponse(
             target.replace(query=request.url.query), status_code=303
         )
+
+
+def _register_complaint_action(
+    app: FastAPI, auth: AdminAuth, engine: Engine, cache: AdminCache
+) -> None:
+    @app.post(
+        "/admin/complaints/{complaint_id}/close",
+        dependencies=[Depends(_make_require_admin(auth))],
+    )
+    async def close_complaint(request: Request, complaint_id: UUID) -> Response:
+        await _require_action_token(request)
+
+        def update() -> bool:
+            with Session(engine) as session, session.begin():
+                return dismiss_open_complaint(session, complaint_id)
+
+        closed = await asyncio.to_thread(update)
+        if closed:
+            await cache.invalidate_prefixes(
+                "dashboard:", "dashboard_api:", "orders:"
+            )
+        request.session["complaint_message"] = (
+            "Жалоба закрыта без мер."
+            if closed
+            else "Жалоба уже закрыта или недоступна."
+        )
+        return RedirectResponse(_complaint_return_url(request), status_code=303)
 
 
 def create_admin_app() -> FastAPI:
@@ -3296,7 +3452,8 @@ def create_admin_app() -> FastAPI:
         password=config.admin.admin_password,
     )
     dashboard_service = _build_dashboard_service(config, container)
-    templates = _build_templates(app)
+    zone = ZoneInfo(config.admin.admin_dashboard_timezone)
+    templates = _build_templates(app, zone)
     admin_cache = AdminCache(
         redis_url=config.redis.redis_url,
         enabled=config.redis.use_redis_storage,
@@ -3319,7 +3476,8 @@ def create_admin_app() -> FastAPI:
             request, auth, container, order_id
         )
 
-    _register_order_worklist_action(app, auth, engine)
+    _register_order_worklist_action(app, auth, engine, admin_cache)
+    _register_complaint_action(app, auth, engine, admin_cache)
 
     admin = EnumAwareAdmin(
         app,
@@ -3332,9 +3490,10 @@ def create_admin_app() -> FastAPI:
     global _admin_container
     _admin_container = container
 
-    PaymentAdmin.dashboard_timezone = ZoneInfo(
-        config.admin.admin_dashboard_timezone
+    admin.templates.env.filters["admin_date"] = lambda value: _admin_date(
+        value, zone
     )
+    PaymentAdmin.dashboard_timezone = zone
     _add_admin_views(admin)
 
     @app.on_event("shutdown")
