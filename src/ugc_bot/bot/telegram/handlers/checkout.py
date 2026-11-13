@@ -21,19 +21,13 @@ COPY = {
             "автору оплачивается напрямую."
         ),
         "Оплатить услуги UMC",
-        (
-            "Проверьте сохранённый статус заказа в Mini App. Новая "
-            "оплата сейчас недоступна."
-        ),
+        "Сейчас оплата недоступна. Если нужна помощь, напишите нам.",
         "Оплата услуг UMC подтверждена Telegram.",
     ),
     "en": (
         "Payment link for saved UMC order. Creator fees are paid directly.",
         "Pay for UMC services",
-        (
-            "Check the saved order status in the Mini App. New "
-            "payment is unavailable now."
-        ),
+        "Payment is unavailable right now. Contact us if you need help.",
         "Telegram confirmed payment for UMC services.",
     ),
     "kk": (
@@ -42,10 +36,7 @@ COPY = {
             "ақысы тікелей төленеді."
         ),
         "UMC қызметтерін төлеу",
-        (
-            "Mini App ішінде сақталған күйді тексеріңіз. Жаңа төлем "
-            "әзірге қолжетімсіз."
-        ),
+        "Төлем әзірге қолжетімсіз. Көмек қажет болса, бізге жазыңыз.",
         "Telegram UMC қызметтерінің төлемін растады.",
     ),
     "be": (
@@ -54,10 +45,7 @@ COPY = {
             "аўтару аплачваецца напрамую."
         ),
         "Аплаціць паслугі UMC",
-        (
-            "Праверце захаваны стан заказу ў Mini App. Новая аплата "
-            "пакуль недаступная."
-        ),
+        "Аплата пакуль недаступная. Калі патрэбна дапамога, напішыце нам.",
         "Telegram пацвердзіў аплату паслуг UMC.",
     ),
     "uz": (
@@ -66,10 +54,7 @@ COPY = {
             "Muallif haqi bevosita to‘lanadi."
         ),
         "UMC xizmatlarini to‘lash",
-        (
-            "Mini App ichida saqlangan holatni tekshiring. Yangi "
-            "to‘lov hozir ochiq emas."
-        ),
+        "To‘lov hozir mavjud emas. Yordam kerak bo‘lsa, bizga yozing.",
         "Telegram UMC xizmatlari to‘lovini tasdiqladi.",
     ),
 }
