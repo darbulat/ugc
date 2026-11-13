@@ -11,6 +11,7 @@ const colors = ["#285ed5", "#177864", "#9c5b0b", "#7d48a4"];
 let selected;
 let expandedChart;
 let calendar;
+let visibleDates;
 
 function shortDate(date) {
   const [, month, day] = date.split("-");
@@ -66,7 +67,10 @@ function renderChart(canvas, config, dates, large = false) {
   const scales = {
     x: {
       ticks: {
-        callback(index) { return shortDate(this.getLabelForValue(index)); },
+        callback(index) {
+          const date = this.getLabelForValue(index);
+          return dates.length > 366 ? date.slice(0, 7) : shortDate(date);
+        },
         maxRotation: 0,
         maxTicksLimit: large ? 12 : 6,
       },
@@ -74,6 +78,7 @@ function renderChart(canvas, config, dates, large = false) {
     },
   };
   config.series.forEach(({ label }, index) => {
+    if (!multipleCurrencies && index > 0) return;
     scales[multipleCurrencies ? `y${index}` : "y"] = {
       type: "linear",
       beginAtZero: true,
@@ -149,6 +154,7 @@ function updateDetail() {
     to.reportValidity();
     return;
   }
+  visibleDates = dates;
   detail.querySelector(".chart-range").textContent = longDate(dates[0]) + " — " + longDate(dates.at(-1));
   expandedChart?.destroy();
   expandedChart = renderChart(detail.querySelector("canvas"), selected, dates, true);
@@ -244,7 +250,7 @@ controls.querySelectorAll("[data-days]").forEach((button) => {
   });
 });
 values.addEventListener("toggle", () => {
-  if (values.open && detail.open) renderValues(calendar.filter((date) => date >= from.value && date <= to.value));
+  if (values.open && detail.open) renderValues(visibleDates);
 });
 detail.addEventListener("close", () => {
   expandedChart?.destroy();

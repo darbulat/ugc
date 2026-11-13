@@ -681,6 +681,15 @@ body {
   max-height: 16rem;
 }
 
+.chart-values .admin-table-scroll .table {
+  min-width: 0;
+}
+
+.chart-values :is(th, td) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .chart-observations {
   margin-top: 1rem;
 }
