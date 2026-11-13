@@ -269,7 +269,7 @@ def test_test_order_requires_marker_and_keeps_audit(worklist):
 def test_complaint_read_search_and_close_without_measures(worklist):
     client, engine, ids = worklist
     complaint_id = uuid4()
-    reason = "Подробности обращения " + "x" * 300
+    reason = "Подробности обращения\n\n" + "x" * 300
     now = datetime.now(timezone.utc)
     with Session(engine) as session, session.begin():
         order = session.get(OrderModel, ids["Active example"])

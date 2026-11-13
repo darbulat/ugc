@@ -50,7 +50,7 @@
           {% set detail = url_for('admin:details', identity=model_view.identity, pk=row.complaint_id).include_query_params(return_to=source) %}
           <tr role="row">
             <td role="cell">
-              <a class="ugc-complaint-preview fw-semibold" href="{{ detail }}">{{ row.reason|truncate(160) or 'Открыть жалобу' }}</a>
+              <a class="ugc-complaint-preview fw-semibold" href="{{ detail }}">{{ row.reason|truncate(160, true) or 'Открыть жалобу' }}</a>
               <small class="d-block text-muted">{{ (info.offer_text or 'Заказ')|truncate(80) }}</small>
             </td>
             <td role="cell">
