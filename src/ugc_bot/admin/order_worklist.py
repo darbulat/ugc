@@ -150,15 +150,18 @@ def aging_unpaid_condition(now: datetime, hours: int):
     )
 
 
-def worklist_conditions(group: str, status: str):
-    latest_visibility = (
+def order_visibility():
+    return (
         _latest_visibility_event(OrderModel.order_id)
         .with_only_columns(AuditLogModel.new_values["visible"].as_boolean())
         .correlate(OrderModel)
         .scalar_subquery()
     )
+
+
+def worklist_conditions(group: str, status: str):
     # A hidden legacy order can still receive payment and resurface.
-    hidden = _can_hide() & latest_visibility.is_(False)
+    hidden = _can_hide() & order_visibility().is_(False)
     if group == "hidden":
         return [hidden]
 

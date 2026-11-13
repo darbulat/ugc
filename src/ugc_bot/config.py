@@ -12,6 +12,7 @@ from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     Field,
     SecretStr,
@@ -137,6 +138,9 @@ _FLAT_KEYS = {
         "CUSTOMER_WORKFLOWS_ENABLED",
         "MAX_ORDER_PRICE",
         "ORDER_RADIUS_KM",
+        "UNPAID_REMINDERS_ENABLED",
+        "UNPAID_REMINDERS_START_AT",
+        "UNPAID_REMINDERS_EXCLUDED_USERS",
     ],
     "campaign": [
         "CAMPAIGN_DELIVERY_ENABLED",
@@ -590,6 +594,15 @@ class OrderConfig(BaseSettings):
 
     customer_workflows_enabled: bool = Field(
         default=False, alias="CUSTOMER_WORKFLOWS_ENABLED"
+    )
+    unpaid_reminders_enabled: bool = Field(
+        default=False, alias="UNPAID_REMINDERS_ENABLED"
+    )
+    unpaid_reminders_start_at: AwareDatetime | None = Field(
+        default=None, alias="UNPAID_REMINDERS_START_AT"
+    )
+    unpaid_reminders_excluded_users: frozenset[UUID] = Field(
+        default_factory=frozenset, alias="UNPAID_REMINDERS_EXCLUDED_USERS"
     )
 
     allowed_blogger_counts: str = Field(
