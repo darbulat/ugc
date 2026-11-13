@@ -1,6 +1,8 @@
 """User/wallet, order/funding/history, then item locks for replacements."""
 
-from sqlalchemy import exists, func, insert, select, text
+from datetime import timedelta
+
+from sqlalchemy import exists, func, insert, select, text, update
 
 from ugc_bot.application.replacement_ports import (
     ReplacementCandidate,
@@ -9,6 +11,7 @@ from ugc_bot.application.replacement_ports import (
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.collaboration_models import (
     CollaborationEventModel,
+    CollaborationModel,
 )
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
@@ -22,6 +25,8 @@ from ugc_bot.infrastructure.db.models import (
     PaymentModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.order_summary_models import JOBS as SUMMARY_JOBS
+from ugc_bot.infrastructure.db.order_summary_models import REPORTS
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS
 from ugc_bot.infrastructure.db.replacement_models import TABLES
 from ugc_bot.infrastructure.db.repositories.collaborations import (
@@ -296,6 +301,92 @@ class SqlAlchemyReplacementRepository:
     async def append_decision(self, fact, *, session):
         await _session(session).execute(
             insert(TABLES["decisions"]).values(**fact)
+        )
+
+    async def authorize_automatic(
+        self, report_id, request_id, scope, now, *, session
+    ):
+        db = _session(session)
+        report = (
+            (
+                await db.execute(
+                    select(REPORTS)
+                    .where(REPORTS.c.report_id == report_id)
+                    .with_for_update()
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        work = await db.get(
+            CollaborationModel, scope.assignment_id, populate_existing=True
+        )
+        if (
+            report is None
+            or report["assignment_id"] != scope.assignment_id
+            or report["client_id"] != scope.client_id
+            or report["creator_id"] != scope.creator_id
+            or report["reason"] != "no_answer"
+            or report["state"] != "waiting"
+            or report["answer_due_at"] is None
+            or report["answer_due_at"] > now
+            or report["automatic_request_id"] is not None
+            or (
+                work is not None
+                and work.state
+                not in ("assigned", "in_progress", "unconfirmed_expired")
+            )
+        ):
+            raise ValueError("automatic_replacement_report_unavailable")
+        if not await db.scalar(
+            select(
+                exists().where(
+                    SUMMARY_JOBS.c.report_id == report_id,
+                    SUMMARY_JOBS.c.kind == "creator",
+                    SUMMARY_JOBS.c.state == "sent",
+                    SUMMARY_JOBS.c.order_id == scope.order_id,
+                    SUMMARY_JOBS.c.recipient_id == scope.creator_id,
+                    SUMMARY_JOBS.c.delivered_at
+                    == report["answer_due_at"] - timedelta(hours=24),
+                    SUMMARY_JOBS.c.provider_reference.is_not(None),
+                )
+            )
+        ):
+            raise ValueError("automatic_replacement_notice_required")
+        await db.execute(
+            update(REPORTS)
+            .where(REPORTS.c.report_id == report_id)
+            .values(automatic_request_id=request_id)
+        )
+
+    async def finish_automatic(self, report_id, replacement_id, *, session):
+        await _session(session).execute(
+            update(REPORTS)
+            .where(REPORTS.c.report_id == report_id)
+            .values(state="replaced", replacement_id=replacement_id)
+        )
+
+    async def automatic_candidates(self, order_id, *, session):
+        return list(
+            await _session(session).scalars(
+                select(INTERESTS.c.interest_id)
+                .where(
+                    INTERESTS.c.order_id == order_id,
+                    INTERESTS.c.accepted.is_(False),
+                    ~exists().where(
+                        TABLES["allocations"].c.candidate_interest_id
+                        == INTERESTS.c.interest_id
+                    ),
+                    ~exists().where(
+                        ItemAssignmentModel.creator_id
+                        == INTERESTS.c.creator_id,
+                        ItemAssignmentModel.paid_item_id
+                        == OrderItemModel.paid_item_id,
+                        OrderItemModel.order_id == order_id,
+                    ),
+                )
+                .order_by(INTERESTS.c.confirmed_at, INTERESTS.c.interest_id)
+            )
         )
 
     async def replace_assignment(

@@ -6,6 +6,8 @@ from ugc_bot.application.native_principal_ports import require_current_principal
 from ugc_bot.application.replacement_ports import replacement_hash
 from ugc_bot.domain.financial import utc
 
+AUTO_REPLACEMENT_ACTOR = "telegram_order_summary"
+
 
 class ReplacementService:
     def __init__(
@@ -300,6 +302,24 @@ class ReplacementService:
             command.candidate_interest_id, scope, now, session
         )
         identity = uuid4()
+        await self._append_request(
+            command, scope, candidate, identity, now, session
+        )
+        return await self._save(
+            command,
+            dict(
+                request_id=str(identity),
+                operation_key=command.operation_key,
+                version=1,
+                state="pending",
+                paid_item_id=str(scope.paid_item_id),
+            ),
+            session,
+        )
+
+    async def _append_request(
+        self, command, scope, candidate, identity, now, session
+    ):
         fact = dict(
             request_id=identity,
             paid_item_id=scope.paid_item_id,
@@ -319,17 +339,69 @@ class ReplacementService:
             requested_at=now,
         )
         await self.repository.append_request(fact, session=session)
-        return await self._save(
-            command,
-            dict(
-                request_id=str(identity),
-                operation_key=command.operation_key,
-                version=1,
-                state="pending",
-                paid_item_id=str(scope.paid_item_id),
-            ),
+        return fact
+
+    async def replace_unresponsive(self, command, report_id, *, session):
+        """The locked report authorizes this scheduler command."""
+        self._enabled()
+        scope, grounds, _ = await self._locked(
+            command.actor_id,
+            command.paid_item_id,
+            command.candidate_interest_id,
+            None,
             session,
         )
+        if command.actor_id != scope.client_id:
+            raise PermissionError("automatic_replacement_owner_required")
+        now = utc(self.clock.now())
+        self._replaceable(scope, command.expected_assignment_version, now)
+        await self.repository.require_clear(scope.paid_item_id, session=session)
+        candidate = await self._candidate(
+            command.candidate_interest_id, scope, now, session
+        )
+        if scope.replacement_count >= scope.original_paid_pool // 5:
+            raise ValueError("replacement_reserve_limit_reached")
+        identity = uuid4()
+        await self.repository.authorize_automatic(
+            report_id, identity, scope, now, session=session
+        )
+        request = await self._append_request(
+            command, scope, candidate, identity, now, session
+        )
+        # Financial ledger entries name the scheduler, and the replacement
+        # facts retain the reporting client with the linked system authority.
+        decision = dict(
+            replacement_id=uuid4(),
+            request_id=identity,
+            paid_item_id=scope.paid_item_id,
+            order_id=scope.order_id,
+            actor_id=scope.client_id,
+            version=2,
+            action="approve",
+            reason=request["reason"],
+            evidence_reference=request["evidence_reference"],
+            exception_reason=None,
+            exception_evidence=None,
+            original_paid_pool=scope.original_paid_pool,
+            prior_replacements=scope.replacement_count,
+            reserve_limit=scope.original_paid_pool // 5,
+            reviewed_at=now,
+        )
+        result = await self._allocate(
+            decision,
+            scope,
+            grounds,
+            candidate,
+            scope.manager_id,
+            session,
+            system_actor=AUTO_REPLACEMENT_ACTOR,
+        )
+        await self.repository.finish_automatic(
+            report_id,
+            decision["replacement_id"],
+            session=session,
+        )
+        return result
 
     async def decide(self, command, *, principal=None, session):
         self._enabled()
@@ -410,20 +482,45 @@ class ReplacementService:
             if command.manager_id is not None
             else scope.manager_id
         )
+        result = await self._allocate(
+            fact, scope, grounds, candidate, manager, session
+        )
+        return await self._save(
+            command, result | {"operation_key": command.operation_key}, session
+        )
+
+    async def _allocate(
+        self,
+        fact,
+        scope,
+        grounds,
+        candidate,
+        manager,
+        session,
+        *,
+        system_actor=None,
+    ):
+        identity, now = fact["replacement_id"], fact["reviewed_at"]
         if manager is not None and (
             not scope.accompaniment or manager not in scope.manager_ids
         ):
             raise ValueError("replacement_active_manager_required")
         await self.repository.append_decision(fact, session=session)
         movements = await self._cancel(
-            grounds, scope, identity, command.actor_id, now, session
+            grounds,
+            scope,
+            identity,
+            fact["actor_id"],
+            now,
+            session,
+            system_actor=system_actor,
         )
         assignment = await self.repository.replace_assignment(
             scope,
             candidate,
             manager,
-            command.actor_id,
-            command.reason,
+            fact["actor_id"],
+            fact["reason"],
             now,
             session=session,
         )
@@ -441,10 +538,9 @@ class ReplacementService:
             ),
             session=session,
         )
-        result = dict(
+        return dict(
             replacement_id=str(identity),
-            request_id=str(command.request_id),
-            operation_key=command.operation_key,
+            request_id=str(fact["request_id"]),
             version=2,
             state="approved",
             paid_item_id=str(scope.paid_item_id),
@@ -454,13 +550,23 @@ class ReplacementService:
             original_paid_pool=scope.original_paid_pool,
             reserve_limit=scope.original_paid_pool // 5,
             replacement_count=scope.replacement_count + 1,
-            reserve_exception=exception,
+            reserve_exception=scope.replacement_count
+            >= scope.original_paid_pool // 5,
             billable_positions_added=0,
             cancelled_movement_ids=[str(value) for value in movements],
         )
-        return await self._save(command, result, session)
 
-    async def _cancel(self, grounds, scope, identity, actor_id, now, session):
+    async def _cancel(
+        self,
+        grounds,
+        scope,
+        identity,
+        actor_id,
+        now,
+        session,
+        *,
+        system_actor=None,
+    ):
         movements = []
         for ground in sorted(grounds, key=lambda g: str(g.obligation_id)):
             original = await self.ledger.repository.get_issue(
@@ -510,7 +616,8 @@ class ReplacementService:
                     already_cancelled_minor=prior,
                     case_id=identity,
                     refund_id=identity,
-                    actor_id=actor_id,
+                    actor_id=actor_id if system_actor is None else None,
+                    **({"system_actor": system_actor} if system_actor else {}),
                     now=now,
                     session=session,
                 )
