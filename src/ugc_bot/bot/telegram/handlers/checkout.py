@@ -4,6 +4,10 @@ from dataclasses import replace
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
+from ugc_bot.bot.telegram.handlers.order_controls import (
+    payment_help_button,
+    payment_help_keyboard,
+)
 from ugc_bot.domain.checkout import CheckoutActor
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.telegram.invoice_links import (
@@ -85,7 +89,10 @@ async def send_checkout_if_v1(
     order = await payments.get_order(order_id)
     if order is None or not isinstance(order.financial_version, str):
         return False
+    if order.advertiser_id != user.user_id:
+        return False
     copy = COPY.get(locale, COPY["ru"])
+    help_keyboard = payment_help_keyboard(order_id, locale)
     try:
         if checkout is None:
             raise ValueError("checkout_unavailable")
@@ -102,7 +109,9 @@ async def send_checkout_if_v1(
             f"bot-checkout:{order_id}",
         )
     except (PermissionError, ValueError, LookupError, OrderCreationError):
-        await messenger.send_text(chat_id=incoming.chat_id, text=copy[2])
+        await messenger.send_text(
+            chat_id=incoming.chat_id, text=copy[2], keyboard=help_keyboard
+        )
         return True
     if result.get("capture_state") == "confirmed":
         await messenger.send_text(chat_id=incoming.chat_id, text=copy[3])
@@ -112,9 +121,14 @@ async def send_checkout_if_v1(
             text=copy[0],
             keyboard=Keyboard(
                 kind=KeyboardKind.INLINE,
-                rows=[[Button(text=copy[1], url=result["invoice_url"])]],
+                rows=[
+                    [Button(text=copy[1], url=result["invoice_url"])],
+                    [payment_help_button(order_id, locale)],
+                ],
             ),
         )
     else:
-        await messenger.send_text(chat_id=incoming.chat_id, text=copy[2])
+        await messenger.send_text(
+            chat_id=incoming.chat_id, text=copy[2], keyboard=help_keyboard
+        )
     return True

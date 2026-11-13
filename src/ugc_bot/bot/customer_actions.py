@@ -10,6 +10,11 @@ from ugc_bot.domain.customer_workflows import SupportInput
 SUPPORT_REASON = "CustomerSupport:reason"
 SUPPORT_CONTACT = "CustomerSupport:contact"
 SUPPORT_PREFIX = "customer:problem:"
+PAYMENT_SUPPORT_PREFIX = "customer:payment_help:"
+
+
+def order_number(order_id: UUID) -> str:
+    return order_id.hex[:8].upper()
 
 
 async def resolve_customer(incoming, roles):
@@ -28,8 +33,7 @@ async def show_help(incoming, messenger, roles, orders):
         [
             Button(
                 text=(
-                    f"№{str(order.order_id).replace('-', '')[:8].upper()}"
-                    f" — {order.offer_text[:50]}"
+                    f"№{order_number(order.order_id)} — {order.offer_text[:50]}"
                 ),
                 callback_data=f"{SUPPORT_PREFIX}{order.order_id}",
             )
@@ -50,10 +54,13 @@ async def show_help(incoming, messenger, roles, orders):
     )
 
 
-async def begin_support(incoming, state, messenger, roles, orders):
+async def begin_support(
+    incoming, state, messenger, roles, orders, *, payment=False
+):
     user = await resolve_customer(incoming, roles)
     try:
-        order_id = UUID((incoming.data or "")[len(SUPPORT_PREFIX) :])
+        prefix = PAYMENT_SUPPORT_PREFIX if payment else SUPPORT_PREFIX
+        order_id = UUID((incoming.data or "")[len(prefix) :])
         order = await orders.get_order(order_id)
         if user is None or order is None or order.advertiser_id != user.user_id:
             raise PermissionError("order_owner_required")
@@ -69,16 +76,21 @@ async def begin_support(incoming, state, messenger, roles, orders):
         support_order_id=str(order_id),
         support_operation_key=str(uuid4()),
         support_reason=None,
+        support_payment=payment,
         support_locale=getattr(user, "language", "ru"),
     )
     await state.set_state(SUPPORT_REASON)
     await messenger.send_text(
         chat_id=incoming.chat_id,
-        text=customer_text(getattr(user, "language", "ru"), "customer_reason"),
+        text=customer_text(
+            getattr(user, "language", "ru"),
+            "payment_help_reason" if payment else "customer_reason",
+            number=order_number(order_id),
+        ),
     )
 
 
-async def support_reason(incoming, state, messenger):
+async def support_reason(incoming, state, messenger) -> str | None:
     data = await state.get_data()
     reason = (incoming.text or "").strip()
     if not 1 <= len(reason) <= 4000:
@@ -88,7 +100,9 @@ async def support_reason(incoming, state, messenger):
                 data.get("support_locale", "ru"), "customer_reason_invalid"
             ),
         )
-        return
+        return None
+    if data.get("support_payment"):
+        return reason
     await state.update_data(support_reason=reason)
     await state.set_state(SUPPORT_CONTACT)
     await messenger.send_text(
@@ -97,9 +111,12 @@ async def support_reason(incoming, state, messenger):
             data.get("support_locale", "ru"), "customer_contact"
         ),
     )
+    return None
 
 
-async def send_support(incoming, state, messenger, roles, service):
+async def send_support(
+    incoming, state, messenger, roles, service, *, payment_reason=None
+):
     user = await resolve_customer(incoming, roles)
     if user is None:
         return
@@ -107,13 +124,22 @@ async def send_support(incoming, state, messenger, roles, service):
     try:
         if service is None:
             raise ValueError("support_unavailable")
-        result = await service.create(
+        create = (
+            service.create_payment_request if payment_reason else service.create
+        )
+        result = await create(
             user.user_id,
             SupportInput(
                 order_id=UUID(data["support_order_id"]),
                 operation_key=data["support_operation_key"],
-                reason=data["support_reason"],
-                contact_reference=(incoming.text or "").strip(),
+                reason=payment_reason or data["support_reason"],
+                contact_reference=(
+                    f"@{incoming.user.username}"
+                    if incoming.user.username
+                    else f"telegram:{incoming.user.external_id}"
+                )
+                if payment_reason
+                else (incoming.text or "").strip(),
             ),
             principal=principal_for(incoming, user.user_id),
         )

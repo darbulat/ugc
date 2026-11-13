@@ -219,16 +219,24 @@ class TelegramMessengerClient(MessengerClient):
             kwargs["need_email"] = True
         if invoice.send_email_to_provider:
             kwargs["send_email_to_provider"] = True
-        if invoice.pay_button_text:
-            kwargs["reply_markup"] = InlineKeyboardMarkup(
-                inline_keyboard=[
+        if invoice.pay_button_text or invoice.help_button:
+            rows = [
+                [
+                    InlineKeyboardButton(
+                        text=invoice.pay_button_text or "Pay", pay=True
+                    )
+                ]
+            ]
+            if invoice.help_button is not None:
+                rows.append(
                     [
                         InlineKeyboardButton(
-                            text=invoice.pay_button_text, pay=True
+                            text=invoice.help_button.text,
+                            callback_data=invoice.help_button.callback_data,
                         )
                     ]
-                ]
-            )
+                )
+            kwargs["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=rows)
         await self._with_retry(lambda: self._bot.send_invoice(**kwargs))
 
 

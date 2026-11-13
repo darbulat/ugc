@@ -26,12 +26,14 @@ from ugc_bot.domain.enums import MessengerType
 )
 async def test_bot_checkout_only_uses_current_v1_coordinator(case):
     checkout, repo, *_ = setup()
+    owner_id = uuid4()
     payments = SimpleNamespace(
         get_order=AsyncMock(
             return_value=None
             if case == "missing_order"
             else SimpleNamespace(
-                financial_version=None if case == "legacy" else "v1"
+                financial_version=None if case == "legacy" else "v1",
+                advertiser_id=owner_id,
             )
         )
     )
@@ -58,7 +60,7 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
     )
     result = await send_checkout_if_v1(
         uuid4(),
-        SimpleNamespace(user_id=uuid4()),
+        SimpleNamespace(user_id=owner_id),
         incoming,
         SimpleNamespace(bot=AsyncMock()),
         messenger,

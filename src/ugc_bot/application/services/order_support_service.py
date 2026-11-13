@@ -12,6 +12,14 @@ from ugc_bot.domain.customer_workflows import SupportInput
 
 
 class OrderSupportService(CustomerWorkflowService):
+    async def request_payload(self, payload: dict, *, session: object) -> dict:
+        if payload.get("topic") != "payment":
+            return payload
+        payment_state = await self.repository.payment_state(
+            UUID(payload["order_id"]), session=session
+        )
+        return payload | {"payment_state": payment_state}
+
     async def create(
         self,
         user_id: UUID,
@@ -21,6 +29,20 @@ class OrderSupportService(CustomerWorkflowService):
     ) -> dict:
         return await self.create_request(
             user_id, "support", command.model_dump(mode="json"), principal
+        )
+
+    async def create_payment_request(
+        self,
+        user_id: UUID,
+        command: SupportInput,
+        *,
+        principal: AuthenticatedMessengerPrincipal,
+    ) -> dict:
+        return await self.create_request(
+            user_id,
+            "support",
+            command.model_dump(mode="json") | {"topic": "payment"},
+            principal,
         )
 
     async def list(

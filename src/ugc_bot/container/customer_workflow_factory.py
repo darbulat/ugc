@@ -19,6 +19,9 @@ from ugc_bot.application.services.customer_workflow_delivery import (
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
+from ugc_bot.application.services.order_cancellation_service import (
+    OrderCancellationService,
+)
 from ugc_bot.application.services.order_notice_details_service import (
     CustomerOfferService,
 )
@@ -60,6 +63,9 @@ def build_customer_workflows(
     repo, time = SqlAlchemyCustomerWorkflowRepository(), clock or SystemClock()
     return {
         "order_support_service": OrderSupportService(repo, transactions, time),
+        "order_cancellation_service": OrderCancellationService(
+            repo, transactions, time
+        ),
         "client_order_view_service": ClientOrderViewService(
             repo, transactions, time, SqlAlchemyClientOrderViewRepository()
         ),

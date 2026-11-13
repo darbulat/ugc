@@ -6,26 +6,51 @@ import json
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4, uuid5
 
-from sqlalchemy import String, and_, cast, func, or_, select, true, update
+from sqlalchemy import (
+    String,
+    and_,
+    cast,
+    exists,
+    func,
+    or_,
+    select,
+    true,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
+from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
+from ugc_bot.infrastructure.db.checkout_models import (
+    AUTHORIZATIONS,
+    INBOX,
+    REVIEWS,
+)
 from ugc_bot.infrastructure.db.customer_workflow_models import (
     INTENTS,
     JOBS,
     REQUESTS,
     SERIES,
 )
+from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    AuditLogModel,
     InteractionModel,
+    OfferDispatchModel,
     OrderModel,
     OutboxEventModel,
     PaymentModel,
     UserModel,
 )
 from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
-from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.financial_capture import PROVIDER
+from ugc_bot.infrastructure.db.repositories.financial_items import (
+    SqlAlchemyFinancialItemRepository,
+    _session,
+)
+
+_CUSTOMER_CANCELLED = "customer_cancelled_unpaid_order"
 
 
 class SqlAlchemyCustomerWorkflowRepository:
@@ -66,6 +91,118 @@ class SqlAlchemyCustomerWorkflowRepository:
             )
             is not None
         )
+
+    async def payment_state(self, order_id: UUID, *, session: object) -> str:
+        db = _session(session)
+        payments = (
+            await db.scalars(
+                select(PaymentModel).where(PaymentModel.order_id == order_id)
+            )
+        ).all()
+        if any(
+            p.status == PaymentStatus.PAID
+            or p.paid_at is not None
+            or (p.captured_minor or 0) > 0
+            for p in payments
+        ):
+            return "paid"
+        if await db.scalar(
+            select(
+                exists().where(
+                    AUTHORIZATIONS.c.order_id == order_id,
+                    ~exists().where(
+                        REVIEWS.c.authorization_id
+                        == AUTHORIZATIONS.c.authorization_id
+                    ),
+                )
+                | exists().where(INBOX.c.order_id == order_id)
+            )
+        ) or any(
+            p.status == PaymentStatus.PENDING
+            and not (
+                p.financial_version is not None
+                and p.provider == PROVIDER
+                and p.external_id == f"intent:{order_id}"
+            )
+            for p in payments
+        ):
+            return "processing"
+        return "unpaid"
+
+    async def customer_cancelled_orders(
+        self, order_ids: list[UUID], *, session: object
+    ) -> set[UUID]:
+        return set(
+            await _session(session).scalars(
+                select(AuditLogModel.entity_id).where(
+                    AuditLogModel.entity_type == "order",
+                    AuditLogModel.entity_id.in_(order_ids),
+                    AuditLogModel.new_values["reason"].as_string()
+                    == _CUSTOMER_CANCELLED,
+                )
+            )
+        )
+
+    async def cancel_unpaid_order(
+        self,
+        user_id: UUID,
+        order_id: UUID,
+        at: datetime,
+        *,
+        confirm: bool,
+        session: object,
+    ) -> str:
+        db = _session(session)
+        # Same user -> advisory order -> row lock order as native checkout.
+        if confirm:
+            await SqlAlchemyFinancialItemRepository().lock_order(
+                order_id, session=db
+            )
+        order = await db.get(OrderModel, order_id, with_for_update=confirm)
+        if order is None or order.advertiser_id != user_id:
+            raise PermissionError("customer_order_forbidden")
+        if (
+            order.status == OrderStatus.CLOSED
+            and await self.customer_cancelled_orders([order_id], session=db)
+        ):
+            return "cancelled"
+        if order.status != OrderStatus.NEW or order.complimentary:
+            return "unavailable"
+        if await db.scalar(
+            select(
+                exists().where(CONTROLS.c.order_id == order_id)
+                | exists().where(OfferDispatchModel.order_id == order_id)
+                | exists().where(
+                    OutboxEventModel.aggregate_id == str(order_id),
+                    OutboxEventModel.event_type == "order.activated",
+                )
+            )
+        ):
+            return "unavailable"
+        payment_state = await self.payment_state(order_id, session=db)
+        if payment_state != "unpaid":
+            return payment_state
+        if not confirm:
+            return "confirm"
+        order.status = OrderStatus.CLOSED
+        order.dispatch_stopped = True
+        order.completed_at = at
+        order.updated_at = at
+        db.add(
+            AuditLogModel(
+                entity_type="order",
+                entity_id=order_id,
+                action=AuditAction.UPDATE,
+                old_values={"status": OrderStatus.NEW.value},
+                new_values={
+                    "status": OrderStatus.CLOSED.value,
+                    "reason": _CUSTOMER_CANCELLED,
+                },
+                changed_by=user_id,
+                changed_at=at,
+            )
+        )
+        return "cancelled"
 
     async def order_created_at(
         self, user_id: UUID, order_id: UUID, *, session: object
@@ -582,6 +719,16 @@ class SqlAlchemyCustomerWorkflowRepository:
             or series["opted_out"]
             or series["generation"] != job["generation"]
         ):
+            return None
+        order_id = series["order_id"]
+        if order_id is not None and await self.customer_cancelled_orders(
+            [order_id], session=db
+        ):
+            await db.execute(
+                update(SERIES)
+                .where(SERIES.c.series_id == series["series_id"])
+                .values(stop_reason="cancelled", stopped_at=at)
+            )
             return None
         paid_at = await self.payment_observed_at(
             series["user_id"],

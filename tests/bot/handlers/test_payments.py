@@ -893,7 +893,7 @@ async def test_pay_order_not_new_status(
         config,
         bot_texts_service,
     )
-    assert "статусе NEW" in message.answers[0]
+    assert "статусе NEW" in message.answers[0][0]
 
 
 @pytest.mark.asyncio
@@ -1381,7 +1381,7 @@ async def test_send_order_invoice_price_too_large(
         invoice_data,
         bot_texts_service,
     )
-    assert "слишком большая" in message.answers[0]
+    assert "слишком большая" in message.answers[0][0]
 
 
 @pytest.mark.asyncio
@@ -1558,8 +1558,8 @@ async def test_pay_order_contact_price_not_configured(
     )
     assert message.answers
     assert (
-        "Стоимость доступа" in message.answers[0]
-        or "настроена" in message.answers[0]
+        "Стоимость доступа" in message.answers[0][0]
+        or "настроена" in message.answers[0][0]
     )
 
 

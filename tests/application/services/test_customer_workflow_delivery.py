@@ -157,6 +157,7 @@ async def test_factory_and_enabled_scheduler_synthetic(monkeypatch):
     services = build_customer_workflows(Transactions())
     assert set(services) == {
         "order_support_service",
+        "order_cancellation_service",
         "service_lead_service",
         "client_followup_service",
         "client_order_view_service",
