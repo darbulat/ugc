@@ -52,6 +52,11 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     flow_inline_keyboard,
     flow_keyboard_remove,
 )
+from ugc_bot.bot.telegram.handlers.order_controls import (
+    cancel_order_button,
+    payment_help_button,
+    payment_help_keyboard,
+)
 from ugc_bot.bot.telegram.handlers.order_creation_states import (
     CALLBACK_ORDER_BLOGGERS_PREFIX,
     CALLBACK_ORDER_CONTENT_ADS,
@@ -1689,6 +1694,7 @@ async def handle_geography(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_pricing,
+            keyboard=payment_help_keyboard(order.order_id, user_locale),
         )
         return
     if not invoice_data.provider_token:
@@ -1698,6 +1704,7 @@ async def handle_geography(
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_provider,
+            keyboard=payment_help_keyboard(order.order_id, user_locale),
         )
         return
     await send_order_invoice(
@@ -1785,7 +1792,9 @@ async def _confirm_customer_order(
                         ),
                         callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
                     )
-                ]
+                ],
+                [cancel_order_button(result.order_id, locale)],
+                [payment_help_button(result.order_id, locale)],
             ]
         ),
     )
@@ -1879,7 +1888,13 @@ async def handle_customer_help_callback(
 
 @router.callback_query(
     lambda c: bool(
-        c.data and c.data.startswith(customer_actions.SUPPORT_PREFIX)
+        c.data
+        and c.data.startswith(
+            (
+                customer_actions.SUPPORT_PREFIX,
+                customer_actions.PAYMENT_SUPPORT_PREFIX,
+            )
+        )
     )
 )
 async def handle_customer_problem(
@@ -1895,12 +1910,18 @@ async def handle_customer_problem(
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    payment = (incoming.data or "").startswith(
+        customer_actions.PAYMENT_SUPPORT_PREFIX
+    )
+    if payment and incoming.chat_id != incoming.user.external_id:
+        return
     await customer_actions.begin_support(
         incoming,
         AiogramStateStore(state),
         messenger_client,
         user_role_service,
         order_service,
+        payment=payment,
     )
 
 
@@ -1908,17 +1929,28 @@ async def handle_customer_problem(
 async def handle_customer_problem_reason(
     message: Message,
     state: FSMContext,
+    user_role_service: UserRoleService,
+    order_support_service: Any = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
-    await customer_actions.support_reason(
-        event_adapter.from_message(message),
-        AiogramStateStore(state),
-        messenger_client,
+    incoming = event_adapter.from_message(message)
+    store = AiogramStateStore(state)
+    payment_reason = await customer_actions.support_reason(
+        incoming, store, messenger_client
     )
+    if payment_reason:
+        await customer_actions.send_support(
+            incoming,
+            store,
+            messenger_client,
+            user_role_service,
+            order_support_service,
+            payment_reason=payment_reason,
+        )
 
 
 @router.message(StateFilter(customer_actions.SUPPORT_CONTACT))

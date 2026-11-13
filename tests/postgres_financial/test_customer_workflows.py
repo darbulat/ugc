@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 
 from tests.helpers.factories import create_test_order
 from tests.postgres_financial.test_order_intake import intake_env as _intake_env
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
+)
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
     DeliveryReceipt,
@@ -92,6 +95,36 @@ async def order(env):
     return await create_test_order(
         env["repos"]["order_repo"], advertiser_id=env["user"].user_id
     )
+
+
+@pytest.mark.asyncio
+async def test_cancelled_order_drops_already_queued_payment_reminder(
+    intake_env,
+):
+    env = intake_env
+    user = env["user"]
+    owned = await order(env)
+    workflow = services(env)
+    follow = workflow["client_followup_service"]
+    await follow.record_activity(user.user_id, "order_created", owned.order_id)
+    env["clock"].at += timedelta(hours=1)
+    receiver = Receiver(env)
+    delivery = worker(env, receiver)
+    job = await delivery.prepare()
+    assert job is not None
+    assert (
+        await workflow["order_cancellation_service"].cancel(
+            user.user_id,
+            owned.order_id,
+            principal=AuthenticatedMessengerPrincipal(
+                user.user_id, "telegram", user.telegram_id
+            ),
+            confirm=True,
+        )
+        == "cancelled"
+    )
+    assert await delivery.deliver(job) is False
+    assert receiver.messages == []
 
 
 @pytest.mark.asyncio

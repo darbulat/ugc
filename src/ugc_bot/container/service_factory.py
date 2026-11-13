@@ -691,6 +691,9 @@ def build_bot_services(
         "order_support_service": customer_workflows.get(
             "order_support_service"
         ),
+        "order_cancellation_service": customer_workflows.get(
+            "order_cancellation_service"
+        ),
         "service_lead_service": customer_workflows.get("service_lead_service"),
         "client_followup_service": customer_workflows.get(
             "client_followup_service"

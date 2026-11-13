@@ -41,6 +41,10 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     PAY_ORDER_CALLBACK_PREFIX,
     advertiser_menu_inline_keyboard,
 )
+from ugc_bot.bot.telegram.handlers.order_controls import (
+    payment_help_button,
+    payment_help_keyboard,
+)
 from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
@@ -70,6 +74,7 @@ async def send_order_invoice(
     if not incoming_message.chat_id:
         return
 
+    help_keyboard = payment_help_keyboard(order_id, locale)
     price = int(invoice_data.total * 100)
     if price > 100_000_000:
         msg_too_large = await bot_texts_service.get(
@@ -78,6 +83,7 @@ async def send_order_invoice(
         await messenger_client.send_text(
             chat_id=incoming_message.chat_id,
             text=msg_too_large,
+            keyboard=help_keyboard,
         )
         return
 
@@ -106,6 +112,7 @@ async def send_order_invoice(
                 need_email=invoice_data.need_email,
                 send_email_to_provider=invoice_data.need_email,
                 pay_button_text=pay_button_text,
+                help_button=payment_help_button(order_id, locale),
             ),
         )
     except Exception:
@@ -117,6 +124,7 @@ async def send_order_invoice(
         await messenger_client.send_text(
             chat_id=incoming_message.chat_id,
             text=msg_failed,
+            keyboard=help_keyboard,
         )
 
 
@@ -134,6 +142,20 @@ def _parse_pay_order_id_from_start(text: str) -> UUID | None:
         return UUID(payload[4:])
     except (ValueError, TypeError):
         return None
+
+
+async def _send_invoice_validation_error(
+    incoming, messenger, texts, locale, order_id, error_key
+) -> None:
+    text = await texts.get(error_key, locale)
+    if error_key in {"msg_order_not_found", "msg_order_not_yours"}:
+        await messenger.send_text(chat_id=incoming.chat_id, text=text)
+    else:
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=text,
+            keyboard=payment_help_keyboard(order_id, locale),
+        )
 
 
 @router.message(
@@ -205,8 +227,14 @@ async def start_pay_order_link(
         order_id, user.user_id, user.country, config
     )
     if isinstance(result, str):
-        msg = await bot_texts_service.get(result, locale)
-        await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
+        await _send_invoice_validation_error(
+            incoming,
+            messenger_client,
+            bot_texts_service,
+            locale,
+            order_id,
+            result,
+        )
         return
     order, invoice_data = result
     await send_order_invoice(
@@ -306,8 +334,14 @@ async def pay_order(
         order_id, user.user_id, user.country, config
     )
     if isinstance(result, str):
-        msg = await bot_texts_service.get(result, locale)
-        await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
+        await _send_invoice_validation_error(
+            incoming,
+            messenger_client,
+            bot_texts_service,
+            locale,
+            order_id,
+            result,
+        )
         return
     order, invoice_data = result
     await send_order_invoice(
@@ -405,8 +439,14 @@ async def pay_order_callback(
         order_id, user.user_id, user.country, config
     )
     if isinstance(result, str):
-        msg = await bot_texts_service.get(result, locale)
-        await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
+        await _send_invoice_validation_error(
+            incoming,
+            messenger_client,
+            bot_texts_service,
+            locale,
+            order_id,
+            result,
+        )
         return
     order, invoice_data = result
     await send_order_invoice(

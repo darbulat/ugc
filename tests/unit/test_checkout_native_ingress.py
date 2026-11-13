@@ -182,7 +182,9 @@ async def test_bot_v1_deep_link_uses_shared_checkout_without_second_invoice(
     adapter = SimpleNamespace(from_message=lambda _: incoming)
     payments = SimpleNamespace(
         get_order=AsyncMock(
-            return_value=SimpleNamespace(financial_version="actual-v1")
+            return_value=SimpleNamespace(
+                financial_version="actual-v1", advertiser_id=user_id
+            )
         ),
         validate_order_for_invoice=AsyncMock(
             side_effect=AssertionError("legacy invoice must not run")
@@ -219,6 +221,12 @@ async def test_bot_v1_deep_link_uses_shared_checkout_without_second_invoice(
     assert (
         messenger.send_text.await_args.kwargs["keyboard"].rows[0][0].url
         == "https://t.me/$actual_stored"
+    )
+    assert (
+        messenger.send_text.await_args.kwargs["keyboard"]
+        .rows[1][0]
+        .callback_data
+        == f"customer:payment_help:{order_id}"
     )
     payments.validate_order_for_invoice.assert_not_awaited()
     messenger.send_invoice.assert_not_awaited()

@@ -9,6 +9,21 @@ from uuid import UUID
 
 class CustomerWorkflowRepository(Protocol):
     async def actor(self, user_id: UUID, *, session: object) -> dict: ...
+    async def payment_state(
+        self, order_id: UUID, *, session: object
+    ) -> str: ...
+    async def cancel_unpaid_order(
+        self,
+        user_id: UUID,
+        order_id: UUID,
+        at: datetime,
+        *,
+        confirm: bool,
+        session: object,
+    ) -> str: ...
+    async def customer_cancelled_orders(
+        self, order_ids: list[UUID], *, session: object
+    ) -> set[UUID]: ...
     async def owns_order(
         self, user_id: UUID, order_id: UUID, *, session: object
     ) -> bool: ...

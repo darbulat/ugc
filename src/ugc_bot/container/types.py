@@ -91,6 +91,7 @@ class BotServices(TypedDict):
     order_image_service: NotRequired[Any]
     payment_repo: NotRequired[Any]
     order_support_service: NotRequired[Any]
+    order_cancellation_service: NotRequired[Any]
     service_lead_service: NotRequired[Any]
     client_followup_service: NotRequired[Any]
     client_order_view_service: NotRequired[Any]

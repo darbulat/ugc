@@ -1,5 +1,6 @@
 """An actual post-payment grade increase cannot reprice the paid position."""
 
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -50,7 +51,8 @@ async def test_grade_99_to_100_after_capture_does_not_reprice_work(
             "partner_view_service"
         ]
 
-        async def current_grade():
+        async def current_grade(as_of):
+            partner_service.clock = Mock(now=Mock(return_value=as_of))
             async with flow[
                 "container"
             ].transaction_manager.transaction() as db:
@@ -67,14 +69,16 @@ async def test_grade_99_to_100_after_capture_does_not_reprice_work(
             env["pg"], flow["partner"], flow["receipt"].protocol_message_at
         )
         assert paid_count.verified_count == 99
-        before = await current_grade()
+        with env["pg"].connect() as connection:
+            before_at = instant(connection)
+        before = await current_grade(before_at)
         assert before["verified_creators"] == 99
         assert before["tier_rate_bps"] == 1000
         crossed_at = add_verified_creators(env, flow["partner"], 1)
         assert (
             await count_at(env["pg"], flow["partner"], crossed_at)
         ).verified_count == 100
-        after = await current_grade()
+        after = await current_grade(crossed_at)
         assert after["verified_creators"] == 100
         assert after["tier_rate_bps"] == 1200
         assert after["threshold"] == 100

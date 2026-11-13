@@ -97,10 +97,13 @@ class CustomerWorkflowService:
                 kind=kind,
                 operation_key=payload["operation_key"],
                 payload_hash=digest,
-                payload=payload,
+                payload=await self.request_payload(payload, session=session),
                 state="new",
                 created_at=utc(self.clock.now()),
                 expanded_at=None,
             )
             await self.repository.save_request(result, session=session)
             return result
+
+    async def request_payload(self, payload: dict, *, session: object) -> dict:
+        return payload

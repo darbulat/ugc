@@ -3,6 +3,7 @@
 from datetime import datetime
 from math import ceil
 from typing import Optional
+from uuid import UUID
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -23,15 +24,29 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
+from ugc_bot.application.services.order_cancellation_service import (
+    OrderCancellationService,
+)
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.customer_actions import order_number
+from ugc_bot.bot.customer_intake import principal_for
 from ugc_bot.bot.telegram.filters import TextEqualsKey
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_PROFILE_AGREE,
     CALLBACK_PROFILE_MENU_MY_ORDERS,
     PAY_ORDER_CALLBACK_PREFIX,
     confirm_agreement_inline_keyboard,
+)
+from ugc_bot.bot.telegram.handlers.order_controls import (
+    CANCEL_ORDER_PREFIX,
+    CONFIRM_CANCEL_ORDER_PREFIX,
+    KEEP_ORDER,
+    cancel_order_button,
+    cancellation_confirmation,
+    payment_help_button,
+    payment_help_keyboard,
 )
 from ugc_bot.bot.telegram.handlers.profile import (
     _ADVERTISER_AGREEMENTS_STATE,
@@ -43,6 +58,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.texts.defaults.customer import customer_text
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
@@ -161,6 +177,7 @@ async def _send_my_orders_content(
     messenger_client: MessengerClient,
     locale: str,
     country_repo: CountryRepository | None = None,
+    order_cancellation_service: OrderCancellationService | None = None,
 ) -> None:
     """Send fill profile, agreement, or order lists depending on user state."""
     if advertiser is None and blogger is None:
@@ -226,6 +243,8 @@ async def _send_my_orders_content(
                 currency_map=currency_map,
                 default_currency_symbol=config.market.currency_symbol,
                 texts=order_texts,
+                locale=locale,
+                cancellation=order_cancellation_service,
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -286,6 +305,7 @@ async def show_my_orders(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
+    order_cancellation_service: OrderCancellationService | None = None,
 ) -> None:
     """Show advertiser and blogger orders in two separate messages."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -327,6 +347,7 @@ async def show_my_orders(
         messenger_client,
         locale,
         country_repo=country_repo,
+        order_cancellation_service=order_cancellation_service,
     )
 
 
@@ -344,6 +365,7 @@ async def show_my_orders_from_profile_callback(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
+    order_cancellation_service: OrderCancellationService | None = None,
 ) -> None:
     """Show my orders from profile inline menu."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -385,6 +407,7 @@ async def show_my_orders_from_profile_callback(
         messenger_client,
         locale,
         country_repo=country_repo,
+        order_cancellation_service=order_cancellation_service,
     )
 
 
@@ -409,6 +432,7 @@ async def paginate_orders(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
+    order_cancellation_service: OrderCancellationService | None = None,
 ) -> None:
     """Handle pagination for advertiser and blogger orders."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -503,6 +527,8 @@ async def paginate_orders(
             currency_map=currency_map,
             default_currency_symbol=config.market.currency_symbol,
             texts=order_texts,
+            locale=locale,
+            cancellation=order_cancellation_service,
         )
 
     if incoming.message_id:
@@ -515,6 +541,87 @@ async def paginate_orders(
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
 
 
+@router.callback_query(
+    lambda c: bool(
+        c.data
+        and (
+            c.data == KEEP_ORDER
+            or c.data.startswith(
+                (CANCEL_ORDER_PREFIX, CONFIRM_CANCEL_ORDER_PREFIX)
+            )
+        )
+    )
+)
+async def cancel_order_callback(
+    callback: CallbackQuery,
+    user_role_service: UserRoleService,
+    order_cancellation_service: OrderCancellationService | None = None,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger, adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = adapter.from_callback(callback)
+    data = incoming.data or ""
+    await messenger.answer_callback(callback_id=incoming.callback_id)
+    if incoming.chat_id != incoming.user.external_id:
+        return
+    if data == KEEP_ORDER:
+        if incoming.message_id:
+            await messenger.edit_text(
+                chat_id=incoming.chat_id,
+                message_id=incoming.message_id,
+                text=customer_text(user_locale, "order_keep_button"),
+                keyboard=None,
+            )
+        return
+    user = await user_role_service.get_user(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    confirm = data.startswith(CONFIRM_CANCEL_ORDER_PREFIX)
+    try:
+        order_id = UUID(data.split(":", 2)[2])
+        if user is None or order_cancellation_service is None:
+            raise PermissionError("customer_order_forbidden")
+        result = await order_cancellation_service.cancel(
+            user.user_id,
+            order_id,
+            principal=principal_for(incoming, user.user_id),
+            confirm=confirm,
+        )
+    except (ValueError, PermissionError):
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=customer_text(user_locale, "order_cancel_unavailable"),
+        )
+        return
+    text = customer_text(
+        user_locale, f"order_cancel_{result}", number=order_number(order_id)
+    )
+    if result == "confirm":
+        keyboard = cancellation_confirmation(order_id, user_locale)
+    elif result in {"paid", "processing"}:
+        keyboard = payment_help_keyboard(order_id, user_locale)
+    else:
+        keyboard = None
+    if confirm and incoming.message_id:
+        await messenger.edit_text(
+            chat_id=incoming.chat_id,
+            message_id=incoming.message_id,
+            text=text,
+            keyboard=keyboard,
+        )
+    else:
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
+
+
 async def _render_page(
     orders,
     page: int,
@@ -522,6 +629,9 @@ async def _render_page(
     currency_map: dict[str, str] | None = None,
     default_currency_symbol: str = "₽",
     texts: dict[str, str] | None = None,
+    *,
+    locale: str = "ru",
+    cancellation: OrderCancellationService | None = None,
 ) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
     t = texts or {}
@@ -531,6 +641,17 @@ async def _render_page(
     start = (page - 1) * _PAGE_SIZE
     end = start + _PAGE_SIZE
     slice_orders = orders[start:end]
+    cancelled = (
+        await cancellation.cancelled_orders(
+            [
+                order.order_id
+                for order in slice_orders
+                if order.status == OrderStatus.CLOSED
+            ]
+        )
+        if cancellation is not None
+        else set()
+    )
 
     title_tpl = t.get(
         "msg_orders_title", "Ваши заказы (страница {page}/{total_pages}):"
@@ -545,6 +666,8 @@ async def _render_page(
         )
         status_key = ORDER_STATUS_KEYS.get(order.status, "msg_status_new")
         status_label = t.get(status_key, order.status.value)
+        if order.order_id in cancelled:
+            status_label = customer_text(locale, "order_cancel_status")
         status_line = t.get(
             "msg_order_status", "Статус: {status_label}"
         ).format(status_label=status_label)
@@ -592,6 +715,19 @@ async def _render_page(
                     )
                 ]
             )
+            if cancellation is not None:
+                buttons_rows[-1].append(
+                    cancel_order_button(
+                        order.order_id, locale, f" №{creation_number}"
+                    )
+                )
+                buttons_rows.append(
+                    [
+                        payment_help_button(
+                            order.order_id, locale, f" №{creation_number}"
+                        )
+                    ]
+                )
 
     btn_back = t.get("btn_back_arrow", "⬅️ Назад")
     btn_forward = t.get("btn_forward_arrow", "Вперед ➡️")
