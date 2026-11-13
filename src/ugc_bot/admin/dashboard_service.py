@@ -15,12 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
+from ugc_bot.admin.business_metrics import creator_metrics, order_conversion
 from ugc_bot.admin.complaints import (
     COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
 )
 from ugc_bot.admin.order_worklist import (
     aging_unpaid_condition,
+    business_order_conditions,
     worklist_conditions,
 )
 from ugc_bot.domain.enums import (
@@ -41,6 +43,7 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
     UserReferralBindingModel,
 )
+from ugc_bot.infrastructure.db.payout_models import TABLE_MAP as PAYOUT_TABLES
 
 if TYPE_CHECKING:
     from ugc_bot.application.services.offer_dispatch_service import (
@@ -87,23 +90,19 @@ def dashboard_period_window(
     if period == "today":
         current_start = start_of_today
         current_end = now
-        previous_end = start_of_today
-        previous_start = previous_end - timedelta(days=1)
+        previous_start = start_of_today - timedelta(days=1)
+        previous_end = now - timedelta(days=1)
     elif period == "yesterday":
         current_end = start_of_today
         current_start = current_end - timedelta(days=1)
         previous_end = current_start
         previous_start = previous_end - timedelta(days=1)
-    elif period == "7d":
+    elif period in ("7d", "30d"):
+        days = 7 if period == "7d" else 30
         current_end = now
-        current_start = now - timedelta(days=7)
-        previous_end = current_start
-        previous_start = previous_end - timedelta(days=7)
-    elif period == "30d":
-        current_end = now
-        current_start = now - timedelta(days=30)
-        previous_end = current_start
-        previous_start = previous_end - timedelta(days=30)
+        current_start = start_of_today - timedelta(days=days - 1)
+        previous_start = current_start - timedelta(days=days)
+        previous_end = now - timedelta(days=days)
     elif period == "all":
         current_start = datetime(2000, 1, 1, tzinfo=timezone)
         current_end = now
@@ -229,6 +228,20 @@ class AdminDashboardService:
             t0 = time.perf_counter()
             picked_creators_count = await self._count_picked_creators(session)
             timings["picked_creators"] = (time.perf_counter() - t0) * 1000
+            creators = await creator_metrics(
+                session, window.current_start, window.current_end
+            )
+            conversion = await order_conversion(
+                session, window.current_start, window.current_end
+            )
+            previous_conversion = (
+                await order_conversion(
+                    session, window.previous_start, window.previous_end
+                )
+                if period != "all"
+                else None
+            )
+            pending_payouts = await self._count_pending_payouts(session)
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -342,6 +355,11 @@ class AdminDashboardService:
             "creators_by_city": creators_by_city,
             "picked_creators_count": picked_creators_count,
             "picked_creators_target": PICKED_CREATORS_TARGET,
+            "creator_metrics": creators,
+            "order_conversion": conversion,
+            "previous_conversion": previous_conversion,
+            "pending_payouts": pending_payouts,
+            "metrics_timezone": self._timezone.key,
         }
         if include_timings:
             result["_timings_ms"] = timings
@@ -378,7 +396,41 @@ class AdminDashboardService:
             "registrations_advertisers": reg_advertisers,
             "orders": orders,
             "turnover": turnover,
+            "timezone": self._timezone.key,
+            "dates": self._chart_dates(
+                window,
+                period,
+                reg_creators + reg_advertisers + orders + turnover,
+            ),
         }
+
+    def _chart_dates(
+        self, window: PeriodWindow, period: PeriodKey, rows: list[dict]
+    ) -> list[str]:
+        start = window.current_start.date()
+        if period == "all":
+            start = min(
+                (
+                    datetime.fromisoformat(row["date"]).date()
+                    for row in rows
+                    if row["date"]
+                ),
+                default=window.current_end.date(),
+            )
+        end = (
+            (window.current_end - timedelta(microseconds=1)).date()
+            if period == "yesterday"
+            else window.current_end.date()
+        )
+        return [
+            (start + timedelta(days=i)).isoformat()
+            for i in range((end - start).days + 1)
+        ]
+
+    def _chart_day(self, timestamp: Any):
+        return func.date_trunc(
+            "day", func.timezone(self._timezone.key, timestamp)
+        )
 
     async def _chart_registrations_by_day(
         self,
@@ -388,7 +440,7 @@ class AdminDashboardService:
         end: datetime,
     ) -> list[dict]:
         """Count registrations by day (users with profile created in range)."""
-        day = func.date_trunc("day", UserModel.created_at)
+        day = self._chart_day(UserModel.created_at)
         query = (
             select(
                 day.label("day"),
@@ -419,14 +471,14 @@ class AdminDashboardService:
         end: datetime,
     ) -> list[dict]:
         """Count orders created by day."""
-        day = func.date_trunc("day", OrderModel.created_at)
+        day = self._chart_day(OrderModel.created_at)
         query = (
             select(
                 day.label("day"), func.count(OrderModel.order_id).label("count")
             )
             .select_from(OrderModel)
             .where(
-                *worklist_conditions("all", ""),
+                *business_order_conditions(),
                 and_(
                     OrderModel.created_at >= start,
                     OrderModel.created_at < end,
@@ -480,12 +532,15 @@ class AdminDashboardService:
     ) -> list[dict]:
         """Sum paid payment amounts by day (paid_at or created_at)."""
         date_col = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
-        day = func.date_trunc("day", date_col)
+        day = self._chart_day(date_col)
         query = (
             select(
                 day.label("day"),
                 PaymentModel.currency,
                 func.coalesce(func.sum(PaymentModel.amount), 0).label("amount"),
+                func.count(distinct(PaymentModel.order_id)).label(
+                    "orders_paid"
+                ),
             )
             .select_from(PaymentModel)
             .where(
@@ -505,6 +560,7 @@ class AdminDashboardService:
                 "date": row.day.strftime("%Y-%m-%d") if row.day else "",
                 "currency": row.currency,
                 "amount": round(float(row.amount), 2),
+                "orders_paid": int(row.orders_paid),
             }
             for row in rows
         ]
@@ -961,7 +1017,10 @@ class AdminDashboardService:
         }
 
     async def _list_payout_requests(self, session: AsyncSession) -> list[dict]:
-        """Return recent payout requests with referrer telegram/username."""
+        """Read recent legacy and financial payout requests."""
+        requests = PAYOUT_TABLES["requests"]
+        states = PAYOUT_TABLES["states"]
+        pending = self._pending_payout_condition()
         query = (
             select(
                 PayoutRequestModel.request_id,
@@ -970,39 +1029,93 @@ class AdminDashboardService:
                 UserModel.telegram,
                 PayoutRequestModel.requested_at,
                 PayoutRequestModel.status,
-                PayoutRequestModel.amount,
+                func.coalesce(
+                    PayoutRequestModel.amount, requests.c.amount_minor / 100
+                ).label("amount"),
                 PayoutRequestModel.currency,
+                states.c.state.label("financial_state"),
+                PayoutRequestModel.payout_protocol,
             )
-            .join(
-                UserModel,
-                UserModel.user_id == PayoutRequestModel.user_id,
+            .join(UserModel, UserModel.user_id == PayoutRequestModel.user_id)
+            .outerjoin(
+                requests, requests.c.request_id == PayoutRequestModel.request_id
             )
-            .order_by(PayoutRequestModel.requested_at.desc())
+            .outerjoin(states, states.c.request_id == requests.c.request_id)
+            .where(PayoutRequestModel.status != PayoutRequestStatus.DELETED)
+            .order_by(
+                pending.desc().nulls_last(),
+                PayoutRequestModel.requested_at.desc(),
+                PayoutRequestModel.request_id,
+            )
             .limit(100)
         )
-        result = await session.execute(query)
-        rows = result.all()
+        rows = (await session.execute(query)).all()
         status_labels = {
-            PayoutRequestStatus.PENDING: "Ожидает",
-            PayoutRequestStatus.PAID: "Выплачено",
-            PayoutRequestStatus.CANCELLED: "Отменено",
+            "pending": "Ожидает",
+            "reserved": "Ожидает проверки",
+            "approved": "Одобрено",
+            "executing": "В обработке",
+            "blocked": "Приостановлено",
+            "unknown": "Нужно сверить",
+            "failed": "Ошибка выплаты",
+            "paid": "Выплачено",
+            "cancelled": "Отменено",
+            "rejected": "Отклонено",
+            "unavailable": "Статус недоступен",
         }
-        return [
-            {
-                "request_id": str(row.request_id),
-                "user_id": str(row.user_id),
-                "username": row.username,
-                "telegram": row.telegram,
-                "requested_at": row.requested_at,
-                "status": row.status.value if row.status else "",
-                "status_label": status_labels.get(
-                    row.status, row.status.value if row.status else ""
+        items = []
+        for row in rows:
+            status = (
+                (row.financial_state or "unavailable")
+                if row.payout_protocol
+                else row.status.value
+            )
+            items.append(
+                {
+                    "request_id": str(row.request_id),
+                    "user_id": str(row.user_id),
+                    "username": row.username,
+                    "telegram": row.telegram,
+                    "requested_at": row.requested_at,
+                    "status": status,
+                    "status_label": status_labels.get(status, status),
+                    "amount": float(row.amount)
+                    if row.amount is not None
+                    else None,
+                    "currency": row.currency,
+                    "legacy": not row.payout_protocol,
+                }
+            )
+        return items
+
+    def _pending_payout_condition(self) -> ColumnElement[bool]:
+        return or_(
+            and_(
+                PayoutRequestModel.payout_protocol.is_(None),
+                PayoutRequestModel.status == PayoutRequestStatus.PENDING,
+            ),
+            and_(
+                PayoutRequestModel.payout_protocol.is_not(None),
+                PAYOUT_TABLES["states"].c.state.in_(
+                    ("reserved", "blocked", "unknown", "failed")
                 ),
-                "amount": float(row.amount) if row.amount is not None else None,
-                "currency": row.currency,
-            }
-            for row in rows
-        ]
+            ),
+        )
+
+    async def _count_pending_payouts(self, session: AsyncSession) -> int:
+        states = PAYOUT_TABLES["states"]
+        query = (
+            select(func.count())
+            .select_from(PayoutRequestModel)
+            .outerjoin(
+                states, states.c.request_id == PayoutRequestModel.request_id
+            )
+            .where(
+                PayoutRequestModel.status != PayoutRequestStatus.DELETED,
+                self._pending_payout_condition(),
+            )
+        )
+        return int((await session.execute(query)).scalar() or 0)
 
     async def get_user_card(self, user_id: UUID) -> dict | None:
         """Return user card with profiles for read-only view."""

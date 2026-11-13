@@ -91,6 +91,10 @@ def _is_test_order():
     )
 
 
+def business_order_conditions():
+    return (*worklist_conditions("all", ""), ~_is_test_order())
+
+
 def _can_delete_test_order(*, postgresql: bool):
     eligible = (
         _can_hide()
