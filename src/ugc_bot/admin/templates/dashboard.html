@@ -4,300 +4,176 @@
   {% set picked_count = payload.get("picked_creators_count", 0) %}
   {% set picked_target = payload.get("picked_creators_target", 1000) %}
   {% set picked_pct = ([((picked_count / picked_target * 100)|round(1)), 100]|min) if picked_target > 0 else 0 %}
-  <div class="progress-bar">
-    <span class="progress-bar__label">Подобранных креаторов: {{ picked_count }} / {{ picked_target }}</span>
-    <div class="progress-bar__track">
-      <div class="progress-bar__fill" style="width: {{ picked_pct }}%;"></div>
-    </div>
+  {% set attention = payload.get("order_attention", {}) %}
+  {% set dashboard_url = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+
+  <div class="section page-heading">
+    <h1>Дашборд</h1>
+    <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
   </div>
 
-  <section class="section">
-    <h1>Дашборд</h1>
-    <div class="periods">
-      {% for p in periods %}
-        <a
-          class="chip {% if p == period %}chip--active{% endif %}"
-          href="/admin/dashboard?period={{ p }}"
-        >
-          {{ period_labels.get(p, p) }}
-        </a>
+  <section class="section" aria-labelledby="attention-heading">
+    <div class="page-heading">
+      <h2 id="attention-heading">Требует внимания</h2>
+      <a href="/admin/order-model/list?status=active">Активные заказы · {{ attention.get('active', 0) }}</a>
+    </div>
+    <div class="attention-queues">
+      {% for key, label, rows in [
+        ('delayed', 'Проблемы с подбором', attention.get('delayed', [])),
+        ('complaints', 'Открытые жалобы', payload.get('open_complaints_list', [])),
+        ('moderation', 'На модерации', attention.get('moderation', [])),
+        ('unpaid', 'Давно без оплаты', attention.get('unpaid', []))
+      ] %}
+      {% set count = payload.problems.open_complaints if key == 'complaints' else rows|length %}
+      <details class="card attention-queue" {% if key == 'delayed' and count %}open{% endif %}>
+        <summary><span>{{ label }}</span><strong>{{ count }}</strong></summary>
+        {% if rows %}
+        <ul class="attention-list">
+          {% for row in rows %}
+          <li>
+            <div class="attention-list__main">
+              {% if key == 'complaints' %}
+                <a href="/admin/complaint-model/edit/{{ row.complaint_id }}">{{ row.reason or 'Открыть жалобу' }}</a>
+                <small>{{ row.reporter }} · {{ (row.created_at|string)[:10] }}</small>
+              {% else %}
+                <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">{{ row.offer_text or ('Заказ ' ~ row.order_id[:8]) }}</a>
+                <small>{{ row.advertiser }} · создан {{ (row.created_at|string)[:10] }}</small>
+              {% endif %}
+            </div>
+            <div class="attention-list__meta">
+              {% if key == 'complaints' %}
+                <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">К заказу</a>
+              {% else %}
+                {% for reason in row.reasons %}
+                  <span class="badge">{{ delay_reason_labels.get(reason, reason) }}</span>
+                {% endfor %}
+                <small>{{ row.age_hours|round|int }} ч с создания{% if key == 'delayed' %} · подобрано {{ row.picked_count }} / {{ row.needed_count }}{% endif %}</small>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <p class="empty">Нет записей.</p>
+        {% endif %}
+        {% if key == 'complaints' and count %}
+          <a class="attention-queue__link" href="/admin/complaint-model/list?status=open">Все открытые жалобы</a>
+        {% endif %}
+      </details>
       {% endfor %}
     </div>
   </section>
 
-  <section class="section grid">
-    {% set imb = payload.imbalance | default({}) %}
-    <div class="card">
-      <h2>Баланс ролей (за период)</h2>
-      <div class="metric">
-        <div class="metric__label">{{ imb.label | default('—') }}</div>
-        <div class="metric__value">
-          {% if imb.ratio is defined and imb.ratio is not none %}
-            Соотношение: {{ imb.ratio }} креаторов на заказчика
-          {% else %}
-            —
-          {% endif %}
+  <section class="section progress-bar">
+    <span class="progress-bar__label">Подобранных креаторов: {{ picked_count }} / {{ picked_target }}</span>
+    <div class="progress-bar__track" role="progressbar" aria-label="Подобранных креаторов"
+         aria-valuenow="{{ picked_pct }}" aria-valuemin="0" aria-valuemax="100">
+      <div class="progress-bar__fill" style="width: {{ picked_pct }}%;"></div>
+    </div>
+    <p class="muted">Уникальные креаторы за всё время</p>
+  </section>
+
+  <section class="section" aria-labelledby="period-heading">
+    <div class="page-heading">
+      <h2 id="period-heading">За период</h2>
+      <a href="/admin/orders?period={{ period }}">Аналитика заказов</a>
+    </div>
+    <nav class="periods" aria-label="Период аналитики">
+      {% for p in periods %}
+        <a class="chip {% if p == period %}chip--active{% endif %}"
+           {% if p == period %}aria-current="page"{% endif %}
+           href="/admin/dashboard?period={{ p }}">{{ period_labels.get(p, p) }}</a>
+      {% endfor %}
+    </nav>
+    <div class="grid dashboard-metrics">
+      <article class="card">
+        <h3>Регистрации</h3>
+        {% for role, name in [('creators', 'Креаторы'), ('advertisers', 'Заказчики')] %}
+          {% set data = payload.registrations[role] %}
+          <div class="metric">
+            <span class="metric__label">{{ name }}</span>
+            <strong class="metric__value">{{ data.count }}</strong>
+            {% if data.change_pct is not none and data.change_pct is defined %}
+              <span class="metric__delta {{ 'positive' if data.change_pct >= 0 else 'negative' }}">{{ "%+.1f%%"|format(data.change_pct) }}</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+        {% set ratio = payload.get('imbalance', {}).get('ratio') %}
+        {% if ratio is not none %}<p class="muted">{{ ratio|string|replace('.', ',') }} регистрации креатора на регистрацию заказчика</p>{% endif %}
+      </article>
+      <article class="card">
+        <h3>Новые заявки</h3>
+        <a class="metric__value" href="/admin/orders?period={{ period }}">{{ payload.orders.active|default(0) + payload.orders.completed|default(0) + payload.orders.archived|default(0) }}</a>
+        <p class="muted">Видимые заказы, созданные за выбранный период</p>
+      </article>
+      <article class="card">
+        <h3>Оплаты</h3>
+        <div class="metric">
+          <span class="metric__label">Оплачено заказов</span>
+          <a class="metric__value" href="/admin/payment-model/list?paid_period={{ period }}">{{ payload.get('paid_orders', 0) }}</a>
         </div>
-        {% if imb.ratio is defined and imb.ratio is not none and imb.ratio > 2 %}
-          <div class="metric__delta negative">Перекос: мало заказчиков</div>
-        {% endif %}
-      </div>
-    </div>
-    <div class="card">
-      <h2>Регистрации</h2>
-      <div class="metric">
-        <div class="metric__label">Креаторы</div>
-        <div class="metric__value">{{ payload.registrations.creators.count }}</div>
-        {% set delta = payload.registrations.creators.change_pct %}
-        {% if delta is not none %}
-          <div class="metric__delta {{ 'positive' if delta >= 0 else 'negative' }}">
-            {{ "%+.1f%%"|format(delta) }}
+        {% for payment in payload.get('payments_by_currency', []) %}
+          <div class="metric">
+            <span class="metric__label">{{ payment.currency }}</span>
+            <strong class="metric__value">{{ "{:,.2f}".format(payment.amount|float).replace(',', ' ').replace('.', ',') }}</strong>
           </div>
         {% else %}
-          <div class="metric__delta neutral">нет</div>
-        {% endif %}
-      </div>
-      <div class="metric">
-        <div class="metric__label">Заказчики</div>
-        <div class="metric__value">{{ payload.registrations.advertisers.count }}</div>
-        {% set delta = payload.registrations.advertisers.change_pct %}
-        {% if delta is not none %}
-          <div class="metric__delta {{ 'positive' if delta >= 0 else 'negative' }}">
-            {{ "%+.1f%%"|format(delta) }}
-          </div>
-        {% else %}
-          <div class="metric__delta neutral">нет</div>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Заказы</h2>
-      <div class="metric">
-        <div class="metric__label">Активные</div>
-        <div class="metric__value">{{ payload.orders.active }}</div>
-      </div>
-      <div class="metric">
-        <div class="metric__label">Завершённые</div>
-        <div class="metric__value">{{ payload.orders.completed }}</div>
-      </div>
-      <div class="metric">
-        <div class="metric__label">В архиве</div>
-        <div class="metric__value">{{ payload.orders.archived }}</div>
-      </div>
-    </div>
-
-    {% set turnover_period = payload.turnover_period | default(none) %}
-    <div class="card">
-      <h2>Деньги за период</h2>
-      <div class="metric">
-        <div class="metric__label">Оборот (оплачено)</div>
-        <div class="metric__value">{% if turnover_period is not none %}{{ "%.2f"|format(turnover_period) }}{% else %}—{% endif %}</div>
-      </div>
-    </div>
-    <div class="card">
-      <h2>Проблемы</h2>
-      <div class="metric">
-        <div class="metric__label">Открытые жалобы</div>
-        <div class="metric__value">{{ payload.problems.open_complaints }}</div>
-        <div class="indicator {{ 'indicator--ok' if payload.problems.open_complaints == 0 else 'indicator--alert' }}"></div>
-      </div>
-      <div class="metric">
-        <div class="metric__label">Задержки</div>
-        <div class="metric__value">{{ payload.problems.delays }}</div>
-        <div class="indicator {{ 'indicator--ok' if payload.problems.delays == 0 else 'indicator--alert' }}"></div>
-      </div>
+          <p class="muted">За выбранный период оплат нет.</p>
+        {% endfor %}
+      </article>
     </div>
   </section>
 
-  <section class="section">
-    <h2>Динамика за период</h2>
-    <div id="charts-period" data-period="{{ period }}"></div>
-    <div class="charts-row">
-      <div class="chart-container"><canvas id="chart-registrations" width="400" height="200"></canvas></div>
-      <div class="chart-container"><canvas id="chart-orders" width="400" height="200"></canvas></div>
-      <div class="chart-container"><canvas id="chart-turnover" width="400" height="200"></canvas></div>
+  <section class="section" aria-labelledby="charts-heading">
+    <h2 id="charts-heading">Динамика за период</h2>
+    <div id="dashboard-charts" data-period="{{ period }}" class="grid">
+      {% for key, label in [('registrations', 'Регистрации'), ('orders', 'Новые заявки'), ('turnover', 'Оплаты')] %}
+      <article class="card chart-card" data-chart="{{ key }}">
+        <h3>{{ label }}</h3>
+        <p class="muted chart-state" role="status">Загрузка…</p>
+        <div class="chart-plot" hidden><canvas role="img" aria-label="{{ label }} по дням"></canvas></div>
+      </article>
+      {% endfor %}
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script>
-      (function() {
-        var period = document.getElementById('charts-period').getAttribute('data-period') || '7d';
-        fetch('/admin/api/dashboard/charts?period=' + encodeURIComponent(period), { credentials: 'same-origin' })
-          .then(function(r) { return r.json(); })
-          .then(function(data) {
-            var commonOpts = { responsive: true, maintainAspectRatio: true };
-            if (data.registrations_creators && data.registrations_creators.length) {
-              var dates = data.registrations_creators.map(function(x) { return x.date; });
-              var advMap = {};
-              (data.registrations_advertisers || []).forEach(function(x) { advMap[x.date] = x.count; });
-              var advData = dates.map(function(d) { return advMap[d] || 0; });
-              new Chart(document.getElementById('chart-registrations'), {
-                type: 'line',
-                data: {
-                  labels: dates,
-                  datasets: [
-                    { label: 'Креаторы', data: data.registrations_creators.map(function(x) { return x.count; }), borderColor: 'rgb(75, 192, 192)', tension: 0.1 },
-                    { label: 'Заказчики', data: advData, borderColor: 'rgb(255, 159, 64)', tension: 0.1 }
-                  ]
-                },
-                options: commonOpts
-              });
-            }
-            if (data.orders && data.orders.length) {
-              new Chart(document.getElementById('chart-orders'), {
-                type: 'bar',
-                data: {
-                  labels: data.orders.map(function(x) { return x.date; }),
-                  datasets: [{ label: 'Заказы', data: data.orders.map(function(x) { return x.count; }), backgroundColor: 'rgba(54, 162, 235, 0.5)' }]
-                },
-                options: commonOpts
-              });
-            }
-            if (data.turnover && data.turnover.length) {
-              new Chart(document.getElementById('chart-turnover'), {
-                type: 'bar',
-                data: {
-                  labels: data.turnover.map(function(x) { return x.date; }),
-                  datasets: [{ label: 'Оборот', data: data.turnover.map(function(x) { return x.amount; }), backgroundColor: 'rgba(153, 102, 255, 0.5)' }]
-                },
-                options: commonOpts
-              });
-            }
-          })
-          .catch(function() {});
-      })();
-    </script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script defer src="{{ request.url_for('admin_mvp_static', path='dashboard.js') }}"></script>
   </section>
 
   <section class="section">
-    <h2>Заявки на вывод</h2>
-    {% set payouts = payload.payout_requests %}
-    {% if payouts %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Пользователь</th>
-            <th>Дата запроса</th>
-            <th>Сумма</th>
-            <th>Статус</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for p in payouts %}
-            <tr>
-              <td>{{ p.telegram or p.username }}</td>
-              <td>{{ p.requested_at }}</td>
-              <td>{% if p.amount is not none %}{{ "%.2f"|format(p.amount) }}{% else %}—{% endif %}</td>
-              <td>{{ p.status_label }}</td>
-              <td>
-                <a href="/admin/users/{{ p.user_id }}">Карточка</a>
-                <a href="/admin/payout-request-model/details/{{ p.request_id }}">Детали</a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="page-heading">
+      <h2>Заявки на вывод</h2>
+      <a href="/admin/payout-request-model/list">Все заявки</a>
+    </div>
+    {% if payload.payout_requests %}
+      <div class="admin-table-scroll" role="region" aria-label="Заявки на вывод" tabindex="0">
+        <table class="table">
+          <thead><tr><th>Пользователь</th><th>Дата</th><th>Сумма</th><th>Статус</th><th></th></tr></thead>
+          <tbody>
+            {% for p in payload.payout_requests %}
+              <tr>
+                <td><a href="/admin/users/{{ p.user_id }}">{{ p.telegram or p.username }}</a></td>
+                <td>{{ (p.requested_at|string)[:10] }}</td>
+                <td>{% if p.amount is not none %}{{ "%.2f"|format(p.amount) }} {{ p.currency|default('') }}{% else %}—{% endif %}</td>
+                <td>{{ p.status_label }}</td>
+                <td><a href="/admin/payout-request-model/details/{{ p.request_id }}">Детали</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     {% else %}
-      <div class="empty">Заявок на вывод нет.</div>
-    {% endif %}
-  </section>
-
-  <section class="section">
-    <h2>Требует внимания (задержки: {{ payload.problems.delays }}, жалобы: {{ payload.problems.open_complaints }})</h2>
-
-    <h3>Задержки</h3>
-    {% if payload.delayed_orders %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Заказ</th>
-            <th>Заказчик</th>
-            <th>Подобрано</th>
-            <th>Возраст, часы</th>
-            <th>Причины</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for order in payload.delayed_orders %}
-            <tr>
-              <td>
-                <a href="/admin/orders/{{ order.order_id }}">{{ order.order_id }}</a>
-              </td>
-              <td>{{ order.advertiser }}</td>
-              <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
-              <td>{{ order.age_hours }}</td>
-              <td>
-                {% for reason in order.reasons %}
-                  <span class="badge">
-                    {{ delay_reason_labels.get(reason, reason) }}
-                  </span>
-                {% endfor %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <div class="empty">Задержек нет.</div>
-    {% endif %}
-
-    <h3>Жалобы</h3>
-    {% set open_complaints_list = payload.open_complaints_list | default([]) %}
-    {% if open_complaints_list %}
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Заказ</th>
-            <th>Заявитель</th>
-            <th>Ответчик</th>
-            <th>Причина</th>
-            <th>Дата</th>
-            <th>Статус</th>
-            <th>Действия</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for c in open_complaints_list %}
-            <tr>
-              <td>
-                <a href="/admin/orders/{{ c.order_id }}">{{ c.order_id }}</a>
-              </td>
-              <td>{{ c.reporter }}</td>
-              <td>{{ c.reported }}</td>
-              <td>{{ c.reason[:80] }}{% if c.reason|length > 80 %}…{% endif %}</td>
-              <td>{{ c.created_at }}</td>
-              <td>{{ c.status_label }}</td>
-              <td>
-                <a href="/admin/orders/{{ c.order_id }}">Заказ</a>
-                <a href="/admin/complaint-model/edit/{{ c.complaint_id }}">Редактировать</a>
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <div class="empty">Открытых жалоб нет.</div>
+      <p class="empty">Заявок на вывод нет.</p>
     {% endif %}
   </section>
 
   {% if payload.get("_timings_ms") %}
   <section class="section card">
     <h2>Время загрузки (мс)</h2>
-    <p class="metric__label">Добавьте <code>?timings=1</code> к URL, чтобы увидеть разбивку.</p>
-    <table class="table">
-      <thead>
-        <tr><th>Компонент</th><th>мс</th></tr>
-      </thead>
-      <tbody>
-        {% for key, ms in payload._timings_ms.items() | sort %}
-          <tr>
-            <td>{{ key }}</td>
-            <td>{{ "%.0f"|format(ms) }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <dl>
+      {% for key, ms in payload._timings_ms.items() | sort %}
+        <dt>{{ key }}</dt><dd>{{ "%.0f"|format(ms) }}</dd>
+      {% endfor %}
+    </dl>
   </section>
   {% endif %}
 {% endblock %}

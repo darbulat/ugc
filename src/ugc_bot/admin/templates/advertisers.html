@@ -11,32 +11,34 @@
   </section>
 
   <section class="section">
-    <table class="table">
-      <thead>
-        <tr>
-          <th><a href="/admin/users/advertisers?sort=user_id&order={% if sort == 'user_id' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">ID</a></th>
-          <th><a href="/admin/users/advertisers?sort=name&order={% if sort == 'name' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Имя / компания</a></th>
-          <th><a href="/admin/users/advertisers?sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
-          <th><a href="/admin/users/advertisers?sort=orders_total&order={% if sort == 'orders_total' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов создано</a></th>
-          <th><a href="/admin/users/advertisers?sort=orders_completed&order={% if sort == 'orders_completed' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов завершено</a></th>
-          <th><a href="/admin/users/advertisers?sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
-          <th>Telegram</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for advertiser in advertisers %}
+    <div class="admin-table-scroll" role="region" aria-label="Заказчики" tabindex="0">
+      <table class="table">
+        <thead>
           <tr>
-            <td>{{ advertiser.user_id }}</td>
-            <td>{{ advertiser.name }}</td>
-            <td>{{ advertiser.created_at }}</td>
-            <td>{{ advertiser.orders_total }}</td>
-            <td>{{ advertiser.orders_completed }}</td>
-            <td>{{ advertiser.complaints }}</td>
-            <td>{% if advertiser.telegram %}<a href="https://t.me/{{ advertiser.telegram.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ advertiser.telegram.replace('@', '') }}</a>{% else %}—{% endif %}</td>
+            <th><a href="/admin/users/advertisers?sort=user_id&order={% if sort == 'user_id' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">ID</a></th>
+            <th><a href="/admin/users/advertisers?sort=name&order={% if sort == 'name' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Имя / компания</a></th>
+            <th><a href="/admin/users/advertisers?sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
+            <th><a href="/admin/users/advertisers?sort=orders_total&order={% if sort == 'orders_total' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов создано</a></th>
+            <th><a href="/admin/users/advertisers?sort=orders_completed&order={% if sort == 'orders_completed' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Заказов завершено</a></th>
+            <th><a href="/admin/users/advertisers?sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
+            <th>Telegram</th>
           </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {% for advertiser in advertisers %}
+            <tr>
+              <td>{{ advertiser.user_id }}</td>
+              <td><a href="{{ request.url_for('admin_user_card', user_id=advertiser.user_id) }}">{{ advertiser.name }}</a></td>
+              <td>{{ advertiser.created_at }}</td>
+              <td>{{ advertiser.orders_total }}</td>
+              <td>{{ advertiser.orders_completed }}</td>
+              <td>{{ advertiser.complaints }}</td>
+              <td>{% if advertiser.telegram %}<a href="https://t.me/{{ advertiser.telegram.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ advertiser.telegram.replace('@', '') }}</a>{% else %}—{% endif %}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
     {% if advertisers|length == 0 %}
       <div class="empty">Заказчики не найдены.</div>
     {% endif %}

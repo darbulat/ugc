@@ -156,7 +156,7 @@ def test_database(
 
 
 @pytest.fixture(scope="session")
-def admin_server(test_database: str, project_root: Path):
+def admin_server(test_database: str, project_root: Path, tmp_path_factory):
     """Start admin uvicorn in subprocess (local). No-op in Docker."""
     if _use_external_server():
         yield
@@ -174,22 +174,24 @@ def admin_server(test_database: str, project_root: Path):
         }
     )
 
-    proc = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "ugc_bot.admin.app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(E2E_PORT),
-        ],
-        cwd=str(project_root),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
+    server_log = tmp_path_factory.mktemp("admin_server") / "uvicorn.log"
+    with server_log.open("w") as output:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "ugc_bot.admin.app:app",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(E2E_PORT),
+            ],
+            cwd=str(project_root),
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=output,
+        )
 
     try:
         for _ in range(30):
@@ -201,11 +203,11 @@ def admin_server(test_database: str, project_root: Path):
             except OSError:
                 time.sleep(0.5)
         else:
-            stderr = proc.stderr.read().decode() if proc.stderr else ""
             proc.terminate()
             proc.wait(timeout=5)
             raise RuntimeError(
-                f"Admin server did not become ready. stderr:\n{stderr}"
+                "Admin server did not become ready. stderr:\n"
+                + server_log.read_text()[-12000:]
             )
         yield
     finally:

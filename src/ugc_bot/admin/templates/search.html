@@ -10,31 +10,33 @@
     {% if query and users is defined %}
       <p class="muted">Найдено: {{ users | length }}</p>
       {% if users %}
-        <table class="table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Никнейм</th>
-              <th>Telegram</th>
-              <th>External ID</th>
-              <th>Действие</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for u in users %}
-              <tr>
-                <td>{{ u.user_id }}</td>
-                <td>{{ u.username }}</td>
-                <td>{{ u.telegram }}</td>
-                <td>{{ u.telegram_id }}</td>
-                <td>{{ u.max_id }}</td>
-                <td>
-                  <a href="/admin/users/{{ u.user_id }}">Карточка</a>
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+        <div class="admin-table-scroll" role="region" aria-label="Результаты поиска" tabindex="0">
+          <table class="table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Никнейм</th>
+                    <th>Telegram</th>
+                    <th>External ID</th>
+                    <th>Действие</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for u in users %}
+                    <tr>
+                      <td>{{ u.user_id }}</td>
+                      <td>{{ u.username }}</td>
+                      <td>{{ u.telegram }}</td>
+                      <td>{{ u.telegram_id }}</td>
+                      <td>{{ u.max_id }}</td>
+                      <td>
+                        <a href="/admin/users/{{ u.user_id }}">Карточка</a>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+        </div>
       {% else %}
         <div class="empty">Ничего не найдено.</div>
       {% endif %}

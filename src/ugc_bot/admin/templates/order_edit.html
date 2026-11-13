@@ -1,6 +1,14 @@
 {% extends "sqladmin/layout.html" %}
 {% from 'sqladmin/_macros.html' import render_form_fields %}
 {% block content %}
+{% set back_url = order_return_url(request) %}
+{% set order_url = request.url_for('admin_order_detail', order_id=obj.order_id).include_query_params(return_to=back_url) %}
+<div class="col-12">
+  <div class="d-flex flex-wrap gap-2">
+    <a href="{{ back_url }}" class="btn btn-outline-secondary">← Назад к списку</a>
+    <a href="{{ order_url }}" class="btn btn-outline-secondary">Карточка заказа</a>
+  </div>
+</div>
 {% if order_geography_unavailable %}
 <div class="col-12 mb-2">
   <div class="alert alert-danger py-2 mb-0" role="alert">
@@ -50,10 +58,10 @@
 <div class="col-12">
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Edit {{ model_view.name }}</h3>
+      <h3 class="card-title">Редактирование заказа</h3>
     </div>
     <div class="card-body border-bottom py-3">
-      <form action="{{ model_view._build_url_for('admin:edit', request, obj) }}" method="POST"
+      <form action="{{ model_view._build_url_for('admin:edit', request, obj).include_query_params(return_to=back_url) }}" method="POST"
         enctype="multipart/form-data">
         <div class="row">
           {% if error %}
@@ -64,7 +72,7 @@
           {{ render_form_fields(form, form_opts=form_opts) }}
           <div class="mb-3">
             <label for="order-photo-upload" class="form-label">Загрузить картинку товара (PNG/JPG)</label>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
               <input type="file" class="form-control" id="order-photo-upload" accept="image/png,image/jpeg">
               <button type="button" class="btn btn-outline-primary" id="order-photo-upload-button">Загрузить</button>
             </div>
@@ -80,8 +88,8 @@
         </fieldset>
         <div class="row">
           <div class="col-md-2">
-            <a href="{{ url_for('admin:list', identity=model_view.identity) }}" class="btn">
-              Cancel
+            <a href="{{ back_url }}" class="btn">
+              Отмена
             </a>
             {% if model_view.can_create %}
             <a class="btn btn-outline-secondary ms-1"
@@ -91,14 +99,14 @@
             {% endif %}
           </div>
           <div class="col-md-6">
-            <div class="btn-group flex-wrap" data-toggle="buttons">
-              <input type="submit" name="save" value="Save" class="btn">
-              <input type="submit" name="save" value="Save and continue editing" class="btn">
+            <div class="d-flex flex-wrap gap-2">
+              <button type="submit" name="save" value="Save" class="btn btn-primary">Сохранить</button>
+              <button type="submit" name="save" value="Save and continue editing" class="btn">Сохранить и продолжить</button>
               {% if model_view.can_create %}
               {% if model_view.save_as %}
-              <input type="submit" name="save" value="Save as new" class="btn">
+              <button type="submit" name="save" value="Save as new" class="btn">Сохранить как новый</button>
               {% else %}
-              <input type="submit" name="save" value="Save and add another" class="btn">
+              <button type="submit" name="save" value="Save and add another" class="btn">Сохранить и добавить заказ</button>
               {% endif %}
               {% endif %}
             </div>

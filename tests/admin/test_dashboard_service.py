@@ -15,6 +15,7 @@ from ugc_bot.admin.dashboard_service import (
 from ugc_bot.domain.enums import (
     OrderStatus,
     OrderType,
+    PaymentStatus,
     PayoutRequestStatus,
     UserStatus,
 )
@@ -26,6 +27,7 @@ class _ChartRow:
 
     def __init__(self, day, count_or_amount) -> None:
         self.day = day
+        self.currency = "RUB"
         self._value = count_or_amount
         self.amount = (
             count_or_amount
@@ -338,6 +340,7 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
         telegram="@referrer1",
         requested_at=datetime.now(timezone.utc),
         status=PayoutRequestStatus.PENDING,
+        currency="RUB",
         amount=Decimal("100.50"),
     )
     results = [
@@ -1139,7 +1142,31 @@ async def test_list_delayed_orders_includes_reasons(
         created_at=datetime.now(timezone.utc) - timedelta(days=8),
     )
     rows = [
-        (order, 0, 0, "AdvertiserX"),
+        (order, 0, 0, "AdvertiserX", PaymentStatus.PAID, False),
+        (
+            _make_order(status=OrderStatus.NEW, created_at=order.created_at),
+            0,
+            0,
+            "Unpaid advertiser",
+            None,
+            None,
+        ),
+        (
+            _make_order(status=OrderStatus.PENDING_MODERATION),
+            0,
+            0,
+            "Moderation advertiser",
+            PaymentStatus.PAID,
+            None,
+        ),
+        (
+            _make_order(bloggers_needed=1, created_at=order.created_at),
+            1,
+            0,
+            "Selection complete",
+            PaymentStatus.PAID,
+            False,
+        ),
     ]
     results = [
         _FakeResult(scalar_value=0),
@@ -1166,6 +1193,11 @@ async def test_list_delayed_orders_includes_reasons(
     )
     assert delayed["advertiser"] == "AdvertiserX"
     assert delayed["picked_count"] == 0
+    assert data["problems"]["delays"] == 1
+    attention = data["order_attention"]
+    assert attention["active"] == 2
+    assert attention["unpaid"][0]["advertiser"] == "Unpaid advertiser"
+    assert attention["moderation"][0]["reasons"] == ["waiting_moderation"]
     assert delayed["needed_count"] == 10
 
 
@@ -1389,8 +1421,7 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         bloggers_needed=10,
         created_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
-    # Delayed orders query returns 4 columns per row
-    rows = [(order, 8, 0, "Advertiser")]
+    rows = [(order, 8, 0, "Advertiser", PaymentStatus.PAID, False)]
     results = [
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
@@ -1455,6 +1486,7 @@ async def test_get_dashboard_charts_returns_structure(service) -> None:
     assert data["registrations_creators"][0]["count"] == 5
     assert data["orders"][0]["count"] == 3
     assert data["turnover"][0]["amount"] == 100.5
+    assert data["turnover"][0]["currency"] == "RUB"
 
 
 @pytest.mark.asyncio

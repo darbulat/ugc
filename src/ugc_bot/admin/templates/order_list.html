@@ -101,7 +101,8 @@
         <tbody>
           {% for row in pagination.rows %}
           {% set info = details.get(row.order_id) %}
-          {% set detail_url = model_view._build_url_for('admin:details', request, row) %}
+          {% set list_url = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+          {% set detail_url = request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=list_url) %}
           <tr>
             <td><span class="order-clamp" title="{{ row.geography or '' }}">{{ row.geography or '—' }}</span></td>
             <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
@@ -116,7 +117,7 @@
                 <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}">Открыть</a>
                 {% if model_view.can_edit %}
                 <a class="btn btn-sm btn-outline-secondary"
-                   href="{{ model_view._build_url_for('admin:edit', request, row) }}"
+                   href="{{ model_view._build_url_for('admin:edit', request, row).include_query_params(return_to=list_url) }}"
                    title="Редактировать" aria-label="Редактировать">
                   <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
                 </a>
