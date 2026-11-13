@@ -741,7 +741,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v3:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v4:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -1111,7 +1111,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v3:{period_key}"
+        f"dashboard_api:v4:{period_key}"
         if cache and not include_timings
         else None
     )
@@ -1142,7 +1142,7 @@ async def _api_charts_json(
     """Charts payload as JSON."""
     period_key = _normalize_period(period)
     if cache:
-        cache_key = f"charts:v2:{period_key}"
+        cache_key = f"charts:v3:{period_key}"
         raw = await cache.get(cache_key)
         if raw is not None:
             return cast(
