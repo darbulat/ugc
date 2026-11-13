@@ -65,6 +65,7 @@ from ugc_bot.admin.order_worklist import (
     worklist_conditions,
     worklist_row_details,
 )
+from ugc_bot.admin.people import instagram_link, telegram_handle
 from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
@@ -93,6 +94,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     PaymentStatus,
     PayoutRequestStatus,
+    RaterRole,
     UserStatus,
 )
 from ugc_bot.infrastructure.db.checkout_models import AUTHORIZATIONS, INBOX
@@ -650,6 +652,8 @@ def _build_templates(app: FastAPI, zone: ZoneInfo) -> Jinja2Templates:
     )
     templates.env.globals["order_return_url"] = _order_return_url
     templates.env.globals["admin_asset"] = _admin_asset
+    templates.env.filters["instagram_link"] = instagram_link
+    templates.env.filters["telegram_handle"] = telegram_handle
     templates.env.filters["admin_date"] = lambda value: _admin_date(value, zone)
     app.mount(
         "/admin/mvp-static",
@@ -888,17 +892,28 @@ async def _render_creators_page(
     q: str,
     sort: str,
     order: str,
+    city: str,
+    status: str,
+    followers_min: int | None,
 ):
     """Render creators list HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
     period_key = _normalize_period(period)
-    cache_key = (
-        f"creators:{period_key}:{only_new}:{with_complaints}:"
-        f"{page}:{per_page}:{q or ''}:{sort}:{order}"
-        if cache
-        else None
+    cache_params = (
+        period_key,
+        only_new,
+        with_complaints,
+        page,
+        per_page,
+        q,
+        sort,
+        order,
+        city,
+        status,
+        followers_min,
     )
+    cache_key = f"creator-directory:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
@@ -910,12 +925,23 @@ async def _render_creators_page(
             q=q or None,
             sort=sort,
             order=order,
+            city=city,
+            status=status,
+            followers_min=followers_min,
+            include_ratings=True,
         )
 
     result = await _get_cached_or_fetch(
         cache, cache_key, list_cache_ttl, _fetch
     )
     creators_by_city = await dashboard_service.get_creators_by_city()
+    cities = {
+        row["city"].strip().lower()
+        for row in creators_by_city
+        if row["city"] and row["city"].strip()
+    }
+    if city:
+        cities.add(city)
     return templates.TemplateResponse(
         request,
         "creators.html",
@@ -925,7 +951,7 @@ async def _render_creators_page(
             "page": result["page"],
             "per_page": result["per_page"],
             "total_pages": result["total_pages"],
-            "period": period_key,
+            "period": period_key if only_new else "all",
             "periods": _DASHBOARD_PERIODS,
             "period_labels": _PERIOD_LABELS,
             "user_status_labels": _USER_STATUS_LABELS,
@@ -934,7 +960,10 @@ async def _render_creators_page(
             "search_query": q,
             "sort": sort,
             "order": order,
-            "creators_by_city": creators_by_city,
+            "cities": sorted(cities),
+            "city": city,
+            "status": status,
+            "followers_min": followers_min,
         },
     )
 
@@ -951,15 +980,25 @@ async def _render_advertisers_page(
     q: str,
     sort: str,
     order: str,
+    period: str,
+    activity: str,
+    with_complaints: bool,
 ):
     """Render advertisers list HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
-    cache_key = (
-        f"advertisers:v2:{page}:{per_page}:{q or ''}:{sort}:{order}"
-        if cache
-        else None
+    period_key = _normalize_period(period)
+    cache_params = (
+        page,
+        per_page,
+        q,
+        sort,
+        order,
+        period_key,
+        activity,
+        with_complaints,
     )
+    cache_key = f"advertiser-directory:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_advertisers(
@@ -968,6 +1007,9 @@ async def _render_advertisers_page(
             q=q or None,
             sort=sort,
             order=order,
+            period=period_key,
+            activity=activity,
+            with_complaints=with_complaints,
         )
 
     result = await _get_cached_or_fetch(
@@ -985,6 +1027,11 @@ async def _render_advertisers_page(
             "search_query": q,
             "sort": sort,
             "order": order,
+            "period": period_key,
+            "periods": _DASHBOARD_PERIODS,
+            "period_labels": _PERIOD_LABELS,
+            "activity": activity,
+            "with_complaints": with_complaints,
         },
     )
 
@@ -1085,16 +1132,43 @@ async def _render_user_card_page(
     """Render user card HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
-    user_card = await dashboard_service.get_user_card(user_id)
+    pages = {}
+    for section in ("feedback", "complaints", "ratings", "nps", "orders"):
+        raw = request.query_params.get(f"{section}_page", "")
+        if raw.isascii() and raw.isdigit() and len(raw) <= 6:
+            pages[section] = max(1, int(raw))
+    user_card = await dashboard_service.get_user_card(user_id, pages)
     if user_card is None:
         raise HTTPException(status_code=404, detail="Пользователь не найден")
+    order_url = _customer_order_url(request)
+    directory_url = safe_admin_return_to(request.query_params.get("return_to"))
+    if not directory_url or URL(directory_url).path not in {
+        "/admin/users/creators",
+        "/admin/users/advertisers",
+        "/admin/search",
+    }:
+        directory_url = (
+            "/admin/users/advertisers"
+            if user_card.get("advertiser_profile")
+            else "/admin/users/creators"
+            if user_card.get("blogger_profile")
+            else "/admin/search"
+        )
     return templates.TemplateResponse(
         request,
         "user_card.html",
         {
             "user": user_card,
             "user_status_labels": _USER_STATUS_LABELS,
-            "order_url": _customer_order_url(request),
+            "order_url": order_url,
+            "directory_url": directory_url,
+            "order_status_labels": ORDER_STATUS_LABELS,
+            "complaint_status_labels": COMPLAINT_STATUS_LABELS,
+            "rater_roles": {
+                RaterRole.ADVERTISER: "Заказчик",
+                RaterRole.MANAGER: "Менеджер",
+                RaterRole.ADMIN: "Администратор",
+            },
         },
     )
 
@@ -1400,14 +1474,17 @@ def _register_dashboard_html_routes(
     @app.get("/admin/users/creators", response_class=HTMLResponse)
     async def admin_creators(
         request: Request,
-        period: str = "today",
-        only_new: bool = False,
+        period: str = "all",
+        only_new: bool | None = None,
         with_complaints: bool = False,
         page: int = 1,
         per_page: int = 25,
         q: str = "",
         sort: str = "created_at",
         order: str = "desc",
+        city: str = "",
+        status: str = "",
+        followers_min: str = "",
     ):
         return await _render_creators_page(
             request,
@@ -1417,13 +1494,20 @@ def _register_dashboard_html_routes(
             cache,
             list_cache_ttl,
             period,
-            only_new,
+            (period != "all") if only_new is None else only_new,
             with_complaints,
             page,
             per_page,
             q,
             sort,
             order,
+            city.strip().lower(),
+            status,
+            int(followers_min)
+            if followers_min.isascii()
+            and followers_min.isdigit()
+            and len(followers_min) <= 12
+            else None,
         )
 
     @app.get("/admin/users/advertisers", response_class=HTMLResponse)
@@ -1434,6 +1518,9 @@ def _register_dashboard_html_routes(
         q: str = "",
         sort: str = "created_at",
         order: str = "desc",
+        period: str = "all",
+        activity: str = "",
+        with_complaints: bool = False,
     ):
         return await _render_advertisers_page(
             request,
@@ -1447,6 +1534,9 @@ def _register_dashboard_html_routes(
             q,
             sort,
             order,
+            period,
+            activity,
+            with_complaints,
         )
 
     @app.get("/admin/orders", response_class=HTMLResponse)

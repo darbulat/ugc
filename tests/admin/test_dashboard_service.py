@@ -91,6 +91,9 @@ class _FakeSession:
     async def __aexit__(self, *args):
         return False
 
+    async def scalar(self, statement):
+        return (await self.execute(statement)).scalar()
+
     async def execute(self, *_args, **_kwargs):
         if not self._results:
             return _FakeResult(scalar_value=0, all_rows=[])
@@ -433,6 +436,7 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
     )
     blogger_ns = SimpleNamespace(
         instagram_url="https://instagram.com/jane",
+        instagram_followers_count=1000,
         confirmed=True,
         city="Moscow",
         topics={"fashion": True},

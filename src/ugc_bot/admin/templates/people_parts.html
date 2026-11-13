@@ -1,0 +1,33 @@
+{% macro count(value) -%}
+  {{- '{:,}'.format(value).replace(',', ' ') -}}
+{%- endmacro %}
+{% macro telegram(value) -%}
+  {% set handle = value|telegram_handle %}
+  {% if handle %}
+    <a href="https://t.me/{{ handle }}" target="_blank" rel="noopener noreferrer" aria-label="Telegram @{{ handle }}">@{{ handle }}</a>
+  {% elif value %}{{ value }}{% endif %}
+{%- endmacro %}
+{% macro instagram(value) -%}
+  {% set account = value|instagram_link %}
+  {% if account %}
+    <a href="{{ account[0] }}" target="_blank" rel="noopener noreferrer" aria-label="Instagram @{{ account[1] }}">@{{ account[1] }}</a>
+  {% elif value %}{{ value }}{% endif %}
+{%- endmacro %}
+{% macro stars(value) -%}
+  <span class="people-rating"><span aria-hidden="true">★</span> {{ '%.1f'|format(value)|replace('.', ',') }} <span class="people-secondary">/ 5</span></span>
+{%- endmacro %}
+{% macro pager(request, page, has_next, param, anchor, label='') %}
+  {% if page > 1 or has_next %}
+    <nav class="people-pager" aria-label="Страницы">
+      <span>{{ label or 'Страница ' ~ page }}</span>
+      <div class="people-actions">
+        {% if page > 1 %}
+          <a class="people-button" href="{{ request.url.include_query_params(**{param: page - 1}) }}{{ anchor }}">← Назад</a>
+        {% endif %}
+        {% if has_next %}
+          <a class="people-button" href="{{ request.url.include_query_params(**{param: page + 1}) }}{{ anchor }}">Дальше →</a>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+{% endmacro %}

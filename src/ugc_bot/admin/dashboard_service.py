@@ -23,6 +23,11 @@ from ugc_bot.admin.order_worklist import (
     aging_unpaid_condition,
     worklist_conditions,
 )
+from ugc_bot.admin.people import (
+    advertiser_directory_filters,
+    creator_directory_filters,
+    user_card_history,
+)
 from ugc_bot.domain.enums import (
     OrderStatus,
     PaymentStatus,
@@ -40,6 +45,9 @@ from ugc_bot.infrastructure.db.models import (
     PayoutRequestModel,
     UserModel,
     UserReferralBindingModel,
+)
+from ugc_bot.infrastructure.db.repositories.ratings import (
+    SqlAlchemyBloggerRatingRepository,
 )
 
 if TYPE_CHECKING:
@@ -519,27 +527,44 @@ class AdminDashboardService:
         q: str | None = None,
         sort: str = "created_at",
         order: str = "desc",
+        *,
+        city: str = "",
+        status: str = "",
+        followers_min: int | None = None,
+        include_ratings: bool = False,
     ) -> dict:
         """Return paginated creator list with counts and filters."""
         window = self._build_period_window(period)
         page = max(1, page)
         per_page = max(1, min(100, per_page))
-        search_query = (q or "").strip() or None
-        async with self._session_factory() as session:
-            total = await self._count_creators(
-                session, window, only_new, only_with_complaints, search_query
+        filters = creator_directory_filters(
+            q, city, status, followers_min, only_with_complaints
+        )
+        if only_new:
+            filters.extend(
+                (
+                    UserModel.created_at >= window.current_start,
+                    UserModel.created_at < window.current_end,
+                )
             )
+        async with self._session_factory() as session:
+            total = await self._count_creators(session, filters)
             items = await self._list_creators(
                 session,
-                window,
-                only_new,
-                only_with_complaints,
+                filters,
                 limit=per_page,
                 offset=(page - 1) * per_page,
-                search_query=search_query,
                 sort_by=sort,
                 order_asc=order == "asc",
             )
+            if include_ratings and items:
+                ratings = await SqlAlchemyBloggerRatingRepository(
+                    self._session_factory
+                ).get_avg_ratings_for_bloggers(
+                    [UUID(item["user_id"]) for item in items], session=session
+                )
+                for item in items:
+                    item["rating"] = ratings.get(UUID(item["user_id"]))
         return _paginated(total, page, per_page, items)
 
     async def list_advertisers(
@@ -549,18 +574,30 @@ class AdminDashboardService:
         q: str | None = None,
         sort: str = "created_at",
         order: str = "desc",
+        *,
+        period: PeriodKey = "all",
+        activity: str = "",
+        with_complaints: bool = False,
     ) -> dict:
         """Return paginated advertiser list with order and complaint counts."""
         page = max(1, page)
         per_page = max(1, min(100, per_page))
-        search_query = (q or "").strip() or None
+        filters = advertiser_directory_filters(q, activity, with_complaints)
+        if period != "all":
+            window = self._build_period_window(period)
+            filters.extend(
+                (
+                    UserModel.created_at >= window.current_start,
+                    UserModel.created_at < window.current_end,
+                )
+            )
         async with self._session_factory() as session:
-            total = await self._count_advertisers(session, search_query)
+            total = await self._count_advertisers(session, filters)
             items = await self._list_advertisers(
                 session,
                 limit=per_page,
                 offset=(page - 1) * per_page,
-                search_query=search_query,
+                filters=filters,
                 sort_by=sort,
                 order_asc=order == "asc",
             )
@@ -1004,10 +1041,12 @@ class AdminDashboardService:
             for row in rows
         ]
 
-    async def get_user_card(self, user_id: UUID) -> dict | None:
+    async def get_user_card(
+        self, user_id: UUID, pages: dict[str, int] | None = None
+    ) -> dict | None:
         """Return user card with profiles for read-only view."""
         async with self._session_factory() as session:
-            return await self._get_user_card(session, user_id)
+            return await self._get_user_card(session, user_id, pages or {})
 
     async def search_users(self, query: str, limit: int = 20) -> list[dict]:
         """Search users by username, telegram or external_id (exact)."""
@@ -1049,7 +1088,7 @@ class AdminDashboardService:
             ]
 
     async def _get_user_card(
-        self, session: AsyncSession, user_id: UUID
+        self, session: AsyncSession, user_id: UUID, pages: dict[str, int]
     ) -> dict | None:
         """Load user with optional blogger and advertiser profiles."""
         query = (
@@ -1091,6 +1130,7 @@ class AdminDashboardService:
             card["blogger_profile"] = {
                 "instagram_url": blogger.instagram_url,
                 "confirmed": blogger.confirmed,
+                "followers": blogger.instagram_followers_count,
                 "city": blogger.city,
                 "blogger_gender": getattr(
                     blogger.blogger_gender,
@@ -1134,6 +1174,16 @@ class AdminDashboardService:
             }
         else:
             card["advertiser_profile"] = None
+        card.update(
+            await user_card_history(
+                session,
+                self._session_factory,
+                user_id,
+                blogger is not None,
+                advertiser is not None,
+                pages,
+            )
+        )
         return card
 
     async def _get_order_attention(self, session: AsyncSession) -> dict:
@@ -1302,81 +1352,24 @@ class AdminDashboardService:
             reverse=reverse,
         )
 
-    def _user_search_condition(self, search_query: str | None):
-        """Return SQL condition for username/telegram/external_id search."""
-        if not search_query:
-            return None
-        conditions: list[ColumnElement[bool]] = [
-            UserModel.username.ilike(f"%{search_query}%"),
-            UserModel.telegram.ilike(f"%{search_query}%"),
-        ]
-        with contextlib.suppress(ValueError, TypeError):
-            conditions.append(UserModel.user_id == UUID(search_query))  # type: ignore[arg-type]
-        if search_query.isdigit():
-            conditions.append(UserModel.telegram_id == search_query)  # type: ignore[arg-type]
-            conditions.append(UserModel.max_id == search_query)  # type: ignore[arg-type]
-        return or_(*conditions)
-
     async def _count_creators(
-        self,
-        session: AsyncSession,
-        window: PeriodWindow,
-        only_new: bool,
-        only_with_complaints: bool,
-        search_query: str | None = None,
+        self, session: AsyncSession, filters: list[ColumnElement[bool]]
     ) -> int:
-        """Count creators matching filters."""
-        responses = (
-            select(
-                OfferDispatchModel.blogger_id.label("user_id"),
-                func.count(OfferDispatchModel.blogger_id).label("responses"),
-            )
-            .where(OfferDispatchModel.accepted.isnot(None))
-            .group_by(OfferDispatchModel.blogger_id)
-            .subquery()
-        )
-        complaints = (
-            select(
-                ComplaintModel.reported_id.label("user_id"),
-                func.count(ComplaintModel.complaint_id).label("complaints"),
-            )
-            .group_by(ComplaintModel.reported_id)
-            .subquery()
-        )
         query = (
             select(func.count(UserModel.user_id))
             .select_from(UserModel)
-            .join(
-                BloggerProfileModel,
-                BloggerProfileModel.user_id == UserModel.user_id,
-            )
-            .outerjoin(responses, responses.c.user_id == UserModel.user_id)
-            .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
+            .join(BloggerProfileModel)
+            .where(*filters)
         )
-        if only_new:
-            query = query.where(
-                and_(
-                    UserModel.created_at >= window.current_start,
-                    UserModel.created_at < window.current_end,
-                )
-            )
-        if only_with_complaints:
-            query = query.where(func.coalesce(complaints.c.complaints, 0) > 0)
-        search_cond = self._user_search_condition(search_query)
-        if search_cond is not None:
-            query = query.where(search_cond)
         result = await session.execute(query)
         return int(result.scalar() or 0)
 
     async def _list_creators(
         self,
         session: AsyncSession,
-        window: PeriodWindow,
-        only_new: bool,
-        only_with_complaints: bool,
+        filters: list[ColumnElement[bool]],
         limit: int = 25,
         offset: int = 0,
-        search_query: str | None = None,
         sort_by: str = "created_at",
         order_asc: bool = False,
     ) -> list[dict]:
@@ -1414,18 +1407,7 @@ class AdminDashboardService:
             .outerjoin(responses, responses.c.user_id == UserModel.user_id)
             .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
         )
-        if only_new:
-            query = query.where(
-                and_(
-                    UserModel.created_at >= window.current_start,
-                    UserModel.created_at < window.current_end,
-                )
-            )
-        if only_with_complaints:
-            query = query.where(func.coalesce(complaints.c.complaints, 0) > 0)
-        search_cond = self._user_search_condition(search_query)
-        if search_cond is not None:
-            query = query.where(search_cond)
+        query = query.where(*filters)
         order_column = self._creators_sort_column(
             sort_by, responses, complaints
         )
@@ -1436,7 +1418,7 @@ class AdminDashboardService:
             query = query.order_by(direction)
         else:
             query = query.order_by(UserModel.created_at.desc())
-        query = query.limit(limit).offset(offset)
+        query = query.order_by(UserModel.user_id).limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
         items = []
@@ -1488,7 +1470,7 @@ class AdminDashboardService:
     async def _count_advertisers(
         self,
         session: AsyncSession,
-        search_query: str | None = None,
+        filters: list[ColumnElement[bool]],
     ) -> int:
         """Count advertisers with profile."""
         query = (
@@ -1499,9 +1481,7 @@ class AdminDashboardService:
                 AdvertiserProfileModel.user_id == UserModel.user_id,
             )
         )
-        search_cond = self._user_search_condition(search_query)
-        if search_cond is not None:
-            query = query.where(search_cond)
+        query = query.where(*filters)
         result = await session.execute(query)
         return int(result.scalar() or 0)
 
@@ -1528,9 +1508,9 @@ class AdminDashboardService:
     async def _list_advertisers(
         self,
         session: AsyncSession,
+        filters: list[ColumnElement[bool]],
         limit: int = 25,
         offset: int = 0,
-        search_query: str | None = None,
         sort_by: str = "created_at",
         order_asc: bool = False,
     ) -> list[dict]:
@@ -1582,9 +1562,7 @@ class AdminDashboardService:
             .outerjoin(orders, orders.c.advertiser_id == UserModel.user_id)
             .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
         )
-        search_cond = self._user_search_condition(search_query)
-        if search_cond is not None:
-            query = query.where(search_cond)
+        query = query.where(*filters)
         order_column = self._advertisers_sort_column(
             sort_by, orders, complaints
         )
@@ -1613,6 +1591,7 @@ class AdminDashboardService:
                 {
                     "user_id": str(user.user_id),
                     "name": brand or user.username,
+                    "username": user.username,
                     "telegram": user.telegram,
                     "created_at": user.created_at,
                     "orders_total": int(orders_total),
