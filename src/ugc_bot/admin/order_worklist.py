@@ -91,6 +91,10 @@ def _is_test_order():
     )
 
 
+def business_order_conditions():
+    return (*worklist_conditions("all", ""), ~_is_test_order())
+
+
 def can_delete_order(*, postgresql: bool):
     eligible = (
         OrderModel.status.in_((OrderStatus.NEW, OrderStatus.PENDING_MODERATION))

@@ -5,6 +5,10 @@
   {% set picked_target = payload.get("picked_creators_target", 1000) %}
   {% set picked_pct = ([((picked_count / picked_target * 100)|round(1)), 100]|min) if picked_target > 0 else 0 %}
   {% set attention = payload.get("order_attention", {}) %}
+  {% set conversion = payload.get('order_conversion', {}) %}
+  {% set previous = payload.get('previous_conversion') %}
+  {% set creators = payload.get('creator_metrics', {}) %}
+  {% set payout_attention = payload.get('pending_payouts', 0) %}
   {% set dashboard_url = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
 
   <div class="section page-heading">
@@ -63,7 +67,44 @@
         {% endif %}
       </details>
       {% endfor %}
+      <a class="card attention-queue payout-jump" href="#payout-requests">
+        <span>Заявки на вывод</span>
+        <strong{% if payout_attention %} class="badge payout-status payout-status--attention"{% endif %}>{{ payout_attention }}</strong>
+      </a>
     </div>
+  </section>
+
+  <section class="section" id="payout-requests" aria-labelledby="payout-requests-heading">
+    <details class="card attention-queue"{% if payout_attention %} open{% endif %}>
+      <summary>
+        <span id="payout-requests-heading">Заявки на вывод</span>
+        <strong>{{ payout_attention }} требуют внимания</strong>
+      </summary>
+      {% if payload.payout_requests %}
+        <div class="admin-table-scroll" role="region" aria-label="Заявки на вывод" tabindex="0">
+          <table class="table payout-table">
+            <thead><tr><th>Пользователь</th><th>Дата</th><th>Сумма</th><th>Статус</th></tr></thead>
+            <tbody>
+              {% for p in payload.payout_requests %}
+                <tr>
+                  <td><a href="/admin/users/{{ p.user_id }}">{{ p.telegram or p.username or 'Профиль' }}</a></td>
+                  <td>{{ p.requested_at|admin_date }}</td>
+                  <td>{% if p.amount is not none %}{{ "{:,.2f}".format(p.amount).replace(',', ' ').replace('.', ',') }} {{ p.currency or '' }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% set needs_attention = p.status in ['pending', 'reserved', 'blocked', 'unknown', 'failed'] %}
+                    <span class="badge payout-status{% if needs_attention %} payout-status--attention{% elif p.status == 'paid' %} payout-status--paid{% endif %}">{{ p.status_label }}</span>
+                    {% if p.legacy %}<a href="/admin/payout-request-model/details/{{ p.request_id }}">Детали</a>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <a class="attention-queue__link" href="/admin/payout-request-model/list">Все реферальные заявки</a>
+      {% else %}
+        <p class="empty">Заявок на вывод нет.</p>
+      {% endif %}
+    </details>
   </section>
 
   <section class="section progress-bar">
@@ -105,8 +146,25 @@
       </article>
       <article class="card">
         <h3>Новые заявки</h3>
-        <a class="metric__value" href="/admin/orders?period={{ period }}">{{ payload.orders.active|default(0) + payload.orders.completed|default(0) + payload.orders.archived|default(0) }}</a>
-        <p class="muted">Видимые заказы, созданные за выбранный период</p>
+        <div class="metric">
+          <span class="metric__label">Создано</span>
+          <strong class="metric__value">{{ conversion.get('created', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Из них оплачено</span>
+          <strong class="metric__value">{{ conversion.get('paid', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Конверсия в оплату</span>
+          {% set percent = conversion.get('percent') %}
+          <strong class="metric__value">{{ (percent|string|replace('.', ',') ~ '%') if percent is not none else '—' }}</strong>
+          {% if previous and previous.percent is not none and percent is not none %}
+            {% set delta = percent - previous.percent %}
+            <span class="metric__delta {{ 'positive' if delta >= 0 else 'negative' }}"
+                  title="К предыдущему периоду">{{ ("%+.1f"|format(delta))|replace('.', ',') }} п. п.</span>
+          {% endif %}
+        </div>
+        <p class="muted">Заказы созданы и оплачены в пределах выбранного периода. Считаются видимые заказы, из которых исключены бесплатные и помеченные тестовые.</p>
       </article>
       <article class="card">
         <h3>Оплаты</h3>
@@ -126,46 +184,81 @@
     </div>
   </section>
 
-  <section class="section" aria-labelledby="charts-heading">
-    <h2 id="charts-heading">Динамика за период</h2>
+  <section class="section" aria-labelledby="creators-heading">
+    <div class="page-heading">
+      <h2 id="creators-heading">База креаторов</h2>
+      <a href="/admin/users/creators">Открыть креаторов</a>
+    </div>
+    <div class="grid dashboard-metrics">
+      <article class="card">
+        <h3>Доступность в Telegram</h3>
+        {% for key, label in [('profiles', 'Профилей в базе'), ('telegram', 'Из них с Telegram'), ('bot_blocked', 'Из них заблокировали бота')] %}
+          <div class="metric">
+            <span class="metric__label">{{ label }}</span>
+            <strong class="metric__value">{{ creators.get(key, 0) }}</strong>
+          </div>
+        {% endfor %}
+        <p class="muted">Текущий статус в базе. История блокировок по дням недоступна.</p>
+      </article>
+      <article class="card">
+        <h3>Участие в заказах</h3>
+        {% for key, label in [('worked_period', 'Взяли заказ за период'), ('ever_worked', 'Взяли хотя бы один заказ за всё время')] %}
+          <div class="metric">
+            <span class="metric__label">{{ label }}</span>
+            <strong class="metric__value">{{ creators.get(key, 0) }}</strong>
+          </div>
+        {% endfor %}
+        <p class="muted">Уникальные креаторы, принявшие оффер в пределах лимита или начавшие платное сотрудничество. Помеченные тестовые заказы исключены.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="section dashboard-charts-section" aria-labelledby="charts-heading">
+    <div class="page-heading">
+      <h2 id="charts-heading">Динамика за период</h2>
+      {% if payload.get('metrics_timezone') %}<span class="muted">{{ payload.metrics_timezone }}</span>{% endif %}
+    </div>
     <div id="dashboard-charts" data-period="{{ period }}" class="grid">
-      {% for key, label in [('registrations', 'Регистрации'), ('orders', 'Новые заявки'), ('turnover', 'Оплаты')] %}
+      {% for key, label in [('registrations', 'Регистрации'), ('orders', 'Создание и оплата заказов'), ('turnover', 'Суммы оплат')] %}
       <article class="card chart-card" data-chart="{{ key }}">
-        <h3>{{ label }}</h3>
+        <div class="page-heading chart-heading">
+          <h3>{{ label }}</h3>
+          <button type="button" class="admin-button chart-expand" aria-label="Увеличить график «{{ label }}»" disabled>Увеличить</button>
+        </div>
         <p class="muted chart-state" role="status">Загрузка…</p>
         <div class="chart-plot" hidden><canvas role="img" aria-label="{{ label }} по дням"></canvas></div>
       </article>
       {% endfor %}
     </div>
+    <article class="card chart-observations" hidden>
+      <h3>Пики за период</h3>
+      <p class="muted">Сопоставьте дни роста регистраций, заявок и оплат с датами кампаний и рассылок.</p>
+      <ul></ul>
+    </article>
+    <dialog id="chart-detail" class="chart-dialog" aria-labelledby="chart-detail-title">
+      <div class="page-heading">
+        <h2 id="chart-detail-title"></h2>
+        <form method="dialog"><button class="admin-button" autofocus>Закрыть</button></form>
+      </div>
+      <p class="muted chart-detail-note"></p>
+      <form class="chart-controls">
+        <label>С <input type="date" name="from" required></label>
+        <label>По <input type="date" name="to" required></label>
+        <button class="admin-button admin-button--primary" type="submit">Показать</button>
+        <button class="admin-button" type="button" data-days="7">Последние 7 дней</button>
+        <button class="admin-button" type="button" data-days="0">Весь период</button>
+      </form>
+      <p class="chart-range muted" aria-live="polite"></p>
+      <div class="chart-plot chart-plot--large"><canvas role="img" aria-labelledby="chart-detail-title"></canvas></div>
+      <details class="chart-values">
+        <summary>Значения по дням</summary>
+        <div class="admin-table-scroll" role="region" aria-label="Значения по дням" tabindex="0">
+          <table class="table"><thead></thead><tbody></tbody></table>
+        </div>
+      </details>
+    </dialog>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script defer src="{{ admin_asset(request, 'dashboard.js') }}"></script>
-  </section>
-
-  <section class="section">
-    <div class="page-heading">
-      <h2>Заявки на вывод</h2>
-      <a href="/admin/payout-request-model/list">Все заявки</a>
-    </div>
-    {% if payload.payout_requests %}
-      <div class="admin-table-scroll" role="region" aria-label="Заявки на вывод" tabindex="0">
-        <table class="table">
-          <thead><tr><th>Пользователь</th><th>Дата</th><th>Сумма</th><th>Статус</th><th></th></tr></thead>
-          <tbody>
-            {% for p in payload.payout_requests %}
-              <tr>
-                <td><a href="/admin/users/{{ p.user_id }}">{{ p.telegram or p.username }}</a></td>
-                <td>{{ (p.requested_at|string)[:10] }}</td>
-                <td>{% if p.amount is not none %}{{ "%.2f"|format(p.amount) }} {{ p.currency|default('') }}{% else %}—{% endif %}</td>
-                <td>{{ p.status_label }}</td>
-                <td><a href="/admin/payout-request-model/details/{{ p.request_id }}">Детали</a></td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <p class="empty">Заявок на вывод нет.</p>
-    {% endif %}
   </section>
 
   {% if payload.get("_timings_ms") %}
