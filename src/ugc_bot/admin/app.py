@@ -58,6 +58,8 @@ from ugc_bot.admin.dashboard_service import (
 )
 from ugc_bot.admin.order_worklist import (
     ORDER_STATUS_LABELS,
+    UNPAID_GROUP,
+    aging_unpaid_condition,
     change_order_worklist,
     search_orders,
     worklist_conditions,
@@ -736,7 +738,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v2:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v3:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -951,7 +953,7 @@ async def _render_advertisers_page(
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
     cache_key = (
-        f"advertisers:{page}:{per_page}:{q or ''}:{sort}:{order}"
+        f"advertisers:v2:{page}:{per_page}:{q or ''}:{sort}:{order}"
         if cache
         else None
     )
@@ -1106,7 +1108,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v2:{period_key}"
+        f"dashboard_api:v3:{period_key}"
         if cache and not include_timings
         else None
     )
@@ -1203,7 +1205,7 @@ async def _api_advertisers_json(
 ) -> dict[str, Any]:
     """Advertisers list as JSON."""
     cache_key = (
-        f"advertisers:{page}:{per_page}:{q or ''}:{sort}:{order}"
+        f"advertisers:v2:{page}:{per_page}:{q or ''}:{sort}:{order}"
         if cache
         else None
     )
@@ -1995,6 +1997,7 @@ class OrderAdmin(ModelView, model=OrderModel):
     list_template = "order_list.html"
     page_size = 25
     page_size_options = [25, 50, 100]
+    unpaid_age_hours = 24
     worklist_status_labels = ORDER_STATUS_LABELS
     worklist_columns = {
         "geography": "География",
@@ -2172,13 +2175,23 @@ class OrderAdmin(ModelView, model=OrderModel):
         stmt = super().list_query(request)
         if "export_type" in request.path_params:
             return stmt.where(OrderModel.status != OrderStatus.DELETED)
+        return self._filter_worklist(stmt, request)
+
+    def _filter_worklist(self, stmt, request: Request):
         if advertiser_id := self.customer_filter(request):
             stmt = stmt.where(OrderModel.advertiser_id == advertiser_id)
-        return stmt.where(
-            *worklist_conditions(
-                request.query_params.get("group", "work"),
-                request.query_params.get("status", ""),
+        group = request.query_params.get("group", "work")
+        if group == UNPAID_GROUP:
+            if getattr(request.state, "unpaid_now", None) is None:
+                request.state.unpaid_now = datetime.now(timezone.utc)
+            return stmt.where(
+                *worklist_conditions("work", ""),
+                aging_unpaid_condition(
+                    request.state.unpaid_now, self.unpaid_age_hours
+                ),
             )
+        return stmt.where(
+            *worklist_conditions(group, request.query_params.get("status", ""))
         )
 
     @staticmethod
@@ -2205,20 +2218,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         return rows[0] if rows else None
 
     def count_query(self, request: Request):
-        stmt = (
-            super()
-            .count_query(request)
-            .where(
-                *worklist_conditions(
-                    request.query_params.get("group", "work"),
-                    request.query_params.get("status", ""),
-                )
-            )
-        )
+        stmt = self._filter_worklist(super().count_query(request), request)
         if term := request.query_params.get("search", "").strip():
             stmt = stmt.where(search_orders(term))
-        if advertiser_id := self.customer_filter(request):
-            stmt = stmt.where(OrderModel.advertiser_id == advertiser_id)
         return stmt
 
     def search_query(self, stmt, term: str):
@@ -2240,6 +2242,8 @@ class OrderAdmin(ModelView, model=OrderModel):
             return (
                 super().sort_query(stmt, request).order_by(OrderModel.order_id)
             )
+        if request.query_params.get("group") == UNPAID_GROUP:
+            return stmt.order_by(OrderModel.created_at, OrderModel.order_id)
         return stmt.order_by(OrderModel.created_at.desc(), OrderModel.order_id)
 
     async def worklist_details(self, rows: Sequence[OrderModel]):
@@ -3390,6 +3394,14 @@ def _register_order_worklist_action(
                 "charts:",
                 "advertisers:",
             )
+        elif operation in {
+            "mark-test",
+            "unmark-test",
+            "hide",
+            "restore",
+            "close",
+        }:
+            await cache.invalidate_prefixes("dashboard:", "dashboard_api:")
         request.session["order_worklist_message"] = message
         target = request.url_for("admin:list", identity=OrderAdmin.identity)
         return RedirectResponse(
@@ -3495,6 +3507,9 @@ def create_admin_app() -> FastAPI:
     )
     PaymentAdmin.dashboard_timezone = zone
     _add_admin_views(admin)
+    for view in admin.views:
+        if isinstance(view, OrderAdmin):
+            view.unpaid_age_hours = config.admin.admin_no_responses_hours
 
     @app.on_event("shutdown")
     async def _dispose_container() -> None:

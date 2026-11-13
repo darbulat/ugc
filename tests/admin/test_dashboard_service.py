@@ -903,7 +903,7 @@ async def test_list_advertisers(service) -> None:
     """list_advertisers returns advertiser rows."""
     user = _make_user()
     rows = [
-        (user, "Brand", 10, 5, 0),
+        (user, "Brand", 10, 5, 0, user.created_at),
     ]
     results = [
         _FakeResult(scalar_value=1),
@@ -918,6 +918,7 @@ async def test_list_advertisers(service) -> None:
     assert advertisers[0]["name"] == "Brand"
     assert advertisers[0]["orders_total"] == 10
     assert advertisers[0]["orders_completed"] == 5
+    assert advertisers[0]["last_order_at"] == user.created_at
     assert advertisers[0]["complaints"] == 0
 
 
@@ -1142,7 +1143,7 @@ async def test_list_delayed_orders_includes_reasons(
         created_at=datetime.now(timezone.utc) - timedelta(days=8),
     )
     rows = [
-        (order, 0, 0, "AdvertiserX", PaymentStatus.PAID, False),
+        (order, 0, 0, "AdvertiserX", PaymentStatus.PAID, False, False),
         (
             _make_order(status=OrderStatus.NEW, created_at=order.created_at),
             0,
@@ -1150,6 +1151,7 @@ async def test_list_delayed_orders_includes_reasons(
             "Unpaid advertiser",
             None,
             None,
+            True,
         ),
         (
             _make_order(status=OrderStatus.PENDING_MODERATION),
@@ -1158,6 +1160,7 @@ async def test_list_delayed_orders_includes_reasons(
             "Moderation advertiser",
             PaymentStatus.PAID,
             None,
+            False,
         ),
         (
             _make_order(bloggers_needed=1, created_at=order.created_at),
@@ -1165,6 +1168,7 @@ async def test_list_delayed_orders_includes_reasons(
             0,
             "Selection complete",
             PaymentStatus.PAID,
+            False,
             False,
         ),
     ]
@@ -1329,7 +1333,7 @@ async def test_progress_ratio_capped_at_one(service) -> None:
 async def test_advertiser_fallback_to_username_when_no_brand(service) -> None:
     """Advertiser name falls back to username when brand is None."""
     user = _make_user()
-    rows = [(user, None, 0, 0, 0)]
+    rows = [(user, None, 0, 0, 0, None)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1421,7 +1425,7 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         bloggers_needed=10,
         created_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
-    rows = [(order, 8, 0, "Advertiser", PaymentStatus.PAID, False)]
+    rows = [(order, 8, 0, "Advertiser", PaymentStatus.PAID, False, False)]
     results = [
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),
@@ -1577,7 +1581,7 @@ async def test_list_creators_with_sort_and_search(service) -> None:
 async def test_list_advertisers_with_sort_and_search(service) -> None:
     """list_advertisers with sort and search uses correct params."""
     user = _make_user()
-    rows = [(user, "Brand", 10, 5, 0)]
+    rows = [(user, "Brand", 10, 5, 0, user.created_at)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1749,7 +1753,7 @@ async def test_list_orders_sort_status_age_hours(service) -> None:
 async def test_list_advertisers_sort_complaints(service) -> None:
     """list_advertisers with sort=complaints uses complaints column."""
     user = _make_user()
-    rows = [(user, "B", 5, 2, 1)]
+    rows = [(user, "B", 5, 2, 1, None)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1763,7 +1767,7 @@ async def test_list_advertisers_sort_complaints(service) -> None:
 async def test_list_advertisers_sort_orders_completed(service) -> None:
     """list_advertisers with sort=orders_completed uses orders_completed."""
     user = _make_user()
-    rows = [(user, "B", 10, 7, 0)]
+    rows = [(user, "B", 10, 7, 0, None)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1845,7 +1849,7 @@ async def test_list_creators_unknown_sort_uses_default(service) -> None:
 async def test_list_advertisers_sort_name(service) -> None:
     """list_advertisers with sort=name uses brand/username."""
     user = _make_user()
-    rows = [(user, "BrandName", 0, 0, 0)]
+    rows = [(user, "BrandName", 0, 0, 0, None)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1859,7 +1863,7 @@ async def test_list_advertisers_sort_name(service) -> None:
 async def test_list_advertisers_unknown_sort_uses_default(service) -> None:
     """list_advertisers with unknown sort uses default order."""
     user = _make_user()
-    rows = [(user, "B", 0, 0, 0)]
+    rows = [(user, "B", 0, 0, 0, None)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
@@ -1908,7 +1912,7 @@ async def test_list_creators_sort_user_id_city_media_status(service) -> None:
 async def test_list_advertisers_sort_user_id(service) -> None:
     """list_advertisers with sort=user_id uses user_id column."""
     user = _make_user()
-    rows = [(user, "B", 0, 0, 0)]
+    rows = [(user, "B", 0, 0, 0, None)]
     results = [
         _FakeResult(scalar_value=1),
         _FakeResult(all_rows=rows),
