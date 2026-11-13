@@ -28,6 +28,7 @@ class _ChartRow:
     def __init__(self, day, count_or_amount) -> None:
         self.day = day
         self.currency = "RUB"
+        self.orders_paid = 1
         self._value = count_or_amount
         self.amount = (
             count_or_amount
@@ -340,6 +341,7 @@ async def test_get_dashboard_includes_payout_requests(service) -> None:
         request_id=req_id,
         user_id=uuid4(),
         username="referrer1",
+        payout_protocol=None,
         telegram="@referrer1",
         requested_at=datetime.now(timezone.utc),
         status=PayoutRequestStatus.PENDING,
