@@ -220,12 +220,6 @@ def admin_server(test_database: str, project_root: Path, tmp_path_factory):
                 proc.wait()
 
 
-@pytest.fixture(scope="session")
-def base_url(admin_server: str) -> str:
-    """URL of this session's admin app."""
-    return admin_server
-
-
 # --- Mini App E2E fixtures ---
 
 from tests.e2e.miniapp_helpers import MINIAPP_TEST_USER_IDS  # noqa: E402
