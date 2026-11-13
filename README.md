@@ -41,7 +41,7 @@ PgBouncer uses session pooling so Alembic migrations work without changes.
 
 ## Local tests
 
-- Run `make test-local-full` for unit and integration tests, including the PostgreSQL financial suite. The runner and PostgreSQL share the Docker VM clock, so host and VM clock drift cannot invalidate timestamp checks. The test stack uses a fresh database.
+- Run `make test-local-full` for unit and integration tests, including the PostgreSQL financial suite. The runner and PostgreSQL share the Docker VM clock, so host and VM clock drift cannot invalidate timestamp checks. The test stack uses a fresh database. `UGC_TEST_POSTGIS_IMAGE` can select a compatible PostgreSQL 16/PostGIS test image for the local Docker architecture.
 - Run `make e2e-synthetic` for browser tests with the synthetic Mini App and admin services.
 
 ## E2E tests
