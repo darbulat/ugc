@@ -38,14 +38,16 @@
 
 {% block content %}
   {% set list_url = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
-  <div class="admin-actions">
-    <a class="admin-button" href="/admin/dashboard?period={{ period }}">← К дашборду</a>
-    <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
-  </div>
   <section class="section">
+    <div class="page-heading">
+      <h1>Аналитика заказов</h1>
+      <div class="admin-actions">
+        <a class="admin-button" href="/admin/dashboard?period={{ period }}">← К дашборду</a>
+        <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
+      </div>
+    </div>
     <div class="orders-toolbar">
       <div class="orders-toolbar__left">
-        <h1 class="orders-toolbar__title">Аналитика заказов</h1>
         <form class="orders-search" action="/admin/orders" method="get" role="search">
           <input type="hidden" name="period" value="{{ period }}" />
           {% if status_filter %}<input type="hidden" name="status" value="{{ status_filter }}" />{% endif %}
@@ -54,6 +56,7 @@
           <input type="hidden" name="order" value="{{ order }}" />
           <input
             class="orders-search__input"
+            aria-label="Поиск заказов"
             type="search"
             name="search"
             placeholder="Поиск: имя, ID заказа, ссылка..."
@@ -111,10 +114,10 @@
     {{ pagination_nav('pagination--top') }}
 
     <div class="admin-table-scroll" role="region" aria-label="Аналитика заказов" tabindex="0">
-      <table class="table">
+      <table class="table orders-analytics">
         <thead>
           <tr>
-            <th><a href="{{ sort_url('order_id') }}">ID{% if sort == 'order_id' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+            <th scope="col">Заказ</th>
             <th><a href="{{ sort_url('advertiser') }}">Заказчик{% if sort == 'advertiser' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('status') }}">Статус{% if sort == 'status' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('picked_count') }}">Подобрано{% if sort == 'picked_count' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
@@ -123,20 +126,25 @@
             <th><a href="{{ sort_url('created_at') }}">Дата создания{% if sort == 'created_at' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('status_age_hours') }}">Время в статусе (ч){% if sort == 'status_age_hours' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('open_complaints') }}">Проблема{% if sort == 'open_complaints' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
-            <th>Telegram</th>
           </tr>
         </thead>
         <tbody>
           {% for order in orders %}
             <tr>
-              <td><a href="{{ request.url_for('admin_order_detail', order_id=order.order_id).include_query_params(return_to=list_url) }}" title="{{ order.order_id }}">{{ order.order_id[:8] }}…</a></td>
-              <td>{{ order.advertiser }}</td>
+              <td><a href="{{ request.url_for('admin_order_detail', order_id=order.order_id).include_query_params(return_to=list_url) }}" title="{{ order.order_id }}">{{ (order.offer_text or 'Открыть заказ')|truncate(85) }}</a></td>
+              <td>
+                {% if order.advertiser_id %}
+                  <a href="/admin/order-model/list?group=all&amp;advertiser_id={{ order.advertiser_id }}">{{ order.advertiser or 'Заказы заказчика' }}</a>
+                {% else %}{{ order.advertiser }}{% endif %}
+                {% set tg = order.advertiser_telegram %}
+                {% if tg %}<small class="table-note"><a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a></small>{% endif %}
+              </td>
               <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
               <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
               <td>{{ order.dispatched_count }}</td>
               <td>{{ order.accepted_count }}</td>
-              <td>{{ order.created_at }}</td>
-              <td>{{ order.status_age_hours }}</td>
+              <td>{{ order.created_at|admin_date }}</td>
+              <td>{{ '%.1f'|format(order.status_age_hours)|replace('.', ',') if order.status_age_hours is number else '—' }}</td>
               <td>
                 {% if order.has_problem %}
                   <span class="badge badge--alert">Да</span>
@@ -144,7 +152,6 @@
                   <span class="badge badge--ok">Нет</span>
                 {% endif %}
               </td>
-              <td>{% set tg = order.advertiser_telegram %}{% if tg %}<a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a>{% else %}&mdash;{% endif %}</td>
             </tr>
           {% endfor %}
         </tbody>

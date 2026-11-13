@@ -4,8 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Админка{% endblock %}</title>
-    <link rel="stylesheet" href="{{ request.url_for('admin_mvp_static', path='admin-shell.css') }}">
-    <link rel="stylesheet" href="{{ request.url_for('admin_mvp_static', path='admin.css') }}">
+    <link rel="stylesheet" href="{{ admin_asset(request, 'admin-shell.css') }}">
+    <link rel="stylesheet" href="{{ admin_asset(request, 'admin.css') }}">
   </head>
   <body>
     {% include 'admin_nav.html' %}

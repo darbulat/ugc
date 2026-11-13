@@ -108,6 +108,31 @@ async def test_admin_cache_get_set_ttl() -> None:
 
 
 @pytest.mark.asyncio
+async def test_admin_cache_invalidates_only_selected_prefixes() -> None:
+    redis = MagicMock()
+    redis.scan = AsyncMock(
+        side_effect=[
+            (9, [b"admin:cache:dashboard:today"]),
+            (0, []),
+            (0, [b"admin:cache:orders:all"]),
+        ]
+    )
+    redis.delete = AsyncMock()
+    with patch.object(AdminCache, "_get_redis", return_value=redis):
+        cache = AdminCache(redis_url="redis://localhost")
+        await cache.invalidate_prefixes("dashboard:", "orders:")
+    assert [call.kwargs["match"] for call in redis.scan.call_args_list] == [
+        "admin:cache:dashboard:*",
+        "admin:cache:dashboard:*",
+        "admin:cache:orders:*",
+    ]
+    assert [call.args for call in redis.delete.call_args_list] == [
+        (b"admin:cache:dashboard:today",),
+        (b"admin:cache:orders:all",),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_admin_cache_get_returns_value() -> None:
     """When Redis get returns bytes, get returns them."""
     mock_redis = MagicMock()

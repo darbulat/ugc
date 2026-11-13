@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import String, cast, false, or_, select
+from sqlalchemy import String, cast, false, or_, select, text
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from ugc_bot.domain.enums import AuditAction, OrderStatus
@@ -18,6 +18,7 @@ from ugc_bot.infrastructure.db.models import (
     ManagerOrderModel,
     OfferDispatchModel,
     OrderModel,
+    OutboxEventModel,
     PaymentModel,
     UserModel,
 )
@@ -30,6 +31,7 @@ ORDER_STATUS_LABELS = {
     OrderStatus.CLOSED: "Закрытый",
 }
 _VISIBILITY_ENTITY = "order_worklist_visibility"
+_TEST_ORDER_ENTITY = "order_test_marker"
 
 
 def _without_payment():
@@ -73,6 +75,46 @@ def _can_close():
     )
 
 
+def _is_test_order():
+    return (
+        select(AuditLogModel.new_values["test"].as_boolean())
+        .where(
+            AuditLogModel.entity_type == _TEST_ORDER_ENTITY,
+            AuditLogModel.entity_id == OrderModel.order_id,
+        )
+        .order_by(AuditLogModel.changed_at.desc(), AuditLogModel.id.desc())
+        .limit(1)
+        .correlate(OrderModel)
+        .scalar_subquery()
+        .is_(True)
+    )
+
+
+def _can_delete_test_order(*, postgresql: bool):
+    eligible = (
+        _can_hide()
+        & _is_test_order()
+        & OrderModel.financial_version.is_(None)
+        & OrderModel.complimentary.is_(False)
+        & ~select(CONTROLS.c.order_id)
+        .where(CONTROLS.c.order_id == OrderModel.order_id)
+        .correlate(OrderModel)
+        .exists()
+    )
+    if not postgresql:
+        return eligible
+    return (
+        eligible
+        & ~select(OutboxEventModel.event_id)
+        .where(
+            OutboxEventModel.aggregate_id == cast(OrderModel.order_id, String),
+            OutboxEventModel.event_type == "order.activated",
+        )
+        .correlate(OrderModel)
+        .exists()
+    )
+
+
 def _latest_visibility_event(order_id: UUID | InstrumentedAttribute[UUID]):
     return (
         select(AuditLogModel)
@@ -103,6 +145,8 @@ def worklist_conditions(group: str, status: str):
     ]
     if group == "closed":
         conditions.append(OrderModel.status == OrderStatus.CLOSED)
+    elif group == "test":
+        conditions.append(_is_test_order())
     elif group != "all":
         conditions.append(OrderModel.status != OrderStatus.CLOSED)
     if status in ORDER_STATUS_LABELS:
@@ -159,6 +203,10 @@ def worklist_row_details(session: Session, order_ids: list[UUID]):
             AdvertiserProfileModel.brand,
             _can_close().label("can_close"),
             _can_hide().label("can_hide"),
+            _is_test_order().label("is_test"),
+            _can_delete_test_order(
+                postgresql=session.get_bind().dialect.name == "postgresql"
+            ).label("can_delete_test"),
             CONTROLS.c.paused.label("dispatch_paused"),
         )
         .select_from(OrderModel)
@@ -173,47 +221,111 @@ def worklist_row_details(session: Session, order_ids: list[UUID]):
     return {row.order_id: row for row in rows}
 
 
+def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
+    eligible, was_marked = session.execute(
+        select(_can_hide(), _is_test_order()).where(
+            OrderModel.order_id == order_id
+        )
+    ).one()
+    if marked and not eligible:
+        return "Отметить можно только черновик без оплаты и связанных действий."
+    if was_marked != marked:
+        session.add(
+            AuditLogModel(
+                entity_type=_TEST_ORDER_ENTITY,
+                entity_id=order_id,
+                action=AuditAction.UPDATE,
+                old_values={"test": was_marked},
+                new_values={"test": marked},
+            )
+        )
+    return (
+        "Заказ отмечен как тестовый." if marked else "Тестовая отметка снята."
+    )
+
+
+def _delete_test_order(session: Session, order: OrderModel) -> str:
+    if not session.scalar(
+        select(
+            _can_delete_test_order(
+                postgresql=session.get_bind().dialect.name == "postgresql"
+            )
+        ).where(OrderModel.order_id == order.order_id)
+    ):
+        return (
+            "Удалить можно только тестовый черновик "
+            "без оплаты и связанных действий."
+        )
+    order.status = OrderStatus.DELETED
+    order.dispatch_stopped = True
+    order.updated_at = datetime.now(timezone.utc)
+    session.add(
+        AuditLogModel(
+            entity_type="order",
+            entity_id=order.order_id,
+            action=AuditAction.DELETE,
+            old_values={"status": OrderStatus.NEW.value},
+            new_values={"status": OrderStatus.DELETED.value, "test": True},
+        )
+    )
+    return "Тестовый заказ удалён. История сохранена."
+
+
+def _set_order_visibility(
+    session: Session, order_id: UUID, visible: bool
+) -> str:
+    if not visible and not session.scalar(
+        select(_can_hide()).where(OrderModel.order_id == order_id)
+    ):
+        return "Заказ уже в работе или связан с оплатой. Скрытие недоступно."
+    previous = session.scalar(_latest_visibility_event(order_id))
+    was_visible = (
+        previous is None or previous.new_values.get("visible") is not False
+    )
+    if was_visible != visible:
+        changed_at = datetime.now(timezone.utc)
+        if previous is not None:
+            # Keep event order when app clocks differ or timestamps tie.
+            last_change = previous.changed_at
+            if last_change.tzinfo is None:
+                last_change = last_change.replace(tzinfo=timezone.utc)
+            changed_at = max(
+                changed_at, last_change + timedelta(microseconds=1)
+            )
+        session.add(
+            AuditLogModel(
+                entity_type=_VISIBILITY_ENTITY,
+                entity_id=order_id,
+                action=AuditAction.UPDATE,
+                old_values={"visible": was_visible},
+                new_values={"visible": visible},
+                changed_at=changed_at,
+            )
+        )
+    return "Заказ возвращён в список." if visible else "Заказ убран из списка."
+
+
 def change_order_worklist(
     session: Session, order_id: UUID, operation: str
 ) -> str:
+    if (
+        operation == "delete-test"
+        and session.get_bind().dialect.name == "postgresql"
+    ):
+        # Use the same lock order as native checkout and customer cancellation.
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": str(order_id)},
+        )
     order = session.get(OrderModel, order_id, with_for_update=True)
     if order is None or order.status == OrderStatus.DELETED:
         return "Заказ не найден."
+    if operation in {"mark-test", "unmark-test"}:
+        return _mark_test_order(session, order_id, operation == "mark-test")
+    if operation == "delete-test":
+        return _delete_test_order(session, order)
     if operation in {"hide", "restore"}:
-        visible = operation == "restore"
-        if not visible and not session.scalar(
-            select(_can_hide()).where(OrderModel.order_id == order_id)
-        ):
-            return (
-                "Заказ уже в работе или связан с оплатой. Скрытие недоступно."
-            )
-        previous = session.scalar(_latest_visibility_event(order_id))
-        was_visible = (
-            previous is None or previous.new_values.get("visible") is not False
-        )
-        if was_visible != visible:
-            changed_at = datetime.now(timezone.utc)
-            if previous is not None:
-                # Keep event order when app clocks differ or timestamps tie.
-                last_change = previous.changed_at
-                if last_change.tzinfo is None:
-                    last_change = last_change.replace(tzinfo=timezone.utc)
-                changed_at = max(
-                    changed_at, last_change + timedelta(microseconds=1)
-                )
-            session.add(
-                AuditLogModel(
-                    entity_type=_VISIBILITY_ENTITY,
-                    entity_id=order_id,
-                    action=AuditAction.UPDATE,
-                    old_values={"visible": was_visible},
-                    new_values={"visible": visible},
-                    changed_at=changed_at,
-                )
-            )
-        if visible:
-            return "Заказ возвращён в список."
-        return "Заказ убран из списка."
+        return _set_order_visibility(session, order_id, operation == "restore")
     if not session.scalar(
         select(_can_close()).where(OrderModel.order_id == order_id)
     ):

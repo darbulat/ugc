@@ -15,6 +15,7 @@ from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.domain.enums import (
     AuditAction,
+    ComplaintStatus,
     MessengerType,
     OrderStatus,
     PaymentStatus,
@@ -24,6 +25,7 @@ from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
+    ComplaintModel,
     OfferDispatchModel,
     OrderModel,
     PaymentModel,
@@ -188,6 +190,145 @@ def test_order_links_preserve_list_search_and_reject_external_return(worklist):
         params={"return_to": external},
     )
     assert f'href="{external}"' not in denied.text
+
+
+def test_customer_history_filters_by_account_and_keeps_search(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    with Session(engine) as session:
+        customer = session.get(OrderModel, ids["Draft example"]).advertiser_id
+    params = {"group": "all", "advertiser_id": customer}
+    page = client.get(LIST, params=params)
+    assert "Заказы заказчика" in page.text and "Northwind" in page.text
+    assert "Всего заказов: 5" in page.text
+    assert "Closed example" not in page.text
+    found = client.get(LIST, params={**params, "search": "Draft"})
+    assert "Draft example" in found.text
+    empty = client.get(LIST, params={**params, "search": "Closed"})
+    assert "Заказы не найдены" in empty.text
+    assert (
+        client.get(LIST, params={"advertiser_id": "wrong"}).status_code == 400
+    )
+
+
+def test_test_order_requires_marker_and_keeps_audit(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    draft_id = ids["Draft example"]
+    csrf = re.search(
+        r'name="csrf_token" value="([^"]+)"', client.get(LIST).text
+    )[1]
+
+    def post(order_id, operation, token=csrf):
+        return client.post(
+            f"/admin/order-worklist/{order_id}/{operation}?group=test",
+            data={"csrf_token": token},
+        )
+
+    assert post(draft_id, "mark-test", "").status_code == 403
+    assert "Удалить можно только" in post(draft_id, "delete-test").text
+    assert (
+        "Отметить можно только" in post(ids["Paid example"], "mark-test").text
+    )
+    assert "Заказ отмечен" in post(draft_id, "mark-test").text
+    assert "Заказ отмечен" in post(draft_id, "mark-test").text
+    assert "Удалить тестовый" in client.get(LIST, params={"group": "test"}).text
+    assert "Тестовая отметка снята" in post(draft_id, "unmark-test").text
+    assert "Удалить можно только" in post(draft_id, "delete-test").text
+    assert "Заказ отмечен" in post(draft_id, "mark-test").text
+    assert "Тестовый заказ удалён" in post(draft_id, "delete-test").text
+    assert "Draft example" not in client.get(LIST, params={"group": "all"}).text
+    with Session(engine) as session:
+        order = session.get(OrderModel, draft_id)
+        assert order.status == OrderStatus.DELETED and order.dispatch_stopped
+        events = session.scalars(
+            select(AuditLogModel).where(AuditLogModel.entity_id == draft_id)
+        ).all()
+        marker_events = [
+            event
+            for event in events
+            if event.entity_type == "order_test_marker"
+        ]
+        assert [
+            event.new_values["test"]
+            for event in sorted(
+                marker_events, key=lambda event: event.changed_at
+            )
+        ] == [True, False, True]
+        assert len(events) == 4
+        assert any(
+            event.new_values == {"status": "deleted", "test": True}
+            for event in events
+        )
+        assert (
+            session.get(OrderModel, ids["Paid example"]).status
+            == OrderStatus.ACTIVE
+        )
+
+
+def test_complaint_read_search_and_close_without_measures(worklist):
+    client, engine, ids = worklist
+    complaint_id = uuid4()
+    reason = "Подробности обращения " + "x" * 300
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        order = session.get(OrderModel, ids["Active example"])
+        reporter = session.get(OrderModel, ids["Closed example"]).advertiser_id
+        session.add(
+            ComplaintModel(
+                complaint_id=complaint_id,
+                order_id=order.order_id,
+                reporter_id=reporter,
+                reported_id=order.advertiser_id,
+                reason=reason,
+                status=ComplaintStatus.PENDING,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    url = "/admin/complaint-model/list"
+    close = f"/admin/complaints/{complaint_id}/close"
+    assert client.post(close).status_code == 401
+    _login(client)
+    assert client.post(close).status_code == 403
+    listing = client.get(url, params={"search": "client_name"})
+    assert listing.status_code == 200
+    assert "Подробности обращения" in listing.text
+    assert "client_name" in listing.text and "Active example" in listing.text
+    assert "Жалобы не найдены" in client.get(url, params={"search": "%"}).text
+    detail = client.get(
+        f"/admin/complaint-model/details/{complaint_id}",
+        params={"return_to": f"{url}?status=open"},
+    )
+    assert detail.status_code == 200 and reason in detail.text
+    assert "Закрыть без мер" in detail.text and "К жалобам" in detail.text
+    assert re.search(r"admin-shell\.css\?v=[0-9a-f]{12}", detail.text)
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', detail.text)[1]
+    closed = client.post(close, data={"csrf_token": csrf})
+    assert "Жалоба закрыта без мер" in closed.text
+    assert "Подробности обращения" not in closed.text
+    retry = client.post(close, data={"csrf_token": csrf})
+    assert "Жалоба уже закрыта" in retry.text
+    history = client.get(
+        url, params={"status": "closed", "search": str(complaint_id)}
+    )
+    assert (
+        "Подробности обращения" in history.text
+        and "Закрыта без мер" in history.text
+    )
+    with Session(engine) as session:
+        complaint = session.get(ComplaintModel, complaint_id)
+        assert complaint.status == ComplaintStatus.DISMISSED
+        assert complaint.reviewed_at is not None
+        assert (
+            session.get(UserModel, complaint.reported_id).status
+            == UserStatus.ACTIVE
+        )
+        event = session.scalars(
+            select(AuditLogModel).where(AuditLogModel.entity_id == complaint_id)
+        ).one()
+        assert event.old_values == {"status": "pending"}
+        assert event.new_values == {"status": "dismissed"}
 
 
 def test_worklist_actions_preserve_records_and_protect_payments(worklist):

@@ -1,0 +1,44 @@
+{% extends "sqladmin/layout.html" %}
+{% from "complaint_actions.html" import close_form with context %}
+{% block content %}
+{% set back = complaint_return_url(request) %}
+{% set info = model_view.contexts([model]).get(model.complaint_id) %}
+<section class="col-12">
+  <article class="card ugc-complaint-detail">
+    <header class="card-header d-flex flex-wrap justify-content-between gap-2">
+      <h1 class="card-title">Жалоба</h1>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ back }}">← К жалобам</a>
+    </header>
+    <div class="card-body">
+      <p class="mb-2"><strong>{{ model_view.status_labels.get(model.status, model.status) }}</strong> · {{ model.created_at|admin_date }}</p>
+      {% if model.reviewed_at %}<p class="text-muted">Рассмотрена {{ model.reviewed_at|admin_date }}</p>{% endif %}
+      <h2 class="h3 mt-3">Текст жалобы</h2>
+      <p class="ugc-complaint-text">{{ model.reason or 'Текст отсутствует' }}</p>
+      <dl class="ugc-complaint-people">
+        <div><dt>Кто подал</dt><dd><a href="{{ request.url_for('admin_user_card', user_id=model.reporter_id) }}">{{ info.reporter or 'Открыть профиль' }}</a></dd></div>
+        <div><dt>На кого</dt><dd><a href="{{ request.url_for('admin_user_card', user_id=model.reported_id) }}">{{ info.reported or 'Открыть профиль' }}</a></dd></div>
+        <div><dt>Заказ</dt><dd><a href="{{ request.url_for('admin_order_detail', order_id=model.order_id).include_query_params(return_to=back) }}">{{ (info.offer_text or 'Открыть заказ')|truncate(140) }}</a></dd></div>
+      </dl>
+      <details class="mt-3">
+        <summary>Служебные данные{% if model.file_ids %} и вложения ({{ model.file_ids|length }}){% endif %}</summary>
+        <dl class="mt-2 mb-0">
+          <dt>ID жалобы</dt><dd>{{ model.complaint_id }}</dd>
+          <dt>ID заказа</dt><dd>{{ model.order_id }}</dd>
+          <dt>ID участников</dt><dd>{{ model.reporter_id }} · {{ model.reported_id }}</dd>
+          {% for file_id in model.file_ids or [] %}<dt>ID вложения</dt><dd>{{ file_id }}</dd>{% endfor %}
+        </dl>
+      </details>
+    </div>
+    <footer class="card-footer d-flex flex-wrap gap-2">
+      {% if model.status in model_view.open_statuses %}{{ close_form(model, back) }}{% endif %}
+      {% if model_view.can_edit %}
+        <a class="btn btn-outline-secondary btn-sm" href="{{ model_view._build_url_for('admin:edit', request, model) }}">Изменить статус</a>
+      {% endif %}
+    </footer>
+  </article>
+</section>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+<script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
+{% endblock %}

@@ -26,18 +26,18 @@
       ] %}
       {% set count = payload.problems.open_complaints if key == 'complaints' else rows|length %}
       <details class="card attention-queue" {% if key == 'delayed' and count %}open{% endif %}>
-        <summary><span>{{ label }}</span><strong>{{ count }}</strong></summary>
+        <summary><span>{{ label }}</span> <strong>{{ count }}</strong></summary>
         {% if rows %}
         <ul class="attention-list">
           {% for row in rows %}
           <li>
             <div class="attention-list__main">
               {% if key == 'complaints' %}
-                <a href="/admin/complaint-model/edit/{{ row.complaint_id }}">{{ row.reason or 'Открыть жалобу' }}</a>
-                <small>{{ row.reporter }} · {{ (row.created_at|string)[:10] }}</small>
+                <a href="{{ url_for('admin:details', identity='complaint-model', pk=row.complaint_id).include_query_params(return_to='/admin/complaint-model/list?status=open') }}">{{ (row.reason or 'Открыть жалобу')|truncate(120) }}</a>
+                <small>{{ row.reporter }} · {{ row.created_at|admin_date }}</small>
               {% else %}
                 <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">{{ row.offer_text or ('Заказ ' ~ row.order_id[:8]) }}</a>
-                <small>{{ row.advertiser }} · создан {{ (row.created_at|string)[:10] }}</small>
+                <small>{{ row.advertiser }} · создан {{ row.created_at|admin_date }}</small>
               {% endif %}
             </div>
             <div class="attention-list__meta">
@@ -136,7 +136,7 @@
       {% endfor %}
     </div>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script defer src="{{ request.url_for('admin_mvp_static', path='dashboard.js') }}"></script>
+    <script defer src="{{ admin_asset(request, 'dashboard.js') }}"></script>
   </section>
 
   <section class="section">

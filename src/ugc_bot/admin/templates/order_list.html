@@ -1,19 +1,21 @@
 {% extends "sqladmin/layout.html" %}
 {% block head %}
 {{ super() }}
-<link rel="stylesheet" href="{{ request.url_for('admin_mvp_static', path='order-worklist.css') }}">
+<link rel="stylesheet" href="{{ admin_asset(request, 'order-worklist.css') }}">
 {% endblock %}
 {% block content %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'closed', 'hidden', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ('work', 'closed', 'hidden', 'test', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
+{% set advertiser_id = model_view.customer_filter(request) %}
+{% set customer = model_view.customer_context(advertiser_id) if advertiser_id else none %}
 {% set details = model_view.worklist_details(pagination.rows) %}
 {% set csrf_token = model_view.worklist_csrf_token(request) %}
 {% set message = request.session.pop('order_worklist_message', '') %}
 <section class="col-12 order-worklist">
   <div class="card">
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
-      <h2 class="card-title me-auto">Заказы</h2>
+      <h2 class="card-title me-auto">{{ 'Заказы заказчика' if advertiser_id else 'Заказы' }}</h2>
       {% if model_view.can_export %}
         {% for export_type in model_view.export_types %}
         <a class="btn btn-sm btn-outline-secondary"
@@ -30,8 +32,14 @@
     </div>
     <div class="card-body border-bottom py-3">
       {% if message %}<div class="alert alert-info" role="status">{{ message }}</div>{% endif %}
+      {% if advertiser_id %}
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+          <a class="fw-semibold" href="{{ request.url_for('admin_user_card', user_id=advertiser_id) }}">{{ customer.brand or customer.username or 'Профиль заказчика' }}</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ request.url.remove_query_params(['advertiser_id', 'page']) }}">Снять фильтр заказчика</a>
+        </div>
+      {% endif %}
       <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('all', 'Все')] %}
+        {% for key, label in [('work', 'В работе'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('all', 'Все')] %}
         <a class="nav-link{% if group == key %} active{% endif %}"
            {% if group == key %}aria-current="page"{% endif %}
            href="{{ request.url.remove_query_params(['page', 'status']).include_query_params(group=key) }}">
@@ -41,6 +49,7 @@
       </nav>
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="group" value="{{ group }}">
+        {% if advertiser_id %}<input type="hidden" name="advertiser_id" value="{{ advertiser_id }}">{% endif %}
         {% for name in ['sortBy', 'sort', 'pageSize'] %}
           {% if request.query_params.get(name) %}
           <input type="hidden" name="{{ name }}" value="{{ request.query_params[name] }}">
@@ -107,11 +116,14 @@
             <td><span class="order-clamp" title="{{ row.geography or '' }}">{{ row.geography or '—' }}</span></td>
             <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
             <td><span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>{% if info.dispatch_paused and row.status == "active" %}<br><small>Рассылка на паузе</small>{% endif %}</td>
-            <td><span class="order-clamp" title="{{ info.username or '' }}">{{ info.username or '—' }}</span></td>
+            <td><a class="order-clamp" title="{{ info.username or 'Заказы заказчика' }}" href="{{ request.url_for('admin:list', identity=model_view.identity).include_query_params(group='all', advertiser_id=row.advertiser_id) }}">{{ info.username or 'Заказы заказчика' }}</a></td>
             <td><span class="order-clamp" title="{{ info.brand or '' }}">{{ info.brand or '—' }}</span></td>
             <td class="order-number">{{ row.bloggers_needed }}</td>
-            <td><a class="order-clamp" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a></td>
-            <td><time datetime="{{ row.created_at.isoformat() }}">{{ row.created_at.strftime('%d.%m.%Y') }}</time></td>
+            <td>
+              {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Тестовый</small>{% endif %}
+              <a class="order-clamp" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a>
+            </td>
+            <td><time datetime="{{ row.created_at.isoformat() }}">{{ row.created_at|admin_date }}</time></td>
             <td>
               <div class="d-flex flex-wrap gap-1">
                 <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}">Открыть</a>
@@ -142,9 +154,25 @@
                   <form method="post" action="{{ confirm_url.replace(query=request.url.query) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="button" class="btn btn-sm btn-outline-primary"
-                            data-order-confirm="Заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }}). {{ label }}?{% if operation == 'hide' %} Запись сохранится.{% endif %}">
+                            data-admin-confirm="Заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }}). {{ label }}?{% if operation == 'hide' %} Запись сохранится.{% endif %}">
                       {{ label }}
                     </button>
+                  </form>
+                {% endif %}
+                {% if info.is_test or (info.can_hide and group != 'hidden') %}
+                  <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='unmark-test' if info.is_test else 'mark-test').replace(query=request.url.query) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    {% if info.is_test %}
+                      <button type="submit" class="btn btn-sm btn-outline-secondary">Снять отметку</button>
+                    {% else %}
+                      <button type="button" class="btn btn-sm btn-outline-secondary" data-admin-confirm="Отметить заказ «{{ row.offer_text|truncate(70) }}» как тестовый? Используйте эту отметку для своих тестовых заказов.">Это тест</button>
+                    {% endif %}
+                  </form>
+                {% endif %}
+                {% if info.can_delete_test %}
+                  <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='delete-test').replace(query=request.url.query) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="button" class="btn btn-sm btn-outline-danger" data-admin-confirm="Удалить тестовый заказ «{{ row.offer_text|truncate(70) }}»? Запись в журнале сохранится.">Удалить тестовый</button>
                   </form>
                 {% endif %}
               </div>
@@ -190,5 +218,5 @@
 {% endblock %}
 {% block tail %}
 {{ super() }}
-<script src="{{ request.url_for('admin_mvp_static', path='order-worklist.js') }}"></script>
+<script src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
 {% endblock %}
