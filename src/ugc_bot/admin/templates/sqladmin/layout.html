@@ -1,0 +1,14 @@
+{% extends "sqladmin/base.html" %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ request.url_for('admin_mvp_static', path='admin-shell.css') }}">
+{% endblock %}
+{% block body %}
+{% include 'admin_nav.html' %}
+<main class="ugc-model-page">
+  {% block content_header %}{% endblock %}
+  <div class="row row-deck row-cards">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+{% endblock %}

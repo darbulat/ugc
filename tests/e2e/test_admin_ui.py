@@ -195,11 +195,19 @@ def test_order_worklist_search_hide_and_restore(
 
     _login(page, base_url)
     page.goto(f"{base_url}/admin/order-model/list")
-    page.get_by_label("Поиск").fill(brand)
-    page.get_by_role("button", name="Найти").click()
+    page.get_by_label("Поиск", exact=True).fill(brand)
+    page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     row = page.get_by_role("row").filter(has_text=brand)
     expect(row).to_have_count(1)
     expect(row).to_contain_text("1 850,00 RUB")
+    filtered_list = page.url
+    row.get_by_role("link", name="Открыть", exact=True).click()
+    expect(
+        page.get_by_role("heading", name="Браузерный тест черновика")
+    ).to_be_visible()
+    page.get_by_role("link", name="Назад к списку").click()
+    assert page.url == filtered_list
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(brand)
     geography_cell = row.locator("td").first.locator("span")
     for width in (1440, 820):
         page.set_viewport_size({"width": width, "height": 800})
@@ -224,11 +232,11 @@ def test_order_worklist_search_hide_and_restore(
     hide.click()
     expect(page.get_by_role("status")).to_have_text("Заказ убран из списка.")
     assert messages and order_id.hex[:8] in messages[0]
-    expect(page.get_by_label("Поиск")).to_have_value(brand)
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(brand)
     expect(page.get_by_text("Заказы не найдены")).to_be_visible()
 
     page.get_by_role("link", name="Скрытые").click()
-    expect(page.get_by_label("Поиск")).to_have_value(brand)
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(brand)
     restore = row.get_by_role("button", name="Вернуть в список")
     page.once("dialog", lambda dialog: dialog.dismiss())
     restore.click()

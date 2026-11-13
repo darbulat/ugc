@@ -4,7 +4,8 @@ import contextlib
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
+from ugc_bot.admin.order_worklist import worklist_conditions
 from ugc_bot.domain.enums import (
     ComplaintStatus,
     OrderStatus,
@@ -21,6 +23,7 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
     UserStatus,
 )
+from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -48,7 +51,7 @@ _ACTIVE_ORDER_STATUSES = (
     OrderStatus.PENDING_MODERATION,
     OrderStatus.ACTIVE,
 )
-_OPEN_COMPLAINT_STATUSES = (
+OPEN_COMPLAINT_STATUSES = (
     ComplaintStatus.PENDING,
     ComplaintStatus.REVIEWED,
 )
@@ -66,6 +69,61 @@ class PeriodWindow:
     current_end: datetime
     previous_start: datetime
     previous_end: datetime
+
+
+def dashboard_period_window(
+    period: PeriodKey, timezone: ZoneInfo
+) -> PeriodWindow:
+    """Build time windows for current and previous periods."""
+    now = datetime.now(timezone)
+    start_of_today = datetime(
+        year=now.year,
+        month=now.month,
+        day=now.day,
+        tzinfo=timezone,
+    )
+    if period == "today":
+        current_start = start_of_today
+        current_end = now
+        previous_end = start_of_today
+        previous_start = previous_end - timedelta(days=1)
+    elif period == "yesterday":
+        current_end = start_of_today
+        current_start = current_end - timedelta(days=1)
+        previous_end = current_start
+        previous_start = previous_end - timedelta(days=1)
+    elif period == "7d":
+        current_end = now
+        current_start = now - timedelta(days=7)
+        previous_end = current_start
+        previous_start = previous_end - timedelta(days=7)
+    elif period == "30d":
+        current_end = now
+        current_start = now - timedelta(days=30)
+        previous_end = current_start
+        previous_start = previous_end - timedelta(days=30)
+    elif period == "all":
+        current_start = datetime(2000, 1, 1, tzinfo=timezone)
+        current_end = now
+        previous_start = current_start
+        previous_end = current_start
+    else:
+        raise ValueError(f"Unsupported period: {period}")
+    return PeriodWindow(
+        current_start=current_start,
+        current_end=current_end,
+        previous_start=previous_start,
+        previous_end=previous_end,
+    )
+
+
+def paid_in_period(window: PeriodWindow) -> ColumnElement[bool]:
+    paid_at = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
+    return and_(
+        PaymentModel.status == PaymentStatus.PAID,
+        paid_at >= window.current_start,
+        paid_at < window.current_end,
+    )
 
 
 @dataclass(slots=True)
@@ -151,7 +209,8 @@ class AdminDashboardService:
             open_complaints_list = await self._list_open_complaints(session)
             timings["open_complaints_list"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
-            delayed_orders = await self._list_delayed_orders(session)
+            attention = await self._get_order_attention(session)
+            delayed_orders = attention["delayed"]
             timings["delayed_orders"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
             referrers = await self._get_referral_referrers(session, window)
@@ -160,9 +219,7 @@ class AdminDashboardService:
             payout_requests = await self._list_payout_requests(session)
             timings["payout_requests"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
-            turnover_period = await self._turnover_in_period(
-                session, window.current_start, window.current_end
-            )
+            payments = await self._paid_totals(session, window)
             timings["turnover"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
             creators_by_city = await self._get_creators_by_city(session)
@@ -267,10 +324,19 @@ class AdminDashboardService:
                 "delays": len(delayed_orders),
             },
             "delayed_orders": delayed_orders,
+            "order_attention": attention,
             "open_complaints_list": open_complaints_list,
             "referrals": referral_data,
             "payout_requests": payout_requests,
-            "turnover_period": turnover_period,
+            "payments_by_currency": payments,
+            "paid_orders": sum(row["count"] for row in payments),
+            "turnover_period": (
+                float(payments[0]["amount"])
+                if len(payments) == 1
+                else None
+                if payments
+                else 0.0
+            ),
             "creators_by_city": creators_by_city,
             "picked_creators_count": picked_creators_count,
             "picked_creators_target": PICKED_CREATORS_TARGET,
@@ -358,10 +424,11 @@ class AdminDashboardService:
             )
             .select_from(OrderModel)
             .where(
+                *worklist_conditions("all", ""),
                 and_(
                     OrderModel.created_at >= start,
                     OrderModel.created_at < end,
-                )
+                ),
             )
             .group_by(day)
             .order_by(day)
@@ -376,28 +443,32 @@ class AdminDashboardService:
             for row in rows
         ]
 
-    async def _turnover_in_period(
+    async def _paid_totals(
         self,
         session: AsyncSession,
-        start: datetime,
-        end: datetime,
-    ) -> float:
-        """Total turnover (sum of paid payments) in period."""
-        date_col = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
+        window: PeriodWindow,
+    ) -> list[dict]:
+        """Total paid orders and amount per currency for the period."""
         query = (
-            select(func.coalesce(func.sum(PaymentModel.amount), 0))
-            .select_from(PaymentModel)
-            .where(
-                and_(
-                    PaymentModel.status == PaymentStatus.PAID,
-                    date_col >= start,
-                    date_col < end,
-                )
+            select(
+                PaymentModel.currency,
+                func.count(distinct(PaymentModel.order_id)),
+                func.sum(PaymentModel.amount),
             )
+            .select_from(PaymentModel)
+            .where(paid_in_period(window))
+            .group_by(PaymentModel.currency)
+            .order_by(PaymentModel.currency)
         )
         result = await session.execute(query)
-        value = result.scalar()
-        return round(float(value or 0), 2)
+        return [
+            {
+                "currency": currency,
+                "count": int(count),
+                "amount": format(Decimal(str(amount)), ".2f"),
+            }
+            for currency, count, amount in result.all()
+        ]
 
     async def _chart_turnover_by_day(
         self,
@@ -411,6 +482,7 @@ class AdminDashboardService:
         query = (
             select(
                 day.label("day"),
+                PaymentModel.currency,
                 func.coalesce(func.sum(PaymentModel.amount), 0).label("amount"),
             )
             .select_from(PaymentModel)
@@ -421,14 +493,15 @@ class AdminDashboardService:
                     date_col < end,
                 )
             )
-            .group_by(day)
-            .order_by(day)
+            .group_by(day, PaymentModel.currency)
+            .order_by(day, PaymentModel.currency)
         )
         result = await session.execute(query)
         rows = result.all()
         return [
             {
                 "date": row.day.strftime("%Y-%m-%d") if row.day else "",
+                "currency": row.currency,
                 "amount": round(float(row.amount), 2),
             }
             for row in rows
@@ -530,47 +603,7 @@ class AdminDashboardService:
             return await self._get_order_card(session, order_id)
 
     def _build_period_window(self, period: PeriodKey) -> PeriodWindow:
-        """Build time windows for current and previous periods."""
-        now = datetime.now(self._timezone)
-        start_of_today = datetime(
-            year=now.year,
-            month=now.month,
-            day=now.day,
-            tzinfo=self._timezone,
-        )
-        if period == "today":
-            current_start = start_of_today
-            current_end = now
-            previous_end = start_of_today
-            previous_start = previous_end - timedelta(days=1)
-        elif period == "yesterday":
-            current_end = start_of_today
-            current_start = current_end - timedelta(days=1)
-            previous_end = current_start
-            previous_start = previous_end - timedelta(days=1)
-        elif period == "7d":
-            current_end = now
-            current_start = now - timedelta(days=7)
-            previous_end = current_start
-            previous_start = previous_end - timedelta(days=7)
-        elif period == "30d":
-            current_end = now
-            current_start = now - timedelta(days=30)
-            previous_end = current_start
-            previous_start = previous_end - timedelta(days=30)
-        elif period == "all":
-            current_start = datetime(2000, 1, 1, tzinfo=self._timezone)
-            current_end = now
-            previous_start = current_start
-            previous_end = current_start
-        else:
-            raise ValueError(f"Unsupported period: {period}")
-        return PeriodWindow(
-            current_start=current_start,
-            current_end=current_end,
-            previous_start=previous_start,
-            previous_end=previous_end,
-        )
+        return dashboard_period_window(period, self._timezone)
 
     async def _get_registration_cards(
         self, session: AsyncSession, window: PeriodWindow
@@ -665,10 +698,11 @@ class AdminDashboardService:
                 open_complaints.c.order_id == OrderModel.order_id,
             )
             .where(
+                *worklist_conditions("all", ""),
                 and_(
                     OrderModel.created_at >= window.current_start,
                     OrderModel.created_at < window.current_end,
-                )
+                ),
             )
         )
         result = await session.execute(query)
@@ -682,7 +716,7 @@ class AdminDashboardService:
     async def _count_open_complaints(self, session: AsyncSession) -> int:
         """Count open complaints across all orders."""
         query = select(func.count(ComplaintModel.complaint_id)).where(
-            ComplaintModel.status.in_(_OPEN_COMPLAINT_STATUSES)
+            ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES)
         )
         result = await session.execute(query)
         return int(result.scalar() or 0)
@@ -718,7 +752,7 @@ class AdminDashboardService:
             .select_from(ComplaintModel)
             .join(Reporter, Reporter.user_id == ComplaintModel.reporter_id)
             .join(Reported, Reported.user_id == ComplaintModel.reported_id)
-            .where(ComplaintModel.status.in_(_OPEN_COMPLAINT_STATUSES))
+            .where(ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES))
             .order_by(ComplaintModel.created_at.desc())
             .limit(limit)
         )
@@ -939,6 +973,7 @@ class AdminDashboardService:
                 PayoutRequestModel.requested_at,
                 PayoutRequestModel.status,
                 PayoutRequestModel.amount,
+                PayoutRequestModel.currency,
             )
             .join(
                 UserModel,
@@ -966,6 +1001,7 @@ class AdminDashboardService:
                     row.status, row.status.value if row.status else ""
                 ),
                 "amount": float(row.amount) if row.amount is not None else None,
+                "currency": row.currency,
             }
             for row in rows
         ]
@@ -1102,8 +1138,8 @@ class AdminDashboardService:
             card["advertiser_profile"] = None
         return card
 
-    async def _list_delayed_orders(self, session: AsyncSession) -> list[dict]:
-        """Return list of delayed orders with reasons."""
+    async def _get_order_attention(self, session: AsyncSession) -> dict:
+        """Group current orders by the action they are waiting for."""
         responses = self._order_responses_subquery()
         complaint_counts = self._open_complaints_subquery()
         query = (
@@ -1116,6 +1152,8 @@ class AdminDashboardService:
                 func.coalesce(
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
+                PaymentModel.status.label("payment_status"),
+                CONTROLS.c.paused.label("paused"),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
             .outerjoin(
@@ -1127,29 +1165,74 @@ class AdminDashboardService:
                 complaint_counts,
                 complaint_counts.c.order_id == OrderModel.order_id,
             )
-            .where(OrderModel.status.in_(_ACTIVE_ORDER_STATUSES))
+            .outerjoin(
+                PaymentModel, PaymentModel.order_id == OrderModel.order_id
+            )
+            .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
+            .where(
+                *worklist_conditions("work", ""),
+                OrderModel.status.in_(_ACTIVE_ORDER_STATUSES),
+            )
+            .order_by(OrderModel.created_at, OrderModel.order_id)
         )
         result = await session.execute(query)
         rows = result.all()
         now = datetime.now(self._timezone)
-        delayed: list[dict] = []
-        for order, responses_count, open_count, advertiser_name in rows:
-            reasons = self._get_delay_reasons(now, order, responses_count)
-            if not reasons:
+        attention: dict[str, Any] = {
+            "active": 0,
+            "delayed": [],
+            "unpaid": [],
+            "moderation": [],
+        }
+        for order, picked, open_count, name, payment_status, paused in rows:
+            if order.status == OrderStatus.ACTIVE:
+                attention["active"] += 1
+            queue, reasons = self._attention_reasons(
+                now, order, picked, payment_status, paused
+            )
+            if queue is None:
                 continue
-            delayed.append(
+            attention[queue].append(
                 {
                     "order_id": str(order.order_id),
-                    "advertiser": advertiser_name,
+                    "advertiser": name,
+                    "offer_text": order.offer_text,
                     "created_at": order.created_at,
                     "age_hours": self._age_hours(now, order.created_at),
-                    "picked_count": int(responses_count),
+                    "picked_count": int(picked),
                     "needed_count": int(order.bloggers_needed),
                     "has_problem": open_count > 0,
                     "reasons": reasons,
                 }
             )
-        return sorted(delayed, key=lambda row: row["created_at"])
+        return attention
+
+    def _attention_reasons(
+        self,
+        now: datetime,
+        order: OrderModel,
+        picked: int,
+        payment_status: PaymentStatus | None,
+        paused: bool | None,
+    ) -> tuple[str | None, list[str]]:
+        if order.status == OrderStatus.PENDING_MODERATION or (
+            order.status == OrderStatus.NEW
+            and payment_status == PaymentStatus.PAID
+        ):
+            return "moderation", ["waiting_moderation"]
+        if order.status == OrderStatus.NEW:
+            if (
+                self._age_hours(now, order.created_at)
+                >= self._thresholds.no_responses_hours
+            ):
+                return "unpaid", ["waiting_payment"]
+            return None, []
+        if order.dispatch_stopped or picked >= order.bloggers_needed:
+            return None, []
+        if paused:
+            return "delayed", ["dispatch_paused"]
+        reasons = self._get_delay_reasons(now, order, picked)
+        return ("delayed", reasons) if reasons else (None, [])
 
     def _apply_referrers_filter(
         self,
@@ -1542,10 +1625,11 @@ class AdminDashboardService:
                 open_complaints.c.order_id == OrderModel.order_id,
             )
             .where(
+                *worklist_conditions("all", ""),
                 and_(
                     OrderModel.created_at >= window.current_start,
                     OrderModel.created_at < window.current_end,
-                )
+                ),
             )
         )
         status_cond = self._order_status_filter_condition(
@@ -1611,10 +1695,11 @@ class AdminDashboardService:
                 open_complaints.c.order_id == OrderModel.order_id,
             )
             .where(
+                *worklist_conditions("all", ""),
                 and_(
                     OrderModel.created_at >= window.current_start,
                     OrderModel.created_at < window.current_end,
-                )
+                ),
             )
         )
         status_cond = self._order_status_filter_condition(
@@ -1765,6 +1850,8 @@ class AdminDashboardService:
             "offer_text": order.offer_text,
             "barter_description": getattr(order, "barter_description", None),
             "price": float(order.price),
+            "currency": order.currency,
+            "lifecycle_status": order.status.value,
             "bloggers_needed": int(order.bloggers_needed),
             "content_usage": getattr(order, "content_usage", None),
             "deadlines": getattr(order, "deadlines", None),
@@ -1897,7 +1984,7 @@ class AdminDashboardService:
                 func.sum(
                     case(
                         (
-                            ComplaintModel.status.in_(_OPEN_COMPLAINT_STATUSES),
+                            ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES),
                             1,
                         ),
                         else_=0,
@@ -2048,6 +2135,8 @@ class AdminDashboardService:
 
     def _age_hours(self, now: datetime, created_at: datetime) -> float:
         """Return age in hours between now and created_at."""
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
         delta = now - created_at
         return round(delta.total_seconds() / 3600, 2)
 

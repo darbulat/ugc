@@ -1,0 +1,53 @@
+{% macro nav_link(url, label, pages=()) -%}
+  {% set path = request.url.path %}
+  {% set selected = path == url or path in pages or
+     (url.endswith('/list') and path.startswith(url[:-4])) %}
+  <a href="{{ url }}" {% if selected %}aria-current="page"{% endif %}>{{ label }}</a>
+{%- endmacro %}
+{% set path = request.url.path %}
+{% set model = path.split('/')[2] if path.startswith('/admin/') else '' %}
+{% set finance = model in ('referrers', 'payment-model', 'payout-request-model', 'referral-income-entry-model') %}
+{% set settings = model.endswith('-model') and not finance and model not in ('order-model', 'complaint-model') %}
+<header class="ugc-nav">
+  <a class="ugc-nav__brand" href="/admin/dashboard">UGC Админка</a>
+  <nav class="ugc-nav__links" aria-label="Разделы админки">
+    {{ nav_link('/admin/dashboard', 'Дашборд') }}
+    {{ nav_link('/admin/order-model/list', 'Заказы', (path,) if path == '/admin/orders' or path.startswith('/admin/orders/') else ()) }}
+    {{ nav_link('/admin/users/advertisers', 'Заказчики') }}
+    {{ nav_link('/admin/users/creators', 'Креаторы') }}
+    {{ nav_link('/admin/complaint-model/list', 'Жалобы') }}
+    <details class="ugc-nav__group"{% if finance %} data-current{% endif %}>
+      <summary>Финансы</summary>
+      <div class="ugc-nav__dropdown">
+        {{ nav_link('/admin/payment-model/list', 'Платежи') }}
+        {{ nav_link('/admin/payout-request-model/list', 'Заявки на вывод') }}
+        {{ nav_link('/admin/referrers', 'Рефералы') }}
+        {{ nav_link('/admin/referral-income-entry-model/list', 'Реферальные начисления') }}
+      </div>
+    </details>
+    <details class="ugc-nav__group"{% if settings %} data-current{% endif %}>
+      <summary>Настройки</summary>
+      <div class="ugc-nav__dropdown">
+        {{ nav_link('/admin/country-model/list', 'Страны') }}
+        {{ nav_link('/admin/language-model/list', 'Языки') }}
+        {{ nav_link('/admin/contact-pricing-model/list', 'Цены контактов') }}
+        {{ nav_link('/admin/bot-text-model/list', 'Тексты бота') }}
+        {{ nav_link('/admin/user-model/list', 'Пользователи') }}
+        {{ nav_link('/admin/blogger-profile-model/list', 'Профили креаторов') }}
+        {{ nav_link('/admin/advertiser-profile-model/list', 'Профили заказчиков') }}
+        {{ nav_link('/admin/offer-dispatch-model/list', 'Офферы и отклики') }}
+        {{ nav_link('/admin/interaction-model/list', 'Взаимодействия') }}
+        {{ nav_link('/admin/blogger-rating-model/list', 'Рейтинги креаторов') }}
+        {{ nav_link('/admin/nps-response-model/list', 'Ответы NPS') }}
+        {{ nav_link('/admin/instagram-verification-code-model/list', 'Коды Instagram') }}
+        {{ nav_link('/admin/audit-log-model/list', 'Журнал действий') }}
+        <a href="/admin/logout">Выйти</a>
+      </div>
+    </details>
+  </nav>
+  <form class="ugc-nav__search" action="/admin/search" method="get" role="search">
+    <input type="search" name="q" aria-label="Поиск пользователя"
+           placeholder="Ник / Telegram ID" value="{{ request.query_params.get('q', '') }}">
+    <button type="submit">Найти</button>
+  </form>
+</header>
