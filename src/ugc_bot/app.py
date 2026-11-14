@@ -135,8 +135,9 @@ def build_dispatcher(
         dispatcher[key] = service
     from ugc_bot.container.order_summary_factory import build_order_summary
 
+    transactions = getattr(container, "transaction_manager", None)
     dispatcher["order_summary_service"] = build_order_summary(
-        config, getattr(container, "transaction_manager", None)
+        config, transactions
     )
     if dispatcher["order_summary_service"] is not None:
         from ugc_bot.container.creator_invite_factory import (
@@ -144,14 +145,13 @@ def build_dispatcher(
         )
 
         dispatcher["creator_invite_service"] = build_creator_invites(
-            container.transaction_manager
+            transactions
         )
-    if (
-        container.transaction_manager is not None
-        and config.db.database_url.startswith("postgresql")
+    if transactions is not None and config.db.database_url.startswith(
+        "postgresql"
     ):
         dispatcher["manager_applications"] = ManagerApplications(
-            container.transaction_manager, None
+            transactions, None
         )
     register_checkout_lifecycle(dispatcher, config)
     if include_routers:
