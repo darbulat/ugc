@@ -4,7 +4,7 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 from hashlib import sha256
@@ -62,7 +62,11 @@ from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_SECTIONS,
     changed_text_errors,
 )
-from ugc_bot.admin.order_summary import safe_order_link
+from ugc_bot.admin.order_summary import (
+    order_has_manager,
+    order_inactive_since,
+    safe_order_link,
+)
 from ugc_bot.admin.order_worklist import (
     ORDER_STATUS_LABELS,
     UNPAID_GROUP,
@@ -2108,6 +2112,11 @@ class OrderAdmin(ModelView, model=OrderModel):
     unpaid_reminders_enabled = False
     worklist_status_labels = ORDER_STATUS_LABELS
     worklist_reason_labels = _DELAY_REASON_LABELS
+    quick_filter_labels = {
+        "no_manager": "Без менеджера",
+        "inactive": "Давно без активности",
+    }
+    inactivity_days = 7
     delay_thresholds = DelayThresholds(7, 24, 48, 7)
     worklist_columns = {
         "geography": "География",
@@ -2301,19 +2310,40 @@ class OrderAdmin(ModelView, model=OrderModel):
         if advertiser_id := self.customer_filter(request):
             stmt = stmt.where(OrderModel.advertiser_id == advertiser_id)
         group = request.query_params.get("group", "work")
+        filters = self.quick_filters(request)
+        if (group == UNPAID_GROUP or "inactive" in filters) and not hasattr(
+            request.state, "worklist_now"
+        ):
+            request.state.worklist_now = datetime.now(timezone.utc)
         if group == UNPAID_GROUP:
-            if getattr(request.state, "unpaid_now", None) is None:
-                request.state.unpaid_now = datetime.now(timezone.utc)
-            return stmt.where(
+            stmt = stmt.where(
                 *worklist_conditions("work", "", admin_list=True),
                 aging_unpaid_condition(
-                    request.state.unpaid_now, self.unpaid_age_hours
+                    request.state.worklist_now, self.unpaid_age_hours
                 ),
             )
-        return stmt.where(
-            *worklist_conditions(
-                group, request.query_params.get("status", ""), admin_list=True
+        else:
+            stmt = stmt.where(
+                *worklist_conditions(
+                    group,
+                    request.query_params.get("status", ""),
+                    admin_list=True,
+                )
             )
+        if "no_manager" in filters:
+            stmt = stmt.where(~order_has_manager())
+        if "inactive" in filters:
+            cutoff = request.state.worklist_now - timedelta(
+                days=self.inactivity_days
+            )
+            stmt = stmt.where(order_inactive_since(cutoff))
+        return stmt
+
+    def quick_filters(self, request: Request) -> tuple[str, ...]:
+        return tuple(
+            name
+            for name in self.quick_filter_labels
+            if request.query_params.get(name) == "1"
         )
 
     @staticmethod
