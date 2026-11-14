@@ -45,6 +45,7 @@ from ugc_bot.admin.order_worklist import (
 from ugc_bot.admin.people import (
     advertiser_directory_filters,
     creator_directory_filters,
+    creator_inviters,
     user_card_history,
 )
 from ugc_bot.domain.enums import (
@@ -636,14 +637,19 @@ class AdminDashboardService:
                 sort_by=sort,
                 order_asc=order == "asc",
             )
-            if include_ratings and items:
-                ratings = await SqlAlchemyBloggerRatingRepository(
-                    self._session_factory
-                ).get_avg_ratings_for_bloggers(
-                    [UUID(item["user_id"]) for item in items], session=session
-                )
-                for item in items:
-                    item["rating"] = ratings.get(UUID(item["user_id"]))
+            if items:
+                creator_ids = [UUID(item["user_id"]) for item in items]
+                inviters = await creator_inviters(session, creator_ids)
+                for item, creator_id in zip(items, creator_ids, strict=True):
+                    item["inviter"] = inviters.get(creator_id)
+                if include_ratings:
+                    ratings = await SqlAlchemyBloggerRatingRepository(
+                        self._session_factory
+                    ).get_avg_ratings_for_bloggers(creator_ids, session=session)
+                    for item, creator_id in zip(
+                        items, creator_ids, strict=True
+                    ):
+                        item["rating"] = ratings.get(creator_id)
         return _paginated(total, page, per_page, items)
 
     async def list_advertisers(
@@ -1269,6 +1275,9 @@ class AdminDashboardService:
             "referral_code": user.referral_code,
         }
         if blogger is not None:
+            card["inviter"] = (await creator_inviters(session, [user_id])).get(
+                user_id
+            )
             accounts = await SqlAlchemySocialAccountRepository(
                 self._session_factory
             ).list_accounts(user_id, session=session)

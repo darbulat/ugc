@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "people_parts.html" import telegram, instagram, stars, count, pager %}
+{% from "people_parts.html" import telegram, instagram, stars, count, pager, inviter %}
 {% set creator = user.blogger_profile %}
 {% set customer = user.advertiser_profile %}
 {% set name = (customer.brand if customer else none) or user.username or user.telegram or 'Карточка пользователя' %}
@@ -40,6 +40,7 @@
 
     {% if creator %}
       <dl class="people-summary">
+        <div class="people-panel"><dt>Кто пригласил</dt><dd>{{ inviter(user.inviter, request) }}</dd></div>
         <div class="people-panel"><dt>Подписчики Instagram</dt><dd>{{ count(creator.followers) if creator.followers is not none else '—' }}</dd></div>
         <div class="people-panel"><dt>Отклики</dt><dd>{{ count(user.responses) }}</dd></div>
         <div class="people-panel"><dt>Рейтинг за заказы</dt><dd>{% if user.creator_rating is not none %}<a href="#ratings">{{ stars(user.creator_rating) }}</a>{% else %}—{% endif %}</dd></div>

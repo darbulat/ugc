@@ -1,5 +1,5 @@
 {% extends "people_directory.html" %}
-{% from "people_parts.html" import telegram, instagram, stars, count %}
+{% from "people_parts.html" import telegram, instagram, stars, count, inviter %}
 {% set title = 'Креаторы' %}
 {% set entries = creators %}
 {% set search_placeholder = 'Имя, Instagram, Telegram или ID' %}
@@ -58,6 +58,7 @@
   {{ sort_header('responses', 'Отклики') }}
   {{ sort_header('complaints', 'Жалобы') }}
   {{ sort_header('status', 'Статус') }}
+  <th scope="col">Кто пригласил</th>
   {{ sort_header('created_at', 'Регистрация') }}
 {% endblock %}
 {% macro cells(person, profile_url) %}
@@ -76,5 +77,6 @@
   <td class="people-number">{{ count(person.responses) }}</td>
   <td class="people-number">{% if person.complaints %}<a class="people-pill people-pill--alert" href="{{ profile_url }}#complaints">{{ count(person.complaints) }}</a>{% else %}0{% endif %}</td>
   <td><span class="people-pill{% if person.status == 'active' %} people-pill--active{% elif person.status == 'bot_blocked' %} people-pill--alert{% endif %}">{{ user_status_labels.get(person.status, person.status) }}</span></td>
+  <td>{{ inviter(person.inviter, request) }}</td>
   <td class="people-date">{{ person.created_at|admin_date }}</td>
 {% endmacro %}

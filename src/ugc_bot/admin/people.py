@@ -22,6 +22,7 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     UserModel,
+    UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
@@ -107,6 +108,31 @@ def creator_directory_filters(
             .exists()
         )
     return filters
+
+
+async def creator_inviters(
+    session: AsyncSession, creator_ids: list[UUID]
+) -> dict[UUID, dict[str, str | None]]:
+    """Read the registration referrer, independent of order assignments."""
+    binding = UserReferralBindingModel
+    rows = await session.execute(
+        select(
+            binding.referred_user_id,
+            UserModel.user_id,
+            UserModel.username,
+            UserModel.telegram,
+        )
+        .join(UserModel, UserModel.user_id == binding.referrer_user_id)
+        .where(binding.referred_user_id.in_(creator_ids))
+    )
+    return {
+        creator_id: {
+            "user_id": str(inviter_id),
+            "username": username,
+            "telegram": telegram,
+        }
+        for creator_id, inviter_id, username, telegram in rows.all()
+    }
 
 
 def advertiser_directory_filters(

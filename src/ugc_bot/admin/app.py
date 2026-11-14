@@ -952,7 +952,7 @@ async def _render_creators_page(
         followers_min,
         platform.value if platform else None,
     )
-    cache_key = f"creator-directory:v3:{cache_params!r}" if cache else None
+    cache_key = f"creator-directory:v4:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
