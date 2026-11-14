@@ -689,3 +689,60 @@ def test_worklist_pause_and_resume_keep_active_order(worklist, monkeypatch):
     resume.assert_awaited_once()
     order, run = resume.await_args.args
     assert order.order_id == order_id and run == 2
+
+
+def test_customer_directory_search_and_filters(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    order_id = ids["Active example"]
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        customer_id = session.get(OrderModel, order_id).advertiser_id
+        creator_id = session.get(
+            OrderModel, ids["Closed example"]
+        ).advertiser_id
+        customer = session.get(AdvertiserProfileModel, customer_id)
+        customer.brand = "Марка & Партнёры"
+        customer.site_link = "https://example.com/client_site"
+        session.add_all(
+            [
+                ComplaintModel(
+                    complaint_id=uuid4(),
+                    order_id=order_id,
+                    reporter_id=creator_id,
+                    reported_id=customer_id,
+                    reason="Долгий ответ",
+                    status=ComplaintStatus.PENDING,
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+        )
+
+    url = "/admin/users/advertisers"
+    for query in (
+        "Марка & Партнёры",
+        "client_name",
+        "client_site",
+        str(customer_id),
+    ):
+        response = client.get(
+            url,
+            params={
+                "q": query,
+                "activity": "with_orders",
+                "with_complaints": "true",
+                "period": "7d",
+            },
+        )
+        assert response.status_code == 200
+        assert "Найдено 1" in response.text
+    for query in ("clientXsite", "%", "_"):
+        response = client.get(url, params={"q": query})
+        if query == "_":
+            # The literal underscore is present in the stored name and site.
+            assert "Найдено 1" in response.text
+        else:
+            assert "Заказчики не найдены" in response.text
+    response = client.get(url, params={"activity": "without_orders"})
+    assert "Заказчики не найдены" in response.text

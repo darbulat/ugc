@@ -6,6 +6,7 @@
     <title>{% block title %}Админка{% endblock %}</title>
     <link rel="stylesheet" href="{{ admin_asset(request, 'admin-shell.css') }}">
     <link rel="stylesheet" href="{{ admin_asset(request, 'admin.css') }}">
+    {% block head %}{% endblock %}
   </head>
   <body>
     {% include 'admin_nav.html' %}

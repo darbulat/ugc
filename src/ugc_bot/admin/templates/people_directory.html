@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block head %}
+  <link rel="stylesheet" href="{{ admin_asset(request, 'people.css') }}">
+{% endblock %}
+{% macro sort_header(key, label, default_direction='desc') %}
+  {% set selected = sort == key %}
+  <th scope="col"{% if selected %} aria-sort="{{ 'ascending' if order == 'asc' else 'descending' }}"{% endif %}>
+    <a href="{{ request.url.remove_query_params('page').include_query_params(sort=key, order=('asc' if order == 'desc' else 'desc') if selected else default_direction) }}">
+      {{ label }}{% if selected %}<span aria-hidden="true">{{ ' ↑' if order == 'asc' else ' ↓' }}</span>{% endif %}
+    </a>
+  </th>
+{% endmacro %}
+{% from "people_parts.html" import telegram, instagram, stars, count, pager %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+  {% set source = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+  <section class="people">
+    <header class="people-heading">
+      <h1>{{ title }}</h1>
+      <span class="people-count">Найдено {{ count(total) }}</span>
+    </header>
+    <div class="people-panel">
+      <form class="people-filters" method="get" action="{{ request.url.path }}">
+        <input type="hidden" name="sort" value="{{ sort }}">
+        <input type="hidden" name="order" value="{{ order }}">
+        <input type="hidden" name="per_page" value="{{ per_page }}">
+        <div class="people-field people-search">
+          <label for="people-query">Поиск</label>
+          <input type="search" id="people-query" name="q" placeholder="{{ search_placeholder }}" value="{{ search_query }}">
+        </div>
+        {% block fields %}{% endblock %}
+        <div class="people-field">
+          <label for="people-period">Регистрация</label>
+          <select name="period" id="people-period">
+            {% for key in ('all', 'today', 'yesterday', '7d', '30d') %}
+              <option value="{{ key }}"{% if period == key %} selected{% endif %}>{{ 'За всё время' if key == 'all' else period_labels[key] }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <label class="people-check"><input type="checkbox" name="with_complaints" value="true"{% if with_complaints %} checked{% endif %}> С жалобами</label>
+        <div class="people-actions">
+          <button class="people-button people-button--primary" type="submit">Найти</button>
+          {% if search_query or period != 'all' or with_complaints or extra_filters %}
+            <a class="people-button" href="{{ request.url.remove_query_params(['q', 'period', 'only_new', 'with_complaints', 'city', 'status', 'followers_min', 'activity', 'page']) }}">Сбросить</a>
+          {% endif %}
+        </div>
+      </form>
+      {% if entries %}
+        <div class="people-scroll" tabindex="0" role="region" aria-label="{{ title }}">
+          <table class="table people-table">
+            <thead><tr>{% block columns %}{% endblock %}</tr></thead>
+            <tbody>
+              {% for person in entries %}
+                {% set profile_url = request.url_for('admin_user_card', user_id=person.user_id).include_query_params(return_to=source) %}
+                <tr>{{ cells(person, profile_url) }}</tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="people-empty">{{ empty_message }}</div>
+      {% endif %}
+      {{ pager(request, page, page < total_pages, 'page', '', 'Страница ' ~ page ~ ' из ' ~ total_pages if total else '') }}
+    </div>
+  </section>
+{% endblock %}

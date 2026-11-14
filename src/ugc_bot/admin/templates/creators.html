@@ -1,122 +1,68 @@
-{% extends "base.html" %}
-{% block title %}Креаторы{% endblock %}
-{% block content %}
-  <section class="section">
-    <h1>Креаторы</h1>
-    <form class="filters filters--search" action="/admin/users/creators" method="get">
-      <input type="hidden" name="period" value="{{ period }}" />
-      <input type="hidden" name="only_new" value="{{ 'true' if only_new else 'false' }}" />
-      <input type="hidden" name="with_complaints" value="{{ 'true' if with_complaints else 'false' }}" />
-      <input type="hidden" name="per_page" value="{{ per_page }}" />
-      <input type="search" name="q" placeholder="Ник / Telegram ID" value="{{ search_query | default('') }}" />
-      <button type="submit">Искать</button>
-    </form>
-    <div class="filters">
-      <div class="periods">
-        {% for p in periods %}
-          <a
-            class="chip {% if p == period %}chip--active{% endif %}"
-            href="/admin/users/creators?period={{ p }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}"
-          >
-            {{ period_labels.get(p, p) }}
-          </a>
-        {% endfor %}
-      </div>
-      <div class="toggles">
-        <a
-          class="chip {% if only_new %}chip--active{% endif %}"
-          href="/admin/users/creators?period={{ period }}&only_new={{ 'false' if only_new else 'true' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}"
-        >
-          Новые
-        </a>
-        <a
-          class="chip {% if with_complaints %}chip--active{% endif %}"
-          href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'false' if with_complaints else 'true' }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}"
-        >
-          С жалобами
-        </a>
-      </div>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="admin-table-scroll" role="region" aria-label="Креаторы" tabindex="0">
-      <table class="table">
-        <thead>
-          <tr>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=user_id&order={% if sort == 'user_id' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">ID</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=username&order={% if sort == 'username' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Ник / Instagram</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=city&order={% if sort == 'city' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Город</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=created_at&order={% if sort == 'created_at' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Дата регистрации</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=followers&order={% if sort == 'followers' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Подписчики</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=responses&order={% if sort == 'responses' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Откликов</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=complaints&order={% if sort == 'complaints' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Жалоб</a></th>
-            <th><a href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&sort=status&order={% if sort == 'status' and order == 'desc' %}asc{% else %}desc{% endif %}{% if search_query %}&q={{ search_query }}{% endif %}&per_page={{ per_page }}">Статус</a></th>
-            <th>Telegram</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for creator in creators %}
-            <tr>
-              <td>{{ creator.user_id }}</td>
-              <td><a href="{{ request.url_for('admin_user_card', user_id=creator.user_id) }}">{{ creator.username }}</a>{% if creator.instagram %} / {{ creator.instagram }}{% endif %}</td>
-              <td>{{ creator.city if creator.city else '—' }}</td>
-              <td>{{ creator.created_at }}</td>
-              <td>{{ creator.instagram_followers_count if creator.instagram_followers_count is not none else '—' }}</td>
-              <td>{{ creator.responses }}</td>
-              <td>{{ creator.complaints }}</td>
-              <td>{{ user_status_labels.get(creator.status, creator.status) }}</td>
-              <td>{% set tg = creator.telegram or creator.username %}{% if tg %}<a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a>{% else %}—{% endif %}</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    {% if creators|length == 0 %}
-      <div class="empty">Креаторы не найдены.</div>
-    {% endif %}
-    {% if total_pages > 1 %}
-      <nav class="pagination" aria-label="Пагинация креаторов">
-        <span class="pagination__info">
-          {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} из {{ total }}
-        </span>
-        <div class="pagination__links">
-          {% if page > 1 %}
-            <a class="pagination__link" href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&page={{ page - 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">← Назад</a>
-          {% endif %}
-          <span class="pagination__current">Страница {{ page }} из {{ total_pages }}</span>
-          {% if page < total_pages %}
-            <a class="pagination__link" href="/admin/users/creators?period={{ period }}&only_new={{ 'true' if only_new else 'false' }}&with_complaints={{ 'true' if with_complaints else 'false' }}&page={{ page + 1 }}&per_page={{ per_page }}&sort={{ sort }}&order={{ order }}{% if search_query %}&q={{ search_query }}{% endif %}">Вперёд →</a>
-          {% endif %}
-        </div>
-      </nav>
-    {% endif %}
-  </section>
-
-  <section class="section">
-    <h2>Креаторы по городам</h2>
-    {% set by_city = creators_by_city | default([]) %}
-    {% if by_city %}
-      <div class="admin-table-scroll" role="region" aria-label="Креаторы по городам" tabindex="0">
-        <table class="table">
-            <thead>
-              <tr>
-                <th>Город</th>
-                <th>Количество</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in by_city %}
-                <tr>
-                  <td>{{ row.city if row.city else 'Не указан' }}</td>
-                  <td>{{ row.count }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-      </div>
-    {% else %}
-      <div class="empty">Нет данных.</div>
-    {% endif %}
-  </section>
+{% extends "people_directory.html" %}
+{% from "people_parts.html" import telegram, instagram, stars, count %}
+{% set title = 'Креаторы' %}
+{% set entries = creators %}
+{% set search_placeholder = 'Имя, Instagram, Telegram или ID' %}
+{% set empty_message = 'Креаторы не найдены. Попробуйте изменить поиск или сбросить фильтры.' %}
+{% set extra_filters = city or status or followers_min is not none %}
+{% block fields %}
+  <div class="people-field">
+    <label for="people-city">Город</label>
+    <select id="people-city" name="city">
+      <option value="">Все города</option>
+      {% for name in cities %}
+        <option value="{{ name }}"{% if city == name %} selected{% endif %}>{{ name.title() }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="people-field">
+    <label for="people-status">Статус</label>
+    <select id="people-status" name="status">
+      <option value="">Любой</option>
+      {% for key, label in user_status_labels.items() %}
+        <option value="{{ key }}"{% if status == key %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="people-field">
+    <label for="people-followers">Подписчики Instagram</label>
+    <select id="people-followers" name="followers_min">
+      <option value="">Любое число</option>
+      {% set thresholds = [1000, 5000, 10000, 50000, 100000] %}
+      {% if followers_min is not none and followers_min not in thresholds %}
+        {% set thresholds = (thresholds + [followers_min])|sort %}
+      {% endif %}
+      {% for threshold in thresholds %}
+        <option value="{{ threshold }}"{% if followers_min == threshold %} selected{% endif %}>От {{ count(threshold) }}</option>
+      {% endfor %}
+    </select>
+  </div>
 {% endblock %}
+{% block columns %}
+  {{ sort_header('username', 'Креатор', 'asc') }}
+  {{ sort_header('city', 'Город', 'asc') }}
+  {{ sort_header('followers', 'Подписчики') }}
+  <th scope="col">Рейтинг</th>
+  {{ sort_header('responses', 'Отклики') }}
+  {{ sort_header('complaints', 'Жалобы') }}
+  {{ sort_header('status', 'Статус') }}
+  {{ sort_header('created_at', 'Регистрация') }}
+{% endblock %}
+{% macro cells(person, profile_url) %}
+  <td class="people-identity">
+    <a class="people-name" href="{{ profile_url }}">{{ person.username or person.telegram or 'Профиль креатора' }}</a>
+    {% if person.instagram or person.telegram %}
+      <div class="people-contacts">
+        {% if person.instagram %}<span><small>IG</small> {{ instagram(person.instagram) }}</span>{% endif %}
+        {% if person.telegram %}<span><small>TG</small> {{ telegram(person.telegram) }}</span>{% endif %}
+      </div>
+    {% endif %}
+  </td>
+  <td>{{ person.city.strip().title() if person.city.strip() else '—' }}</td>
+  <td class="people-number">{{ count(person.instagram_followers_count) if person.instagram_followers_count is not none else '—' }}</td>
+  <td class="people-number">{% if person.rating is defined and person.rating is not none %}<a href="{{ profile_url }}#ratings">{{ stars(person.rating) }}</a>{% else %}—{% endif %}</td>
+  <td class="people-number">{{ count(person.responses) }}</td>
+  <td class="people-number">{% if person.complaints %}<a class="people-pill people-pill--alert" href="{{ profile_url }}#complaints">{{ count(person.complaints) }}</a>{% else %}0{% endif %}</td>
+  <td><span class="people-pill{% if person.status == 'active' %} people-pill--active{% endif %}">{{ user_status_labels.get(person.status, person.status) }}</span></td>
+  <td class="people-date">{{ person.created_at|admin_date }}</td>
+{% endmacro %}
