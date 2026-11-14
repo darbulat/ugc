@@ -71,7 +71,8 @@
   overflow-wrap: anywhere;
 }
 
-.order-manager-assign input {
+.order-manager-assign input,
+.order-manager-assign select {
   min-width: 0;
   max-width: 100%;
 }

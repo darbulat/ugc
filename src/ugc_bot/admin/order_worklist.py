@@ -1,10 +1,23 @@
 """Queries and single-order actions for the SQLAdmin orders list."""
 
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import String, and_, case, cast, func, or_, select, text, true
+from sqlalchemy import (
+    String,
+    and_,
+    case,
+    cast,
+    func,
+    or_,
+    select,
+    text,
+    true,
+    union,
+    update,
+)
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from ugc_bot.admin.complaints import OPEN_COMPLAINT_STATUSES
@@ -14,7 +27,6 @@ from ugc_bot.admin.order_summary import (
     latest_order_activity,
     manager_contact,
     order_activity_at,
-    order_has_manager,
     order_managers_query,
     picked_order_count,
 )
@@ -32,6 +44,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerRatingModel,
     ComplaintModel,
     InteractionModel,
+    ItemAssignmentModel,
     ManagerOrderModel,
     OfferDispatchModel,
     OrderItemModel,
@@ -41,6 +54,7 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.order_intake_models import ACCOMPANIMENT_LEADS
+from ugc_bot.infrastructure.db.order_review_models import OWNERS
 
 ORDER_STATUS_LABELS = {
     OrderStatus.NEW: "Новый",
@@ -53,6 +67,7 @@ _TEST_ORDER_ENTITY = "order_test_marker"
 _ARCHIVE_ENTITY = "order_worklist_archive"
 UNPAID_GROUP = "unpaid"
 MANAGER_ASSIGNMENT_GROUPS = ("work", UNPAID_GROUP, "all", "test")
+_MANAGER_ASSIGNMENT_ENTITY = "order_manager_assignment"
 
 
 _ORDER_ACTIVITY = (
@@ -292,9 +307,16 @@ def worklist_row_details(
 ):
     if not order_ids:
         return {}
+    position_managers = set(
+        session.execute(_paid_position_managers(order_ids)).tuples()
+    )
     managers = defaultdict(list)
+    replaceable = defaultdict(list)
     for manager in session.execute(order_managers_query(order_ids)):
-        managers[manager.order_id].append(manager_contact(manager))
+        contact = manager_contact(manager)
+        managers[manager.order_id].append(contact)
+        if (manager.order_id, manager.user_id) not in position_managers:
+            replaceable[manager.order_id].append(contact)
     rows = session.execute(
         select(
             OrderModel,
@@ -333,6 +355,7 @@ def worklist_row_details(
         row[0].order_id: {
             **{k: v for k, v in row._mapping.items() if k != "OrderModel"},
             "managers": managers[row[0].order_id],
+            "replaceable_managers": replaceable[row[0].order_id],
             "attention_reasons": active_pick_reasons(
                 now, row[0], row.picked, row.dispatch_paused, thresholds
             ),
@@ -451,10 +474,61 @@ def worklist_manager_suggestions(session: Session) -> list[str]:
     )
 
 
+def _paid_position_managers(order_ids: list[UUID]):
+    return union(
+        select(OrderItemModel.order_id, ItemAssignmentModel.manager_id)
+        .join(
+            ItemAssignmentModel,
+            ItemAssignmentModel.paid_item_id == OrderItemModel.paid_item_id,
+        )
+        .where(
+            OrderItemModel.order_id.in_(order_ids),
+            ItemAssignmentModel.valid_to.is_(None),
+            ItemAssignmentModel.manager_id.is_not(None),
+        ),
+        select(OrderItemModel.order_id, OWNERS.c.manager_id)
+        .join(OWNERS, OWNERS.c.paid_item_id == OrderItemModel.paid_item_id)
+        .where(OrderItemModel.order_id.in_(order_ids)),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ManagerChange:
+    message: str
+    order_title: str = ""
+    telegram_id: str | None = None
+    notify: bool = False
+
+
+def _transfer_manager(
+    session: Session,
+    order: OrderModel,
+    previous: UUID,
+    target: UUID,
+    now: datetime,
+) -> None:
+    membership = session.get(ManagerOrderModel, (previous, order.order_id))
+    if membership is not None:
+        session.delete(membership)
+    if order.financial_version is None or order.complimentary:
+        session.execute(
+            update(OfferDispatchModel)
+            .where(
+                OfferDispatchModel.order_id == order.order_id,
+                OfferDispatchModel.manager_id == previous,
+            )
+            .values(manager_id=target, updated_at=now)
+        )
+
+
 def assign_worklist_manager(
-    session: Session, order_id: UUID, telegram: str
-) -> str:
-    """Set the first manager using the order lock shared by admin edits."""
+    session: Session,
+    order_id: UUID,
+    telegram: str,
+    *,
+    previous_manager: UUID | None = None,
+) -> ManagerChange:
+    """Set one manager under the order lock shared by admin edits."""
     candidates = session.scalars(
         select(UserModel)
         .where(func.lower(UserModel.telegram) == telegram)
@@ -462,48 +536,137 @@ def assign_worklist_manager(
         .with_for_update(read=True)
     ).all()
     if not candidates:
-        return "Пользователь с таким Telegram-ником не найден в боте."
+        return ManagerChange(
+            "Пользователь с таким Telegram-ником не найден в боте."
+        )
     if len(candidates) > 1:
-        return "По этому Telegram-нику найдено несколько аккаунтов."
+        return ManagerChange(
+            "По этому Telegram-нику найдено несколько аккаунтов."
+        )
     manager = candidates[0]
     if manager.status != UserStatus.ACTIVE:
-        return "Для назначения нужен активный аккаунт в боте."
+        return ManagerChange("Для назначения нужен активный аккаунт в боте.")
 
     order = session.get(OrderModel, order_id, with_for_update=True)
-    eligible_order = select(OrderModel.order_id).where(
+    eligible_order = select(_is_test_order()).where(
         OrderModel.order_id == order_id,
         OrderModel.status != OrderStatus.CLOSED,
         *worklist_conditions("all", "", admin_list=True),
     )
-    if order is None or session.scalar(eligible_order) is None:
-        return "Заказ недоступен для назначения менеджера."
+    is_test = session.scalar(eligible_order)
+    if order is None or is_test is None:
+        return ManagerChange("Заказ недоступен для назначения менеджера.")
     if manager.user_id == order.advertiser_id:
-        return "Выберите менеджера, который не является заказчиком."
-    if session.scalar(
-        select(order_has_manager()).where(OrderModel.order_id == order_id)
-    ):
-        return "У заказа уже есть менеджер. Обновили список."
+        return ManagerChange(
+            "Выберите менеджера, который не является заказчиком."
+        )
+
+    current = {
+        row.user_id: row.telegram
+        for row in session.execute(order_managers_query([order_id]))
+    }
+    if previous_manager is not None:
+        return _replace_worklist_manager(
+            session,
+            order,
+            manager,
+            telegram,
+            previous_manager,
+            current,
+            is_test=is_test,
+        )
+    if current:
+        return ManagerChange("У заказа уже есть менеджер. Обновили список.")
+
+    return _save_manager_change(
+        session, order, manager, telegram, is_test=is_test
+    )
+
+
+def _replace_worklist_manager(
+    session: Session,
+    order: OrderModel,
+    manager: UserModel,
+    telegram: str,
+    previous: UUID,
+    current: dict[UUID, str | None],
+    *,
+    is_test: bool,
+) -> ManagerChange:
+    if previous not in current:
+        return ManagerChange(
+            "Менеджер уже изменился. Проверьте назначение в списке."
+        )
+    if previous == manager.user_id:
+        return ManagerChange("Этот менеджер уже назначен на заказ.")
+    if (order.order_id, previous) in session.execute(
+        _paid_position_managers([order.order_id])
+    ).tuples():
+        return ManagerChange(
+            "У менеджера есть оплаченные позиции. Быстрая замена недоступна."
+        )
 
     now = datetime.now(timezone.utc)
-    session.add(
-        ManagerOrderModel(
-            user_id=manager.user_id,
-            order_id=order_id,
-            created_at=now,
-            updated_at=now,
-        )
+    _transfer_manager(session, order, previous, manager.user_id, now)
+    return _save_manager_change(
+        session,
+        order,
+        manager,
+        telegram,
+        is_test=is_test,
+        previous=(previous, current[previous]),
+        was_on_order=manager.user_id in current,
     )
+
+
+def _save_manager_change(
+    session: Session,
+    order: OrderModel,
+    manager: UserModel,
+    telegram: str,
+    *,
+    is_test: bool,
+    previous: tuple[UUID, str | None] | None = None,
+    was_on_order: bool = False,
+) -> ManagerChange:
+    now = datetime.now(timezone.utc)
+    assignment = session.get(
+        ManagerOrderModel, (manager.user_id, order.order_id)
+    )
+    if assignment is None:
+        session.add(
+            ManagerOrderModel(
+                user_id=manager.user_id,
+                order_id=order.order_id,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    else:
+        assignment.updated_at = now
+    old_values: dict[str, str | None] = {"manager_id": None}
+    new_values = {"manager_id": str(manager.user_id)}
+    message = f"Менеджер @{telegram} назначен."
+    if previous is not None:
+        old_values = {"manager_id": str(previous[0]), "telegram": previous[1]}
+        new_values["telegram"] = telegram
+        message = f"Менеджер заменён на @{telegram}."
     session.add(
         AuditLogModel(
-            entity_type="order_manager_assignment",
-            entity_id=order_id,
+            entity_type=_MANAGER_ASSIGNMENT_ENTITY,
+            entity_id=order.order_id,
             action=AuditAction.UPDATE,
-            old_values={"manager_id": None},
-            new_values={"manager_id": str(manager.user_id)},
+            old_values=old_values,
+            new_values=new_values,
             changed_at=now,
         )
     )
-    return f"Менеджер @{telegram} назначен."
+    return ManagerChange(
+        message,
+        order_title=" ".join((order.offer_text or "").split())[:120],
+        telegram_id=manager.telegram_id,
+        notify=not is_test and not was_on_order,
+    )
 
 
 def change_order_worklist(

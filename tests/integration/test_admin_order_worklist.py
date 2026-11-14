@@ -8,6 +8,8 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 import pytest
+from aiogram.exceptions import TelegramForbiddenError
+from aiogram.methods import SendMessage
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -47,6 +49,7 @@ LIST = "/admin/order-model/list"
 def worklist(tmp_path, monkeypatch):
     url = f"sqlite:///{tmp_path / 'worklist.db'}"
     monkeypatch.setenv("DATABASE_URL", url)
+    monkeypatch.setenv("BOT_TOKEN", "123456:test-token")
     engine = create_engine(url)
     Base.metadata.create_all(engine, tables=legacy_sqlite_tables(Base.metadata))
     user_id, other_id = uuid4(), uuid4()
@@ -885,6 +888,145 @@ def test_assign_manager_from_filtered_list_preserves_order_and_audit(worklist):
         ).one()
         assert event.old_values == {"manager_id": None}
         assert event.new_values == {"manager_id": str(manager_id)}
+
+
+@pytest.mark.parametrize("notice", ["sent", "blocked", "test"])
+def test_replace_manager_in_list_and_notify_only_new_manager(
+    worklist, monkeypatch, notice
+):
+    from ugc_bot.admin import app as admin_app
+
+    client, engine, ids = worklist
+    order_id = ids["Paid example"]
+    action = f"/admin/order-worklist/{order_id}/assign-manager"
+    previous, target, teammate = (uuid4() for _ in range(3))
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        order = session.get(OrderModel, order_id)
+        customer = session.get(UserModel, order.advertiser_id)
+        customer.telegram_id = "10005"
+        for uid, name, chat_id in (
+            (previous, "previous_manager", "10002"),
+            (target, "target_manager", "10003"),
+            (teammate, "other_manager", "10004"),
+        ):
+            session.add(
+                UserModel(
+                    user_id=uid,
+                    username=name,
+                    telegram=name,
+                    telegram_id=chat_id,
+                    status=UserStatus.ACTIVE,
+                    messenger_type=MessengerType.TELEGRAM,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        session.add_all(
+            ManagerOrderModel(order_id=order_id, user_id=uid, created_at=now)
+            for uid in (previous, teammate)
+        )
+        session.add(
+            OfferDispatchModel(
+                order_id=order_id,
+                blogger_id=customer.user_id,
+                manager_id=previous,
+                accepted=True,
+                in_offer=True,
+                created_at=now,
+            )
+        )
+        if notice == "test":
+            session.add(
+                AuditLogModel(
+                    entity_id=order_id,
+                    entity_type="order_test_marker",
+                    action=AuditAction.UPDATE,
+                    new_values={"test": True},
+                )
+            )
+
+    def check_saved_assignment(*, chat_id, text, request_timeout):
+        assert chat_id == 10003
+        assert "Paid example" in text and "Мои заказы" in text
+        assert request_timeout == 5
+        with Session(engine) as session:
+            assert (
+                session.get(ManagerOrderModel, (target, order_id)) is not None
+            )
+            assert session.get(ManagerOrderModel, (previous, order_id)) is None
+        if notice == "blocked":
+            raise TelegramForbiddenError(
+                SendMessage(chat_id=chat_id, text=text), "blocked"
+            )
+
+    send = AsyncMock(side_effect=check_saved_assignment)
+    monkeypatch.setattr(admin_app.Bot, "send_message", send)
+    _login(client)
+    params = {
+        "group": "test" if notice == "test" else "work",
+        "search": str(order_id),
+    }
+    page = client.get(LIST, params=params)
+    assert "Сменить менеджера" in page.text and "Кого заменить" in page.text
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
+    data = {
+        "csrf_token": token,
+        "previous_manager": str(previous),
+        "manager_telegram": "@TARGET_MANAGER",
+    }
+    missing_confirmation = client.post(action, params=params, data=data)
+    assert "Подтвердите замену менеджера" in missing_confirmation.text
+    send.assert_not_awaited()
+    saved = client.post(action, params=params, data={**data, "confirmed": "1"})
+    assert "Менеджер заменён на @target_manager." in saved.text
+    assert saved.url.params["search"] == str(order_id)
+    assert "other_manager" in saved.text
+    if notice == "sent":
+        assert "отправлено сообщение в Telegram" in saved.text
+    elif notice == "blocked":
+        assert "не удалось подтвердить" in saved.text
+    assert send.await_count == (0 if notice == "test" else 1)
+    stale = client.post(action, params=params, data={**data, "confirmed": "1"})
+    assert "Менеджер уже изменился" in stale.text
+    assert send.await_count == (0 if notice == "test" else 1)
+
+    with Session(engine) as session:
+        managers = session.scalars(
+            select(ManagerOrderModel.user_id).where(
+                ManagerOrderModel.order_id == order_id
+            )
+        ).all()
+        assert set(managers) == {target, teammate}
+        dispatch = session.scalars(
+            select(OfferDispatchModel).where(
+                OfferDispatchModel.order_id == order_id
+            )
+        ).one()
+        assert (
+            dispatch.manager_id == target
+            and dispatch.accepted
+            and dispatch.in_offer
+        )
+        assert session.get(OrderModel, order_id).status == OrderStatus.ACTIVE
+        payment = session.scalars(
+            select(PaymentModel).where(PaymentModel.order_id == order_id)
+        ).one()
+        assert payment.status == PaymentStatus.PAID and payment.amount == 200
+        event = session.scalars(
+            select(AuditLogModel).where(
+                AuditLogModel.entity_id == order_id,
+                AuditLogModel.entity_type == "order_manager_assignment",
+            )
+        ).one()
+        assert event.old_values == {
+            "manager_id": str(previous),
+            "telegram": "previous_manager",
+        }
+        assert event.new_values == {
+            "manager_id": str(target),
+            "telegram": "target_manager",
+        }
 
 
 def test_archive_paid_order_preserves_status_payment_and_audit(worklist):

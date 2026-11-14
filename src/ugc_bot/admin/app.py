@@ -15,7 +15,9 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
+from aiogram.utils.token import TokenValidationError
 from fastapi import Depends, FastAPI, HTTPException
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
@@ -74,6 +76,7 @@ from ugc_bot.admin.order_worklist import (
     MANAGER_ASSIGNMENT_GROUPS,
     ORDER_STATUS_LABELS,
     UNPAID_GROUP,
+    ManagerChange,
     aging_unpaid_condition,
     assign_worklist_manager,
     change_order_worklist,
@@ -2499,11 +2502,7 @@ class OrderAdmin(ModelView, model=OrderModel):
             return stmt.order_by(OrderModel.created_at, OrderModel.order_id)
         return stmt.order_by(OrderModel.created_at.desc(), OrderModel.order_id)
 
-    def show_manager_assignment(self, request: Request, group: str) -> bool:
-        return (
-            group in MANAGER_ASSIGNMENT_GROUPS
-            and "no_manager" in self.quick_filters(request)
-        )
+    manager_assignment_groups = MANAGER_ASSIGNMENT_GROUPS
 
     async def manager_suggestions(self) -> Sequence[str]:
         def load() -> list[str]:
@@ -3652,8 +3651,43 @@ async def _change_order_dispatch(order_id: UUID, operation: str) -> str:
     )
 
 
-def _register_order_worklist_action(
-    app: FastAPI, auth: AdminAuth, engine: Engine, cache: AdminCache
+async def _worklist_manager_notification(
+    config: AppConfig, order_id: UUID, change: ManagerChange
+) -> str:
+    if not change.notify:
+        return ""
+    chat_id = change.telegram_id or ""
+    if not (
+        1 <= len(chat_id) <= 16
+        and chat_id.isascii()
+        and chat_id.isdecimal()
+        and 0 < int(chat_id) < 2**52
+    ):
+        return " У менеджера нет Telegram-чата с ботом."
+    order = change.order_title or f"№ {str(order_id)[:8]}"
+    try:
+        async with Bot(token=config.bot.bot_token).context() as bot:
+            await bot.send_message(
+                chat_id=int(chat_id),
+                text=(
+                    f"Вам назначен заказ «{order}».\n"
+                    "Откройте приложение бота → «Менеджер» → «Мои заказы»."
+                ),
+                request_timeout=5,
+            )
+    except (TelegramAPIError, TokenValidationError, TimeoutError) as error:
+        logger.warning(
+            "Manager notification was not confirmed (%s)", type(error).__name__
+        )
+        return " Отправку уведомления менеджеру не удалось подтвердить."
+    return " Менеджеру отправлено сообщение в Telegram."
+
+
+def _register_order_worklist_manager_action(
+    app: FastAPI,
+    auth: AdminAuth,
+    engine: Engine,
+    config: AppConfig,
 ) -> None:
     @app.post(
         "/admin/order-worklist/{order_id}/assign-manager",
@@ -3663,21 +3697,44 @@ def _register_order_worklist_action(
         request: Request, order_id: UUID
     ) -> Response:
         await _require_action_token(request)
-        raw = (await request.form()).get("manager_telegram")
+        form = await request.form()
+        raw = form.get("manager_telegram")
         handle = telegram_handle(raw) if isinstance(raw, str) else None
         if not handle:
-            message = "Введите Telegram-ник менеджера."
-        else:
+            return _worklist_action_redirect(
+                request, order_id, "Введите Telegram-ник менеджера."
+            )
+        previous = None
+        if "previous_manager" in form or "confirmed" in form:
+            if form.get("confirmed") != "1":
+                return _worklist_action_redirect(
+                    request, order_id, "Подтвердите замену менеджера."
+                )
+            try:
+                previous = UUID(str(form.get("previous_manager", "")))
+            except ValueError:
+                return _worklist_action_redirect(
+                    request,
+                    order_id,
+                    "Выберите менеджера, которого хотите заменить.",
+                )
 
-            def assign() -> str:
-                with Session(engine) as session, session.begin():
-                    return assign_worklist_manager(
-                        session, order_id, handle.lower()
-                    )
+        def assign() -> ManagerChange:
+            with Session(engine) as session, session.begin():
+                return assign_worklist_manager(
+                    session, order_id, handle.lower(), previous_manager=previous
+                )
 
-            message = await asyncio.to_thread(assign)
+        change = await asyncio.to_thread(assign)
+        message = change.message + await _worklist_manager_notification(
+            config, order_id, change
+        )
         return _worklist_action_redirect(request, order_id, message)
 
+
+def _register_order_worklist_action(
+    app: FastAPI, auth: AdminAuth, engine: Engine, cache: AdminCache
+) -> None:
     @app.post(
         "/admin/order-worklist/{order_id}/{operation}",
         dependencies=[Depends(_make_require_admin(auth))],
@@ -3827,6 +3884,7 @@ def create_admin_app() -> FastAPI:
         )
 
     register_order_review(app, auth, engine, templates, _require_action_token)
+    _register_order_worklist_manager_action(app, auth, engine, config)
     _register_order_worklist_action(app, auth, engine, admin_cache)
     _register_complaint_action(app, auth, engine, admin_cache)
 
