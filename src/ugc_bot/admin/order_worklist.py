@@ -38,6 +38,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS, INBOX
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
@@ -459,11 +460,25 @@ def worklist_manager_suggestions(session: Session) -> list[str]:
     has_assignment = (
         select(1).where(ManagerOrderModel.user_id == UserModel.user_id).exists()
     )
+    eligible = (
+        or_(
+            has_assignment,
+            select(1)
+            .where(
+                APPLICATIONS.c.user_id == UserModel.user_id,
+                APPLICATIONS.c.state == "approved",
+            )
+            .exists(),
+        )
+        if session.get_bind().dialect.name == "postgresql"
+        and session.scalar(select(func.to_regclass(APPLICATIONS.name)))
+        else has_assignment
+    )
     return list(
         session.scalars(
             select(telegram)
             .where(
-                has_assignment,
+                eligible,
                 UserModel.telegram.is_not(None),
                 UserModel.telegram != "",
                 UserModel.status == UserStatus.ACTIVE,

@@ -33,6 +33,9 @@ from ugc_bot.bot.telegram.handlers.feedback import router as feedback_router
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     router as instagram_router,
 )
+from ugc_bot.bot.telegram.handlers.manager_application import (
+    router as manager_application_router,
+)
 from ugc_bot.bot.telegram.handlers.messenger_linking import (
     router as messenger_linking_router,
 )
@@ -64,6 +67,9 @@ from ugc_bot.bot.telegram.middleware.messenger_linking import (
 from ugc_bot.checkout_runtime import register_checkout_lifecycle
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
+from ugc_bot.infrastructure.db.repositories.manager_applications import (
+    ManagerApplications,
+)
 from ugc_bot.infrastructure.fsm_json import fsm_json_dumps, fsm_json_loads
 
 
@@ -140,6 +146,13 @@ def build_dispatcher(
         dispatcher["creator_invite_service"] = build_creator_invites(
             container.transaction_manager
         )
+    if (
+        container.transaction_manager is not None
+        and config.db.database_url.startswith("postgresql")
+    ):
+        dispatcher["manager_applications"] = ManagerApplications(
+            container.transaction_manager, None
+        )
     register_checkout_lifecycle(dispatcher, config)
     if include_routers:
         dispatcher.include_router(
@@ -149,6 +162,7 @@ def build_dispatcher(
         dispatcher.include_router(messenger_linking_router)
         dispatcher.include_router(support_chat_router)
         dispatcher.include_router(creator_invites_router)
+        dispatcher.include_router(manager_application_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)
         dispatcher.include_router(admin_moderation_router)

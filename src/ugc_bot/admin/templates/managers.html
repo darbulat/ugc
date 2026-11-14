@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Менеджеры{% endblock %}
+{% block content %}
+<div class="section">
+  <h1>Менеджеры</h1>
+  {% if message %}<p role="status">{{ message }}</p>{% endif %}
+  {% set states = {'submitted':'На проверке','clarify':'Нужно уточнение','approved':'Одобрен','declined':'Отклонён','existing':'Уже назначался','busy':'Ведёт заказ','available':'Свободен'} %}
+  <form method="get" class="card section">
+    <label for="manager-search">Имя, Telegram или город</label>
+    <input class="form-control" id="manager-search" name="q" value="{{ q }}" maxlength="100">
+    <label for="manager-status">Статус</label>
+    <select class="form-select" id="manager-status" name="status">
+      <option value="">Все</option>
+      {% for key, label in states.items() %}
+      <option value="{{ key }}"{% if key == status %} selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <button class="admin-button" type="submit">Найти</button>
+  </form>
+  <details class="card section">
+    <summary>Добавить действующего менеджера</summary>
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+      <input type="hidden" name="command" value="register">
+      <label for="manager-existing">Telegram-ник пользователя, который уже открыл бота</label>
+      <input class="form-control" id="manager-existing" name="identity" maxlength="33" required placeholder="@username">
+      <button class="admin-button" type="submit">Добавить в список</button>
+    </form>
+  </details>
+  {% for row in rows %}
+  <article class="card section">
+    {% set answers = row.answers or {} %}
+    <h2>{{ answers.name or row.username or row.telegram }}</h2>
+    <p>{{ states.get(row.state, row.state) }} · {% if row.telegram %}@{{ row.telegram }} · {% endif %}{{ answers.location or 'Город не указан' }} · Активных заказов {{ row.orders }}</p>
+    {% if row.registered_by_admin %}<p>Добавлен администратором</p>{% endif %}
+    {% if answers %}
+    <p>Instagram {% if row.instagram_verified_at %}подтверждён{% else %}ожидает подтверждения{% endif %} · {{ answers.settlement }} · {{ answers.rate }}</p>
+    <details>
+      <summary>Анкета</summary>
+      <dl>
+        {% for key, field in fields.items() %}<dt>{{ field[0] }}</dt><dd>{{ answers.get(key, '—') }}</dd>{% endfor %}
+      </dl>
+    </details>
+    {% endif %}
+    {% if row.decision_note %}<p>{{ row.decision_note }}</p>{% endif %}
+    {% if row.state == 'submitted' %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+      <input type="hidden" name="identity" value="{{ row.user_id }}">
+      <label for="note-{{ row.user_id }}">Комментарий кандидату</label>
+      <input class="form-control" id="note-{{ row.user_id }}" name="note" maxlength="300">
+      <button class="admin-button admin-button--primary" name="command" value="approved"{% if not row.instagram_verified_at %} disabled{% endif %}>Одобрить</button>
+      <button class="admin-button" name="command" value="clarify">Уточнить</button>
+      <button class="admin-button" name="command" value="declined">Отклонить</button>
+    </form>
+    {% endif %}
+  </article>
+  {% else %}<p>Менеджеры не найдены.</p>{% endfor %}
+  <div class="admin-actions">
+  {% if page > 1 %}<a class="admin-button" href="{{ request.url.include_query_params(page=page-1) }}">Назад</a>{% endif %}
+  {% if has_more %}<a class="admin-button" href="{{ request.url.include_query_params(page=page+1) }}">Дальше</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

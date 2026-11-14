@@ -30,7 +30,10 @@ from ugc_bot.infrastructure.db.models import (
 )
 from ugc_bot.infrastructure.db.order_review_models import OWNERS
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
-from ugc_bot.infrastructure.db.repositories.creator_invites import invitation
+from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    invitation,
+    staff_consent_available,
+)
 from ugc_bot.infrastructure.db.repositories.entitlements import (
     SqlAlchemyClientEntitlementRepository,
 )
@@ -303,7 +306,34 @@ class SqlAlchemyPaidSelectionRepository:
             "selection_due_elapsed",
         )
         item = None
+        staff_reservations = {}
+        if await db.scalar(select(staff_consent_available())):
+            staff_reservations = dict(
+                (
+                    await db.execute(
+                        select(INVITES.c.item_id, INVITES.c.instagram).where(
+                            INVITES.c.order_id == order_id,
+                            INVITES.c.reported_at.is_not(None),
+                            INVITES.c.consented_at.is_(None),
+                            INVITES.c.id != invite_id
+                            if invite_id is not None
+                            else True,
+                        )
+                    )
+                ).all()
+            )
+        if staff_reservations:
+            try:
+                handle = instagram_handle(profile["instagram_url"])
+            except ValueError:
+                handle = None
+            _require(
+                handle not in staff_reservations.values(),
+                "creator_invite_use_personal_link",
+            )
         for candidate in items:
+            if candidate["paid_item_id"] in staff_reservations:
+                continue
             if (
                 manual is not None
                 and candidate["paid_item_id"] != manual["item_id"]

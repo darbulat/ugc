@@ -24,6 +24,9 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.infrastructure.db.repositories.manager_applications import (
+    ManagerApplications,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.startup_logging import log_startup_info
 
@@ -233,8 +236,19 @@ async def handle_webhook(
     if container is None:
         container = Container(config)
     verification_service = container.build_instagram_verification_service()
+    manager_verifier = None
+    if (
+        config.instagram.instagram_app_secret
+        and config.db.database_url.startswith("postgresql")
+    ):
+        manager_verifier = ManagerApplications(
+            container.transaction_manager,
+            container.build_instagram_api_client(),
+        )
     try:
-        await _process_webhook_events(payload, verification_service, config)
+        await _process_webhook_events(
+            payload, verification_service, config, manager_verifier
+        )
     except Exception as exc:
         logger.exception("Error processing webhook events", exc_info=exc)
         # Return 200 with generic message to prevent Meta retries
@@ -582,6 +596,7 @@ async def _process_single_messaging_event(
     event: dict[str, Any],
     verification_service: InstagramVerificationService,
     config: AppConfig,
+    manager_verifier=None,
 ) -> bool:
     """Process one messaging event. Returns True if processed."""
     is_echo = event.get("is_echo", False)
@@ -603,6 +618,18 @@ async def _process_single_messaging_event(
         return False
 
     try:
+        if text.startswith("UMCM-"):
+            if manager_verifier is not None:
+                try:
+                    await manager_verifier.verify_instagram(
+                        text, str(sender_id)
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Manager Instagram verification unavailable (%s)",
+                        type(exc).__name__,
+                    )
+            return True
         verify = verification_service.verify_code_by_instagram_sender
         result = await verify(
             instagram_sender_id=sender_id,
@@ -624,6 +651,7 @@ async def _process_webhook_events(
     payload: dict[str, Any],
     verification_service: InstagramVerificationService,
     config: AppConfig,
+    manager_verifier=None,
 ) -> None:
     """Process webhook events from Instagram.
 
@@ -679,7 +707,7 @@ async def _process_webhook_events(
 
         for event in messaging:
             await _process_single_messaging_event(
-                event, verification_service, config
+                event, verification_service, config, manager_verifier
             )
 
 

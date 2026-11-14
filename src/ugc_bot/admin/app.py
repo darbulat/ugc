@@ -60,6 +60,7 @@ from ugc_bot.admin.dashboard_service import (
     dashboard_period_window,
     paid_in_period,
 )
+from ugc_bot.admin.managers import register_managers
 from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_HINTS,
     ORDER_EDITOR_LIMITS,
@@ -3884,6 +3885,7 @@ def create_admin_app() -> FastAPI:
             request, auth, container, order_id
         )
 
+    register_managers(app, auth, engine, templates, _require_action_token)
     register_order_review(app, auth, engine, templates, _require_action_token)
     register_creator_invites(
         app, auth, engine, templates, _require_action_token, config
