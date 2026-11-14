@@ -26,6 +26,7 @@ class AccountSaveRequest(SignedMiniAppRequest):
     network: SocialPlatform
     url: str = Field(min_length=1, max_length=2048)
     work_format: WorkFormat | None = None
+    platform_name: str | None = Field(default=None, max_length=100)
 
 
 class AccountRemoveRequest(SignedMiniAppRequest):
@@ -97,6 +98,11 @@ def create_social_router(
             body.url,
             principal=principal,
             work_format=body.work_format,
+            **(
+                {"platform_name": body.platform_name}
+                if body.platform_name is not None
+                else {}
+            ),
         )
         return AccountSavedResponse(
             account=saved.account,

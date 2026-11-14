@@ -53,6 +53,31 @@ async def social_case(financial_pg_engine):
 
 
 @pytest.mark.asyncio
+async def test_named_extra_platforms_persist_via_signed_editor(social_case):
+    case = social_case
+    platforms = (
+        ("dzen", "https://dzen.ru/my_channel", None, "my_channel"),
+        ("rutube", "https://rutube.ru/channel/123456/", None, "123456"),
+        ("other", "https://twitch.tv/creator", "Twitch", "Twitch"),
+    )
+    saved = []
+    for network, url, name, handle in platforms:
+        payload = {"network": network, "url": url}
+        if name:
+            payload["platform_name"] = name
+        response = await case.post("save", "telegram", extra=payload)
+        assert response.status_code == 200, response.text
+        account = response.json()["account"]
+        assert account["handle"] == handle
+        assert not account["verified"]
+        assert account["followers_count"] is None
+        saved.append(account)
+    listed = await case.post("list", "telegram")
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["accounts"][1:] == saved
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("action", ["list", "save", "remove"])
 @pytest.mark.parametrize("change", ["clear", "remap"])

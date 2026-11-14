@@ -17,7 +17,7 @@ from ugc_bot.domain.enums import OrderType
 from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.domain.order_intake import OrderIntakeCommand
 from ugc_bot.domain.order_targeting import OrderTargeting
-from ugc_bot.domain.social import SocialPlatform
+from ugc_bot.domain.social import ORDER_TARGET_PLATFORMS, SocialPlatform
 
 IMAGE_REQUIREMENTS = "JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт)"
 ACCOMPANIMENT_CALLBACK_PREFIX = "order:manager:"
@@ -140,6 +140,8 @@ async def choose_platforms(
         platforms = tuple(
             sorted({SocialPlatform(p).value for p in raw.split(",")})
         )
+        if any(p not in ORDER_TARGET_PLATFORMS for p in platforms):
+            raise ValueError("Invalid order platform")
     except ValueError:
         await messenger.send_text(
             chat_id=incoming.chat_id,

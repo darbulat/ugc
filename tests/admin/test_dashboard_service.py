@@ -497,7 +497,8 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
     assert card["blogger_profile"]["instagram_url"] == blogger_ns.instagram_url
     assert card["blogger_profile"]["city"] == "Moscow"
     assert card["blogger_profile"]["social_links"] == {
-        "tiktok": "https://www.tiktok.com/@jane",
+        "tiktok": {"url": "https://www.tiktok.com/@jane", "label": "TikTok"},
+        "vk": {"url": "https://vk.com/jane", "label": "VK"},
     }
     assert card["status_label"] == "bot_blocked"
     assert card["advertiser_profile"] is not None
@@ -1273,6 +1274,7 @@ async def test_list_delayed_orders_includes_reasons(
     assert attention["moderation"][0]["reasons"] == ["waiting_moderation"]
     assert delayed["needed_count"] == 10
     assert delayed["days_since_payment"] == pytest.approx(4.25, abs=0.01)
+    assert delayed["days_until_selection_due"] == pytest.approx(2.75, abs=0.01)
     assert delayed["selection_days"] == 7
     assert delayed["selection_due_at"] == selection_due_at
     assert delayed["selection_target_days"] == thresholds.active_days

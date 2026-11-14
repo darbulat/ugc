@@ -18,6 +18,7 @@ from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
+    PeriodWindow,
 )
 from ugc_bot.domain.enums import (
     AuditAction,
@@ -136,6 +137,53 @@ def _login(client):
         follow_redirects=False,
     )
     assert response.status_code == 302
+
+
+@pytest.mark.asyncio
+async def test_dashboard_average_check_uses_paid_totals_by_currency(worklist):
+    _, engine, ids = worklist
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        for key, currency, amount, status in (
+            ("Active example", "RUB", 401, PaymentStatus.PAID),
+            ("Draft example", "USD", 7, PaymentStatus.PAID),
+            ("Financial example", "USD", 99, PaymentStatus.PENDING),
+        ):
+            payment = _payment(ids[key])
+            payment.currency = currency
+            payment.amount = amount
+            payment.status = status
+            session.add(payment)
+    database = create_async_engine(
+        engine.url.set(drivername="sqlite+aiosqlite")
+    )
+    sessions = async_sessionmaker(database)
+    service = AdminDashboardService(
+        sessions, "UTC", DelayThresholds(3, 24, 48, 7)
+    )
+    window = PeriodWindow(
+        now - timedelta(days=1), now + timedelta(days=1), now, now
+    )
+    try:
+        async with sessions() as session:
+            totals = await service._paid_totals(session, window)
+    finally:
+        await database.dispose()
+
+    assert totals == [
+        {
+            "currency": "RUB",
+            "count": 2,
+            "amount": "601.00",
+            "average_check": "300.50",
+        },
+        {
+            "currency": "USD",
+            "count": 1,
+            "amount": "7.00",
+            "average_check": "7.00",
+        },
+    ]
 
 
 @pytest.mark.asyncio

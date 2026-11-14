@@ -17,7 +17,8 @@ class SocialAccountModel(Base):
             "user_id", "platform", name="uq_creator_social_platform"
         ),
         sa.CheckConstraint(
-            "platform IN ('instagram', 'tiktok', 'youtube', 'telegram', 'vk')",
+            "platform IN ('instagram', 'tiktok', 'youtube', 'telegram', "
+            "'vk', 'dzen', 'rutube', 'other')",
             name="ck_creator_social_platform",
         ),
         sa.CheckConstraint(
