@@ -26,6 +26,9 @@ from ugc_bot.bot.telegram.handlers.blogger_registration import (
     router as blogger_router,
 )
 from ugc_bot.bot.telegram.handlers.complaints import router as complaints_router
+from ugc_bot.bot.telegram.handlers.creator_invites import (
+    router as creator_invites_router,
+)
 from ugc_bot.bot.telegram.handlers.feedback import router as feedback_router
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     router as instagram_router,
@@ -129,6 +132,14 @@ def build_dispatcher(
     dispatcher["order_summary_service"] = build_order_summary(
         config, getattr(container, "transaction_manager", None)
     )
+    if dispatcher["order_summary_service"] is not None:
+        from ugc_bot.container.creator_invite_factory import (
+            build_creator_invites,
+        )
+
+        dispatcher["creator_invite_service"] = build_creator_invites(
+            container.transaction_manager
+        )
     register_checkout_lifecycle(dispatcher, config)
     if include_routers:
         dispatcher.include_router(
@@ -137,6 +148,7 @@ def build_dispatcher(
         dispatcher.include_router(blogger_rating_router)
         dispatcher.include_router(messenger_linking_router)
         dispatcher.include_router(support_chat_router)
+        dispatcher.include_router(creator_invites_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)
         dispatcher.include_router(admin_moderation_router)

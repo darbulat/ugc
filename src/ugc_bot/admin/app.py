@@ -50,6 +50,7 @@ from ugc_bot.admin.complaints import (
     dismiss_open_complaint,
     search_complaints,
 )
+from ugc_bot.admin.creator_invites import register_creator_invites
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
@@ -3827,6 +3828,9 @@ def create_admin_app() -> FastAPI:
         )
 
     register_order_review(app, auth, engine, templates, _require_action_token)
+    register_creator_invites(
+        app, auth, engine, templates, _require_action_token, config
+    )
     _register_order_worklist_action(app, auth, engine, admin_cache)
     _register_complaint_action(app, auth, engine, admin_cache)
 

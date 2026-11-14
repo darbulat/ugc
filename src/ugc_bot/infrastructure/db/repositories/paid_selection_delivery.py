@@ -5,6 +5,7 @@ from uuid import uuid5
 
 from sqlalchemy import exists, insert, or_, select, text, update
 
+from ugc_bot.application.notice_delivery_ports import DeliveryContact
 from ugc_bot.application.paid_selection_delivery_ports import (
     SelectionDeliveryAttempt,
     SelectionDeliveryJob,
@@ -13,6 +14,7 @@ from ugc_bot.application.paid_selection_delivery_ports import (
 )
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
 )
@@ -64,10 +66,11 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
         result = await _session(session).scalars(
             select(JOBS.c.job_id)
             .where(
+                ~exists().where(INVITES.c.interest_id == JOBS.c.interest_id),
                 or_(
                     JOBS.c.state == "ready",
                     (JOBS.c.state == "sending") & (JOBS.c.lease_until <= at),
-                )
+                ),
             )
             .order_by(JOBS.c.created_at, JOBS.c.job_id)
             .limit(limit)
@@ -247,14 +250,34 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
                 )
             )
         )
-        contact = await SqlAlchemyNoticeDeliveryRepository().contact(
-            interest["client_id"], session=db
-        )
         creator_contact = dict(
             username=creator["username"],
             telegram=creator["telegram"],
             phone=profile["phone"] if profile else None,
         )
+        manual = bool(
+            await db.scalar(
+                select(
+                    exists().where(
+                        INVITES.c.interest_id == interest["interest_id"]
+                    )
+                )
+            )
+        )
+        if manual:
+            address = client["telegram_id"]
+            contact = DeliveryContact(
+                client["user_id"],
+                "telegram",
+                str(address) if address is not None else None,
+                client["language"] or "ru",
+                str(client["status"]),
+                "chat_id",
+            )
+        else:
+            contact = await SqlAlchemyNoticeDeliveryRepository().contact(
+                interest["client_id"], session=db
+            )
         invalid = self._invalid(
             interest,
             order,
@@ -266,6 +289,7 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             client_role,
             contact,
             at,
+            manual=manual,
         )
         delivered = await db.scalar(
             select(ACCEPTED.c.delivery_id).where(
@@ -279,7 +303,7 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
                 )
             )
         )
-        if delivered is not None:
+        if delivered is not None and (not manual or invalid is None):
             invalid = "selection_already_delivered"
         frozen = dict(
             interest=dict(interest),
@@ -317,7 +341,7 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             interest["instagram_user_id"],
             interest["instagram_url"],
             interest["confirmed_at"],
-            item["selection_due_at"],
+            None if manual else item["selection_due_at"],
             contact,
             creator_contact,
             payload_hash(frozen),
@@ -336,15 +360,20 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
         client_role,
         contact,
         at,
+        *,
+        manual=False,
     ):
-        if (
-            assignment["valid_to"] is not None
-            or item["selection_state"] != "paid"
-        ):
+        if assignment["valid_to"] is not None or item[
+            "selection_state"
+        ] not in (("paid", "delivered") if manual else ("paid",)):
             return "selection_assignment_obsolete"
-        if (
-            order["status"] != OrderStatus.ACTIVE
-            or at >= item["selection_due_at"]
+        can_view_closed = (
+            manual
+            and order["status"] == OrderStatus.CLOSED
+            and item["selection_state"] == "delivered"
+        )
+        if (order["status"] != OrderStatus.ACTIVE and not can_view_closed) or (
+            not manual and at >= item["selection_due_at"]
         ):
             return "selection_order_unavailable"
         if not client_role or str(client["status"]) not in (

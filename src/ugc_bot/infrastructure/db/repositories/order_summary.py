@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
+from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.customer_workflow_models import REQUESTS
 from ugc_bot.infrastructure.db.models import (
     ItemAssignmentModel,
@@ -16,6 +17,12 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.order_summary_models import CARDS, JOBS, REPORTS
+from ugc_bot.infrastructure.db.paid_selection_models import (
+    INTERESTS,
+)
+from ugc_bot.infrastructure.db.paid_selection_models import (
+    JOBS as DELIVERY_JOBS,
+)
 from ugc_bot.infrastructure.db.replacement_models import TABLES as REPLACEMENTS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
@@ -110,6 +117,14 @@ class SqlOrderSummary:
             .scalar_subquery()
         )
         delivered_at = func.coalesce(original_contact, replacement_contact)
+        manual_contact = (
+            select(DELIVERY_JOBS.c.state)
+            .join(INVITES, INVITES.c.interest_id == DELIVERY_JOBS.c.interest_id)
+            .join(INTERESTS, INTERESTS.c.interest_id == INVITES.c.interest_id)
+            .where(INTERESTS.c.assignment_id == assignment.assignment_id)
+            .correlate(assignment)
+            .scalar_subquery()
+        )
         return (
             (
                 await _session(session).execute(
@@ -131,6 +146,7 @@ class SqlOrderSummary:
                         report_state().label("report_state"),
                         REPORTS.c.answer_due_at,
                         REPLACEMENTS["allocations"].c.replacement_id,
+                        manual_contact.label("manual_contact_state"),
                         delivered_at.label("contact_at"),
                         delivered_at.is_not(None).label("contact_delivered"),
                     )

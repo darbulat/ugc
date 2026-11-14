@@ -21,6 +21,7 @@ from ugc_bot.application.paid_selection_delivery_ports import (
 )
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.domain.financial import utc
+from ugc_bot.infrastructure.db.creator_invite_models import MANUAL_READY
 
 
 def _safe(value, *, limit=200):
@@ -88,7 +89,7 @@ def _reason(exc):
 class PaidSelectionDelivery:
     repository: PaidSelectionDeliveryRepository
     transactions: TransactionManager
-    transport: NoticeReceiptTransport
+    transport: NoticeReceiptTransport | None
     clock: Clock
     lease_seconds: int = 120
 
@@ -105,7 +106,11 @@ class PaidSelectionDelivery:
             )
             # Acquiring User/funding/history/item barriers can wait past due.
             # Reassess time after that wait, before the committed start marker.
-            if source is not None and self._now() >= source.due_at:
+            if (
+                source is not None
+                and source.due_at is not None
+                and self._now() >= source.due_at
+            ):
                 invalid = "selection_order_unavailable"
             return source, invalid
         except ValueError as exc:
@@ -166,7 +171,9 @@ class PaidSelectionDelivery:
             replace(job, state="unknown"), session=session
         )
 
-    async def prepare(self, job_id: UUID) -> SelectionDeliveryAttempt | None:
+    async def prepare(
+        self, job_id: UUID, *, card_request=False
+    ) -> SelectionDeliveryAttempt | None:
         if type(self.lease_seconds) is not int or self.lease_seconds < 1:
             raise ValueError("selection_delivery_lease_invalid")
         async with self.transactions.transaction() as session:
@@ -178,7 +185,7 @@ class PaidSelectionDelivery:
                 if job.lease_until is None or job.lease_until <= self._now():
                     await self._recover(job, session)
                 return None
-            if job.state != "ready":
+            if job.state != (MANUAL_READY if card_request else "ready"):
                 return None
             if source is not None and not invalid:
                 try:
@@ -285,9 +292,14 @@ class PaidSelectionDelivery:
             )
         return True
 
-    async def _send(self, attempt):
+    async def _send(self, attempt, transport=None):
         try:
-            receipt = await self.transport.send(attempt)
+            sender = transport or self.transport
+            if sender is None:
+                raise DeliveryFailure(
+                    "selection_transport_unavailable", uncertain=False
+                )
+            receipt = await sender.send(attempt)
             if (
                 not isinstance(receipt, DeliveryReceipt)
                 or receipt.channel != attempt.channel
@@ -369,9 +381,11 @@ class PaidSelectionDelivery:
                     replace(job, state=state), session=session
                 )
 
-    async def deliver(self, attempt: SelectionDeliveryAttempt) -> None:
+    async def deliver(
+        self, attempt: SelectionDeliveryAttempt, *, transport=None
+    ) -> None:
         if await self._begin(attempt):
-            status, reference, reason = await self._send(attempt)
+            status, reference, reason = await self._send(attempt, transport)
             await self._finish(attempt, status, reference, reason)
 
     async def run_once(self, *, limit: int = 100) -> int:

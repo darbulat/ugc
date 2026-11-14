@@ -2103,6 +2103,8 @@ class AdminDashboardService:
         )
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
+            "financial_selection": order.financial_version is not None
+            and not order.complimentary,
             "can_delete": deletion_blocker is None,
             "deletion_blocker": deletion_blocker,
             "is_test": bool(is_test),
