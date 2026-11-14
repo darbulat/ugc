@@ -40,8 +40,10 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
     zone = ZoneInfo("Europe/Moscow")
     start = dashboard_period_window("30d", zone).current_start
     boundary = (start + timedelta(days=2, minutes=20)).astimezone(timezone.utc)
-    advertiser, booked, waitlisted = [uuid4() for _ in range(3)]
-    normal, free, test, old = [uuid4() for _ in range(4)]
+    advertiser, booked, waitlisted, complimentary_creator = [
+        uuid4() for _ in range(4)
+    ]
+    normal, free, test, old, historic = [uuid4() for _ in range(5)]
     with financial_pg_engine.begin() as db:
         db.execute(
             insert(UserModel),
@@ -51,6 +53,10 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     "messenger_type": MessengerType.TELEGRAM,
                     "telegram_id": str(user_id.int)[-12:],
                     "username": str(user_id),
+                    "telegram": "@UseMyContent"
+                    if user_id == advertiser
+                    else None,
+                    "admin": user_id == advertiser,
                     "status": status,
                     "created_at": boundary,
                 }
@@ -58,6 +64,7 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     (advertiser, UserStatus.ACTIVE),
                     (booked, UserStatus.ACTIVE),
                     (waitlisted, UserStatus.BOT_BLOCKED),
+                    (complimentary_creator, UserStatus.ACTIVE),
                 )
             ],
         )
@@ -74,7 +81,7 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     "audience_geo": "Москва",
                     "price": 100,
                 }
-                for user_id in (booked, waitlisted)
+                for user_id in (booked, waitlisted, complimentary_creator)
             ],
         )
         db.execute(
@@ -90,31 +97,44 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     "status": OrderStatus.ACTIVE,
                     "complimentary": order_id == free,
                     "created_at": start - timedelta(days=2)
-                    if order_id == old
+                    if order_id in (old, historic, free)
                     else boundary,
                 }
-                for order_id in (normal, free, test, old)
+                for order_id in (normal, free, test, old, historic)
             ],
         )
         db.execute(
-            insert(AuditLogModel).values(
-                entity_type="order_test_marker",
-                entity_id=test,
-                action=AuditAction.UPDATE,
-                new_values={"test": True},
-            )
+            insert(AuditLogModel),
+            [
+                dict(
+                    entity_type="order_test_marker",
+                    entity_id=test,
+                    action=AuditAction.UPDATE,
+                    new_values={"test": True},
+                    changed_at=boundary,
+                ),
+                dict(
+                    entity_type="order",
+                    entity_id=free,
+                    action=AuditAction.UPDATE,
+                    new_values={"complimentary": True},
+                    changed_at=boundary,
+                ),
+            ],
         )
         db.execute(
             insert(PaymentModel),
             [
                 {
                     "order_id": order_id,
-                    "provider": "synthetic",
+                    "provider": "manual" if order_id == normal else "synthetic",
                     "external_id": str(order_id),
                     "status": PaymentStatus.PAID,
                     "amount": 150,
                     "currency": "RUB",
-                    "paid_at": boundary,
+                    "paid_at": boundary - timedelta(minutes=5)
+                    if order_id == normal
+                    else boundary,
                 }
                 for order_id in (normal, old, test)
             ],
@@ -123,13 +143,20 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
             insert(OfferDispatchModel),
             [
                 {
-                    "order_id": normal,
+                    "order_id": order,
                     "blogger_id": creator,
-                    "created_at": boundary,
+                    "created_at": date,
                     "accepted": True,
-                    "in_offer": creator == booked,
+                    "in_offer": in_offer,
                 }
-                for creator in (booked, waitlisted)
+                for order, creator, date, in_offer in (
+                    (normal, booked, boundary, True),
+                    (normal, waitlisted, boundary, False),
+                    (test, waitlisted, boundary, True),
+                    (old, booked, start - timedelta(days=1), True),
+                    (free, complimentary_creator, boundary, True),
+                    (historic, booked, boundary, True),
+                )
             ],
         )
         db.execute(
@@ -156,8 +183,8 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
     assert len(charts["dates"]) == 30
     assert charts["dates"][0] == start.date().isoformat()
     assert event_day != boundary.date().isoformat()
-    assert charts["registrations_creators"] == [{"date": event_day, "count": 2}]
-    assert charts["orders"] == [{"date": event_day, "count": 2}]
+    assert charts["registrations_creators"] == [{"date": event_day, "count": 3}]
+    assert charts["orders"] == [{"date": event_day, "count": 1}]
     assert charts["turnover"] == [
         {"date": event_day, "currency": "RUB", "amount": 300, "orders_paid": 2}
     ]
@@ -167,12 +194,18 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
         "percent": 100,
     }
     assert dashboard["previous_conversion"]["paid"] == 0
+    assert dashboard["picked_creators_count"] == 2
+    assert dashboard["admin_launches"] == [("usemycontent", 2)]
     assert dashboard["creator_metrics"] == {
-        "profiles": 2,
-        "telegram": 2,
+        "profiles": 3,
+        "telegram": 3,
         "bot_blocked": 1,
-        "ever_worked": 1,
-        "worked_period": 1,
+        "ever_worked": 2,
+        "worked_period": 2,
+        "first_period": 1,
+        "returning_period": 1,
+        "legacy_period": 2,
+        "paid_started_period": 0,
     }
     assert dashboard["pending_payouts"] == 1
     assert dashboard["payout_requests"][0]["amount"] == 123.45
