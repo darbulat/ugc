@@ -19,6 +19,15 @@ skeleton, configuration templates, and a working bot powered by `aiogram`.
 
 ## Production deploy (zero-downtime for app / app_2)
 
+After building an admin image, verify the import before recreating the service:
+
+```bash
+scripts/check_admin_image_import.sh <admin-image>
+```
+
+The check uses test settings and runs offline. Look for its logs in Loki
+under `service=release_check`.
+
 To update the Telegram webhook app without taking both instances down at once, use rolling deploy:
 
 - **From repo root:** `make deploy-apps`  
