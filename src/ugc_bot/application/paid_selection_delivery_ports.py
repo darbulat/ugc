@@ -40,7 +40,7 @@ class SelectionDeliverySource:
     instagram_user_id: str
     instagram_url: str
     confirmed_at: datetime
-    due_at: datetime
+    due_at: datetime | None
     contact: DeliveryContact | None
     creator_contact: dict
     source_hash: str

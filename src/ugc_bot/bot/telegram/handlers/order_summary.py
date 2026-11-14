@@ -10,6 +10,7 @@ from aiogram import Router
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.customer_intake import principal_for
 from ugc_bot.bot.telegram import order_summary_runtime
+from ugc_bot.bot.telegram.handlers.creator_invites import CardContactTransport
 from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 
 router = Router()
@@ -86,9 +87,17 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
     for item in visible:
         name = " ".join((item["username"] or "Креатор").split())[:55]
         report = REPORT.get(item["report_state"])
+        manual_state = item.get("manual_contact_state")
+        card_contact_available = manual_state in {"card_ready", "accepted"}
         if not item["assignment_id"]:
             state = {"refunded": "Возврат", "paid": "Ожидает контакта"}.get(
                 item["selection_state"], "Подбор"
+            )
+        elif manual_state and not item.get("contact_delivered"):
+            state = (
+                "Контакт доступен"
+                if card_contact_available
+                else "Контакт на проверке"
             )
         else:
             state = WORK.get(item["work_state"], item["work_state"])
@@ -125,6 +134,19 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
                     Button(
                         f"Снять отметку №{item['ordinal']}",
                         callback_data=f"{PREFIX}withdraw:{item['report_id'].hex}",
+                    )
+                ]
+            )
+        if (
+            mode == "open"
+            and (card_contact_available or manual_state == "sending")
+            and item["selection_state"] in {"paid", "delivered"}
+        ):
+            rows.append(
+                [
+                    Button(
+                        f"Контакт №{item['ordinal']}",
+                        callback_data=f"{PREFIX}manual:{item['assignment_id'].hex}:{page}",
                     )
                 ]
             )
@@ -222,6 +244,7 @@ async def order_summary_callback(
     callback,
     user_role_service,
     order_summary_service=None,
+    creator_invite_service=None,
     messenger_client=None,
     event_adapter=None,
 ):
@@ -249,7 +272,26 @@ async def order_summary_callback(
             else UUID(key)
         )
         service = order_summary_service
-        if action == "answer":
+        if action == "manual":
+            if creator_invite_service is None or not incoming.message_id:
+                raise ValueError("creator_invite_contact_unavailable")
+            order_id = await service.manual_contact_order(principal, identity)
+            data = await service.view(principal, order_id)
+            if str(data["message_id"]) != str(incoming.message_id):
+                raise ValueError("creator_invite_contact_unavailable")
+            text, keyboard = render_card(service, data, page=int(args[0]))
+            await creator_invite_service.card_contact(
+                principal,
+                identity,
+                CardContactTransport(
+                    messenger,
+                    incoming.chat_id,
+                    incoming.message_id,
+                    text,
+                    keyboard,
+                ),
+            )
+        elif action == "answer":
             accepted = await service.creator_answer(principal, identity)
             if incoming.message_id:
                 await messenger.edit_text(

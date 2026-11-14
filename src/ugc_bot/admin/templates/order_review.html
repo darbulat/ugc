@@ -37,6 +37,7 @@
           {% if position.contact_at %}Подтверждён<br><small>{{ position.contact_at|admin_date }}</small>
           {% elif position.delivery_state == 'unknown' %}Результат доставки неизвестен
           {% elif position.delivery_state == 'failed' %}Доставка отклонена
+          {% elif position.delivery_state == 'card_ready' %}Доступен в карточке заказа
           {% elif position.delivery_state in ('ready','sending') %}Ожидает доставки
           {% else %}Нет подтверждения{% endif %}
         </td>

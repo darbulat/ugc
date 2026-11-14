@@ -45,4 +45,5 @@ class PaidSelectionRepository(Protocol):
         now: Callable[[], datetime],
         *,
         session: object,
+        invite_id: UUID | None = None,
     ) -> SelectionInterest: ...

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Добавить креатора{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="admin-actions">
+    <a class="admin-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">← К заказу</a>
+  </div>
+  <h1>Добавить креатора · {{ title }}</h1>
+  {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
+  {% if link %}
+    <section class="card section">
+      <h2>Персональная ссылка готова</h2>
+      <label for="invite-link">Ссылка для креатора</label>
+      <input id="invite-link" class="form-control" value="{{ link }}" readonly>
+      <button class="admin-button" type="button" id="copy-invite-link">Скопировать ссылку</button>
+      <span id="invite-copy-status" role="status"></span>
+      <p>Перешлите ссылку креатору. Она действует 7 дней.</p>
+      <script>
+        document.getElementById('copy-invite-link').addEventListener('click', async function () {
+          const link = document.getElementById('invite-link');
+          const status = document.getElementById('invite-copy-status');
+          try {
+            await navigator.clipboard.writeText(link.value);
+            status.textContent = 'Ссылка скопирована.';
+          } catch {
+            link.focus();
+            link.select();
+            status.textContent = 'Скопируйте выделенную ссылку.';
+          }
+        });
+      </script>
+    </section>
+  {% endif %}
+  {% if enabled and items %}
+  <section class="card section">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+      <label for="invite-item">Свободная оплаченная позиция</label>
+      <select name="item_id" id="invite-item" class="form-select mb-3">
+        {% for item in items %}<option value="{{ item.paid_item_id }}">№{{ item.ordinal }}{% if item.pending_invites %} · Ссылка уже создана{% endif %}</option>{% endfor %}
+      </select>
+      <label for="invite-instagram">Ник или ссылка на Instagram</label>
+      <input id="invite-instagram" class="form-control mb-3" name="instagram" maxlength="250" placeholder="@username" required>
+      <label for="invite-manager">Кто ведёт креатора</label>
+      <select id="invite-manager" name="manager_id" class="form-select mb-3">
+        <option value="">Администратор</option>
+        {% for manager in managers %}<option value="{{ manager.user_id }}">{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
+      </select>
+      <p>Подтверждённый профиль из базы определится по Instagram. Внешний креатор зарегистрируется по ссылке. Контакт станет доступен заказчику после согласия креатора.</p>
+      <button class="admin-button admin-button--primary" type="submit">Создать ссылку</button>
+    </form>
+  </section>
+  {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
+  {% else %}<p>Свободных оплаченных позиций нет.</p>{% endif %}
+  {% if invites %}
+  <section class="card section">
+    <h2>Приглашения</h2>
+    <ul>
+      {% for invite in invites %}
+      <li>№{{ invite.ordinal }} · @{{ invite.instagram }} · {{ 'Из базы' if invite.target_id else 'Внешний креатор' }} · {% if invite.consented_at %}Участие подтверждено{% elif invite.expires_at <= now %}Срок истёк{% else %}Ждём подтверждения · <input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

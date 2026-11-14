@@ -127,6 +127,7 @@ async def start_command(
     language_repo: LanguageRepository | None = None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    creator_invite_service=None,
 ) -> None:
     """Handle the /start command. Clears FSM so user always sees role."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -167,6 +168,16 @@ async def start_command(
         await bot_texts_service.get("country_prompt", locale)
     ).strip() or "Выберите вашу страну:"
     countries = await country_repo.list_enabled() if country_repo else []
+    payload = (message.text or "").split(maxsplit=1)
+    invite = (
+        payload[1]
+        if len(payload) == 2 and payload[1].startswith("oi_")
+        else None
+    )
+    if invite and (
+        message.from_user is None or message.chat.id != message.from_user.id
+    ):
+        return
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -179,6 +190,13 @@ async def start_command(
         country_kb=country_inline_keyboard(countries),
         tg_language_code=tg_lang,
     )
+
+    if invite and creator_invite_service is not None:
+        from ugc_bot.bot.telegram.handlers.creator_invites import show_invite
+
+        await show_invite(
+            message, user_role_service, creator_invite_service, invite
+        )
 
 
 @router.callback_query(lambda c: c.data.startswith(CALLBACK_COUNTRY_PREFIX))

@@ -807,6 +807,17 @@ def test_accepted_projection_without_current_immutable_receipt_stays_unknown(
     ).to_have_attribute("data-state", "unknown")
 
 
+def test_manual_contact_points_to_telegram_card(page):
+    network = SelectionNetwork()
+    network.positions[0]["delivery_state"] = "card_ready"
+    open_app(page, network, init_data=SIGNED, query=f"?selection={ORDER}")
+    current = page.locator('[data-position="1"] [data-current-delivery]')
+    expect(current).to_have_attribute("data-state", "card_ready")
+    expect(current).to_contain_text(
+        "Контакт доступен в итогах заказа в Telegram"
+    )
+
+
 def test_v1_list_links_to_actual_selection_without_legacy_pay_control(page):
     network = SelectionNetwork()
     network.order = {

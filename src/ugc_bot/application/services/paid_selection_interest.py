@@ -19,7 +19,7 @@ class PaidSelectionInterestService:
     enabled: bool = False
 
     async def respond(
-        self, order_id: UUID, creator_id: UUID
+        self, order_id: UUID, creator_id: UUID, *, invite_id: UUID | None = None
     ) -> SelectionInterest | None:
         # Route legacy orders before attempting any new financial writes.
         attempt = 0
@@ -41,6 +41,7 @@ class PaidSelectionInterestService:
                         locked,
                         self.clock.now,
                         session=session,
+                        **({"invite_id": invite_id} if invite_id else {}),
                     )
             except ValueError as exc:
                 if (

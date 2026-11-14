@@ -361,6 +361,24 @@ class OrderSummaryService(CustomerWorkflowService):
             order_id, completion_notified_at=at, session=session
         )
 
+    async def manual_contact_order(self, principal, assignment_id):
+        from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS
+        from ugc_bot.infrastructure.db.repositories.creator_invites import (
+            contact_job_query,
+        )
+
+        async with self.transactions.transaction() as session:
+            await self._identity(principal, session)
+            query = contact_job_query(principal.user_id, assignment_id)
+            order_id = await _session(session).scalar(
+                query.with_only_columns(
+                    INTERESTS.c.order_id, maintain_column_froms=True
+                )
+            )
+            if order_id is None:
+                raise ValueError("creator_invite_contact_unavailable")
+            return order_id
+
     async def replacement_order(self, principal, replacement_id):
         async with self.transactions.transaction() as session:
             await self._identity(principal, session)

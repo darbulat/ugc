@@ -3,10 +3,16 @@
 from uuid import NAMESPACE_URL, uuid5
 
 from sqlalchemy import exists, func, insert, select, text, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ugc_bot.application.paid_selection_ports import SelectionInterest
+from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.financial import utc
+from ugc_bot.infrastructure.db.creator_invite_models import (
+    INVITES,
+    MANUAL_READY,
+)
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
 )
@@ -22,7 +28,9 @@ from ugc_bot.infrastructure.db.models import (
     PaymentModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.order_review_models import OWNERS
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
+from ugc_bot.infrastructure.db.repositories.creator_invites import invitation
 from ugc_bot.infrastructure.db.repositories.entitlements import (
     SqlAlchemyClientEntitlementRepository,
 )
@@ -106,8 +114,15 @@ class SqlAlchemyPaidSelectionRepository:
             _to_outbox_event_entity(rows[0]), session=db
         )
 
-    async def confirm(
-        self, order_id, creator_id, locked_users, now, *, session
+    async def confirm(  # noqa: C901, PLR0912
+        self,
+        order_id,
+        creator_id,
+        locked_users,
+        now,
+        *,
+        session,
+        invite_id=None,
     ):
         db = _session(session)
         await SqlAlchemyFinancialItemRepository().lock_order(
@@ -216,6 +231,22 @@ class SqlAlchemyPaidSelectionRepository:
             "selection_verified_creator_required",
         )
         assert profile is not None  # required above; narrow the SQL row type
+        manual = None
+        if invite_id is not None:
+            manual = await invitation(db, invite_id, at, creator_id, lock=True)
+            _require(
+                manual["order_id"] == order_id, "creator_invite_unavailable"
+            )
+            _require(
+                instagram_handle(profile["instagram_url"])
+                == manual["instagram"],
+                "creator_invite_instagram_mismatch",
+            )
+            _require(
+                manual["manager_id"] is None
+                or statuses.get(manual["manager_id"]) == "active",
+                "creator_invite_manager_unavailable",
+            )
         previous = (
             (
                 await db.execute(
@@ -229,6 +260,11 @@ class SqlAlchemyPaidSelectionRepository:
             .one_or_none()
         )
         if previous is not None:
+            _require(
+                manual is None
+                or manual["interest_id"] == previous["interest_id"],
+                "creator_invite_already_interested",
+            )
             return await self._result(previous, session=db)
         _require(
             not await db.scalar(
@@ -262,11 +298,17 @@ class SqlAlchemyPaidSelectionRepository:
             "selection_purchased_pool_mismatch",
         )
         _require(
-            all(i["selection_due_at"] > at for i in items),
+            manual is not None
+            or all(i["selection_due_at"] > at for i in items),
             "selection_due_elapsed",
         )
         item = None
         for candidate in items:
+            if (
+                manual is not None
+                and candidate["paid_item_id"] != manual["item_id"]
+            ):
+                continue
             if not await db.scalar(
                 select(
                     exists().where(
@@ -277,6 +319,8 @@ class SqlAlchemyPaidSelectionRepository:
             ):
                 item = candidate
                 break
+        if manual is not None:
+            _require(item is not None, "creator_invite_position_unavailable")
         # A completed initial assignment is never silently recycled here.
         accepted, assignment, manager = item is not None, None, None
         if item is not None:
@@ -284,7 +328,10 @@ class SqlAlchemyPaidSelectionRepository:
                 item["selection_state"] == "paid",
                 "selection_position_unavailable",
             )
-            if item["accompaniment_minor"]:
+            if manual is not None:
+                if item["accompaniment_minor"]:
+                    manager = manual["manager_id"]
+            elif item["accompaniment_minor"]:
                 managers = [
                     r["user_id"]
                     for r in manager_rows
@@ -333,13 +380,42 @@ class SqlAlchemyPaidSelectionRepository:
                     interest_id=interest_id,
                     order_id=order_id,
                     created_at=at,
-                    state="ready",
+                    state=MANUAL_READY if manual is not None else "ready",
                 )
             )
-        await self._record_dispatch(
-            order_id, creator_id, accepted, manager, at, session=db
+        if manual is not None:
+            await db.execute(
+                update(INVITES)
+                .where(INVITES.c.id == invite_id)
+                .values(
+                    consented_at=at,
+                    creator_id=creator_id,
+                    interest_id=interest_id,
+                )
+            )
+            if manual["manager_id"] is not None:
+                await db.execute(
+                    pg_insert(OWNERS)
+                    .values(
+                        paid_item_id=item["paid_item_id"],
+                        manager_id=manual["manager_id"],
+                        assigned_at=at,
+                    )
+                    .on_conflict_do_update(
+                        index_elements=[OWNERS.c.paid_item_id],
+                        set_={
+                            "manager_id": manual["manager_id"],
+                            "assigned_at": at,
+                        },
+                    )
+                )
+        dispatch_manager = (
+            manual["manager_id"] if manual is not None else manager
         )
-        if manager is not None:
+        await self._record_dispatch(
+            order_id, creator_id, accepted, dispatch_manager, at, session=db
+        )
+        if manager is not None and manual is None:
             await db.execute(
                 update(OrderModel)
                 .where(OrderModel.order_id == order_id)
