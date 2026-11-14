@@ -144,9 +144,10 @@ def alert_firing_only_for_service():
          if rule["name"] == "UnhandledErrorInService"),
         None,
     )
-    if not rule:
+    # Loki can expose the rule before its first scheduled evaluation.
+    if not rule or rule["health"] == "unknown":
         return False
-    assert rule["health"] == "ok", rule.get("lastError")
+    assert rule["health"] == "ok", (rule["health"], rule.get("lastError"))
     alerts = rule["alerts"] or []
     assert all(alert["labels"].get("service") == "app" for alert in alerts), alerts
     return any(alert["state"] == "firing" for alert in alerts)

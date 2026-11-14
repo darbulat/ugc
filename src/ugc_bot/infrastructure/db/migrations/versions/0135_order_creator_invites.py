@@ -5,8 +5,8 @@ from alembic import op
 
 from ugc_bot.infrastructure.db.creator_invite_models import invite_table
 
-revision = "0134_order_creator_invites"
-down_revision = "0133_order_position_review"
+revision = "0135_order_creator_invites"
+down_revision = "0134_creator_social_links"
 branch_labels = None
 depends_on = None
 

@@ -53,7 +53,11 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
     UserStatus,
 )
-from ugc_bot.domain.social import SocialPlatform, normalize_social_url
+from ugc_bot.domain.social import (
+    SOCIAL_PLATFORM_LABELS,
+    SocialPlatform,
+    normalize_social_url,
+)
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -148,12 +152,12 @@ def dashboard_period_window(
     )
 
 
-def _elapsed_days(start: datetime, end: datetime) -> float:
+def _days_between(start: datetime, end: datetime) -> float:
     if start.tzinfo is None:
         start = start.replace(tzinfo=timezone.utc)
     if end.tzinfo is None:
         end = end.replace(tzinfo=timezone.utc)
-    return max(0.0, (end - start).total_seconds() / 86400)
+    return (end - start).total_seconds() / 86400
 
 
 def paid_in_period(start: datetime, end: datetime) -> ColumnElement[bool]:
@@ -551,6 +555,7 @@ class AdminDashboardService:
                 "currency": currency,
                 "count": int(count),
                 "amount": format(Decimal(str(amount)), ".2f"),
+                "average_check": format(Decimal(str(amount)) / count, ".2f"),
             }
             for currency, count, amount in result.all()
         ]
@@ -1268,15 +1273,21 @@ class AdminDashboardService:
             ).list_accounts(user_id, session=session)
             socials = {}
             for account in accounts:
-                if account.platform in (
-                    SocialPlatform.TIKTOK,
-                    SocialPlatform.YOUTUBE,
-                ):
-                    with contextlib.suppress(ValueError):
-                        url, _ = normalize_social_url(
-                            account.platform, account.url
-                        )
-                        socials[account.platform.value] = url
+                platform = account.platform
+                if platform == SocialPlatform.INSTAGRAM:
+                    continue
+                with contextlib.suppress(ValueError):
+                    url, handle = normalize_social_url(
+                        platform,
+                        account.url,
+                        platform_name=account.handle
+                        if platform == SocialPlatform.OTHER
+                        else None,
+                    )
+                    socials[platform.value] = {
+                        "url": url,
+                        "label": SOCIAL_PLATFORM_LABELS.get(platform, handle),
+                    }
             card["blogger_profile"] = {
                 "social_links": socials,
                 "instagram_url": blogger.instagram_url,
@@ -1437,11 +1448,18 @@ class AdminDashboardService:
             timing = {}
             if queue == "delayed":
                 timing = {
-                    "days_since_payment": _elapsed_days(paid_at, now)
+                    "days_since_payment": max(0.0, _days_between(paid_at, now))
                     if paid_at is not None
                     else None,
                     "selection_due_at": selection_due_at,
-                    "selection_days": _elapsed_days(paid_at, selection_due_at)
+                    "days_until_selection_due": _days_between(
+                        now, selection_due_at
+                    )
+                    if selection_due_at is not None
+                    else None,
+                    "selection_days": max(
+                        0.0, _days_between(paid_at, selection_due_at)
+                    )
                     if paid_at is not None and selection_due_at is not None
                     else None,
                     "selection_target_days": self._thresholds.active_days,

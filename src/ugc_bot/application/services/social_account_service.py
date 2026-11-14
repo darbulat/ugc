@@ -194,6 +194,7 @@ class SocialAccountService:
         *,
         principal: AuthenticatedMessengerPrincipal,
         work_format: WorkFormat | None = None,
+        platform_name: str | None = None,
     ) -> SocialEditorSaved:
         repository, transactions = self._editor(user_id, principal)
         async with transactions.transaction() as session:
@@ -209,7 +210,9 @@ class SocialAccountService:
             if network == SocialPlatform.INSTAGRAM:
                 raise ValueError("social_instagram_verification_required")
             try:
-                normalized, handle = normalize_social_url(network, url)
+                normalized, handle = normalize_social_url(
+                    network, url, platform_name=platform_name
+                )
             except ValueError:
                 raise ValueError("social_profile_url_invalid") from None
             current = next(
@@ -320,10 +323,13 @@ class SocialAccountService:
         url: str,
         *,
         work_format: WorkFormat | None = None,
+        platform_name: str | None = None,
         session: object | None = None,
     ) -> SocialAccount:
         platform = SocialPlatform(platform)
-        url, handle = normalize_social_url(platform, url)
+        url, handle = normalize_social_url(
+            platform, url, platform_name=platform_name
+        )
         if platform == SocialPlatform.INSTAGRAM:
             raise ValueError("Instagram changes require verification")
 

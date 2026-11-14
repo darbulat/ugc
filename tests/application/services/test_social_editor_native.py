@@ -17,6 +17,61 @@ from ugc_bot.infrastructure.db.repositories.social import (
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("platform", "url", "name", "handle"),
+    [
+        (
+            "dzen",
+            "https://dzen.ru/id/0123456789abcdef01234567",
+            None,
+            "0123456789abcdef01234567",
+        ),
+        ("rutube", "https://rutube.ru/channel/123456/", None, "123456"),
+        ("other", "https://twitch.tv/creator", "  Twitch  ", "Twitch"),
+    ],
+)
+async def test_optional_platform_link_uses_instagram_gate(
+    platform, url, name, handle
+):
+    editor, user, principal = await editor_fixture(confirmed=False)
+    with pytest.raises(
+        ValueError, match="social_instagram_verification_required"
+    ):
+        await editor.service().save_editor_account(
+            user.user_id, platform, url, principal=principal, platform_name=name
+        )
+
+    editor, user, principal = await editor_fixture(confirmed=True)
+    service = editor.service()
+    result = await service.save_editor_account(
+        user.user_id, platform, url, principal=principal, platform_name=name
+    )
+    assert result.account.handle == handle
+    assert not result.account.verified
+    assert result.account.followers_count is None
+    assert result.next_platform == "tiktok"
+    state = await service.editor_state(user.user_id, principal=principal)
+    assert result.account in state.accounts
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("url", "name"),
+    [
+        ("https://twitch.tv/creator", " "),
+        ("http://twitch.tv/creator", "Twitch"),
+        ("https://twitch.tv@invalid.example/creator", "Twitch"),
+    ],
+)
+async def test_other_platform_requires_name_and_safe_url(url, name):
+    editor, user, principal = await editor_fixture(confirmed=True)
+    with pytest.raises(ValueError, match="social_profile_url_invalid"):
+        await editor.service().save_editor_account(
+            user.user_id, "other", url, principal=principal, platform_name=name
+        )
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 async def test_editor_saves_lists_prompts_and_removes_in_one_transaction(
     platform,

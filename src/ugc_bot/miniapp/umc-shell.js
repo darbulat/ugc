@@ -233,6 +233,7 @@
   if (!bridge || !screen) return;
   var copies = {
     ru: {
+      other: 'Другая площадка', platformName: 'Название площадки',
       title: 'Соцсети', intro: 'Дополните профиль креатора ссылками на ваши соцсети.',
       gate: 'Сначала подтвердите Instagram. После проверки можно добавить остальные соцсети.', verify: 'Подтвердить Instagram',
       verified: 'Подтверждено', unverified: 'Указано автором, не верифицировано', followers: 'Подписчики', unknown: 'Нет данных', source: 'Источник', observed: 'Данные на',
@@ -246,6 +247,7 @@
       authorityError: 'Доступ к соцсетям изменился. Обновите список, чтобы продолжить.'
     },
     en: {
+      other: 'Other platform', platformName: 'Platform name',
       title: 'Social accounts', intro: 'Add your social links to your creator profile.',
       gate: 'Verify Instagram first. Other social accounts become available after verification.', verify: 'Verify Instagram',
       verified: 'Verified', unverified: 'Provided by creator, unverified', followers: 'Followers', unknown: 'No data', source: 'Source', observed: 'Observed on',
@@ -259,6 +261,7 @@
       authorityError: 'Access to social accounts has changed. Reload accounts to continue.'
     },
     kk: {
+      other: 'Басқа платформа', platformName: 'Платформа атауы',
       title: 'Әлеуметтік желілер', intro: 'Креатор профиліне әлеуметтік желілеріңіздің сілтемелерін қосыңыз.',
       gate: 'Алдымен Instagram аккаунтын растаңыз. Содан кейін басқа әлеуметтік желілерді қосуға болады.', verify: 'Instagram аккаунтын растау',
       verified: 'Расталған', unverified: 'Автор көрсеткен, расталмаған', followers: 'Жазылушылар', unknown: 'Деректер жоқ', source: 'Дереккөз', observed: 'Деректер күні',
@@ -272,6 +275,7 @@
       authorityError: 'Әлеуметтік желілерге қолжетімділік өзгерді. Жалғастыру үшін тізімді жаңартыңыз.'
     },
     be: {
+      other: 'Іншая пляцоўка', platformName: 'Назва пляцоўкі',
       title: 'Сацыяльныя сеткі', intro: 'Дадайце спасылкі на сацыяльныя сеткі ў профіль крэатара.',
       gate: 'Спачатку пацвердзіце Instagram. Пасля праверкі можна дадаць іншыя сацыяльныя сеткі.', verify: 'Пацвердзіць Instagram',
       verified: 'Пацверджана', unverified: 'Указана аўтарам, не праверана', followers: 'Падпісчыкі', unknown: 'Няма даных', source: 'Крыніца', observed: 'Даныя на',
@@ -285,6 +289,7 @@
       authorityError: 'Доступ да сацыяльных сетак змяніўся. Абнавіце спіс, каб працягнуць.'
     },
     uz: {
+      other: 'Boshqa platforma', platformName: 'Platforma nomi',
       title: 'Ijtimoiy tarmoqlar', intro: 'Kreator profilingizga ijtimoiy tarmoq havolalarini qo‘shing.',
       gate: 'Avval Instagram akkauntingizni tasdiqlang. Shundan so‘ng boshqa tarmoqlarni qo‘shish mumkin.', verify: 'Instagramni tasdiqlash',
       verified: 'Tasdiqlangan', unverified: 'Muallif ko‘rsatgan, tasdiqlanmagan', followers: 'Obunachilar', unknown: 'Ma’lumot yo‘q', source: 'Manba', observed: 'Ma’lumot sanasi',
@@ -298,9 +303,9 @@
       authorityError: 'Ijtimoiy tarmoqlarga kirish o‘zgardi. Davom etish uchun ro‘yxatni yangilang.'
     }
   };
-  var names = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', telegram: 'Telegram', vk: 'VK' };
-  var samples = { tiktok: 'https://www.tiktok.com/@username', youtube: 'https://www.youtube.com/@channel', telegram: 'https://t.me/channel', vk: 'https://vk.com/username' };
-  var hosts = { instagram: ['instagram.com', 'www.instagram.com'], tiktok: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'], youtube: ['youtube.com', 'www.youtube.com', 'm.youtube.com'], telegram: ['t.me', 'telegram.me', 'www.t.me'], vk: ['vk.com', 'www.vk.com', 'm.vk.com'] };
+  var names = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', telegram: 'Telegram', vk: 'VK', dzen: 'Дзен', rutube: 'Rutube' };
+  var samples = { tiktok: 'https://www.tiktok.com/@username', youtube: 'https://www.youtube.com/@channel', telegram: 'https://t.me/channel', vk: 'https://vk.com/username', dzen: 'https://dzen.ru/channel_name', rutube: 'https://rutube.ru/channel/123456/', other: 'https://example.com/profile' };
+  var hosts = { instagram: ['instagram.com', 'www.instagram.com'], tiktok: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'], youtube: ['youtube.com', 'www.youtube.com', 'm.youtube.com'], telegram: ['t.me', 'telegram.me', 'www.t.me'], vk: ['vk.com', 'www.vk.com', 'm.vk.com'], dzen: ['dzen.ru', 'www.dzen.ru'], rutube: ['rutube.ru', 'www.rutube.ru'] };
   var state = { loaded: false, accounts: [], next: null, skipped: [], includeVk: false, busy: false, active: null, manual: false, offered: false, returnScreen: 'screen-blogger-dashboard' };
   function byId(id) { return document.getElementById(id); }
   function locale() { var requested = window._me && window._me.locale; return copies[requested] ? requested : 'ru'; }
@@ -314,15 +319,24 @@
   function verified() { return state.loaded && state.next !== 'instagram' && state.accounts.some(function (account) { return account.platform === 'instagram' && account.verified === true; }); }
   function localize() {
     var c = copy();
-    var ids = { 'social-accounts-title': c.title, 'social-accounts-intro': c.intro, 'social-accounts-gate-text': c.gate, 'btn-social-verify-instagram': c.verify, 'social-accounts-empty': c.empty, 'social-accounts-done': c.done, 'lbl-social-account-url': c.url, 'lbl-social-account-work-format': c.format, 'btn-social-save': c.save, 'btn-social-reload': c.reload, 'btn-social-back': c.back, 'social-account-editor-hint': c.optional, 'btn-blogger-social-accounts': c.title, 'btn-edit-profile-socials': c.title };
+    var ids = { 'social-accounts-title': c.title, 'social-accounts-intro': c.intro, 'social-accounts-gate-text': c.gate, 'btn-social-verify-instagram': c.verify, 'social-accounts-empty': c.empty, 'social-accounts-done': c.done, 'lbl-social-account-url': c.url, 'lbl-social-platform-name': c.platformName, 'lbl-social-account-work-format': c.format, 'btn-social-save': c.save, 'btn-social-reload': c.reload, 'btn-social-back': c.back, 'social-account-editor-hint': c.optional, 'btn-blogger-social-accounts': c.title, 'btn-edit-profile-socials': c.title };
     Object.keys(ids).forEach(function (id) { byId(id).textContent = ids[id]; });
     byId('social-account-work-format').options[0].textContent = c.ugc;
     byId('social-account-work-format').options[1].textContent = c.ads;
   }
+  function platformLabel(network) { return network === 'other' ? copy().other : names[network]; }
+  function setPlatformName(network, name) {
+    var field = byId('social-platform-name');
+    var other = network === 'other';
+    byId('social-platform-name-field').hidden = !other;
+    field.disabled = !other;
+    field.required = other;
+    field.value = name || '';
+  }
   function busy(value, message) {
     state.busy = value;
     screen.setAttribute('aria-busy', value ? 'true' : 'false');
-    screen.querySelectorAll('button, input, select').forEach(function (element) { element.disabled = value; });
+    screen.querySelectorAll('button, input, select').forEach(function (element) { element.disabled = value || (element.id === 'social-platform-name' && state.active !== 'other'); });
     byId('social-accounts-state').textContent = value ? message : '';
     window.UMCShell.syncControls();
   }
@@ -345,6 +359,7 @@
     var form = byId('form-social-account');
     form.hidden = true;
     delete form.dataset.network;
+    setPlatformName(null);
     byId('social-account-url').value = '';
     byId('social-account-url').placeholder = '';
     byId('social-account-url').removeAttribute('aria-invalid');
@@ -363,7 +378,7 @@
   function safeLink(account) {
     try {
       var url = new URL(account.url);
-      return url.protocol === 'https:' && !url.username && !url.password && !url.port && (hosts[account.platform] || []).indexOf(url.hostname) !== -1 ? url.href : null;
+      return url.protocol === 'https:' && !url.username && !url.password && !url.port && (account.platform === 'other' ? url.hostname.includes('.') : (hosts[account.platform] || []).indexOf(url.hostname) !== -1) ? url.href : null;
     } catch (_) { return null; }
   }
   function date(value) {
@@ -387,13 +402,14 @@
     byId('social-accounts-add-options').hidden = true;
     byId('social-accounts-done').hidden = true;
     form.dataset.network = network;
-    byId('social-account-editor-title').textContent = (account ? copy().edit : copy().add) + ' ' + names[network];
+    byId('social-account-editor-title').textContent = (account ? copy().edit : copy().add) + ' ' + platformLabel(network);
+    setPlatformName(network, account && account.handle);
     byId('social-account-url').value = account ? account.url : '';
     byId('social-account-url').placeholder = samples[network];
     byId('social-account-url').removeAttribute('aria-invalid');
     byId('social-account-work-format').value = (account && account.work_format) || (window._me && window._me.blogger_profile && window._me.blogger_profile.work_format) || 'ugc_only';
     byId('btn-social-skip').textContent = manual ? copy().cancel : copy().skip;
-    if (manual) byId('social-account-url').focus();
+    if (manual) byId(network === 'other' ? 'social-platform-name' : 'social-account-url').focus();
   }
   function render(prompt) {
     var c = copy();
@@ -403,10 +419,10 @@
     state.accounts.forEach(function (account) {
       var item = node('li', undefined, 'umc-social-account');
       item.dataset.socialNetwork = account.platform;
-      item.appendChild(node('h2', names[account.platform] || account.platform));
+      item.appendChild(node('h2', account.platform === 'other' ? account.handle || c.other : platformLabel(account.platform) || account.platform));
       item.appendChild(node('span', account.verified === true ? c.verified : c.unverified, 'umc-social-badge' + (account.verified === true ? ' is-verified' : '')));
       var url = safeLink(account);
-      var link = node(url ? 'a' : 'p', account.handle || account.url || '');
+      var link = node(url ? 'a' : 'p', account.platform === 'other' ? account.url : account.handle || account.url || '');
       if (url) { link.href = url; link.target = '_blank'; link.rel = 'noopener noreferrer'; }
       item.appendChild(link);
       var observed = date(account.metrics_fetched_at);
@@ -426,15 +442,16 @@
     byId('social-accounts-gate').hidden = verified();
     byId('form-social-account').hidden = true;
     state.active = null;
+    setPlatformName(null);
     byId('social-accounts-done').hidden = !verified() || state.next !== null;
     var options = byId('social-accounts-add-options');
     options.hidden = false;
     options.replaceChildren();
     if (verified()) {
-      ['tiktok', 'youtube', 'telegram'].forEach(function (network) {
-        if (!state.accounts.some(function (account) { return account.platform === network; })) options.appendChild(action(c.add + ' ' + names[network], function () { clearMessages(); editor(network, null, true); }, 'socialAdd', network));
+      ['tiktok', 'youtube', 'telegram', 'dzen', 'rutube', 'other'].forEach(function (network) {
+        if (!state.accounts.some(function (account) { return account.platform === network; })) options.appendChild(action(network === 'other' ? c.other : c.add + ' ' + platformLabel(network), function () { clearMessages(); editor(network, null, true); }, 'socialAdd', network));
       });
-      if ((state.next === null || state.next === 'vk') && !state.accounts.some(function (account) { return account.platform === 'vk'; })) options.appendChild(action(c.vk, function () { state.includeVk = true; state.skipped = state.skipped.filter(function (network) { return network !== 'vk'; }); load(true); }, 'socialAdd', 'vk'));
+      if (!state.accounts.some(function (account) { return account.platform === 'vk'; })) options.appendChild(action(c.vk, function () { if (state.next !== null && state.next !== 'vk') { clearMessages(); editor('vk', null, true); return; } state.includeVk = true; state.skipped = state.skipped.filter(function (network) { return network !== 'vk'; }); load(true); }, 'socialAdd', 'vk'));
       if (prompt && samples[state.next]) editor(state.next, null, false);
     }
   }
@@ -497,6 +514,7 @@
     var network = state.active;
     var sequential = !state.manual;
     var payload = { network: network, url: byId('social-account-url').value.trim(), work_format: byId('social-account-work-format').value };
+    if (network === 'other') payload.platform_name = byId('social-platform-name').value.trim();
     clearMessages(); busy(true, copy().saving);
     bridge.request('/social/accounts/save', payload).then(function () {
       state.skipped = state.skipped.filter(function (skipped) { return skipped !== network; });

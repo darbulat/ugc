@@ -20,7 +20,7 @@ from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 
 
 async def invitations_available(db):
-    # Ordinary paid delivery also runs against historical schemas before 0134.
+    # Ordinary paid delivery also runs against historical schemas before 0135.
     return await db.scalar(select(func.to_regclass(INVITES.name))) is not None
 
 

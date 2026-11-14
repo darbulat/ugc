@@ -63,6 +63,7 @@ class SocialAccountPort(Protocol):
         url: str,
         *,
         work_format: WorkFormat | None = None,
+        platform_name: str | None = None,
         session: object | None = None,
     ) -> SocialAccount: ...
 
@@ -216,6 +217,7 @@ class SocialEditorPort(Protocol):
         *,
         principal: AuthenticatedMessengerPrincipal,
         work_format: WorkFormat | None = None,
+        platform_name: str | None = None,
     ) -> SocialEditorSaved: ...
 
     async def remove_editor_account(
