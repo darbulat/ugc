@@ -22,10 +22,12 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     UserModel,
+    UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
 )
+from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 PROFILE_HISTORY_PAGE_SIZE = 10
 
@@ -71,6 +73,7 @@ def creator_directory_filters(
     status: str,
     followers_min: int | None,
     with_complaints: bool,
+    platform: SocialPlatform | None = None,
 ) -> list[ColumnElement[bool]]:
     filters = _person_search(q, BloggerProfileModel.instagram_url)
     filters.extend(_complaint_filter(with_complaints))
@@ -91,7 +94,45 @@ def creator_directory_filters(
         filters.append(
             BloggerProfileModel.instagram_followers_count >= followers_min
         )
+    if platform == SocialPlatform.INSTAGRAM:
+        filters.append(func.trim(BloggerProfileModel.instagram_url) != "")
+    elif platform is not None:
+        filters.append(
+            select(SocialAccountModel.account_id)
+            .where(
+                SocialAccountModel.user_id == UserModel.user_id,
+                SocialAccountModel.platform == platform,
+                func.trim(SocialAccountModel.url) != "",
+            )
+            .correlate(UserModel)
+            .exists()
+        )
     return filters
+
+
+async def creator_inviters(
+    session: AsyncSession, creator_ids: list[UUID]
+) -> dict[UUID, dict[str, str | None]]:
+    """Read the registration referrer, independent of order assignments."""
+    binding = UserReferralBindingModel
+    rows = await session.execute(
+        select(
+            binding.referred_user_id,
+            UserModel.user_id,
+            UserModel.username,
+            UserModel.telegram,
+        )
+        .join(UserModel, UserModel.user_id == binding.referrer_user_id)
+        .where(binding.referred_user_id.in_(creator_ids))
+    )
+    return {
+        creator_id: {
+            "user_id": str(inviter_id),
+            "username": username,
+            "telegram": telegram,
+        }
+        for creator_id, inviter_id, username, telegram in rows.all()
+    }
 
 
 def advertiser_directory_filters(

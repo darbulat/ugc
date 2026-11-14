@@ -119,6 +119,7 @@ from ugc_bot.domain.enums import (
     RaterRole,
     UserStatus,
 )
+from ugc_bot.domain.social import SOCIAL_PLATFORM_LABELS, SocialPlatform
 from ugc_bot.infrastructure.db.checkout_models import AUTHORIZATIONS, INBOX
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -932,6 +933,7 @@ async def _render_creators_page(
     city: str,
     status: str,
     followers_min: int | None,
+    platform: SocialPlatform | None,
 ):
     """Render creators list HTML page."""
     if not await auth.authenticate(request):
@@ -949,8 +951,9 @@ async def _render_creators_page(
         city,
         status,
         followers_min,
+        platform.value if platform else None,
     )
-    cache_key = f"creator-directory:v2:{cache_params!r}" if cache else None
+    cache_key = f"creator-directory:v4:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
@@ -966,6 +969,7 @@ async def _render_creators_page(
             status=status,
             followers_min=followers_min,
             include_ratings=True,
+            platform=platform,
         )
 
     result = await _get_cached_or_fetch(
@@ -1001,6 +1005,11 @@ async def _render_creators_page(
             "city": city,
             "status": status,
             "followers_min": followers_min,
+            "platform": platform,
+            "platform_labels": {
+                **SOCIAL_PLATFORM_LABELS,
+                SocialPlatform.OTHER: "Другая площадка",
+            },
         },
     )
 
@@ -1523,7 +1532,12 @@ def _register_dashboard_html_routes(
         city: str = "",
         status: str = "",
         followers_min: str = "",
+        platform: str = "",
     ):
+        try:
+            social_platform = SocialPlatform(platform)
+        except ValueError:
+            social_platform = None
         return await _render_creators_page(
             request,
             auth,
@@ -1546,6 +1560,7 @@ def _register_dashboard_html_routes(
             and followers_min.isdigit()
             and len(followers_min) <= 12
             else None,
+            social_platform,
         )
 
     @app.get("/admin/users/advertisers", response_class=HTMLResponse)

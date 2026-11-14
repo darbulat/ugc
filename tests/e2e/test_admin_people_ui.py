@@ -30,6 +30,7 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     UserModel,
+    UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
@@ -40,8 +41,8 @@ def people_records():
     if not database or not os.environ.get("E2E_BASE_URL"):
         pytest.skip("Requires a synthetic admin server with PostGIS")
     engine = create_engine(require_test_database(database))
-    customer_id, creator_id, other_id, paused_id, order_id = [
-        uuid4() for _ in range(5)
+    customer_id, creator_id, other_id, paused_id, inviter_id, order_id = [
+        uuid4() for _ in range(6)
     ]
     now = datetime.now(timezone.utc)
     token = creator_id.hex[:8]
@@ -63,11 +64,22 @@ def people_records():
             (creator_id, creator_name, f"maria_{token}", UserStatus.ACTIVE),
             (other_id, f"Ирина {token}", None, UserStatus.BOT_BLOCKED),
             (paused_id, f"Ольга {token}", None, UserStatus.PAUSE),
+            (
+                inviter_id,
+                f"Менеджер {token}",
+                f"manager_{token}",
+                UserStatus.ACTIVE,
+            ),
         ]
     ]
     with Session(engine) as session, session.begin():
         session.add_all(users)
         session.flush()
+        session.add(
+            UserReferralBindingModel(
+                referrer_user_id=inviter_id, referred_user_id=other_id
+            )
+        )
         session.add(
             AdvertiserProfileModel(
                 user_id=customer_id,
@@ -95,9 +107,11 @@ def people_records():
                     instagram_followers_count=followers,
                 )
             )
-        for platform, url in (
-            ("tiktok", f"https://www.tiktok.com/@{instagram}"),
-            ("youtube", f"https://www.youtube.com/@{instagram}"),
+        for platform, url, handle in (
+            ("tiktok", f"https://www.tiktok.com/@{instagram}", instagram),
+            ("youtube", f"https://www.youtube.com/@{instagram}", instagram),
+            ("dzen", f"https://dzen.ru/{instagram}", instagram),
+            ("other", "https://www.twitch.tv/synthetic", "Twitch"),
         ):
             session.add(
                 SocialAccountModel(
@@ -105,7 +119,7 @@ def people_records():
                     user_id=creator_id,
                     platform=platform,
                     url=url,
-                    handle=instagram,
+                    handle=handle,
                     work_format=WorkFormat.UGC_ONLY,
                     created_at=now,
                     updated_at=now,
@@ -179,7 +193,13 @@ def people_records():
             db.execute(
                 delete(UserModel).where(
                     UserModel.user_id.in_(
-                        [customer_id, creator_id, other_id, paused_id]
+                        [
+                            customer_id,
+                            creator_id,
+                            other_id,
+                            paused_id,
+                            inviter_id,
+                        ]
                     )
                 )
             )
@@ -274,11 +294,26 @@ def test_creator_social_links_and_bot_status(
     page.get_by_role("link", name="Креаторы с недоступным ботом").click()
     expect(page.locator("#people-status")).to_have_value("bot_blocked")
     page.locator("#people-city").select_option(city.lower())
+    page.locator("#people-platform").select_option("instagram")
     page.locator(".people-filters").get_by_role("button", name="Найти").click()
     expect(page.get_by_text("Найдено 1")).to_be_visible()
     row = page.locator(".people-table tbody tr")
     expect(row).to_contain_text("Бот недоступен")
+    token = instagram.removeprefix("city_creator_")
+    inviter_name = f"Менеджер {token}"
+    inviter_link = row.get_by_role("link", name=inviter_name)
+    expect(inviter_link).to_be_visible()
+    expect(
+        row.get_by_role("link", name=f"Telegram @manager_{token}")
+    ).to_be_visible()
+    inviter_href = inviter_link.get_attribute("href")
+    inviter_link.click()
+    expect(page.get_by_role("heading", name=inviter_name)).to_be_visible()
+    page.go_back()
     row.locator(".people-name").click()
+    expect(page.get_by_role("link", name=inviter_name)).to_have_attribute(
+        "href", inviter_href
+    )
     expect(page.locator(".people-heading .people-pill")).to_have_text(
         "Бот недоступен"
     )
@@ -289,6 +324,7 @@ def test_creator_social_links_and_bot_status(
     page.locator(".people-filters").get_by_role("button", name="Найти").click()
     expect(page.get_by_text("Найдено 1")).to_be_visible()
     expect(row).to_contain_text("Ограничен")
+    expect(row).to_contain_text("Без привязки")
     expect(row).not_to_contain_text("Бот недоступен")
 
     page.goto(f"{base_url}/admin/users/creators?q={instagram}")
@@ -300,3 +336,57 @@ def test_creator_social_links_and_bot_status(
         link = page.get_by_role("link", name=label, exact=True)
         expect(link).to_be_visible()
         expect(link).to_have_attribute("href", f"https://{host}/@{instagram}")
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+def test_creator_platform_filter_combines_with_search_and_filters(
+    admin_server, page, people_records
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _, city, instagram, _, creator_name = people_records
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/users/creators")
+    form = page.locator(".people-filters")
+    submit = form.get_by_role("button", name="Найти")
+    platform = form.get_by_label("Есть ссылка на площадку")
+    form.get_by_label("Поиск").fill(creator_name)
+    form.get_by_label("Город").select_option(city.lower())
+    form.get_by_label("Статус").select_option("active")
+    form.get_by_label("Подписчики Instagram").select_option("5000")
+    form.get_by_label("Регистрация").select_option("7d")
+
+    for value, label in [
+        ("youtube", "YouTube"),
+        ("dzen", "Дзен"),
+        ("other", "Twitch"),
+    ]:
+        platform.select_option(value)
+        submit.click()
+        expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+        page.get_by_role("link", name=creator_name, exact=True).click()
+        expect(page.get_by_role("link", name=label, exact=True)).to_be_visible()
+        page.get_by_role("link", name="Назад к списку").click()
+        expect(platform).to_have_value(value)
+
+    form.get_by_label("С жалобами").check()
+    submit.click()
+    expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+    form.get_by_label("С жалобами").uncheck()
+    platform.select_option("vk")
+    submit.click()
+    expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+
+    form.get_by_role("link", name="Сбросить").click()
+    expect(platform).to_have_value("")
+    expect(form.get_by_label("Поиск")).to_have_value("")
+    form.get_by_label("Поиск").fill(
+        f"@other_{instagram.removeprefix('city_creator_')}"
+    )
+    platform.select_option("instagram")
+    submit.click()
+    expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+    expect(page.locator(".people-table tbody tr")).to_contain_text(
+        "Бот недоступен"
+    )
