@@ -1,11 +1,22 @@
 """Queries and single-order actions for the SQLAdmin orders list."""
 
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import String, cast, false, or_, select, text
+from sqlalchemy import String, case, cast, false, or_, select, text
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from ugc_bot.admin.complaints import OPEN_COMPLAINT_STATUSES
+from ugc_bot.admin.order_summary import (
+    DelayThresholds,
+    active_pick_reasons,
+    latest_order_activity,
+    manager_contact,
+    order_activity_at,
+    order_managers_query,
+    picked_order_count,
+)
 from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS, INBOX
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
@@ -17,6 +28,7 @@ from ugc_bot.infrastructure.db.models import (
     InteractionModel,
     ManagerOrderModel,
     OfferDispatchModel,
+    OrderItemModel,
     OrderModel,
     OutboxEventModel,
     PaymentModel,
@@ -32,36 +44,33 @@ ORDER_STATUS_LABELS = {
 }
 _VISIBILITY_ENTITY = "order_worklist_visibility"
 _TEST_ORDER_ENTITY = "order_test_marker"
+_ARCHIVE_ENTITY = "order_worklist_archive"
 UNPAID_GROUP = "unpaid"
 
 
-def _without_payment():
+_ORDER_ACTIVITY = (
+    (PaymentModel.__table__, "Есть запись об оплате"),
+    (CHECKOUTS, "Создана платёжная сессия"),
+    (ACCOMPANIMENT_LEADS, "Есть заявка на сопровождение"),
+    (OfferDispatchModel.__table__, "Есть рассылка или отклики"),
+    (BloggerRatingModel.__table__, "Есть оценки креаторов"),
+    (InteractionModel.__table__, "Есть история работы с креаторами"),
+    (ManagerOrderModel.__table__, "Назначен менеджер"),
+    (ComplaintModel.__table__, "Есть жалобы по заказу"),
+)
+
+
+def _order_has(table):
     return (
-        ~select(PaymentModel.payment_id)
-        .where(PaymentModel.order_id == OrderModel.order_id)
+        select(table.c.order_id)
+        .where(table.c.order_id == OrderModel.order_id)
         .correlate(OrderModel)
         .exists()
     )
 
 
 def _without_order_activity():
-    return _without_payment() & ~or_(
-        *(
-            select(table.c.order_id)
-            .where(table.c.order_id == OrderModel.order_id)
-            .correlate(OrderModel)
-            .exists()
-            for table in (
-                CHECKOUTS,
-                ACCOMPANIMENT_LEADS,
-                OfferDispatchModel.__table__,
-                BloggerRatingModel.__table__,
-                InteractionModel.__table__,
-                ManagerOrderModel.__table__,
-                ComplaintModel.__table__,
-            )
-        )
-    )
+    return ~or_(*(_order_has(table) for table, _ in _ORDER_ACTIVITY))
 
 
 def _can_hide():
@@ -72,7 +81,7 @@ def _can_close():
     return (
         (OrderModel.status == OrderStatus.ACTIVE)
         & OrderModel.financial_version.is_(None)
-        & _without_payment()
+        & ~_order_has(PaymentModel.__table__)
     )
 
 
@@ -95,44 +104,63 @@ def business_order_conditions():
     return (*worklist_conditions("all", ""), ~_is_test_order())
 
 
-def can_delete_order(*, postgresql: bool):
-    eligible = (
-        OrderModel.status.in_((OrderStatus.NEW, OrderStatus.PENDING_MODERATION))
-        & _is_test_order()
-        & _without_order_activity()
-        & OrderModel.complimentary.is_(False)
-        & ~select(INBOX.c.order_id)
-        .where(INBOX.c.order_id == OrderModel.order_id)
-        .correlate(OrderModel)
-        .exists()
-        & ~select(CONTROLS.c.order_id)
-        .where(CONTROLS.c.order_id == OrderModel.order_id)
-        .correlate(OrderModel)
-        .exists()
-    )
-    if not postgresql:
-        return eligible
-    return (
-        eligible
-        & ~select(OutboxEventModel.event_id)
-        .where(
-            OutboxEventModel.aggregate_id == cast(OrderModel.order_id, String),
-            OutboxEventModel.event_type == "order.activated",
+def order_deletion_blocker(*, postgresql: bool):
+    """Return the first reason the guarded test deletion would refuse."""
+    checks = [
+        (~_is_test_order(), "Заказ не отмечен как тестовый"),
+        *((_order_has(table), label) for table, label in _ORDER_ACTIVITY),
+        (_order_has(INBOX), "Есть событие оплаты"),
+        (
+            _order_has(OrderItemModel.__table__),
+            "Есть оплачиваемые позиции заказа",
+        ),
+        (_order_has(CONTROLS), "Сохранены настройки рассылки"),
+        (OrderModel.complimentary.is_(True), "Заказ запускался без оплаты"),
+        (
+            OrderModel.status.not_in(
+                (OrderStatus.NEW, OrderStatus.PENDING_MODERATION)
+            ),
+            "Заказ уже вышел из черновиков",
+        ),
+    ]
+    if postgresql:
+        checks.append(
+            (
+                select(OutboxEventModel.event_id)
+                .where(
+                    OutboxEventModel.aggregate_id
+                    == cast(OrderModel.order_id, String),
+                    OutboxEventModel.event_type == "order.activated",
+                )
+                .correlate(OrderModel)
+                .exists(),
+                "Заказ запускался в рассылку",
+            )
         )
-        .correlate(OrderModel)
-        .exists()
-    )
+    return case(*checks)
 
 
-def _latest_visibility_event(order_id: UUID | InstrumentedAttribute[UUID]):
+def _latest_worklist_event(
+    order_id: UUID | InstrumentedAttribute[UUID], entity: str
+):
     return (
         select(AuditLogModel)
         .where(
-            AuditLogModel.entity_type == _VISIBILITY_ENTITY,
+            AuditLogModel.entity_type == entity,
             AuditLogModel.entity_id == order_id,
         )
         .order_by(AuditLogModel.changed_at.desc(), AuditLogModel.id.desc())
         .limit(1)
+    )
+
+
+def order_archived():
+    return (
+        _latest_worklist_event(OrderModel.order_id, _ARCHIVE_ENTITY)
+        .with_only_columns(AuditLogModel.new_values["archived"].as_boolean())
+        .correlate(OrderModel)
+        .scalar_subquery()
+        .is_(True)
     )
 
 
@@ -160,23 +188,30 @@ def aging_unpaid_condition(now: datetime, hours: int):
 
 def order_visibility():
     return (
-        _latest_visibility_event(OrderModel.order_id)
+        _latest_worklist_event(OrderModel.order_id, _VISIBILITY_ENTITY)
         .with_only_columns(AuditLogModel.new_values["visible"].as_boolean())
         .correlate(OrderModel)
         .scalar_subquery()
     )
 
 
-def worklist_conditions(group: str, status: str):
+def worklist_conditions(group: str, status: str, *, admin_list: bool = False):
+    if group == "removed":
+        return [OrderModel.status != OrderStatus.DELETED, order_archived()]
+    scope = [~order_archived()] if admin_list else []
     # A hidden legacy order can still receive payment and resurface.
     hidden = _can_hide() & order_visibility().is_(False)
     if group == "hidden":
-        return [hidden]
+        return [hidden, *scope]
 
     if group == "test":
-        return [OrderModel.status != OrderStatus.DELETED, _is_test_order()]
+        return [
+            OrderModel.status != OrderStatus.DELETED,
+            _is_test_order(),
+            *scope,
+        ]
 
-    conditions = [OrderModel.status != OrderStatus.DELETED, ~hidden]
+    conditions = [OrderModel.status != OrderStatus.DELETED, ~hidden, *scope]
     if group != "all":
         conditions.append(~_is_test_order())
     if group == "closed":
@@ -227,20 +262,36 @@ def search_orders(term: str):
     )
 
 
-def worklist_row_details(session: Session, order_ids: list[UUID]):
+def worklist_row_details(
+    session: Session, order_ids: list[UUID], thresholds: DelayThresholds
+):
     if not order_ids:
         return {}
+    managers = defaultdict(list)
+    for manager in session.execute(order_managers_query(order_ids)):
+        managers[manager.order_id].append(manager_contact(manager))
     rows = session.execute(
         select(
-            OrderModel.order_id,
+            OrderModel,
+            picked_order_count().label("picked"),
+            order_activity_at().label("related_at"),
+            select(ComplaintModel.complaint_id)
+            .where(
+                ComplaintModel.order_id == OrderModel.order_id,
+                ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES),
+            )
+            .correlate(OrderModel)
+            .exists()
+            .label("has_complaints"),
             UserModel.username,
             AdvertiserProfileModel.brand,
             _can_close().label("can_close"),
             _can_hide().label("can_hide"),
             _is_test_order().label("is_test"),
-            can_delete_order(
+            order_deletion_blocker(
                 postgresql=session.get_bind().dialect.name == "postgresql"
-            ).label("can_delete"),
+            ).label("deletion_blocker"),
+            order_archived().label("archived"),
             CONTROLS.c.paused.label("dispatch_paused"),
         )
         .select_from(OrderModel)
@@ -252,7 +303,18 @@ def worklist_row_details(session: Session, order_ids: list[UUID]):
         )
         .where(OrderModel.order_id.in_(order_ids))
     )
-    return {row.order_id: row for row in rows}
+    now = datetime.now(timezone.utc)
+    return {
+        row[0].order_id: {
+            **{k: v for k, v in row._mapping.items() if k != "OrderModel"},
+            "managers": managers[row[0].order_id],
+            "attention_reasons": active_pick_reasons(
+                now, row[0], row.picked, row.dispatch_paused, thresholds
+            ),
+            "last_activity_at": latest_order_activity(row[0], row.related_at),
+        }
+        for row in rows
+    }
 
 
 def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
@@ -275,16 +337,15 @@ def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
 
 
 def _delete_test_order(session: Session, order: OrderModel) -> str:
-    eligible = can_delete_order(
-        postgresql=session.get_bind().dialect.name == "postgresql"
+    blocker = session.scalar(
+        select(
+            order_deletion_blocker(
+                postgresql=session.get_bind().dialect.name == "postgresql"
+            )
+        ).where(OrderModel.order_id == order.order_id)
     )
-    if not session.scalar(
-        select(eligible).where(OrderModel.order_id == order.order_id)
-    ):
-        return (
-            "Удалить можно только тестовый черновик без оплаты, "
-            "рассылки и связанных действий."
-        )
+    if blocker:
+        return f"Удалить можно только тестовый черновик без связей. {blocker}."
     previous_status = order.status.value
     order.status = OrderStatus.DELETED
     order.dispatch_stopped = True
@@ -301,6 +362,36 @@ def _delete_test_order(session: Session, order: OrderModel) -> str:
     return "Тестовый заказ удалён."
 
 
+def _record_worklist_flag(
+    session: Session, order_id: UUID, entity: str, key: str, value: bool
+) -> None:
+    previous = session.scalar(_latest_worklist_event(order_id, entity))
+    before = (
+        previous.new_values.get(key, key == "visible")
+        if previous
+        else key == "visible"
+    )
+    if before == value:
+        return
+    changed_at = datetime.now(timezone.utc)
+    if previous is not None:
+        # Preserve event ordering when application clocks differ.
+        last_change = previous.changed_at
+        if last_change.tzinfo is None:
+            last_change = last_change.replace(tzinfo=timezone.utc)
+        changed_at = max(changed_at, last_change + timedelta(microseconds=1))
+    session.add(
+        AuditLogModel(
+            entity_type=entity,
+            entity_id=order_id,
+            action=AuditAction.UPDATE,
+            old_values={key: before},
+            new_values={key: value},
+            changed_at=changed_at,
+        )
+    )
+
+
 def _set_order_visibility(
     session: Session, order_id: UUID, visible: bool
 ) -> str:
@@ -308,30 +399,9 @@ def _set_order_visibility(
         select(_can_hide()).where(OrderModel.order_id == order_id)
     ):
         return "Заказ уже в работе или связан с оплатой. Скрытие недоступно."
-    previous = session.scalar(_latest_visibility_event(order_id))
-    was_visible = (
-        previous is None or previous.new_values.get("visible") is not False
+    _record_worklist_flag(
+        session, order_id, _VISIBILITY_ENTITY, "visible", visible
     )
-    if was_visible != visible:
-        changed_at = datetime.now(timezone.utc)
-        if previous is not None:
-            # Keep event order when app clocks differ or timestamps tie.
-            last_change = previous.changed_at
-            if last_change.tzinfo is None:
-                last_change = last_change.replace(tzinfo=timezone.utc)
-            changed_at = max(
-                changed_at, last_change + timedelta(microseconds=1)
-            )
-        session.add(
-            AuditLogModel(
-                entity_type=_VISIBILITY_ENTITY,
-                entity_id=order_id,
-                action=AuditAction.UPDATE,
-                old_values={"visible": was_visible},
-                new_values={"visible": visible},
-                changed_at=changed_at,
-            )
-        )
     return "Заказ возвращён в список." if visible else "Заказ убран из списка."
 
 
@@ -356,6 +426,16 @@ def change_order_worklist(
         return _delete_test_order(session, order)
     if operation in {"hide", "restore"}:
         return _set_order_visibility(session, order_id, operation == "restore")
+    if operation in {"archive-order", "restore-archived"}:
+        archived = operation == "archive-order"
+        _record_worklist_flag(
+            session, order_id, _ARCHIVE_ENTITY, "archived", archived
+        )
+        return (
+            "Заказ удалён из списка. Его можно вернуть из вкладки «Удалённые»."
+            if archived
+            else "Заказ возвращён из удалённых."
+        )
     if not session.scalar(
         select(_can_close()).where(OrderModel.order_id == order_id)
     ):

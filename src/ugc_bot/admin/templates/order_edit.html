@@ -1,6 +1,7 @@
-{% extends "sqladmin/layout.html" %}
+{% extends "sqladmin/base.html" %}
 {% block head %}
 {{ super() }}
+<link rel="stylesheet" href="{{ admin_asset(request, 'admin-shell.css') }}">
 <link rel="stylesheet" href="{{ admin_asset(request, 'order-editor.css') }}">
 {% endblock %}
 {% macro order_field(field) %}
@@ -18,6 +19,13 @@
         <option value="{{ value }}"{% if selected %} selected{% endif %}>{{ order_status_labels[value] }}</option>
         {% endfor %}
       </select>
+    {% elif field.name == 'order_type' %}
+      <select class="form-select" name="order_type" id="order_type"{% if field.flags.required %} required{% endif %}>
+        {% set formats = {'ugc_only': 'UGC', 'ugc_plus_placement': 'UGC + размещение', 'stories': 'Сторис'} %}
+        {% for value, label, selected, _ in field.iter_choices() %}
+        <option value="{{ value }}"{% if selected %} selected{% endif %}>{{ formats.get(value, label) }}</option>
+        {% endfor %}
+      </select>
     {% else %}
       {% set attributes = {'aria-describedby': described_by|join(' ')} if described_by else {} %}
       {% if field.errors %}{% set _ = attributes.update({'aria-invalid': 'true'}) %}{% endif %}
@@ -30,10 +38,13 @@
   {% if field.errors %}<div class="text-danger" id="{{ field.id }}-error">{{ field.errors|join(' ') }}</div>{% endif %}
 </div>
 {% endmacro %}
+{% block body %}
+{% include 'admin_nav.html' %}
+<main class="ugc-model-page">
 {% block content %}
 {% set back_url = order_return_url(request) %}
 {% set order_url = request.url_for('admin_order_detail', order_id=obj.order_id).include_query_params(return_to=back_url) %}
-<div class="col-12 order-editor">
+<article class="order-editor">
   <div class="order-editor__top">
     <nav class="d-flex flex-wrap gap-2" aria-label="Навигация по заказу">
       <a href="{{ back_url }}" class="btn btn-outline-secondary">← Назад к списку</a>
@@ -41,18 +52,15 @@
       <a href="{{ request.url_for('admin_user_card', user_id=obj.advertiser_id).include_query_params(from_order=obj.order_id, return_to=back_url) }}" class="btn btn-outline-secondary">{{ order_actions.brand or order_actions.username or 'Профиль заказчика' }}</a>
     </nav>
     <div class="order-editor__heading">
-      <div>
+      <div class="order-editor__intro">
         <span class="order-editor__status">{{ order_status_labels.get(obj.status, obj.status) }}</span>
         {% if order_actions.is_test %}<span class="order-editor__status">Тестовый</span>{% endif %}
+        {% if order_actions.archived %}<span class="order-editor__status">Удалён из списка</span>{% endif %}
         {% if obj.complimentary %}<span class="order-editor__status">Запущен без оплаты</span>{% endif %}
         <h1>{{ obj.offer_text|default('Заказ', true)|truncate(120) }}</h1>
         <span class="text-muted">{{ obj.geography or 'География не задана' }}</span>
       </div>
-      {% if order_actions.can_delete %}
-        {% set delete_title = obj.offer_text or 'Заказ' %}
-        {% set delete_url = request.url_for('update_order_worklist', order_id=obj.order_id, operation='delete-test').include_query_params(return_to=back_url) %}
-        {% include 'order_delete_button.html' %}
-      {% endif %}
+      <button type="submit" form="order-edit-form" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить изменения</button>
     </div>
   </div>
   <div class="order-editor__bar">
@@ -61,6 +69,7 @@
       <a href="#order-edit-terms">Условия</a>
       <a href="#order-edit-audience">Подбор креаторов</a>
       <a href="#order-edit-files">Фото и менеджеры</a>
+      <a href="#order-edit-actions">Действия</a>
     </nav>
     <div class="order-editor__audience" role="status">
       {% if order_geography_unavailable %}
@@ -152,7 +161,30 @@
       {% endif %}
     </div>
   </form>
-</div>
+  <section class="order-editor__panel order-editor__danger" id="order-edit-actions" aria-labelledby="order-edit-actions-heading">
+    <div>
+      <h2 id="order-edit-actions-heading">Действия с заказом</h2>
+      {% if order_actions.is_test and order_actions.deletion_blocker %}
+        <p>{{ order_actions.deletion_blocker }}. Можно удалить из списка с сохранением истории.</p>
+      {% elif order_actions.deletion_blocker and not order_actions.archived %}
+        <p>Заказ можно вернуть во вкладке «Удалённые».</p>
+      {% endif %}
+    </div>
+    {% set delete_order_id = obj.order_id %}
+    {% set delete_title = obj.offer_text or 'Заказ' %}
+    {% set delete_return_url = back_url %}
+    {% set deletion_blocker = order_actions.deletion_blocker %}
+    {% set archived = order_actions.archived %}
+    {% set delete_button_class = 'btn btn-outline-danger' %}
+    {% set restore_button_class = 'btn btn-outline-secondary' %}
+    {% include 'order_delete_button.html' %}
+  </section>
+</article>
+{% endblock %}
+</main>
+{% endblock %}
+{% block tail %}
+{{ super() }}
 <script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
 <script defer src="{{ admin_asset(request, 'order-editor.js') }}"></script>
 {% endblock %}

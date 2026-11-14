@@ -1,16 +1,16 @@
 {% macro count(value) -%}
   {{- '{:,}'.format(value).replace(',', ' ') -}}
 {%- endmacro %}
-{% macro telegram(value) -%}
+{% macro telegram(value, show_platform=false) -%}
   {% set handle = value|telegram_handle %}
   {% if handle %}
-    <a href="https://t.me/{{ handle }}" target="_blank" rel="noopener noreferrer" aria-label="Telegram @{{ handle }}">@{{ handle }}</a>
+    <a href="https://t.me/{{ handle }}" target="_blank" rel="noopener noreferrer" aria-label="Telegram @{{ handle }}">{% if show_platform %}Telegram {% endif %}@{{ handle }}</a>
   {% elif value %}{{ value }}{% endif %}
 {%- endmacro %}
-{% macro instagram(value) -%}
+{% macro instagram(value, show_platform=false) -%}
   {% set account = value|instagram_link %}
   {% if account %}
-    <a href="{{ account[0] }}" target="_blank" rel="noopener noreferrer" aria-label="Instagram @{{ account[1] }}">@{{ account[1] }}</a>
+    <a href="{{ account[0] }}" target="_blank" rel="noopener noreferrer" aria-label="Instagram @{{ account[1] }}">{% if show_platform %}Instagram {% endif %}@{{ account[1] }}</a>
   {% elif value %}{{ value }}{% endif %}
 {%- endmacro %}
 {% macro stars(value) -%}

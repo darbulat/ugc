@@ -1,218 +1,175 @@
 {% extends "base.html" %}
-{% block title %}Заказ {{ order.order_id }}{% endblock %}
+{% from "people_parts.html" import telegram, instagram %}
+{% block title %}{{ (order.offer_text or 'Заказ')|truncate(65) }}{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="{{ admin_asset(request, 'order-detail.css') }}">
+{% endblock %}
+{% macro fact(label, value) %}
+  <div><dt>{{ label }}</dt><dd>{{ value if value is defined and value is not none and value != '' else '—' }}</dd></div>
+{% endmacro %}
 {% block content %}
   {% set back_url = order_return_url(request) %}
   {% set status = order.lifecycle_status|default(order.status_label) %}
-  <div class="admin-actions">
-    <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
-    <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
-    {% if order.can_delete %}
-      {% set delete_title = order.offer_text or 'Заказ' %}
-      {% set delete_url = request.url_for('update_order_worklist', order_id=order.order_id, operation='delete-test').include_query_params(return_to=back_url) %}
-      {% set delete_button_class = 'admin-button admin-button--danger' %}
-      {% include 'order_delete_button.html' %}
-    {% endif %}
-  </div>
-  <section class="section">
-    <div class="card order-summary">
-      <span class="badge">{{ status_labels.get(status, status) }}</span>
-      <h1>{{ order.offer_text or order.description or 'Заказ' }}</h1>
-      {% if order.advertiser_id %}
-        <a href="{{ request.url_for('admin_user_card', user_id=order.advertiser_id).include_query_params(from_order=order.order_id, return_to=back_url) }}">{{ order.advertiser }}</a>
-      {% else %}
-        {{ order.advertiser }}
-      {% endif %}
-      {% if order.geography %}<span> · {{ order.geography }}</span>{% endif %}
-      <dl class="order-summary__progress">
-        <div><dt>Нужно</dt><dd>{{ order.bloggers_needed }}</dd></div>
-        <div><dt>Подобрано</dt><dd>{{ order.picked_count }}</dd></div>
-        <div><dt>Откликнулось</dt><dd>{{ order.accepted_count|default('—') }}</dd></div>
-      </dl>
-    </div>
-    <div class="card">
-      <h2 class="card__subtitle">Идентификация</h2>
-      <div class="detail-row">
-        <div class="detail-label">ID заказа</div>
-        <div class="detail-value">{{ order.order_id }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">ID заказчика</div>
-        <div class="detail-value">{{ order.advertiser_id }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Заказчик</div>
-        <div class="detail-value">{{ order.advertiser }}</div>
-      </div>
-      <h2 class="card__subtitle">Содержание заказа</h2>
-      <div class="detail-row">
-        <div class="detail-label">Тип заказа</div>
-        <div class="detail-value">{{ order.order_type }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Ссылка на товар</div>
-        <div class="detail-value">{{ order.product_link or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Текст оффера</div>
-        <div class="detail-value">{{ order.offer_text or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Описание бартера</div>
-        <div class="detail-value">{{ order.barter_description or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Цена</div>
-        <div class="detail-value">{{ order.price }} {{ order.currency|default('') }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Использование контента</div>
-        <div class="detail-value">{{ order.content_usage or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Сроки</div>
-        <div class="detail-value">{{ order.deadlines or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">География</div>
-        <div class="detail-value">{{ order.geography or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">ID фото товара</div>
-        <div class="detail-value">{{ order.product_photo_file_id or "—" }}</div>
-      </div>
-      <h2 class="card__subtitle">Подбор креаторов</h2>
-      <div class="detail-row">
-        <div class="detail-label">Нужно креаторов</div>
-        <div class="detail-value">{{ order.bloggers_needed }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Подобрано</div>
-        <div class="detail-value">{{ order.picked_count }} / {{ order.bloggers_needed }}</div>
-      </div>
-      {% if order.eligible_creators_count is defined and order.eligible_creators_count is not none %}
-      <div class="detail-row">
-        <div class="detail-label">Подходящих креаторов</div>
-        <div class="detail-value">{{ order.eligible_creators_count }}</div>
-      </div>
-      {% endif %}
-      <div class="detail-row">
-        <div class="detail-label">Отправлено уведомлений</div>
-        <div class="detail-value">{{ order.dispatched_count }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Откликов</div>
-        <div class="detail-value">{{ order.accepted_count }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Прогресс</div>
-        <div class="detail-value">
-          <div class="progress">
-            <div class="progress__bar" style="width: {{ (order.progress * 100) | round(0) }}%"></div>
+  {% set needed = order.bloggers_needed|default(0) %}
+  {% set picked = order.picked_count|default(0) %}
+  {% set title = order.offer_text or order.description or 'Заказ' %}
+  {% set customer_url = (request.url_for('admin_user_card', user_id=order.advertiser_id).include_query_params(from_order=order.order_id, return_to=back_url)) if order.advertiser_id else none %}
+  <div class="order-detail">
+    <nav class="admin-actions" aria-label="Навигация по заказу">
+      <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
+      {% if customer_url %}<a class="admin-button" href="{{ customer_url }}">{{ order.advertiser or 'Профиль заказчика' }}</a>{% endif %}
+      <a class="admin-button" href="#order-detail-actions">Действия с заказом</a>
+    </nav>
+    <section class="card order-detail__overview">
+      <div class="order-detail__heading">
+        <div>
+          <div class="order-detail__badges">
+            <span class="badge order-detail__status">{{ status_labels.get(status, status) }}</span>
+            {% if order.get('is_test') %}<span class="badge">Тестовый</span>{% endif %}
+            {% if order.get('archived') %}<span class="badge">Удалён из списка</span>{% endif %}
           </div>
+          <h1>{{ title|truncate(120) }}</h1>
+          <p class="muted">{{ order.geography or 'География не указана' }} · {{ {'ugc_only': 'UGC', 'ugc_plus_placement': 'UGC + размещение', 'stories': 'Сторис'}.get(order.order_type, order.order_type or 'Формат не указан') }}</p>
         </div>
+        <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
       </div>
-      <h2 class="card__subtitle">Фильтры (админ)</h2>
-      <div class="detail-row">
-        <div class="detail-label">Мин. подписчиков</div>
-        <div class="detail-value">{{ order.min_followers if order.min_followers is not none else "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Макс. подписчиков</div>
-        <div class="detail-value">{{ order.max_followers if order.max_followers is not none else "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Мин. возраст</div>
-        <div class="detail-value">{{ order.min_age if order.min_age is not none else "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Макс. возраст</div>
-        <div class="detail-value">{{ order.max_age if order.max_age is not none else "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Мин. публикаций</div>
-        <div class="detail-value">{{ order.min_publications if order.min_publications is not none else "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Макс. публикаций</div>
-        <div class="detail-value">{{ order.max_publications if order.max_publications is not none else "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Пол креатора</div>
-        <div class="detail-value">{{ order.required_blogger_gender or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Фильтр по цене</div>
-        <div class="detail-value">{% if order.filter_by_price %}Да (дельта ± {{ order.price_filter_delta|default("—") }}){% else %}Нет{% endif %}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Фильтр по размещению</div>
-        <div class="detail-value">{% if order.filter_by_placement %}Да{% else %}Нет{% endif %}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Фильтр по бартеру</div>
-        <div class="detail-value">{% if order.filter_by_barter %}Да{% else %}Нет{% endif %}</div>
-      </div>
-      <h2 class="card__subtitle">Статус и даты</h2>
-      <div class="detail-row">
-        <div class="detail-label">Статус</div>
-        <div class="detail-value">
-          {{ status_labels.get(status, status) }}
-        </div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Время в статусе (ч)</div>
-        <div class="detail-value">{{ order.status_age_hours }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Флаг проблемы</div>
-        <div class="detail-value">
-          {% if order.has_problem %}
-            <span class="badge badge--alert">Да</span>
+      <div class="order-detail__stats">
+        <article>
+          <h2>Подбор</h2>
+          <strong>{{ picked }} из {{ needed }}</strong>
+          <div class="order-detail__progress" role="progressbar" aria-label="Подобрано креаторов" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
+            <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>
+          </div>
+          <small>Осталось подобрать {{ order.get('remaining_count', [needed - picked, 0]|max) }}</small>
+        </article>
+        <article>
+          <h2>Отклики</h2>
+          <strong>{{ order.accepted_count|default(0) }}</strong>
+          <small>Отправлено офферов {{ order.dispatched_count|default(0) }}</small>
+          {% if order.get('eligible_creators_count') is not none %}<small>Подходят по фильтрам {{ order.eligible_creators_count }}</small>{% endif %}
+        </article>
+        <article>
+          <h2>Менеджеры</h2>
+          {% for manager in order.get('managers', []) %}
+            <div class="order-detail__manager">
+              <a href="{{ request.url_for('admin_user_card', user_id=manager.id).include_query_params(from_order=order.order_id, return_to=back_url) }}">{{ manager.name or 'Профиль менеджера' }}</a>
+              {{ telegram(manager.telegram) }}
+            </div>
           {% else %}
-            <span class="badge badge--ok">Нет</span>
-          {% endif %}
-        </div>
+            <span class="muted">Менеджер не назначен</span>
+          {% endfor %}
+        </article>
+        <article>
+          <h2>Последняя активность</h2>
+          <strong class="order-detail__date">{{ order.get('last_activity_at', order.get('created_at'))|admin_date }}</strong>
+          <small>Создан {{ order.get('created_at')|admin_date }}</small>
+        </article>
       </div>
-      <div class="detail-row">
-        <div class="detail-label">Дата создания</div>
-        <div class="detail-value">{{ order.created_at }}</div>
+      {% if order.get('attention_reasons') or order.has_problem %}
+      <div class="order-detail__alerts" aria-label="Требует внимания">
+        {% for reason in order.get('attention_reasons', []) %}
+          <span class="badge badge--alert">{{ delay_reason_labels.get(reason, reason) }}</span>
+        {% endfor %}
+        {% if order.has_problem %}
+          <a class="badge badge--alert" href="/admin/complaint-model/list?status=open&amp;search={{ order.order_id }}">Открытые жалобы · {{ order.get('open_complaints', 1) }}</a>
+        {% endif %}
       </div>
-      <div class="detail-row">
-        <div class="detail-label">Дата обновления</div>
-        <div class="detail-value">{{ order.updated_at or "—" }}</div>
-      </div>
-      <div class="detail-row">
-        <div class="detail-label">Дата завершения</div>
-        <div class="detail-value">{{ order.completed_at or "—" }}</div>
-      </div>
-    </div>
-    {% if order.responses_list %}
-    <div class="card">
-      <h2>Креаторы, готовые снять UGC</h2>
-      <div class="admin-table-scroll" role="region" aria-label="Отклики на заказ" tabindex="0">
+      {% endif %}
+    </section>
+
+    <section class="card order-detail__section" aria-labelledby="order-responses-heading">
+      <h2 id="order-responses-heading">{{ 'Подобранные креаторы и отклики' if order.responses_list else 'Креаторы и отклики' }}</h2>
+      {% if order.responses_list %}
+      {% set work_labels = {'assigned': 'Назначен', 'in_progress': 'В работе', 'success_claimed': 'Ждёт подтверждения', 'disputed': 'Спор', 'success_final': 'Завершено', 'unconfirmed_expired': 'Истёк срок подтверждения', 'available': 'Можно заменить', 'rejected': 'Отклонён'} %}
+      <div class="admin-table-scroll order-detail__table" role="region" aria-label="Отклики на заказ" tabindex="0">
         <table class="table">
-            <thead>
-              <tr>
-                <th>Креатор</th>
-                <th>Дата отклика</th>
-                <th>Статус</th>
-                <th>UGC видео</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in order.responses_list %}
-              <tr>
-                <td><a href="/admin/users/{{ r.blogger_id }}">{{ r.blogger_id }}</a></td>
-                <td>{{ r.responded_at }}</td>
-                <td>{% if r.in_offer %}<span class="badge badge--ok">Принят</span>{% else %}<span class="badge">В резерве</span>{% endif %}</td>
-                <td>{% if r.ugc_video_url %}<a href="{{ r.ugc_video_url }}" target="_blank">Ссылка</a>{% else %}—{% endif %}</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <thead><tr><th scope="col">Креатор</th><th scope="col">Статус</th><th scope="col">Отклик / назначение</th><th scope="col">UGC-видео</th></tr></thead>
+          <tbody>
+            {% for response in order.responses_list %}
+            <tr>
+              <td>
+                <a class="order-detail__creator" href="{{ request.url_for('admin_user_card', user_id=response.blogger_id).include_query_params(from_order=order.order_id, return_to=back_url) }}">{{ response.name or 'Профиль креатора' }}</a>
+                <div class="order-detail__contacts">
+                  {% if response.get('instagram') %}{{ instagram(response.instagram, show_platform=true) }}{% endif %}
+                  {% if response.get('telegram') %}{{ telegram(response.telegram, show_platform=true) }}{% endif %}
+                </div>
+              </td>
+              <td><span class="badge{% if response.in_offer %} badge--ok{% endif %}">{{ work_labels.get(response.get('work_state'), 'Подобран') if response.in_offer else 'В резерве' }}</span></td>
+              <td>
+                {% if response.get('responded_at') %}{{ response.responded_at|admin_date }}
+                {% elif response.get('assigned_at') %}{{ response.assigned_at|admin_date }}{% else %}—{% endif %}
+              </td>
+              <td>{% if response.get('ugc_video_url')|safe_order_link %}<a href="{{ response.ugc_video_url|safe_order_link }}" target="_blank" rel="noopener noreferrer">Открыть видео</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-    </div>
-    {% endif %}
-  </section>
+      {% else %}
+        <p class="muted">Откликов пока нет.</p>
+      {% endif %}
+    </section>
+
+    <section class="card order-detail__section" aria-labelledby="order-brief-heading">
+      <h2 id="order-brief-heading">Бриф и условия</h2>
+      <p class="order-detail__brief">{{ title }}</p>
+      <div class="admin-actions">
+        {% if order.get('product_link')|safe_order_link %}<a class="admin-button" href="{{ order.product_link|safe_order_link }}" target="_blank" rel="noopener noreferrer">Товар или сайт</a>{% endif %}
+        {% if order.get('brief_link')|safe_order_link %}<a class="admin-button" href="{{ order.brief_link|safe_order_link }}" target="_blank" rel="noopener noreferrer">Открыть ТЗ</a>{% endif %}
+      </div>
+      <dl class="order-detail__facts">
+        {% if order.price is number %}
+          {{ fact('Вознаграждение креатору', '{:,.2f}'.format(order.price).replace(',', ' ').replace('.', ',') ~ ' ' ~ order.currency|default('')) }}
+        {% endif %}
+        {{ fact('Бартер', order.barter_description) }}
+        {{ fact('Использование контента', order.content_usage) }}
+        {{ fact('Сроки', order.deadlines) }}
+      </dl>
+    </section>
+
+    <details class="card order-detail__section">
+      <summary>Фильтры подбора</summary>
+      <dl class="order-detail__facts">
+        {{ fact('География', order.geography) }}
+        {{ fact('Подписчики', (order.min_followers|default('—', true)) ~ ' — ' ~ (order.max_followers|default('—', true))) }}
+        {{ fact('Возраст', (order.min_age|default('—', true)) ~ ' — ' ~ (order.max_age|default('—', true))) }}
+        {{ fact('Публикации', (order.min_publications|default('—', true)) ~ ' — ' ~ (order.max_publications|default('—', true))) }}
+        {{ fact('Пол', {'male': 'Мужской', 'female': 'Женский', 'm': 'Мужской', 'f': 'Женский'}.get(order.required_blogger_gender, order.required_blogger_gender)) }}
+        {{ fact('Фильтр по цене', ('Да, допуск ± ' ~ order.price_filter_delta) if order.filter_by_price and order.price_filter_delta is number else ('Да' if order.filter_by_price else 'Нет')) }}
+        {{ fact('Фильтр по размещению', 'Да' if order.filter_by_placement else 'Нет') }}
+        {{ fact('Фильтр по бартеру', 'Да' if order.filter_by_barter else 'Нет') }}
+      </dl>
+    </details>
+
+    <details class="card order-detail__section">
+      <summary>Служебные данные</summary>
+      <dl class="order-detail__facts">
+        {{ fact('ID заказа', order.order_id) }}
+        {{ fact('ID заказчика', order.advertiser_id) }}
+        {{ fact('Дата обновления', order.get('updated_at')|admin_date) }}
+        {{ fact('Дата завершения', order.get('completed_at')|admin_date) }}
+        {{ fact('ID фото товара', order.product_photo_file_id) }}
+      </dl>
+    </details>
+
+    <section class="card order-detail__section order-detail__actions" id="order-detail-actions" aria-labelledby="order-detail-actions-heading">
+      <div>
+        <h2 id="order-detail-actions-heading">Действия с заказом</h2>
+        {% if order.get('is_test') and order.get('deletion_blocker') %}
+          <p class="muted">Нельзя удалить сам заказ: {{ order.deletion_blocker|lower }}. Из списка его можно убрать с сохранением истории.</p>
+        {% elif not order.get('can_delete') and not order.get('archived') %}
+          <p class="muted">Заказ можно вернуть во вкладке «Удалённые».</p>
+        {% endif %}
+      </div>
+      {% set delete_order_id = order.order_id %}
+      {% set delete_title = title %}
+      {% set delete_return_url = back_url if back_url.split('?')[0] == '/admin/order-model/list' else '/admin/order-model/list' %}
+      {% set deletion_blocker = order.get('deletion_blocker') if order.get('can_delete') else order.get('deletion_blocker') or 'История заказа' %}
+      {% set archived = order.get('archived') %}
+      {% set delete_button_class = 'admin-button admin-button--danger' %}
+      {% set restore_button_class = 'admin-button' %}
+      {% include 'order_delete_button.html' %}
+    </section>
+  </div>
   <script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
 {% endblock %}

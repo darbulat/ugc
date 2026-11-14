@@ -188,7 +188,7 @@ function updateDetail() {
   if (values.open) renderValues(dates);
 }
 
-function openDetail(title, config) {
+function openDetail(title, config, focusDate) {
   selected = config;
   detail.querySelector("#chart-detail-title").textContent = title;
   detail.querySelector(".chart-detail-note").textContent = config.note;
@@ -196,8 +196,8 @@ function openDetail(title, config) {
     input.min = calendar[0];
     input.max = calendar.at(-1);
   }
-  from.value = from.min;
-  to.value = to.max;
+  from.value = focusDate ?? from.min;
+  to.value = focusDate ?? to.max;
   to.setCustomValidity("");
   values.open = !window.Chart;
   detail.querySelector(".chart-plot").hidden = !window.Chart;
@@ -207,26 +207,45 @@ function openDetail(title, config) {
 
 function renderPeaks(charts) {
   const observations = document.querySelector(".chart-observations");
-  const list = observations.querySelector("ul");
-  for (const config of Object.values(charts)) {
+  const list = observations.querySelector(".chart-peaks");
+  const labels = {
+    "Креаторы": "Регистрации креаторов",
+    "Заказчики": "Регистрации заказчиков",
+    "Создано": "Новые заказы",
+    "Оплачено": "Оплаченные заказы",
+  };
+  for (const [key, config] of Object.entries(charts)) {
+    const chartTitle = dashboard.querySelector(`[data-chart="${key}"] h3`).textContent;
     for (const { label, byDate } of config.series) {
-      let peak = 0;
+      let maximum = 0;
       let dates = [];
       for (const date of calendar) {
         const count = byDate.get(date) ?? 0;
-        if (count > peak) {
-          peak = count;
+        if (count > maximum) {
+          maximum = count;
           dates = [date];
-        } else if (count > 0 && count === peak) {
+        } else if (count > 0 && count === maximum) {
           dates.push(date);
         }
       }
-      if (!peak) continue;
+      if (!maximum) continue;
       const item = document.createElement("li");
-      const format = config.money ? amounts : integers;
-      const shown = dates.slice(0, 3).map(longDate).join(", ");
-      const remaining = dates.length > 3 ? " и ещё " + (dates.length - 3) : "";
-      item.textContent = label + " · " + format.format(peak) + " · " + shown + remaining;
+      const caption = document.createElement("span");
+      caption.textContent = config.money ? "Сумма оплат" : labels[label];
+      const value = document.createElement("strong");
+      value.textContent = config.money ? amounts.format(maximum) + " " + label : integers.format(maximum);
+      const dateLinks = document.createElement("div");
+      for (const date of dates.slice(0, 3)) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "admin-button";
+        button.textContent = longDate(date);
+        button.setAttribute("aria-label", `Открыть график «${chartTitle}» за ${longDate(date)}`);
+        button.addEventListener("click", () => openDetail(chartTitle, config, date));
+        dateLinks.append(button);
+      }
+      if (dates.length > 3) dateLinks.append("ещё " + (dates.length - 3));
+      item.append(caption, value, dateLinks);
       list.append(item);
     }
   }
@@ -284,10 +303,6 @@ detail.addEventListener("close", () => {
   expandedChart = undefined;
   values.open = false;
   values.querySelector("tbody").replaceChildren();
-});
-
-document.querySelector(".payout-jump").addEventListener("click", () => {
-  document.querySelector("#payout-requests details").open = true;
 });
 
 loadDashboardCharts().catch(() => {

@@ -702,21 +702,45 @@ body {
   margin-top: 1rem;
 }
 
-.chart-observations ul {
-  margin: .65rem 0 0;
-  padding-inline-start: 1.25rem;
-  line-height: 1.7;
-  display: flex;
-  flex-wrap: wrap;
-  column-gap: 2rem;
+.chart-observations summary { cursor: pointer; font-weight: 650; }
+
+.chart-peaks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  margin: .8rem 0 0;
+  padding: 0;
+  gap: .65rem;
+  list-style: none;
 }
 
-.payout-jump {
+.chart-peaks li {
+  display: grid;
+  gap: .4rem;
+  align-content: start;
+  padding: .8rem;
+  background: #f6f8fd;
+  border-radius: .55rem;
+}
+
+.chart-peaks strong { font-size: 1.25rem; }
+
+.chart-peaks li div {
   display: flex;
   flex-wrap: wrap;
-  gap: .35rem .7rem;
-  align-items: baseline;
-  width: fit-content;
+  gap: .3rem;
+  align-items: center;
+  font-size: .8rem;
+}
+
+.chart-peaks button { padding: .28rem .45rem; }
+
+.payout-queue {
+  grid-column: 1 / -1;
+}
+
+.payout-queue summary small {
+  margin-inline-start: .35rem;
+  font-weight: 400;
 }
 
 .payout-table {

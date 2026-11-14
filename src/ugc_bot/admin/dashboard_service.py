@@ -20,10 +20,24 @@ from ugc_bot.admin.complaints import (
     COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
 )
+from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
+from ugc_bot.admin.order_summary import (
+    active_pick_reasons,
+    financial_positions,
+    latest_order_activity,
+    manager_contact,
+    order_activity_at,
+    order_age_hours,
+    order_creator_contacts,
+    order_managers_query,
+    picked_order_count,
+)
 from ugc_bot.admin.order_worklist import (
+    _is_test_order,
     aging_unpaid_condition,
     business_order_conditions,
-    can_delete_order,
+    order_archived,
+    order_deletion_blocker,
     worklist_conditions,
 )
 from ugc_bot.admin.people import (
@@ -141,16 +155,6 @@ def paid_in_period(start: datetime, end: datetime) -> ColumnElement[bool]:
             select(OrderModel.order_id).where(*business_order_conditions())
         ),
     )
-
-
-@dataclass(slots=True)
-class DelayThresholds:
-    """Thresholds for delayed orders detection."""
-
-    active_days: int
-    no_responses_hours: int
-    low_picked_hours: int
-    archive_days: int
 
 
 @dataclass(slots=True)
@@ -1325,12 +1329,11 @@ class AdminDashboardService:
     async def _get_order_attention(self, session: AsyncSession) -> dict:
         """Group current orders by the action they are waiting for."""
         now = datetime.now(timezone.utc)
-        responses = self._order_responses_subquery()
         complaint_counts = self._open_complaints_subquery()
         query = (
             select(
                 OrderModel,
-                func.coalesce(responses.c.responses, 0).label("responses"),
+                picked_order_count().label("responses"),
                 func.coalesce(complaint_counts.c.open_complaints, 0).label(
                     "open_complaints"
                 ),
@@ -1348,7 +1351,6 @@ class AdminDashboardService:
                 AdvertiserProfileModel,
                 AdvertiserProfileModel.user_id == OrderModel.advertiser_id,
             )
-            .outerjoin(responses, responses.c.order_id == OrderModel.order_id)
             .outerjoin(
                 complaint_counts,
                 complaint_counts.c.order_id == OrderModel.order_id,
@@ -1359,6 +1361,7 @@ class AdminDashboardService:
             .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
             .where(
                 *business_order_conditions(),
+                ~order_archived(),
                 OrderModel.status.in_(_ACTIVE_ORDER_STATUSES),
             )
             .order_by(OrderModel.created_at, OrderModel.order_id)
@@ -1393,7 +1396,7 @@ class AdminDashboardService:
                     "advertiser": name,
                     "offer_text": order.offer_text,
                     "created_at": order.created_at,
-                    "age_hours": self._age_hours(now, order.created_at),
+                    "age_hours": order_age_hours(now, order.created_at),
                     "picked_count": int(picked),
                     "needed_count": int(order.bloggers_needed),
                     "has_problem": open_count > 0,
@@ -1420,11 +1423,9 @@ class AdminDashboardService:
             if aging_unpaid:
                 return "unpaid", ["waiting_payment"]
             return None, []
-        if order.dispatch_stopped or picked >= order.bloggers_needed:
-            return None, []
-        if paused:
-            return "delayed", ["dispatch_paused"]
-        reasons = self._get_delay_reasons(now, order, picked)
+        reasons = active_pick_reasons(
+            now, order, picked, paused, self._thresholds
+        )
         return ("delayed", reasons) if reasons else (None, [])
 
     def _apply_referrers_filter(
@@ -1906,9 +1907,9 @@ class AdminDashboardService:
         query = (
             select(
                 OrderModel,
-                can_delete_order(
+                order_deletion_blocker(
                     postgresql=session.get_bind().dialect.name == "postgresql"
-                ).label("can_delete"),
+                ).label("deletion_blocker"),
                 func.coalesce(responses.c.responses, 0).label("responses"),
                 func.coalesce(open_complaints.c.open_complaints, 0).label(
                     "open_complaints"
@@ -1922,6 +1923,11 @@ class AdminDashboardService:
                 func.coalesce(accepted_subq.c.accepted_count, 0).label(
                     "accepted_count"
                 ),
+                _is_test_order().label("is_test"),
+                order_archived().label("archived"),
+                order_activity_at().label("related_at"),
+                PaymentModel.status.label("payment_status"),
+                CONTROLS.c.paused.label("paused"),
             )
             .join(UserModel, UserModel.user_id == OrderModel.advertiser_id)
             .outerjoin(
@@ -1941,6 +1947,10 @@ class AdminDashboardService:
                 open_complaints,
                 open_complaints.c.order_id == OrderModel.order_id,
             )
+            .outerjoin(
+                PaymentModel, PaymentModel.order_id == OrderModel.order_id
+            )
+            .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
             .where(
                 OrderModel.order_id == order_id,
                 OrderModel.status != OrderStatus.DELETED,
@@ -1952,24 +1962,31 @@ class AdminDashboardService:
             return None
         (
             order,
-            can_delete,
+            deletion_blocker,
             responses_count,
             open_count,
             advertiser_name,
             dispatched_count,
             accepted_count,
+            is_test,
+            archived,
+            related_at,
+            payment_status,
+            dispatch_paused,
         ) = row
         resp_list_result = await session.execute(
             select(OfferDispatchModel)
             .where(OfferDispatchModel.order_id == order_id)
             .order_by(
-                OfferDispatchModel.updated_at.asc().nullslast(),
-                OfferDispatchModel.created_at.asc(),
+                func.coalesce(
+                    OfferDispatchModel.updated_at, OfferDispatchModel.created_at
+                ).desc(),
+                OfferDispatchModel.blogger_id,
             )
         )
         response_models = resp_list_result.scalars().all()
         # Only creators who accepted or are in_offer (exclude "Пропустил")
-        responses_list = [
+        responses_list: list[dict[str, Any]] = [
             {
                 "blogger_id": str(r.blogger_id),
                 "responded_at": r.updated_at or r.created_at,
@@ -1981,17 +1998,66 @@ class AdminDashboardService:
             if r.accepted is not None
             and (getattr(r, "in_offer", True) or r.accepted is True)
         ]
+        if order.financial_version is not None and not order.complimentary:
+            positions = (
+                await session.execute(financial_positions([order_id]))
+            ).all()
+            responses_count = len(positions)
+            for item in responses_list:
+                item["in_offer"] = False
+            by_creator = {item["blogger_id"]: item for item in responses_list}
+            assigned = [
+                dict(
+                    by_creator.get(str(position.creator_id), {}),
+                    blogger_id=str(position.creator_id),
+                    in_offer=True,
+                    assigned_at=position.valid_from,
+                    work_state=position.state,
+                )
+                for position in positions
+            ]
+            assigned_ids = {item["blogger_id"] for item in assigned}
+            responses_list = assigned + [
+                item
+                for item in responses_list
+                if item["blogger_id"] not in assigned_ids
+            ]
+        creator_contacts = await order_creator_contacts(
+            session, [UUID(item["blogger_id"]) for item in responses_list]
+        )
+        for item in responses_list:
+            item.update(creator_contacts.get(item["blogger_id"], {}))
+        manager_rows = (
+            await session.execute(order_managers_query([order_id]))
+        ).all()
         now = datetime.now(self._timezone)
+        _, reasons = self._attention_reasons(
+            now,
+            order,
+            responses_count,
+            payment_status,
+            dispatch_paused,
+            order_age_hours(now, order.created_at)
+            >= self._thresholds.no_responses_hours,
+        )
         status_label = self._order_status_label(
             order, responses_count, open_count
         )
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
-            "can_delete": bool(can_delete),
+            "can_delete": deletion_blocker is None,
+            "deletion_blocker": deletion_blocker,
+            "is_test": bool(is_test),
+            "archived": bool(archived),
+            "managers": [manager_contact(manager) for manager in manager_rows],
+            "last_activity_at": latest_order_activity(order, related_at),
+            "open_complaints": int(open_count),
+            "attention_reasons": reasons,
             "advertiser_id": str(order.advertiser_id),
             "advertiser": advertiser_name,
             "order_type": order.order_type.value,
             "product_link": order.product_link,
+            "brief_link": getattr(order, "brief_link", None),
             "offer_text": order.offer_text,
             "barter_description": getattr(order, "barter_description", None),
             "price": float(order.price),
@@ -2024,6 +2090,9 @@ class AdminDashboardService:
             "picked_count": int(responses_count),
             "dispatched_count": int(dispatched_count),
             "accepted_count": int(accepted_count),
+            "remaining_count": max(
+                0, int(order.bloggers_needed) - int(responses_count)
+            ),
             "progress": self._progress_ratio(
                 responses_count, order.bloggers_needed
             ),
@@ -2272,38 +2341,13 @@ class AdminDashboardService:
     def _status_age_hours(self, now: datetime, order: OrderModel) -> float:
         """Return time spent in current status in hours."""
         reference = order.completed_at or order.created_at
-        return self._age_hours(now, reference)
+        return order_age_hours(now, reference)
 
     def _progress_ratio(self, responses: int, needed: int) -> float:
         """Return progress ratio for order completion."""
         if needed <= 0:
             return 0.0
         return min(float(responses) / float(needed), 1.0)
-
-    def _age_hours(self, now: datetime, created_at: datetime) -> float:
-        """Return age in hours between now and created_at."""
-        if created_at.tzinfo is None:
-            created_at = created_at.replace(tzinfo=timezone.utc)
-        delta = now - created_at
-        return round(delta.total_seconds() / 3600, 2)
-
-    def _get_delay_reasons(
-        self, now: datetime, order: OrderModel, responses: int
-    ) -> list[str]:
-        """Return delay reasons for an order."""
-        reasons: list[str] = []
-        age_hours = self._age_hours(now, order.created_at)
-        if age_hours >= self._thresholds.active_days * 24:
-            reasons.append("active_overdue")
-        if responses == 0 and age_hours >= self._thresholds.no_responses_hours:
-            reasons.append("no_responses")
-        low_picked_target = min(3, int(order.bloggers_needed))
-        if (
-            responses < low_picked_target
-            and age_hours >= self._thresholds.low_picked_hours
-        ):
-            reasons.append("low_picked")
-        return reasons
 
     def _user_status_label(self, status: UserStatus) -> str:
         """Return human-readable user status label."""

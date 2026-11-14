@@ -67,20 +67,16 @@
         {% endif %}
       </details>
       {% endfor %}
-      <a class="card attention-queue payout-jump" href="#payout-requests">
-        <span>Заявки на вывод</span>
-        <strong{% if payout_attention %} class="badge payout-status payout-status--attention"{% endif %}>{{ payout_attention }}</strong>
-      </a>
-    </div>
-  </section>
-
-  <section class="section" id="payout-requests" aria-labelledby="payout-requests-heading">
-    <details class="card attention-queue"{% if payout_attention %} open{% endif %}>
-      <summary>
-        <span id="payout-requests-heading">Заявки на вывод</span>
-        <strong>{{ payout_attention }} требуют внимания</strong>
-      </summary>
-      {% if payload.payout_requests %}
+      <details class="card attention-queue payout-queue" id="payout-requests"{% if payout_attention %} open{% endif %}>
+        <summary>
+          <span>Заявки на вывод</span>
+          {% if payout_attention %}
+            <strong class="badge payout-status payout-status--attention">К проверке · {{ payout_attention }}</strong>
+          {% else %}
+            <small class="muted">Нет заявок к проверке</small>
+          {% endif %}
+        </summary>
+        {% if payload.payout_requests %}
         <div class="admin-table-scroll" role="region" aria-label="Заявки на вывод" tabindex="0">
           <table class="table payout-table">
             <thead><tr><th>Пользователь</th><th>Дата</th><th>Сумма</th><th>Статус</th></tr></thead>
@@ -100,11 +96,12 @@
             </tbody>
           </table>
         </div>
-        <a class="attention-queue__link" href="/admin/payout-request-model/list">Все реферальные заявки</a>
-      {% else %}
-        <p class="empty">Заявок на вывод нет.</p>
-      {% endif %}
-    </details>
+        {% else %}
+          <p class="empty">История заявок пока пуста.</p>
+        {% endif %}
+        <a class="attention-queue__link" href="/admin/payout-request-model/list">Реферальные выплаты</a>
+      </details>
+    </div>
   </section>
 
   <section class="section progress-bar">
@@ -230,11 +227,11 @@
       </article>
       {% endfor %}
     </div>
-    <article class="card chart-observations" hidden>
-      <h3>Пики за период</h3>
-      <p class="muted">Сопоставьте дни роста регистраций, заявок и оплат с датами кампаний и рассылок.</p>
-      <ul></ul>
-    </article>
+    <details class="card chart-observations" hidden>
+      <summary>Дни с наибольшими показателями</summary>
+      <p class="muted">Здесь отмечены дни с максимальным значением каждого показателя. Откройте график за этот день, чтобы сверить данные с датами кампаний или рассылок.</p>
+      <ul class="chart-peaks"></ul>
+    </details>
     <dialog id="chart-detail" class="chart-dialog" aria-labelledby="chart-detail-title">
       <div class="page-heading">
         <h2 id="chart-detail-title"></h2>

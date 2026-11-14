@@ -19,15 +19,35 @@
   line-height: 1.25;
 }
 
-.order-worklist-table .order-geography { width: 12%; }
-.order-worklist-table .order-price { width: 10%; }
+.order-worklist-table .order-geography { width: 10%; }
+.order-worklist-table .order-price { width: 8%; }
 .order-worklist-table .order-status { width: 11%; }
-.order-worklist-table .order-username { width: 10%; }
-.order-worklist-table .order-brand { width: 12%; }
+.order-worklist-table .order-customer { width: 14%; }
 .order-worklist-table .order-needed { width: 8%; }
-.order-worklist-table .order-offer { width: 14%; }
-.order-worklist-table .order-date { width: 8%; }
-.order-worklist-table .order-actions { width: 15%; }
+.order-worklist-table .order-offer { width: 19%; }
+.order-worklist-table .order-date { width: 12%; }
+.order-worklist-table .order-actions { width: 18%; }
+
+.order-worklist-table td {
+  vertical-align: top;
+  white-space: normal;
+}
+
+.order-worklist-table tbody tr:hover {
+  background: #f7faff;
+}
+
+.order-row-note {
+  display: block;
+  margin-top: .3rem;
+  color: #52617a;
+  line-height: 1.4;
+}
+
+.order-row-note.order-clamp { display: -webkit-box; }
+
+.order-row-note a { color: #2059a8; }
+.order-row-alert { color: #8b4a10; }
 
 .order-clamp {
   display: -webkit-box;

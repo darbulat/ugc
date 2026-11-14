@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'removed', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
 {% set advertiser_id = model_view.customer_filter(request) %}
 {% set customer = model_view.customer_context(advertiser_id) if advertiser_id else none %}
@@ -40,7 +40,7 @@
         </div>
       {% endif %}
       <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('all', 'Все')] %}
+        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('removed', 'Удалённые'), ('all', 'Все')] %}
         <a class="nav-link{% if group == key %} active{% endif %}"
            {% if group == key %}aria-current="page"{% endif %}
            href="{{ request.url.remove_query_params(['page', 'status', 'sortBy', 'sort'] if key == 'unpaid' else ['page', 'status']).include_query_params(group=key) }}">
@@ -50,6 +50,9 @@
       </nav>
       {% if group == 'test' %}
         <p class="text-muted mb-3">Пометьте свой заказ кнопкой «Это тест». Удаление доступно для черновиков без оплаты, рассылки и других связанных действий. Остальные тестовые заказы можно хранить здесь отдельно.</p>
+      {% endif %}
+      {% if group == 'removed' %}
+        <p class="text-muted mb-3">Заказы убраны из рабочего списка. Здесь их можно вернуть.</p>
       {% endif %}
       {% if group == 'unpaid' %}
         <p class="text-muted mb-3">Новые заявки, ожидающие оплаты от {{ model_view.unpaid_age_hours }} ч.</p>
@@ -94,21 +97,21 @@
       <table class="table card-table table-vcenter order-worklist-table">
         <colgroup>
           <col class="order-geography"><col class="order-price"><col class="order-status">
-          <col class="order-username"><col class="order-brand"><col class="order-needed">
-          <col class="order-offer"><col class="order-date"><col class="order-actions">
+          <col class="order-customer"><col class="order-needed"><col class="order-offer">
+          <col class="order-date"><col class="order-actions">
         </colgroup>
         <thead>
           <tr>
-            {% for name, label in model_view.worklist_columns.items() %}
+            {% for name, label in model_view.worklist_columns.items() if name != 'brand' %}
             {% set sorted = request.query_params.get('sortBy', 'created_at') == name %}
             {% set direction = request.query_params.get('sort', 'desc' if name == 'created_at' and group != 'unpaid' else 'asc') %}
             <th scope="col" {% if sorted %}aria-sort="{{ 'ascending' if direction == 'asc' else 'descending' }}"{% endif %}>
               {% if name in ('username', 'brand') %}
-                {{ label }}
+                {{ 'Заказчик / компания' if name == 'username' else label }}
               {% else %}
-                <a href="{{ request.url.remove_query_params('page').include_query_params(sortBy=name, sort='desc' if sorted and direction == 'asc' else 'asc') }}">
-                  {{ label }}{% if sorted %}<span aria-hidden="true">{{ ' ↑' if direction == 'asc' else ' ↓' }}</span>{% endif %}
-                </a>
+                <a href="{{ request.url.remove_query_params('page').include_query_params(sortBy=name, sort='desc' if sorted and direction == 'asc' else 'asc') }}"{% if name == 'created_at' %} title="Сортировка по дате создания"{% endif %}>
+                  {{ 'Подбор' if name == 'bloggers_needed' else label }}{% if sorted %}<span aria-hidden="true">{{ ' ↑' if direction == 'asc' else ' ↓' }}</span>{% endif %}
+                </a>{% if name == 'created_at' %}<small class="order-row-note">Последняя активность</small>{% endif %}
               {% endif %}
             </th>
             {% endfor %}
@@ -125,7 +128,12 @@
             <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
             <td>
               <span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>
-              {% if info.dispatch_paused and row.status == "active" %}<br><small>Рассылка на паузе</small>{% endif %}
+              {% if not info.archived %}
+              {% for reason in info.attention_reasons %}
+                <small class="order-row-note order-row-alert">{{ model_view.worklist_reason_labels[reason] }}</small>
+              {% endfor %}
+              {% endif %}
+              {% if info.has_complaints %}<a class="order-row-note" href="/admin/complaint-model/list?status=open&amp;search={{ row.order_id }}">Открытые жалобы</a>{% endif %}
               {% if row.order_id in reminders %}
                 {% set reminder_state, reminder_at = reminders[row.order_id] %}
                 <small class="d-block mt-1">{{ {
@@ -137,14 +145,32 @@
                 }.get(reminder_state, reminder_state) }} · {{ reminder_at|admin_date }}</small>
               {% endif %}
             </td>
-            <td><a class="order-clamp" title="{{ info.username or 'Заказы заказчика' }}" href="{{ request.url_for('admin:list', identity=model_view.identity).include_query_params(group='all', advertiser_id=row.advertiser_id) }}">{{ info.username or 'Заказы заказчика' }}</a></td>
-            <td><span class="order-clamp" title="{{ info.brand or '' }}">{{ info.brand or '—' }}</span></td>
-            <td class="order-number">{{ row.bloggers_needed }}</td>
+            <td>
+              <a class="order-clamp fw-semibold" href="{{ request.url_for('admin:list', identity=model_view.identity).include_query_params(group='all', advertiser_id=row.advertiser_id) }}">{{ info.brand or info.username or 'Заказы заказчика' }}</a>
+              {% if info.brand and info.username and info.brand != info.username %}<small class="order-row-note order-clamp">{{ info.username }}</small>{% endif %}
+              {% if info.managers %}
+                <small class="order-row-note">
+                  Менеджер
+                  {% for manager in info.managers %}
+                    <a href="{{ request.url_for('admin_user_card', user_id=manager.id).include_query_params(from_order=row.order_id, return_to=list_url) }}">{{ manager.name or 'Профиль' }}</a>{{ ', ' if not loop.last else '' }}
+                  {% endfor %}
+                </small>
+              {% else %}
+                <small class="order-row-note">Без менеджера</small>
+              {% endif %}
+            </td>
+            <td class="order-number">
+              <strong>{{ info.picked }} / {{ row.bloggers_needed }}</strong>
+              {% if info.picked < row.bloggers_needed %}<small class="order-row-note">Осталось {{ row.bloggers_needed - info.picked }}</small>{% endif %}
+            </td>
             <td>
               {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Тестовый</small>{% endif %}
-              <a class="order-clamp" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a>
+              <a class="order-clamp fw-semibold" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a>
             </td>
-            <td><time datetime="{{ row.created_at.isoformat() }}">{{ row.created_at|admin_date }}</time></td>
+            <td>
+              <time datetime="{{ row.created_at.isoformat() }}">{{ row.created_at|admin_date }}</time>
+              {% if info.last_activity_at != row.created_at %}<small class="order-row-note">Активность {{ info.last_activity_at|admin_date }}</small>{% endif %}
+            </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
                 <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}">Открыть</a>
@@ -160,7 +186,7 @@
                    title="Дублировать заказ" aria-label="Дублировать заказ">
                   <i class="fa-solid fa-copy" aria-hidden="true"></i>
                 </a>
-                {% if row.status == 'active' and not row.dispatch_stopped and info.dispatch_paused is not none %}
+                {% if not info.archived and row.status == 'active' and not row.dispatch_stopped and info.dispatch_paused is not none %}
                   {% set dispatch_action = 'resume' if info.dispatch_paused else 'pause' %}
                   {% set dispatch_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=dispatch_action) %}
                   <form method="post" action="{{ dispatch_url.replace(query=request.url.query) }}">
@@ -168,7 +194,7 @@
                     <button type="submit" class="btn btn-sm btn-outline-primary">{{ 'Возобновить рассылку' if info.dispatch_paused else 'Пауза рассылки' }}</button>
                   </form>
                 {% endif %}
-                {% set operation = 'restore' if group == 'hidden' else ('close' if info.can_close else ('hide' if info.can_hide else none)) %}
+                {% set operation = none if info.archived else ('restore' if group == 'hidden' else ('close' if info.can_close else ('hide' if info.can_hide else none))) %}
                 {% if operation %}
                   {% set label = {'close': 'Закрыть', 'hide': 'Убрать из списка', 'restore': 'Вернуть в список'}[operation] %}
                   {% set confirm_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=operation) %}
@@ -180,7 +206,7 @@
                     </button>
                   </form>
                 {% endif %}
-                {% if info %}
+                {% if not info.archived %}
                   <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='unmark-test' if info.is_test else 'mark-test').replace(query=request.url.query) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     {% if info.is_test %}
@@ -190,17 +216,22 @@
                     {% endif %}
                   </form>
                 {% endif %}
-                {% if info.can_delete %}
-                  {% set delete_url = request.url_for('update_order_worklist', order_id=row.order_id, operation='delete-test').replace(query=request.url.query) %}
-                  {% set delete_title = row.offer_text or 'Заказ' %}
-                  {% set delete_button_class = 'btn btn-sm btn-outline-danger' %}
-                  {% include 'order_delete_button.html' %}
-                {% endif %}
+                {% set delete_order_id = row.order_id %}
+                {% set delete_title = row.offer_text or 'Заказ' %}
+                {% set delete_return_url = list_url %}
+                {% set deletion_blocker = info.deletion_blocker %}
+                {% set archived = info.archived %}
+                {% set delete_button_class = 'btn btn-sm btn-outline-danger' if group == 'test' else 'btn btn-sm btn-outline-secondary' %}
+                {% set restore_button_class = 'btn btn-sm btn-outline-primary' %}
+                {% include 'order_delete_button.html' %}
               </div>
+              {% if group == 'test' and info.deletion_blocker %}
+                <small class="order-row-note" title="Причина ограничения удаления">Нельзя удалить: {{ info.deletion_blocker|lower }}.</small>
+              {% endif %}
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="9" class="text-center text-muted py-4">Заказы не найдены</td></tr>
+          <tr><td colspan="8" class="text-center text-muted py-4">Заказы не найдены</td></tr>
           {% endfor %}
         </tbody>
       </table>

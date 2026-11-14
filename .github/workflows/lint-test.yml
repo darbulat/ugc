@@ -155,10 +155,37 @@ jobs:
           if-no-files-found: ignore
           retention-days: 1
 
+  admin-browser:
+    name: Admin browser smoke
+    # Playwright 1.58 supports Ubuntu 24.04, not the current ubuntu-latest.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Set up uv and cache dependencies
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
+
+      - name: Install Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Exercise orders on synthetic data
+        run: uv run pytest -q tests/e2e/test_admin_ui.py::test_order_worklist_search_hide_and_restore
+
   lint-and-test:
     name: lint-and-test (3.13)
     if: always()
-    needs: [lint, migrations, test-shards]
+    needs: [lint, migrations, test-shards, admin-browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require all checks and test shards to pass
@@ -167,13 +194,16 @@ jobs:
           LINT_RESULT: ${{ needs.lint.result }}
           MIGRATION_RESULT: ${{ needs.migrations.result }}
           TEST_RESULT: ${{ needs.test-shards.result }}
+          BROWSER_RESULT: ${{ needs.admin-browser.result }}
         run: |
           if [[ "$LINT_RESULT" != "success" || \
                 "$MIGRATION_RESULT" != "success" || \
-                "$TEST_RESULT" != "success" ]]; then
+                "$TEST_RESULT" != "success" || \
+                "$BROWSER_RESULT" != "success" ]]; then
             echo "Lint: $LINT_RESULT"
             echo "Migrations: $MIGRATION_RESULT"
             echo "Test shards: $TEST_RESULT"
+            echo "Admin browser: $BROWSER_RESULT"
             exit 1
           fi
 
