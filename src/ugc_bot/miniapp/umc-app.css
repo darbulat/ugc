@@ -326,3 +326,8 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 
 .umc-customer #orders-list { list-style: none; margin: 0; padding: 0; }
 .umc-customer #orders-list > li { margin: 0; padding: 0; border: 0; background: none; }
+
+.umc-directory-filter { display: flex; align-items: center; gap: var(--space-8); margin: var(--space-12) 0; }
+.umc-directory-filter input { width: 20px; height: 20px; margin: 0; accent-color: var(--ink); }
+.umc-directory-list { list-style: none; padding: 0; margin: 0; }
+.umc-directory-list .btn { text-align: start; white-space: normal; overflow-wrap: anywhere; }

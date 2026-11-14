@@ -221,6 +221,15 @@ class NoStorePartnerRoute(_NativeCallerRoute):
     prefix = "partner"
 
 
+class NoStoreManagerDirectoryRoute(_NativeCallerRoute):
+    prefix = "manager_directory"
+    http_pairs = {}
+    codes = _SNAPSHOT_NATIVE_CODES | {
+        "manager_required": 403,
+        "creator_not_found": 404,
+    }
+
+
 class NoStoreSelectionRoute(_NativeCallerRoute):
     codes = SELECTION_CODES
     http_pairs = {
