@@ -3,7 +3,7 @@
 from datetime import timedelta
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
-from sqlalchemy import and_, case, exists, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, null, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.enums import OrderStatus
@@ -24,6 +24,9 @@ from ugc_bot.infrastructure.db.paid_selection_models import (
     JOBS as DELIVERY_JOBS,
 )
 from ugc_bot.infrastructure.db.replacement_models import TABLES as REPLACEMENTS
+from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    invitations_available,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 from ugc_bot.infrastructure.db.selection_maturity_models import (
@@ -117,6 +120,7 @@ class SqlOrderSummary:
             .scalar_subquery()
         )
         delivered_at = func.coalesce(original_contact, replacement_contact)
+        db = _session(session)
         manual_contact = (
             select(DELIVERY_JOBS.c.state)
             .join(INVITES, INVITES.c.interest_id == DELIVERY_JOBS.c.interest_id)
@@ -124,10 +128,12 @@ class SqlOrderSummary:
             .where(INTERESTS.c.assignment_id == assignment.assignment_id)
             .correlate(assignment)
             .scalar_subquery()
+            if await invitations_available(db)
+            else null()
         )
         return (
             (
-                await _session(session).execute(
+                await db.execute(
                     select(
                         item.paid_item_id,
                         item.ordinal,

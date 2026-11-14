@@ -3,7 +3,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 
 from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.enums import OrderStatus
@@ -17,6 +17,11 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
+
+
+async def invitations_available(db):
+    # Ordinary paid delivery also runs against historical schemas before 0134.
+    return await db.scalar(select(func.to_regclass(INVITES.name))) is not None
 
 
 def free_positions(order_id):

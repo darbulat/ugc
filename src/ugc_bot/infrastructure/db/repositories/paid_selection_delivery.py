@@ -31,6 +31,9 @@ from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.repositories.correction_funding import (
     require_forward_clear,
 )
+from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    invitations_available,
+)
 from ugc_bot.infrastructure.db.repositories.entitlements import _require, _row
 from ugc_bot.infrastructure.db.repositories.financial_items import (
     SqlAlchemyFinancialItemRepository,
@@ -63,19 +66,21 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
     async def candidates(self, at, limit, *, session):
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("selection_delivery_limit_invalid")
-        result = await _session(session).scalars(
-            select(JOBS.c.job_id)
-            .where(
-                ~exists().where(INVITES.c.interest_id == JOBS.c.interest_id),
-                or_(
-                    JOBS.c.state == "ready",
-                    (JOBS.c.state == "sending") & (JOBS.c.lease_until <= at),
-                ),
+        db = _session(session)
+        query = select(JOBS.c.job_id).where(
+            or_(
+                JOBS.c.state == "ready",
+                (JOBS.c.state == "sending") & (JOBS.c.lease_until <= at),
             )
-            .order_by(JOBS.c.created_at, JOBS.c.job_id)
-            .limit(limit)
         )
-        return tuple(result)
+        if await invitations_available(db):
+            query = query.where(
+                ~exists().where(INVITES.c.interest_id == JOBS.c.interest_id)
+            )
+        jobs = await db.scalars(
+            query.order_by(JOBS.c.created_at, JOBS.c.job_id).limit(limit)
+        )
+        return tuple(jobs)
 
     async def _interest(self, db, job_id):
         job = (
@@ -255,7 +260,7 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             telegram=creator["telegram"],
             phone=profile["phone"] if profile else None,
         )
-        manual = bool(
+        manual = await invitations_available(db) and bool(
             await db.scalar(
                 select(
                     exists().where(
