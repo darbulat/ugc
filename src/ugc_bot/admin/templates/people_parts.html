@@ -13,6 +13,16 @@
     <a href="{{ account[0] }}" target="_blank" rel="noopener noreferrer" aria-label="Instagram @{{ account[1] }}">{% if show_platform %}Instagram {% endif %}@{{ account[1] }}</a>
   {% elif value %}{{ value }}{% endif %}
 {%- endmacro %}
+{% macro inviter(person, request) -%}
+  {% if person %}
+    <a href="{{ request.url_for('admin_user_card', user_id=person.user_id) }}">{{ person.username or person.telegram or 'Профиль пригласившего' }}</a>
+    {% if person.username and person.telegram %}
+      <div class="people-secondary">{{ telegram(person.telegram) }}</div>
+    {% endif %}
+  {% else %}
+    <span class="people-secondary">Без привязки</span>
+  {% endif %}
+{%- endmacro %}
 {% macro stars(value) -%}
   <span class="people-rating"><span aria-hidden="true">★</span> {{ '%.1f'|format(value)|replace('.', ',') }} <span class="people-secondary">/ 5</span></span>
 {%- endmacro %}
