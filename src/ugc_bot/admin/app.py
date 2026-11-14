@@ -521,6 +521,7 @@ _STATUS_LABELS = {
 _USER_STATUS_LABELS = {
     "active": "Активен",
     "limited": "Ограничен",
+    "bot_blocked": "Бот недоступен",
 }
 _DELAY_REASON_LABELS = {
     "active_overdue": "Долгий подбор",
@@ -913,7 +914,7 @@ async def _render_creators_page(
         status,
         followers_min,
     )
-    cache_key = f"creator-directory:{cache_params!r}" if cache else None
+    cache_key = f"creator-directory:v2:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
@@ -1249,7 +1250,7 @@ async def _api_creators_json(
     """Creators list as JSON."""
     period_key = _normalize_period(period)
     cache_key = (
-        f"creators:{period_key}:{only_new}:{with_complaints}:"
+        f"creators:v2:{period_key}:{only_new}:{with_complaints}:"
         f"{page}:{per_page}:{q or ''}:{sort}:{order}"
         if cache
         else None

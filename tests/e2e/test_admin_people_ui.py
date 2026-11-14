@@ -18,6 +18,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     RaterRole,
     UserStatus,
+    WorkFormat,
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -30,6 +31,7 @@ from ugc_bot.infrastructure.db.models import (
     OrderModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
 @pytest.fixture
@@ -38,7 +40,9 @@ def people_records():
     if not database or not os.environ.get("E2E_BASE_URL"):
         pytest.skip("Requires a synthetic admin server with PostGIS")
     engine = create_engine(require_test_database(database))
-    customer_id, creator_id, other_id, order_id = [uuid4() for _ in range(4)]
+    customer_id, creator_id, other_id, paused_id, order_id = [
+        uuid4() for _ in range(5)
+    ]
     now = datetime.now(timezone.utc)
     token = creator_id.hex[:8]
     brand = f"Марка & Партнёры {token}"
@@ -52,12 +56,13 @@ def people_records():
             username=name,
             telegram=handle,
             messenger_type=MessengerType.TELEGRAM,
-            status=UserStatus.ACTIVE,
+            status=status,
         )
-        for user_id, name, handle in [
-            (customer_id, f"Анна {token}", f"anna_{token}"),
-            (creator_id, creator_name, f"maria_{token}"),
-            (other_id, f"Ирина {token}", None),
+        for user_id, name, handle, status in [
+            (customer_id, f"Анна {token}", f"anna_{token}", UserStatus.ACTIVE),
+            (creator_id, creator_name, f"maria_{token}", UserStatus.ACTIVE),
+            (other_id, f"Ирина {token}", None, UserStatus.BOT_BLOCKED),
+            (paused_id, f"Ольга {token}", None, UserStatus.PAUSE),
         ]
     ]
     with Session(engine) as session, session.begin():
@@ -74,6 +79,7 @@ def people_records():
         for user_id, handle, followers in [
             (creator_id, instagram, 7500),
             (other_id, f"other_{token}", 800),
+            (paused_id, f"paused_{token}", 900),
         ]:
             session.add(
                 BloggerProfileModel(
@@ -87,6 +93,22 @@ def people_records():
                     audience_geo="RU",
                     price=2000,
                     instagram_followers_count=followers,
+                )
+            )
+        for platform, url in (
+            ("tiktok", f"https://www.tiktok.com/@{instagram}"),
+            ("youtube", f"https://www.youtube.com/@{instagram}"),
+        ):
+            session.add(
+                SocialAccountModel(
+                    account_id=uuid4(),
+                    user_id=creator_id,
+                    platform=platform,
+                    url=url,
+                    handle=instagram,
+                    work_format=WorkFormat.UGC_ONLY,
+                    created_at=now,
+                    updated_at=now,
                 )
             )
         session.add(
@@ -156,7 +178,9 @@ def people_records():
             )
             db.execute(
                 delete(UserModel).where(
-                    UserModel.user_id.in_([customer_id, creator_id, other_id])
+                    UserModel.user_id.in_(
+                        [customer_id, creator_id, other_id, paused_id]
+                    )
                 )
             )
         engine.dispose()
@@ -233,3 +257,44 @@ def test_directory_filters_and_profile_history(
             "document.documentElement.scrollWidth <= innerWidth"
         )
         page.get_by_role("link", name=creator_name).click()
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+def test_creator_social_links_and_bot_status(
+    admin_server, base_url, page, people_records
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _, city, instagram, _, creator_name = people_records
+    _login(page, base_url)
+    page.goto(f"{base_url}/admin/users/creators")
+    page.get_by_role("link", name="Креаторы с недоступным ботом").click()
+    expect(page.locator("#people-status")).to_have_value("bot_blocked")
+    page.locator("#people-city").select_option(city.lower())
+    page.locator(".people-filters").get_by_role("button", name="Найти").click()
+    expect(page.get_by_text("Найдено 1")).to_be_visible()
+    row = page.locator(".people-table tbody tr")
+    expect(row).to_contain_text("Бот недоступен")
+    row.locator(".people-name").click()
+    expect(page.locator(".people-heading .people-pill")).to_have_text(
+        "Бот недоступен"
+    )
+    expect(page.get_by_role("link", name="TikTok", exact=True)).to_have_count(0)
+    page.get_by_role("link", name="Назад к списку").click()
+    expect(page.locator("#people-status")).to_have_value("bot_blocked")
+    page.locator("#people-status").select_option("limited")
+    page.locator(".people-filters").get_by_role("button", name="Найти").click()
+    expect(page.get_by_text("Найдено 1")).to_be_visible()
+    expect(row).to_contain_text("Ограничен")
+    expect(row).not_to_contain_text("Бот недоступен")
+
+    page.goto(f"{base_url}/admin/users/creators?q={instagram}")
+    page.get_by_role("link", name=creator_name, exact=True).click()
+    for label, host in (
+        ("TikTok", "www.tiktok.com"),
+        ("YouTube", "www.youtube.com"),
+    ):
+        link = page.get_by_role("link", name=label, exact=True)
+        expect(link).to_be_visible()
+        expect(link).to_have_attribute("href", f"https://{host}/@{instagram}")

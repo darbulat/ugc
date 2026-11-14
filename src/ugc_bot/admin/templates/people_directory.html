@@ -17,7 +17,10 @@
   <section class="people">
     <header class="people-heading">
       <h1>{{ title }}</h1>
-      <span class="people-count">Найдено {{ count(total) }}</span>
+      <div class="people-actions">
+        {% block quick_filters %}{% endblock %}
+        <span class="people-count">Найдено {{ count(total) }}</span>
+      </div>
     </header>
     <div class="people-panel">
       <form class="people-filters" method="get" action="{{ request.url.path }}">

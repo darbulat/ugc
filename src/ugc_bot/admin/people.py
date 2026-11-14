@@ -81,8 +81,12 @@ def creator_directory_filters(
         )
     if status == "active":
         filters.append(UserModel.status == UserStatus.ACTIVE)
+    elif status == "bot_blocked":
+        filters.append(UserModel.status == UserStatus.BOT_BLOCKED)
     elif status == "limited":
-        filters.append(UserModel.status != UserStatus.ACTIVE)
+        filters.append(
+            UserModel.status.not_in((UserStatus.ACTIVE, UserStatus.BOT_BLOCKED))
+        )
     if followers_min is not None and followers_min >= 0:
         filters.append(
             BloggerProfileModel.instagram_followers_count >= followers_min

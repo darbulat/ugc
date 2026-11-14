@@ -19,7 +19,11 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
     UserStatus,
 )
+from ugc_bot.domain.social import SocialPlatform
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
+from ugc_bot.infrastructure.db.repositories.social import (
+    SqlAlchemySocialAccountRepository,
+)
 
 
 class _ChartRow:
@@ -417,6 +421,7 @@ async def test_get_user_card_returns_user_data(service) -> None:
 @pytest.mark.asyncio
 async def test_get_user_card_includes_blogger_and_advertiser_profiles(
     service,
+    monkeypatch,
 ) -> None:
     """get_user_card includes blogger and advertiser profiles when present."""
     uid = uuid4()
@@ -427,7 +432,7 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
         max_id=None,
         messenger_type=SimpleNamespace(value="telegram"),
         username="jane",
-        status=UserStatus.ACTIVE,
+        status=UserStatus.BOT_BLOCKED,
         issue_count=0,
         created_at=created,
         role_chosen_at=created,
@@ -459,6 +464,26 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
         city="SPB",
         company_activity="Retail",
     )
+    monkeypatch.setattr(
+        SqlAlchemySocialAccountRepository,
+        "list_accounts",
+        AsyncMock(
+            return_value=[
+                SimpleNamespace(
+                    platform=SocialPlatform.TIKTOK,
+                    url="https://www.tiktok.com/@jane?tracking=example",
+                ),
+                SimpleNamespace(
+                    platform=SocialPlatform.YOUTUBE,
+                    url="https://example.org/@jane",
+                ),
+                SimpleNamespace(
+                    platform=SocialPlatform.VK,
+                    url="https://vk.com/jane",
+                ),
+            ]
+        ),
+    )
     svc = service(
         [_FakeResult(one_or_none_value=(user_ns, blogger_ns, advertiser_ns))]
     )
@@ -468,6 +493,10 @@ async def test_get_user_card_includes_blogger_and_advertiser_profiles(
     assert card["blogger_profile"] is not None
     assert card["blogger_profile"]["instagram_url"] == blogger_ns.instagram_url
     assert card["blogger_profile"]["city"] == "Moscow"
+    assert card["blogger_profile"]["social_links"] == {
+        "tiktok": "https://www.tiktok.com/@jane",
+    }
+    assert card["status_label"] == "bot_blocked"
     assert card["advertiser_profile"] is not None
     assert card["advertiser_profile"]["contact"] == "+79001234567"
     assert card["advertiser_profile"]["brand"] == "Brand"
