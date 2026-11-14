@@ -20,6 +20,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
+from ugc_bot.application.order_summary_admin_text import (
+    is_order_summary_review,
+    order_summary_admin_text,
+)
 from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.checkout_models import (
     AUTHORIZATIONS,
@@ -594,19 +598,30 @@ class SqlAlchemyCustomerWorkflowRepository:
             .all()
         )
         for source in sources:
+            summary_review = is_order_summary_review(source)
             body = (
-                (
-                    "Обращение"
-                    if source["kind"] == "support"
-                    else "Заявка на услугу"
+                order_summary_admin_text(source)
+                if summary_review
+                else (
+                    (
+                        "Обращение"
+                        if source["kind"] == "support"
+                        else "Заявка на услугу"
+                    )
+                    + f" #{source['request_id']}\n"
+                    + json.dumps(
+                        source["payload"], ensure_ascii=False, indent=2
+                    )
                 )
-                + f" #{source['request_id']}\n"
-                + json.dumps(source["payload"], ensure_ascii=False, indent=2)
             )
-            chunks = [
-                body[index : index + 1500]
-                for index in range(0, len(body), 1500)
-            ]
+            chunks = (
+                [body]
+                if summary_review
+                else [
+                    body[index : index + 1500]
+                    for index in range(0, len(body), 1500)
+                ]
+            )
             for admin in admins:
                 for part, chunk in enumerate(chunks):
                     await db.execute(
@@ -618,7 +633,11 @@ class SqlAlchemyCustomerWorkflowRepository:
                             request_id=source["request_id"],
                             recipient_id=admin,
                             part=part,
-                            text=f"{part + 1}/{len(chunks)}\n{chunk}",
+                            text=(
+                                chunk
+                                if summary_review
+                                else f"{part + 1}/{len(chunks)}\n{chunk}"
+                            ),
                             due_at=at,
                             state="ready",
                         )
@@ -771,6 +790,25 @@ class SqlAlchemyCustomerWorkflowRepository:
             return False
         return True
 
+    async def _admin_request(self, db, job, user):
+        if not user["admin"]:
+            return None
+        source = (
+            (
+                await db.execute(
+                    select(REQUESTS).where(
+                        REQUESTS.c.request_id == job["request_id"]
+                    )
+                )
+            )
+            .mappings()
+            .one()
+        )
+        # Earlier releases could split the raw summary payload into parts.
+        if job["part"] and is_order_summary_review(source):
+            return None
+        return source
+
     async def eligible(
         self,
         job: dict,
@@ -824,19 +862,9 @@ class SqlAlchemyCustomerWorkflowRepository:
             return None
         result = dict(job)
         if job["request_id"]:
-            if not user["admin"]:
+            source = await self._admin_request(db, job, user)
+            if source is None:
                 return None
-            source = (
-                (
-                    await db.execute(
-                        select(REQUESTS).where(
-                            REQUESTS.c.request_id == job["request_id"]
-                        )
-                    )
-                )
-                .mappings()
-                .one()
-            )
             result["payload"] = source["payload"]
             result["kind"] = source["kind"]
             result["order_id"] = source["order_id"]
