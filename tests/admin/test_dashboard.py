@@ -82,7 +82,12 @@ def _build_admin_client(
 
 
 def test_admin_dashboard_html(monkeypatch) -> None:
-    """HTML dashboard renders with mocked data."""
+    """HTML dashboard renders clickable worklist counts, including zero."""
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_worklist_attention_counts",
+        AsyncMock(return_value={"no_manager": 3, "inactive": 0}),
+    )
     client = _build_admin_client(
         monkeypatch,
         dashboard_payload={
@@ -126,6 +131,14 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert response.text.index("Требует внимания") < response.text.index(
         "Динамика за период"
     )
+    for key, label, count in (
+        ("no_manager", "Без менеджера", 3),
+        ("inactive", "Давно без активности", 0),
+    ):
+        link = response.text.split(
+            f'href="/admin/order-model/list?group=work&amp;{key}=1">', 1
+        )[1].split("</a>", 1)[0]
+        assert label in link and f"<strong>{count}</strong>" in link
     assert "Подобранных креаторов" in response.text
     assert "100 / 1000" in response.text
     assert "progress-bar" in response.text
@@ -717,7 +730,7 @@ def test_orders_api_returns_cached_response_on_second_request(
 def test_dashboard_html_uses_cache_on_second_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Dashboard HTML cache hit on second request; get_dashboard called once."""
+    """Historical metrics use the cache and worklist counts stay current."""
     payload = {
         "period": "today",
         "registrations": {
@@ -741,6 +754,15 @@ def test_dashboard_html_uses_cache_on_second_request(
     mock_cache.get = AsyncMock(side_effect=[None, serialized])
     mock_cache.set = AsyncMock()
     get_dashboard_mock = AsyncMock(return_value=payload)
+    counts_mock = AsyncMock(
+        side_effect=[
+            {"no_manager": 4, "inactive": 2},
+            {"no_manager": 3, "inactive": 2},
+        ]
+    )
+    monkeypatch.setattr(
+        AdminDashboardService, "get_worklist_attention_counts", counts_mock
+    )
     monkeypatch.setenv("BOT_TOKEN", "token")
     monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", _TEST_ADMIN_PASSWORD)
@@ -784,6 +806,10 @@ def test_dashboard_html_uses_cache_on_second_request(
     r2 = client.get("/admin/dashboard?period=today")
     assert r2.status_code == 200
     assert get_dashboard_mock.call_count == 1
+    assert counts_mock.await_count == 2
+    href = 'href="/admin/order-model/list?group=work&amp;no_manager=1">'
+    assert "<strong>4</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
+    assert "<strong>3</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
 
 
 def test_referrers_html_uses_cache_on_second_request(

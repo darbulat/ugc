@@ -4,7 +4,7 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Sequence
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
 from hashlib import sha256
@@ -64,8 +64,9 @@ from ugc_bot.admin.order_editor import (
     changed_text_errors,
 )
 from ugc_bot.admin.order_summary import (
+    ORDER_INACTIVITY_DAYS,
     order_has_manager,
-    order_inactive_since,
+    order_is_inactive,
     safe_order_link,
 )
 from ugc_bot.admin.order_worklist import (
@@ -544,6 +545,10 @@ _DELAY_REASON_LABELS = {
     "waiting_payment": "Ожидает оплаты",
 }
 
+_ORDER_QUICK_FILTER_LABELS = {
+    "no_manager": "Без менеджера",
+    "inactive": "Давно без активности",
+}
 _ORDER_LIST_PATH = "/admin/order-model/list"
 _COMPLAINT_LIST_PATH = "/admin/complaint-model/list"
 _ORDER_RETURN_PATHS = {
@@ -826,6 +831,11 @@ async def _render_dashboard_page(
             "period_labels": _PERIOD_LABELS,
             "status_labels": _STATUS_LABELS,
             "delay_reason_labels": _DELAY_REASON_LABELS,
+            "order_quick_filter_labels": _ORDER_QUICK_FILTER_LABELS,
+            "order_attention_counts": (
+                await dashboard_service.get_worklist_attention_counts()
+            ),
+            "order_inactivity_days": ORDER_INACTIVITY_DAYS,
             "referrers_sort": referrers_sort,
             "referrers_order": referrers_order,
             "referrers_filter": referrers_filter,
@@ -2113,11 +2123,8 @@ class OrderAdmin(ModelView, model=OrderModel):
     unpaid_reminders_enabled = False
     worklist_status_labels = ORDER_STATUS_LABELS
     worklist_reason_labels = _DELAY_REASON_LABELS
-    quick_filter_labels = {
-        "no_manager": "Без менеджера",
-        "inactive": "Давно без активности",
-    }
-    inactivity_days = 7
+    quick_filter_labels = _ORDER_QUICK_FILTER_LABELS
+    inactivity_days = ORDER_INACTIVITY_DAYS
     delay_thresholds = DelayThresholds(7, 24, 48, 7)
     worklist_columns = {
         "geography": "География",
@@ -2334,10 +2341,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         if "no_manager" in filters:
             stmt = stmt.where(~order_has_manager())
         if "inactive" in filters:
-            cutoff = request.state.worklist_now - timedelta(
-                days=self.inactivity_days
-            )
-            stmt = stmt.where(order_inactive_since(cutoff))
+            stmt = stmt.where(order_is_inactive(request.state.worklist_now))
         return stmt
 
     def quick_filters(self, request: Request) -> tuple[str, ...]:

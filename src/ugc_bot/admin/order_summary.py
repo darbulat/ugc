@@ -1,7 +1,7 @@
 """Read-only progress, activity, and manager summaries for the orders UI."""
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from sqlalchemy import case, func, select, union, union_all
@@ -23,6 +23,8 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
+
+ORDER_INACTIVITY_DAYS = 7
 
 
 @dataclass(slots=True)
@@ -221,8 +223,9 @@ def order_activity_at():
     return select(func.max(events.c.at)).correlate(OrderModel).scalar_subquery()
 
 
-def order_inactive_since(cutoff: datetime) -> ColumnElement[bool]:
+def order_is_inactive(now: datetime) -> ColumnElement[bool]:
     """Match the same order and related timestamps shown in the card."""
+    cutoff = now - timedelta(days=ORDER_INACTIVITY_DAYS)
     return (
         (OrderModel.created_at <= cutoff)
         & (OrderModel.updated_at <= cutoff)
