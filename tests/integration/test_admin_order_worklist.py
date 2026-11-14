@@ -174,6 +174,62 @@ def test_worklist_filters_search_and_pagination(worklist):
     }
 
 
+def test_search_by_order_and_customer_words_in_both_views(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    with Session(engine) as session, session.begin():
+        order = session.get(OrderModel, ids["Active example"])
+        advertiser_id = order.advertiser_id
+        order.offer_text = "Съёмка обзора товара"
+        session.get(
+            AdvertiserProfileModel, advertiser_id
+        ).brand = "Северный Ветер"
+        user = session.get(UserModel, advertiser_id)
+        user.username = "Анна Петрова"
+        user.telegram = "anna_pet"
+
+    # Match a partial brand, contact name, or offer, and combine words in
+    # any order, even when the order and customer hold different words.
+    for term, count in (
+        ("еверный", 3),
+        ("етрова", 3),
+        ("обзора", 1),
+        ("Ветер  Северный", 3),
+        ("Петрова обзора", 1),
+        ("Съемка", 1),
+        ("@anna_pet", 3),
+        ("Петрова отсутствует", 0),
+    ):
+        params = {
+            "group": "all",
+            "status": "active",
+            "no_manager": "1",
+            "search": term,
+        }
+        flat = client.get(LIST, params=params)
+        grouped = client.get(
+            LIST,
+            params={
+                **params,
+                "view": "companies",
+                "company": str(advertiser_id),
+            },
+        )
+        assert flat.status_code == grouped.status_code == 200
+        assert f"Всего заказов: {count}" in flat.text, term
+        assert flat.text.count('title="Редактировать"') == count, term
+        assert grouped.text.count('title="Редактировать"') == count, term
+        if count:
+            assert "Найдено компаний: 1" in grouped.text, term
+            assert f"Заказов: {count}" in grouped.text, term
+            assert (
+                "Съёмка обзора товара" in flat.text
+                and "Съёмка обзора товара" in grouped.text
+            )
+        else:
+            assert "Заказы не найдены" in grouped.text, term
+
+
 def test_company_view_filters_before_pagination_and_expansion(worklist):
     client, engine, ids = worklist
     _login(client)
