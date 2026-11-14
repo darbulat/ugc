@@ -37,6 +37,7 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
     UserStatus,
 )
+from ugc_bot.domain.social import SocialPlatform, normalize_social_url
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -52,6 +53,9 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.payout_models import TABLE_MAP as PAYOUT_TABLES
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
+)
+from ugc_bot.infrastructure.db.repositories.social import (
+    SqlAlchemySocialAccountRepository,
 )
 
 if TYPE_CHECKING:
@@ -1244,7 +1248,22 @@ class AdminDashboardService:
             "referral_code": user.referral_code,
         }
         if blogger is not None:
+            accounts = await SqlAlchemySocialAccountRepository(
+                self._session_factory
+            ).list_accounts(user_id, session=session)
+            socials = {}
+            for account in accounts:
+                if account.platform in (
+                    SocialPlatform.TIKTOK,
+                    SocialPlatform.YOUTUBE,
+                ):
+                    with contextlib.suppress(ValueError):
+                        url, _ = normalize_social_url(
+                            account.platform, account.url
+                        )
+                        socials[account.platform.value] = url
             card["blogger_profile"] = {
+                "social_links": socials,
                 "instagram_url": blogger.instagram_url,
                 "confirmed": blogger.confirmed,
                 "followers": blogger.instagram_followers_count,
@@ -2288,4 +2307,6 @@ class AdminDashboardService:
 
     def _user_status_label(self, status: UserStatus) -> str:
         """Return human-readable user status label."""
-        return "active" if status == UserStatus.ACTIVE else "limited"
+        if status in (UserStatus.ACTIVE, UserStatus.BOT_BLOCKED):
+            return status.value
+        return "limited"

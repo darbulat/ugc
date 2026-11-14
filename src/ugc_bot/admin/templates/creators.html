@@ -5,6 +5,9 @@
 {% set search_placeholder = 'Имя, Instagram, Telegram или ID' %}
 {% set empty_message = 'Креаторы не найдены. Попробуйте изменить поиск или сбросить фильтры.' %}
 {% set extra_filters = city or status or followers_min is not none %}
+{% block quick_filters %}
+  <a class="people-button" href="{{ request.url_for('admin_creators').include_query_params(status='bot_blocked') }}">Креаторы с недоступным ботом</a>
+{% endblock %}
 {% block fields %}
   <div class="people-field">
     <label for="people-city">Город</label>
@@ -63,6 +66,6 @@
   <td class="people-number">{% if person.rating is defined and person.rating is not none %}<a href="{{ profile_url }}#ratings">{{ stars(person.rating) }}</a>{% else %}—{% endif %}</td>
   <td class="people-number">{{ count(person.responses) }}</td>
   <td class="people-number">{% if person.complaints %}<a class="people-pill people-pill--alert" href="{{ profile_url }}#complaints">{{ count(person.complaints) }}</a>{% else %}0{% endif %}</td>
-  <td><span class="people-pill{% if person.status == 'active' %} people-pill--active{% endif %}">{{ user_status_labels.get(person.status, person.status) }}</span></td>
+  <td><span class="people-pill{% if person.status == 'active' %} people-pill--active{% elif person.status == 'bot_blocked' %} people-pill--alert{% endif %}">{{ user_status_labels.get(person.status, person.status) }}</span></td>
   <td class="people-date">{{ person.created_at|admin_date }}</td>
 {% endmacro %}
