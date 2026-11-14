@@ -51,12 +51,14 @@ class OrderSummaryService(CustomerWorkflowService):
         collaboration,
         replacement,
         maturity,
+        staff_alerts_start_at=None,
     ):
         super().__init__(repository, transactions, clock)
         self.summaries = summaries
         self.collaboration = collaboration
         self.replacement = replacement
         self.maturity = maturity
+        self.staff_alerts_start_at = staff_alerts_start_at
 
     def now(self):
         return utc(self.clock.now())
@@ -264,28 +266,19 @@ class OrderSummaryService(CustomerWorkflowService):
                         for item in snapshot.positions
                         if not item.resolved_at
                     }
-                    if positions and at >= max(
-                        row["selection_due_at"] for row in positions
-                    ):
-                        await self.summaries.enqueue_review(
-                            order_id,
-                            client_id,
-                            "selection-deadline",
-                            [
-                                {
-                                    "paid_item_id": str(item_id),
-                                    "reason": "contact_or_refund_unconfirmed",
-                                }
-                                for item_id in sorted(unresolved, key=str)
-                            ],
-                            at,
-                            session=session,
+                    if positions:
+                        deadline = max(
+                            row["selection_due_at"] for row in positions
                         )
-                        await self.summaries.patch_card(
-                            order_id,
-                            completion_notified_at=at,
-                            session=session,
-                        )
+                        if at >= deadline:
+                            await self._handle_selection_deadline(
+                                order_id,
+                                client_id,
+                                unresolved,
+                                at,
+                                deadline,
+                                session,
+                            )
                 return
             rules = snapshot.policy.refund_rules
             if snapshot.policy.maturity_mode == "per_item_v1" or (
@@ -340,6 +333,33 @@ class OrderSummaryService(CustomerWorkflowService):
             await self.summaries.patch_card(
                 order_id, closed_at=at, session=session
             )
+
+    async def _handle_selection_deadline(
+        self, order_id, client_id, unresolved, at, deadline, session
+    ):
+        # The staff scheduler handles these deadlines independently of the
+        # customer card. Preserve the legacy route outside the configured scope.
+        if (
+            self.staff_alerts_start_at is None
+            or deadline < self.staff_alerts_start_at
+        ):
+            await self.summaries.enqueue_review(
+                order_id,
+                client_id,
+                "selection-deadline",
+                [
+                    {
+                        "paid_item_id": str(item_id),
+                        "reason": "contact_or_refund_unconfirmed",
+                    }
+                    for item_id in sorted(unresolved, key=str)
+                ],
+                at,
+                session=session,
+            )
+        await self.summaries.patch_card(
+            order_id, completion_notified_at=at, session=session
+        )
 
     async def replacement_order(self, principal, replacement_id):
         async with self.transactions.transaction() as session:
