@@ -189,11 +189,12 @@ def people_records():
 @pytest.mark.e2e
 @pytest.mark.timeout(60)
 def test_directory_filters_and_profile_history(
-    admin_server, base_url, page, people_records
+    admin_server, page, people_records
 ):
     from tests.e2e.test_admin_ui import _login
 
     brand, city, instagram, order_title, creator_name = people_records
+    base_url = admin_server
     _login(page, base_url)
     page.goto(f"{base_url}/admin/users/advertisers")
     page.get_by_label("Поиск", exact=True).fill(brand)
@@ -262,11 +263,12 @@ def test_directory_filters_and_profile_history(
 @pytest.mark.e2e
 @pytest.mark.timeout(60)
 def test_creator_social_links_and_bot_status(
-    admin_server, base_url, page, people_records
+    admin_server, page, people_records
 ):
     from tests.e2e.test_admin_ui import _login
 
     _, city, instagram, _, creator_name = people_records
+    base_url = admin_server
     _login(page, base_url)
     page.goto(f"{base_url}/admin/users/creators")
     page.get_by_role("link", name="Креаторы с недоступным ботом").click()
