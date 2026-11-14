@@ -7,7 +7,7 @@ from uuid import UUID
 import pytest
 from playwright.sync_api import Route, expect
 
-from tests.e2e.miniapp_helpers import generate_init_data
+from tests.e2e.miniapp_helpers import generate_init_data, reset_intake_storage
 from tests.e2e.test_miniapp_design_system import (
     MiniAppNetwork,
     open_app,
@@ -419,10 +419,7 @@ def test_lost_indexeddb_recovers_same_pending_request(page, platform, reload):
     page.locator("#btn-intake-create").click()
     expect(page.locator("#btn-intake-retry")).to_be_visible()
     original = network.creates[0]
-    page.evaluate("""() => new Promise((resolve, reject) => {
-      const req=indexedDB.deleteDatabase('umc-intake-recovery');
-      req.onsuccess=resolve; req.onerror=() => reject(req.error);
-    })""")
+    reset_intake_storage(page)
     if reload:
         page.reload()
         page.locator("#btn-show-create-order").click()
@@ -475,6 +472,7 @@ def test_stale_window_cannot_resubmit_a_completed_draft(page, platform):
         expect(other.locator("#intake-brief")).to_have_value(
             page.locator("#intake-brief").input_value()
         )
+        expect(other.locator("#btn-intake-create")).to_be_visible()
         original_brief = page.locator("#intake-brief").input_value()
         page.locator("#btn-intake-create").click()
         expect(page.locator("#intake-result")).to_be_visible()

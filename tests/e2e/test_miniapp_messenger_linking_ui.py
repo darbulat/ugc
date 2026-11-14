@@ -186,6 +186,9 @@ def test_linking_disabled_is_localized_fits_320_and_native_back(
     page.evaluate(
         "window.__host.events.themeChanged&&window.__host.events.themeChanged()"
     )
+    expect(page.locator("#messenger-linking-status")).to_have_attribute(
+        "data-state", "unavailable"
+    )
     expect(page.locator("#messenger-linking-create")).to_be_hidden()
     expect(page.locator("#messenger-linking-title")).not_to_be_empty()
     assert page.evaluate("document.documentElement.scrollWidth<=innerWidth")

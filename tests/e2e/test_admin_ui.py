@@ -38,18 +38,18 @@ def _login(
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_login_redirects_unauthenticated(admin_server, page, base_url) -> None:
+def test_login_redirects_unauthenticated(admin_server: str, page) -> None:
     """GET /admin/dashboard without session redirects to /admin/login."""
-    page.goto(f"{base_url}/admin/dashboard")
-    page.wait_for_url(f"{base_url}/admin/login", timeout=5000)
+    page.goto(f"{admin_server}/admin/dashboard")
+    page.wait_for_url(f"{admin_server}/admin/login", timeout=5000)
     assert "login" in page.url.lower()
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_login_success(admin_server, page, base_url) -> None:
+def test_login_success(admin_server: str, page) -> None:
     """POST login with valid credentials redirects to dashboard."""
-    _login(page, base_url)
+    _login(page, admin_server)
     page.wait_for_url(
         lambda url: "login" not in url,
         timeout=5000,
@@ -59,20 +59,20 @@ def test_login_success(admin_server, page, base_url) -> None:
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_login_invalid_credentials(admin_server, page, base_url) -> None:
+def test_login_invalid_credentials(admin_server: str, page) -> None:
     """Invalid password keeps user on login page."""
-    _login(page, base_url, password="wrong_password")
+    _login(page, admin_server, password="wrong_password")
     page.wait_for_load_state("networkidle")
     assert "login" in page.url.lower()
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_dashboard_loads(admin_server, page, base_url) -> None:
+def test_dashboard_loads(admin_server: str, page) -> None:
     """After login, admin index or dashboard loads."""
-    _login(page, base_url)
+    _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
-    page.goto(f"{base_url}/admin/")
+    page.goto(f"{admin_server}/admin/")
     page.wait_for_load_state("networkidle")
     assert page.url.rstrip("/").endswith("/admin") or "/admin/" in page.url
 
@@ -80,11 +80,11 @@ def test_dashboard_loads(admin_server, page, base_url) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
 @requires_postgres
-def test_custom_dashboard_with_kpi(admin_server, page, base_url) -> None:
+def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     """Custom dashboard loads with KPI cards (needs PostgreSQL)."""
-    _login(page, base_url)
+    _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
-    page.goto(f"{base_url}/admin/dashboard")
+    page.goto(f"{admin_server}/admin/dashboard")
     page.wait_for_load_state("networkidle")
     assert "Дашборд" in page.content()
 
@@ -92,7 +92,7 @@ def test_custom_dashboard_with_kpi(admin_server, page, base_url) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
 @requires_postgres
-def test_dashboard_chart_range_and_values(admin_server, page, base_url) -> None:
+def test_dashboard_chart_range_and_values(admin_server: str, page) -> None:
     """Show all 30 calendar days and let the operator zoom in and reset."""
     from playwright.sync_api import expect
 
@@ -101,8 +101,8 @@ def test_dashboard_chart_range_and_values(admin_server, page, base_url) -> None:
         "https://cdn.jsdelivr.net/npm/chart.js@*/**",
         lambda route: route.abort(),
     )
-    _login(page, base_url)
-    response = page.goto(f"{base_url}/admin/dashboard?period=30d")
+    _login(page, admin_server)
+    response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
     assert response is not None and response.ok
     page.locator('[data-chart="orders"] .chart-expand').click()
     detail = page.get_by_role("dialog")
@@ -124,39 +124,39 @@ def test_dashboard_chart_range_and_values(admin_server, page, base_url) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
 @requires_postgres
-def test_navigation_creators(admin_server, page, base_url) -> None:
+def test_navigation_creators(admin_server: str, page) -> None:
     """Creators page loads (requires PostgreSQL, blogger_profiles)."""
-    _login(page, base_url)
+    _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
-    page.goto(f"{base_url}/admin/users/creators")
+    page.goto(f"{admin_server}/admin/users/creators")
     page.wait_for_load_state("networkidle")
     assert "creators" in page.url or "Креаторы" in page.content()
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_navigation_advertisers_orders(admin_server, page, base_url) -> None:
+def test_navigation_advertisers_orders(admin_server: str, page) -> None:
     """Navigate between advertisers and orders sections."""
-    _login(page, base_url)
+    _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
 
-    page.goto(f"{base_url}/admin/users/advertisers")
+    page.goto(f"{admin_server}/admin/users/advertisers")
     page.wait_for_load_state("networkidle")
     assert "advertisers" in page.url
 
-    page.goto(f"{base_url}/admin/orders")
+    page.goto(f"{admin_server}/admin/orders")
     page.wait_for_load_state("networkidle")
     assert "orders" in page.url
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_sqladmin_list_views(admin_server, page, base_url) -> None:
+def test_sqladmin_list_views(admin_server: str, page) -> None:
     """Access SQLAdmin list views after login."""
-    _login(page, base_url)
+    _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
 
-    response = page.goto(f"{base_url}/admin/user-model/list")
+    response = page.goto(f"{admin_server}/admin/user-model/list")
     assert response is not None
     assert response.status in (200, 304)
 
@@ -164,7 +164,7 @@ def test_sqladmin_list_views(admin_server, page, base_url) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(45)
 def test_order_worklist_search_hide_and_restore(
-    admin_server, page, base_url, test_database
+    admin_server: str, page, test_database
 ):
     """Long geography stays in the table and visibility can be changed."""
     from datetime import datetime, timezone
@@ -225,8 +225,8 @@ def test_order_worklist_search_hide_and_restore(
         )
     engine.dispose()
 
-    _login(page, base_url)
-    page.goto(f"{base_url}/admin/order-model/list")
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/order-model/list")
     page.get_by_label("Поиск", exact=True).fill(brand)
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     row = page.get_by_role("row").filter(has_text=brand)

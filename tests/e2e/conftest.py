@@ -1,11 +1,13 @@
 """E2E test fixtures: test database, admin server, Playwright, Telegram."""
 
 import os
+import socket
 import subprocess
 import sys
 import time
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import urlopen
 
 import pytest
 from sqlalchemy import create_engine
@@ -119,10 +121,6 @@ def pytest_sessionstart(session: pytest.Session) -> None:
             pass  # Cleanup is best-effort
 
 
-E2E_PORT = 8001
-BASE_URL = f"http://127.0.0.1:{E2E_PORT}"
-
-
 @pytest.fixture(scope="session")
 def project_root() -> Path:
     """Project root directory."""
@@ -157,9 +155,9 @@ def test_database(
 
 @pytest.fixture(scope="session")
 def admin_server(test_database: str, project_root: Path, tmp_path_factory):
-    """Start admin uvicorn in subprocess (local). No-op in Docker."""
+    """Start a private admin instance or use the configured Docker endpoint."""
     if _use_external_server():
-        yield
+        yield os.environ["E2E_BASE_URL"].strip()
         return
     env = os.environ.copy()
     env.update(
@@ -173,54 +171,53 @@ def admin_server(test_database: str, project_root: Path, tmp_path_factory):
             "FEEDBACK_ENABLED": "false",
         }
     )
-
     server_log = tmp_path_factory.mktemp("admin_server") / "uvicorn.log"
-    with server_log.open("w") as output:
+    # Give the subprocess an already reserved listener.
+    with socket.socket() as listener, server_log.open("w") as output:
+        listener.bind(("127.0.0.1", 0))
+        url = f"http://127.0.0.1:{listener.getsockname()[1]}"
+        fd = listener.fileno()
         proc = subprocess.Popen(
             [
                 sys.executable,
-                "-m",
-                "uvicorn",
-                "ugc_bot.admin.app:app",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(E2E_PORT),
+                "-c",
+                "import socket, sys, uvicorn; "
+                "listener = socket.socket(fileno=int(sys.argv[1])); "
+                "uvicorn.Server(uvicorn.Config('ugc_bot.admin.app:app'))"
+                ".run(sockets=[listener])",
+                str(fd),
             ],
-            cwd=str(project_root),
+            cwd=project_root,
             env=env,
+            pass_fds=(fd,),
             stdout=subprocess.DEVNULL,
             stderr=output,
         )
 
     try:
         for _ in range(30):
-            try:
-                import urllib.request
-
-                urllib.request.urlopen(f"{BASE_URL}/health", timeout=2)
+            if proc.poll() is not None:
                 break
+            try:
+                with urlopen(f"{url}/health", timeout=2):
+                    break
             except OSError:
                 time.sleep(0.5)
         else:
-            proc.terminate()
-            proc.wait(timeout=5)
             raise RuntimeError(
-                "Admin server did not become ready. stderr:\n"
-                + server_log.read_text()[-12000:]
+                f"Admin server did not become ready. See {server_log}"
             )
-        yield
+        if proc.poll() is not None:
+            raise RuntimeError(f"Admin server exited. See {server_log}")
+        yield url
     finally:
-        proc.terminate()
-        proc.wait(timeout=10)
-
-
-@pytest.fixture(scope="session")
-def base_url() -> str:
-    """Base URL for admin app (local or Docker)."""
-    require_synthetic_e2e(os.environ)
-    env_url = os.environ.get("E2E_BASE_URL", "").strip()
-    return env_url if env_url else BASE_URL
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
 
 
 # --- Mini App E2E fixtures ---

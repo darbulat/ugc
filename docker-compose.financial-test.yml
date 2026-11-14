@@ -1,8 +1,7 @@
 # Standalone ONLY; never combine with main/dev compose or a production .env.
 # docker compose -p ugc-financial-test --env-file /dev/null \
 #   -f docker-compose.financial-test.yml config --quiet
-# ... build test migrate_test; ... up -d --wait db_test
-# ... run --rm migrate_test; ... run --rm test
+# Use make test-local-full to run the full non-E2E suite in this stack.
 # No published ports, bind mounts, external networks, or live app/bot services.
 name: ugc-financial-test
 
@@ -21,16 +20,18 @@ x-test-environment: &test-environment
 x-test-build: &test-build
   context: .
   dockerfile: Dockerfile.e2e
+  args:
+    INSTALL_BROWSER: "false"
 
 services:
   db_test:
-    image: postgis/postgis:16-3.4
+    image: ${UGC_TEST_POSTGIS_IMAGE:-postgis/postgis:16-3.4}
     environment:
       POSTGRES_DB: ugc_test
       POSTGRES_USER: ugc
       POSTGRES_PASSWORD: ugc
-    tmpfs:
-      - /var/lib/postgresql/data
+    volumes:
+      - db_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ugc -d ugc_test"]
       interval: 2s
@@ -59,12 +60,16 @@ services:
       - python
       - -m
       - pytest
-      - tests/postgres_financial
-      - -v
+      - -m
+      - not e2e
+      - -q
       - --no-cov
       - --require-financial-postgres
       - --timeout=60
     restart: "no"
+
+volumes:
+  db_data:
 
 networks:
   default:

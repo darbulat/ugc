@@ -80,6 +80,27 @@ def build_telegram_mock_script(
     """
 
 
+def reset_intake_storage(page: Page) -> None:
+    """Remove IndexedDB after pending test writes have finished."""
+    page.evaluate("""() => Promise.race([
+      (async () => {
+        await window.UMCIntakeProgress.flush();
+        await new Promise((resolve, reject) => {
+          const request = indexedDB.deleteDatabase('umc-intake-recovery');
+          request.onsuccess = resolve;
+          request.onerror = () => reject(request.error);
+          request.onblocked = () =>
+            reject(new Error('Intake database is still open'));
+        });
+      })(),
+      new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error('Intake storage reset timed out')), 4000
+        );
+      })
+    ])""")
+
+
 def wait_for_screen(page: Page, screen_id: str, timeout: int = 10000) -> None:
     """Wait until a screen becomes active (has .active class)."""
     page.wait_for_selector(f"#{screen_id}.active", timeout=timeout)
