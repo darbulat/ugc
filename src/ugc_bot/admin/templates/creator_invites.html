@@ -37,7 +37,7 @@
       <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
       <label for="invite-item">Свободная оплаченная позиция</label>
       <select name="item_id" id="invite-item" class="form-select mb-3">
-        {% for item in items %}<option value="{{ item.paid_item_id }}">№{{ item.ordinal }}</option>{% endfor %}
+        {% for item in items %}<option value="{{ item.paid_item_id }}">№{{ item.ordinal }}{% if item.pending_invites %} · Ссылка уже создана{% endif %}</option>{% endfor %}
       </select>
       <label for="invite-instagram">Ник или ссылка на Instagram</label>
       <input id="invite-instagram" class="form-control mb-3" name="instagram" maxlength="250" placeholder="@username" required>

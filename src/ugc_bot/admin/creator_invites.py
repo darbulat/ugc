@@ -7,7 +7,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
@@ -66,12 +66,24 @@ def register_creator_invites(  # noqa: C901
                     error = ERRORS.get(
                         str(exc), "Не удалось создать приглашение."
                     )
+            now = datetime.now(timezone.utc)
+            pending = (
+                select(func.count())
+                .where(
+                    INVITES.c.item_id == OrderItemModel.paid_item_id,
+                    INVITES.c.consented_at.is_(None),
+                    INVITES.c.expires_at > now,
+                )
+                .scalar_subquery()
+            )
             items = db.execute(
                 free_positions(order_id)
                 .with_only_columns(
-                    OrderItemModel.paid_item_id, OrderItemModel.ordinal
+                    OrderItemModel.paid_item_id,
+                    OrderItemModel.ordinal,
+                    pending.label("pending_invites"),
                 )
-                .order_by(OrderItemModel.ordinal)
+                .order_by(pending, OrderItemModel.ordinal)
             ).all()
             invites = (
                 db.execute(
@@ -96,7 +108,7 @@ def register_creator_invites(  # noqa: C901
                 error=error,
                 bot=bot,
                 invites=invites,
-                now=datetime.now(timezone.utc),
+                now=now,
             )
 
     @app.api_route(
