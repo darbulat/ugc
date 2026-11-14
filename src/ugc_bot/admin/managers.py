@@ -119,7 +119,18 @@ def _review(db, command, identity, note):
                 reviewed_at=now,
                 registered_by_admin=True,
             )
-            .on_conflict_do_nothing(index_elements=[APPLICATIONS.c.user_id])
+            .on_conflict_do_update(
+                index_elements=[APPLICATIONS.c.user_id],
+                where=APPLICATIONS.c.state == "draft",
+                set_=dict(
+                    state="approved",
+                    updated_at=now,
+                    reviewed_at=now,
+                    registered_by_admin=True,
+                    challenge=None,
+                    challenge_until=None,
+                ),
+            )
             .returning(APPLICATIONS.c.user_id)
         )
         if created is None:

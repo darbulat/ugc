@@ -198,3 +198,20 @@ async def test_staff_contact_for_own_order_and_manager_notice(intake_env):
         await service.reported_contact_text(client, identity)
     assert await service.delivery.run_once() == 0
     bot.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_register_known_manager_with_existing_draft(intake_env):
+    env = intake_env
+    uid = env["admin"].user_id
+    service = ManagerApplications(env["container"].transaction_manager, None)
+    await service.open(uid)
+    await service.answer(uid, "name", "Менеджер")
+    with Session(env["pg"]) as db, db.begin():
+        db.get(UserModel, uid).telegram = "known_manager"
+        _review(db, "register", "@known_manager", "")
+    row = await service.open(uid)
+    assert row["registered_by_admin"]
+    assert row["answers"]["name"] == "Менеджер"
+    assert row["instagram_verified_at"] is None
+    assert await service.approved(uid)
