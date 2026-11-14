@@ -379,15 +379,17 @@ def test_order_worklist_search_hide_and_restore(
     page.get_by_role("link", name="Назад к списку").click()
     assert page.url == filtered_list
     expect(page.get_by_label("Поиск", exact=True)).to_have_value("черновика")
-    geography_cell = row.locator("td").first.locator("span")
     for width in (1440, 820):
         page.set_viewport_size({"width": width, "height": 800})
-        assert geography_cell.evaluate(
-            "(cell) => getComputedStyle(cell).webkitLineClamp === '2' "
-            "&& cell.scrollHeight > cell.clientHeight"
-        )
-        assert page.evaluate(
-            "document.documentElement.scrollWidth <= window.innerWidth"
+        page.wait_for_function(
+            """() => {
+              const cell = document.querySelector(
+                ".order-worklist-table tbody tr td .order-clamp"
+              );
+              return cell && getComputedStyle(cell).webkitLineClamp === "2" &&
+                cell.scrollHeight > cell.clientHeight &&
+                document.documentElement.scrollWidth <= window.innerWidth;
+            }"""
         )
     hide = row.get_by_role("button", name="Убрать из списка")
     page.once("dialog", lambda dialog: dialog.dismiss())
