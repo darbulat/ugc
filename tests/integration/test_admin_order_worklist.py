@@ -26,6 +26,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
     ComplaintModel,
+    ManagerOrderModel,
     OfferDispatchModel,
     OrderModel,
     PaymentModel,
@@ -169,6 +170,92 @@ def test_worklist_filters_search_and_pagination(worklist):
     assert {name for name in ids if name in first.text} != {
         name for name in ids if name in second.text
     }
+
+
+def test_quick_filters_use_activity_and_assignments_before_pagination(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(days=8)
+    with Session(engine) as session, session.begin():
+        for name in (
+            "Active example",
+            "Closed example",
+            "Dispatch example",
+            "Draft example",
+            "Financial example",
+            "Paid example",
+        ):
+            order = session.get(OrderModel, ids[name])
+            order.created_at = old
+            order.updated_at = old
+        quiet = session.get(OrderModel, ids["Active example"])
+        advertiser_id = quiet.advertiser_id
+        session.get(OrderModel, ids["Closed example"]).completed_at = now
+        session.get(OrderModel, ids["Draft example"]).updated_at = now
+        dispatch = session.scalars(select(OfferDispatchModel)).one()
+        dispatch.manager_id = dispatch.blogger_id
+        session.add(
+            ManagerOrderModel(
+                order_id=ids["Financial example"],
+                user_id=advertiser_id,
+                created_at=old,
+            )
+        )
+        session.add(
+            OrderModel(
+                order_id=uuid4(),
+                advertiser_id=advertiser_id,
+                status=OrderStatus.ACTIVE,
+                offer_text="Quiet second order",
+                product_link="https://example.test",
+                price=200,
+                bloggers_needed=4,
+                created_at=old,
+                updated_at=old,
+            )
+        )
+
+    response = client.get(LIST, params={"group": "all", "no_manager": "1"})
+    assert response.status_code == 200
+    assert "Active example" in response.text and "Paid example" in response.text
+    assert "Financial example" not in response.text
+    assert "Dispatch example" not in response.text
+
+    response = client.get(LIST, params={"group": "all", "inactive": "1"})
+    assert response.status_code == 200
+    assert (
+        "Financial example" in response.text
+        and "Active example" in response.text
+    )
+    for title in (
+        "Dispatch example",
+        "Paid example",
+        "Draft example",
+        "Closed example",
+    ):
+        assert title not in response.text
+
+    filters = {
+        "no_manager": "1",
+        "inactive": "1",
+        "status": "active",
+        "advertiser_id": str(advertiser_id),
+        "search": "Northwind",
+        "pageSize": 1,
+    }
+    seen = set()
+    for page in (1, 2):
+        response = client.get(LIST, params={**filters, "page": page})
+        assert response.status_code == 200
+        assert "Всего заказов: 2" in response.text
+        assert response.text.count('title="Редактировать"') == 1
+        seen.update(
+            title
+            for title in ("Active example", "Quiet second order")
+            if title in response.text
+        )
+    assert seen == {"Active example", "Quiet second order"}
 
 
 def test_order_links_preserve_list_search_and_reject_external_return(worklist):

@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import func, inspect, select, text, update
+from sqlalchemy import delete, func, inspect, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
@@ -15,6 +15,7 @@ from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
 )
+from ugc_bot.admin.order_summary import order_has_manager
 from ugc_bot.admin.order_worklist import worklist_row_details
 from ugc_bot.application.collaboration_ports import CollaborationCommand
 from ugc_bot.application.services.collaboration_service import (
@@ -208,6 +209,13 @@ async def test_admin_reads_paid_assignment_in_order_list_and_card(
 ):
     factory, _, _, _, ids = collaboration_pg
     thresholds = DelayThresholds(7, 24, 48, 7)
+    # Exercise an order with a manager on the paid assignment alone.
+    with financial_pg_engine.begin() as db:
+        db.execute(
+            delete(ManagerOrderModel).where(
+                ManagerOrderModel.order_id == ids["order"]
+            )
+        )
     card = await AdminDashboardService(
         factory, "Europe/Moscow", thresholds
     ).get_order_card(ids["order"])
@@ -225,6 +233,10 @@ async def test_admin_reads_paid_assignment_in_order_list_and_card(
 
     with Session(financial_pg_engine) as db:
         row = worklist_row_details(db, [ids["order"]], thresholds)[ids["order"]]
+        unmanaged = select(OrderModel.order_id).where(
+            OrderModel.order_id == ids["order"], ~order_has_manager()
+        )
+        assert db.scalar(unmanaged) is None
     assert row["picked"] == card["picked_count"]
     assert row["managers"] == card["managers"]
     assert row["deletion_blocker"] == "Заказ не отмечен как тестовый"

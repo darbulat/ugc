@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from sqlalchemy import case, func, select, union, union_all
+from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.social import SocialPlatform
@@ -131,31 +132,33 @@ def use_financial_positions():
     ) & OrderModel.complimentary.is_(False)
 
 
-def order_managers_query(order_ids):
-    assignments = union(
+def _manager_assignments():
+    return union(
         select(
             ManagerOrderModel.order_id,
             ManagerOrderModel.user_id.label("user_id"),
-        ).where(ManagerOrderModel.order_id.in_(order_ids)),
+        ),
         select(OrderItemModel.order_id, ItemAssignmentModel.manager_id)
         .join(
             OrderItemModel,
             OrderItemModel.paid_item_id == ItemAssignmentModel.paid_item_id,
         )
         .where(
-            OrderItemModel.order_id.in_(order_ids),
             ItemAssignmentModel.valid_to.is_(None),
             ItemAssignmentModel.manager_id.is_not(None),
         ),
         select(OfferDispatchModel.order_id, OfferDispatchModel.manager_id)
         .join(OrderModel, OrderModel.order_id == OfferDispatchModel.order_id)
         .where(
-            OfferDispatchModel.order_id.in_(order_ids),
             OfferDispatchModel.in_offer.is_(True),
             OfferDispatchModel.manager_id.is_not(None),
             ~use_financial_positions(),
         ),
     ).subquery()
+
+
+def order_managers_query(order_ids):
+    assignments = _manager_assignments()
     return (
         select(
             assignments.c.order_id,
@@ -164,7 +167,20 @@ def order_managers_query(order_ids):
             UserModel.telegram,
         )
         .join(UserModel, UserModel.user_id == assignments.c.user_id)
+        .where(assignments.c.order_id.in_(order_ids))
         .order_by(UserModel.username, UserModel.user_id)
+    )
+
+
+def order_has_manager() -> ColumnElement[bool]:
+    assignments = _manager_assignments()
+    return (
+        select(1)
+        .select_from(assignments)
+        .join(UserModel, UserModel.user_id == assignments.c.user_id)
+        .where(assignments.c.order_id == OrderModel.order_id)
+        .correlate(OrderModel)
+        .exists()
     )
 
 
@@ -203,6 +219,19 @@ def order_activity_at():
         )
     ).subquery()
     return select(func.max(events.c.at)).correlate(OrderModel).scalar_subquery()
+
+
+def order_inactive_since(cutoff: datetime) -> ColumnElement[bool]:
+    """Match the same order and related timestamps shown in the card."""
+    return (
+        (OrderModel.created_at <= cutoff)
+        & (OrderModel.updated_at <= cutoff)
+        & (
+            func.coalesce(OrderModel.completed_at, OrderModel.created_at)
+            <= cutoff
+        )
+        & (func.coalesce(order_activity_at(), OrderModel.created_at) <= cutoff)
+    )
 
 
 def latest_order_activity(
