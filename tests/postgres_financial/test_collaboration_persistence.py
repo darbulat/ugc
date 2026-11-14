@@ -242,13 +242,29 @@ async def test_admin_reads_paid_assignment_in_order_list_and_card(
         assert db.scalar(unmanaged) is None
         managed_user = db.get(UserModel, ids["manager"])
         managed_user.telegram = "paid_manager_" + ids["manager"].hex[:12]
+        other_user = db.get(UserModel, ids["creator"])
+        other_user.telegram = "new_manager_" + ids["creator"].hex[:12]
         db.flush()
-        assert "уже есть менеджер" in assign_worklist_manager(
-            db, ids["order"], managed_user.telegram
+        assert (
+            "уже есть менеджер"
+            in assign_worklist_manager(
+                db, ids["order"], managed_user.telegram
+            ).message
+        )
+        assert (
+            "есть оплаченные позиции"
+            in assign_worklist_manager(
+                db,
+                ids["order"],
+                other_user.telegram,
+                previous_manager=ids["manager"],
+            ).message
         )
         assert db.get(ManagerOrderModel, (ids["manager"], ids["order"])) is None
+        assert db.get(ManagerOrderModel, (ids["creator"], ids["order"])) is None
     assert row["picked"] == card["picked_count"]
     assert row["managers"] == card["managers"]
+    assert row["replaceable_managers"] == []
     assert row["deletion_blocker"] == "Заказ не отмечен как тестовый"
 
 

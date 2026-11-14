@@ -132,18 +132,39 @@
             {% set restore_button_class = 'btn btn-sm btn-outline-primary' %}
             {% include 'order_delete_button.html' %}
           </div>
-          {% if manager_assignment and not info.managers and not info.archived and row.status != 'closed' %}
+          {% set replacing = info.replaceable_managers|length > 0 %}
+          {% if manager_actions and not info.archived and row.status != 'closed' %}
+          {% if replacing or ('no_manager' in quick_filters and not info.managers) %}
             <details class="order-manager-assign mt-2">
-              <summary class="text-primary">Назначить менеджера</summary>
+              <summary class="text-primary">{{ 'Сменить менеджера' if replacing else 'Назначить менеджера' }}</summary>
               <form method="post" class="mt-2 d-flex flex-column align-items-start gap-1"
-                    action="{{ request.url_for('assign_order_manager', order_id=row.order_id).replace(query=request.url.query) }}">
+                    action="{{ request.url_for('assign_order_manager', order_id=row.order_id).replace(query=request.url.query) }}"
+                    {% if replacing %}data-admin-manager-confirm{% endif %}>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if replacing %}
+                  <input type="hidden" name="confirmed" value="">
+                  {% if info.replaceable_managers|length == 1 %}
+                    {% set current = info.replaceable_managers[0] %}
+                    <input type="hidden" name="previous_manager" value="{{ current.id }}"
+                           data-manager-name="{{ current.name or current.telegram or 'Текущий менеджер' }}">
+                  {% else %}
+                    <select class="form-select form-select-sm" name="previous_manager" aria-label="Кого заменить" required>
+                      <option value="" disabled selected>Кого заменить</option>
+                      {% for manager in info.replaceable_managers %}
+                        <option value="{{ manager.id }}">{{ manager.name or manager.telegram or 'Менеджер' }}{% if manager.telegram and manager.name != manager.telegram %} · @{{ manager.telegram }}{% endif %}</option>
+                      {% endfor %}
+                    </select>
+                  {% endif %}
+                {% endif %}
                 <input class="form-control form-control-sm" aria-label="Telegram-ник менеджера"
                        name="manager_telegram" list="worklist-managers" placeholder="@username"
                        maxlength="33" required autocapitalize="off" spellcheck="false">
-                <button type="submit" class="btn btn-sm btn-primary">Назначить</button>
+                <button type="submit" class="btn btn-sm btn-primary">{{ 'Заменить' if replacing else 'Назначить' }}</button>
               </form>
             </details>
+          {% elif info.managers %}
+            <small class="order-row-note">Быстрая замена недоступна: менеджер закреплён за оплаченной позицией.</small>
+          {% endif %}
           {% endif %}
           {% if group == 'test' and info.deletion_blocker %}
             <small class="order-row-note" title="Причина ограничения удаления">Нельзя удалить: {{ info.deletion_blocker|lower }}.</small>
