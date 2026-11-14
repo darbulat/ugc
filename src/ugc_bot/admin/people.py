@@ -26,6 +26,7 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
 )
+from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 PROFILE_HISTORY_PAGE_SIZE = 10
 
@@ -71,6 +72,7 @@ def creator_directory_filters(
     status: str,
     followers_min: int | None,
     with_complaints: bool,
+    platform: SocialPlatform | None = None,
 ) -> list[ColumnElement[bool]]:
     filters = _person_search(q, BloggerProfileModel.instagram_url)
     filters.extend(_complaint_filter(with_complaints))
@@ -90,6 +92,19 @@ def creator_directory_filters(
     if followers_min is not None and followers_min >= 0:
         filters.append(
             BloggerProfileModel.instagram_followers_count >= followers_min
+        )
+    if platform == SocialPlatform.INSTAGRAM:
+        filters.append(func.trim(BloggerProfileModel.instagram_url) != "")
+    elif platform is not None:
+        filters.append(
+            select(SocialAccountModel.account_id)
+            .where(
+                SocialAccountModel.user_id == UserModel.user_id,
+                SocialAccountModel.platform == platform,
+                func.trim(SocialAccountModel.url) != "",
+            )
+            .correlate(UserModel)
+            .exists()
         )
     return filters
 

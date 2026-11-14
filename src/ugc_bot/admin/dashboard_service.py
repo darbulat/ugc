@@ -610,13 +610,14 @@ class AdminDashboardService:
         status: str = "",
         followers_min: int | None = None,
         include_ratings: bool = False,
+        platform: SocialPlatform | None = None,
     ) -> dict:
         """Return paginated creator list with counts and filters."""
         window = self._build_period_window(period)
         page = max(1, page)
         per_page = max(1, min(100, per_page))
         filters = creator_directory_filters(
-            q, city, status, followers_min, only_with_complaints
+            q, city, status, followers_min, only_with_complaints, platform
         )
         if only_new:
             filters.extend(

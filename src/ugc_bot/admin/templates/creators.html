@@ -4,9 +4,9 @@
 {% set entries = creators %}
 {% set search_placeholder = 'Имя, Instagram, Telegram или ID' %}
 {% set empty_message = 'Креаторы не найдены. Попробуйте изменить поиск или сбросить фильтры.' %}
-{% set extra_filters = city or status or followers_min is not none %}
+{% set extra_filters = city or status or platform or followers_min is not none %}
 {% block quick_filters %}
-  <a class="people-button" href="{{ request.url_for('admin_creators').include_query_params(status='bot_blocked') }}">Креаторы с недоступным ботом</a>
+  <a class="people-button" href="{{ request.url.remove_query_params('page').include_query_params(status='bot_blocked') }}">Креаторы с недоступным ботом</a>
 {% endblock %}
 {% block fields %}
   <div class="people-field">
@@ -37,6 +37,15 @@
       {% endif %}
       {% for threshold in thresholds %}
         <option value="{{ threshold }}"{% if followers_min == threshold %} selected{% endif %}>От {{ count(threshold) }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="people-field">
+    <label for="people-platform">Есть ссылка на площадку</label>
+    <select id="people-platform" name="platform">
+      <option value="">Любая площадка</option>
+      {% for key, label in platform_labels.items() %}
+        <option value="{{ key }}"{% if platform == key %} selected{% endif %}>{{ label }}</option>
       {% endfor %}
     </select>
   </div>
