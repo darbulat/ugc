@@ -1,5 +1,6 @@
 """Tests for admin dashboard routes."""
 
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -88,6 +89,20 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         "get_worklist_attention_counts",
         AsyncMock(return_value={"no_manager": 3, "inactive": 0}),
     )
+    delayed = {
+        "order_id": "11111111-1111-1111-1111-111111111111",
+        "advertiser": "Компания",
+        "offer_text": "Подбор креаторов",
+        "created_at": datetime(2026, 11, 1, tzinfo=timezone.utc),
+        "age_hours": 101,
+        "days_since_payment": 4.2,
+        "selection_days": 7,
+        "selection_due_at": datetime(2026, 11, 12, tzinfo=timezone.utc),
+        "selection_target_days": 3,
+        "picked_count": 2,
+        "needed_count": 10,
+        "reasons": ["low_picked"],
+    }
     client = _build_admin_client(
         monkeypatch,
         dashboard_payload={
@@ -98,6 +113,17 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             },
             "orders": {"active": 3, "completed": 1, "archived": 0},
             "problems": {"open_complaints": 0, "delays": 0},
+            "order_attention": {
+                "delayed": [
+                    delayed,
+                    dict(
+                        delayed,
+                        days_since_payment=None,
+                        selection_days=None,
+                        selection_due_at=None,
+                    ),
+                ]
+            },
             "delayed_orders": [],
             "open_complaints_list": [],
             "turnover_period": 0,
@@ -123,6 +149,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     )
     response = client.get("/admin/dashboard?period=today")
     assert response.status_code == 200
+    assert "4,2 дн. с оплаты" in response.text
+    assert "Срок подбора 7 дн." in response.text
+    assert "Ориентир админки 3 дн." in response.text
+    assert "Дата оплаты неизвестна" in response.text
+    assert "101 ч с создания" not in response.text
     assert "Дашборд" in response.text
     assert "Админка" in response.text
     assert 'href="/admin/order-model/list"' in response.text

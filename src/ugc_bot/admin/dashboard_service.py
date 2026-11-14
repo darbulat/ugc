@@ -60,6 +60,7 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
     OfferDispatchModel,
+    OrderItemModel,
     OrderModel,
     PaymentModel,
     PayoutRequestModel,
@@ -145,6 +146,14 @@ def dashboard_period_window(
         previous_start=previous_start,
         previous_end=previous_end,
     )
+
+
+def _elapsed_days(start: datetime, end: datetime) -> float:
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    return max(0.0, (end - start).total_seconds() / 86400)
 
 
 def paid_in_period(start: datetime, end: datetime) -> ColumnElement[bool]:
@@ -1348,6 +1357,16 @@ class AdminDashboardService:
         """Group current orders by the action they are waiting for."""
         now = datetime.now(timezone.utc)
         complaint_counts = self._open_complaints_subquery()
+        selection = (
+            select(
+                OrderItemModel.order_id,
+                func.min(OrderItemModel.captured_at).label("captured_at"),
+                func.max(OrderItemModel.selection_due_at).label("due_at"),
+            )
+            .where(OrderItemModel.captured_at.is_not(None))
+            .group_by(OrderItemModel.order_id)
+            .subquery()
+        )
         query = (
             select(
                 OrderModel,
@@ -1359,6 +1378,10 @@ class AdminDashboardService:
                     AdvertiserProfileModel.brand, UserModel.username
                 ).label("advertiser_name"),
                 PaymentModel.status.label("payment_status"),
+                func.coalesce(
+                    PaymentModel.paid_at, selection.c.captured_at
+                ).label("paid_at"),
+                selection.c.due_at.label("selection_due_at"),
                 CONTROLS.c.paused.label("paused"),
                 aging_unpaid_condition(
                     now, self._thresholds.no_responses_hours
@@ -1376,6 +1399,7 @@ class AdminDashboardService:
             .outerjoin(
                 PaymentModel, PaymentModel.order_id == OrderModel.order_id
             )
+            .outerjoin(selection, selection.c.order_id == OrderModel.order_id)
             .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
             .where(
                 *business_order_conditions(),
@@ -1398,6 +1422,8 @@ class AdminDashboardService:
             open_count,
             name,
             payment_status,
+            paid_at,
+            selection_due_at,
             paused,
             unpaid,
         ) in rows:
@@ -1408,6 +1434,19 @@ class AdminDashboardService:
             )
             if queue is None:
                 continue
+            timing = {}
+            if queue == "delayed":
+                timing = {
+                    "days_since_payment": _elapsed_days(paid_at, now)
+                    if paid_at is not None
+                    else None,
+                    "selection_due_at": selection_due_at,
+                    "selection_days": _elapsed_days(paid_at, selection_due_at)
+                    if paid_at is not None and selection_due_at is not None
+                    else None,
+                    "selection_target_days": self._thresholds.active_days,
+                    "complimentary": bool(order.complimentary),
+                }
             attention[queue].append(
                 {
                     "order_id": str(order.order_id),
@@ -1419,6 +1458,7 @@ class AdminDashboardService:
                     "needed_count": int(order.bloggers_needed),
                     "has_problem": open_count > 0,
                     "reasons": reasons,
+                    **timing,
                 }
             )
         return attention
