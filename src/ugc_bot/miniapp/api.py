@@ -94,6 +94,9 @@ from ugc_bot.miniapp.correction_api import create_correction_router
 from ugc_bot.miniapp.debt_recovery_api import create_debt_recovery_router
 from ugc_bot.miniapp.financial_principal import resolve_financial_principal
 from ugc_bot.miniapp.financial_review_api import create_financial_review_router
+from ugc_bot.miniapp.manager_directory_api import (
+    create_manager_directory_router,
+)
 from ugc_bot.miniapp.manual_grant_api import create_manual_grant_router
 from ugc_bot.miniapp.messenger_linking_api import (
     create_messenger_linking_router,
@@ -652,6 +655,9 @@ router.include_router(create_social_router(resolve_financial_principal))
 router.include_router(create_collaboration_router(resolve_financial_principal))
 router.include_router(create_override_router(resolve_financial_principal))
 router.include_router(create_partner_router(resolve_financial_principal))
+router.include_router(
+    create_manager_directory_router(resolve_financial_principal)
+)
 router.include_router(create_payout_router(resolve_financial_principal))
 router.include_router(create_correction_router(resolve_financial_principal))
 router.include_router(create_payout_view_router())
