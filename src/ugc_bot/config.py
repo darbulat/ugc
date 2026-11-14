@@ -138,6 +138,8 @@ _FLAT_KEYS = {
         "CUSTOMER_WORKFLOWS_ENABLED",
         "MAX_ORDER_PRICE",
         "ORDER_RADIUS_KM",
+        "ORDER_REVIEW_ALERTS_START_AT",
+        "ORDER_REVIEW_DUTY_ADMIN_ID",
         "UNPAID_REMINDERS_ENABLED",
         "UNPAID_REMINDERS_START_AT",
         "UNPAID_REMINDERS_EXCLUDED_USERS",
@@ -594,6 +596,12 @@ class OrderConfig(BaseSettings):
 
     customer_workflows_enabled: bool = Field(
         default=False, alias="CUSTOMER_WORKFLOWS_ENABLED"
+    )
+    order_review_alerts_start_at: AwareDatetime | None = Field(
+        default=None, alias="ORDER_REVIEW_ALERTS_START_AT"
+    )
+    order_review_duty_admin_id: UUID | None = Field(
+        default=None, alias="ORDER_REVIEW_DUTY_ADMIN_ID"
     )
     unpaid_reminders_enabled: bool = Field(
         default=False, alias="UNPAID_REMINDERS_ENABLED"

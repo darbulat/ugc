@@ -63,6 +63,7 @@ from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_SECTIONS,
     changed_text_errors,
 )
+from ugc_bot.admin.order_review import register_order_review
 from ugc_bot.admin.order_summary import (
     ORDER_INACTIVITY_DAYS,
     order_has_manager,
@@ -3779,6 +3780,7 @@ def create_admin_app() -> FastAPI:
             request, auth, container, order_id
         )
 
+    register_order_review(app, auth, engine, templates, _require_action_token)
     _register_order_worklist_action(app, auth, engine, admin_cache)
     _register_complaint_action(app, auth, engine, admin_cache)
 

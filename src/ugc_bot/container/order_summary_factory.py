@@ -42,4 +42,9 @@ def build_order_summary(config, transactions):
         SelectionMaturityService(
             SqlAlchemySelectionMaturityRepository(), replacement.ledger, clock
         ),
+        staff_alerts_start_at=(
+            config.order.order_review_alerts_start_at
+            if config.order.order_review_duty_admin_id is not None
+            else None
+        ),
     )

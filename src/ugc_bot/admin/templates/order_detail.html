@@ -19,6 +19,9 @@
       <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
       {% if customer_url %}<a class="admin-button" href="{{ customer_url }}">{{ order.advertiser or 'Профиль заказчика' }}</a>{% endif %}
       <a class="admin-button" href="#order-detail-actions">Действия с заказом</a>
+      {% if status == 'active' %}
+        <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(order_id=order.order_id) }}">Позиции на проверке</a>
+      {% endif %}
     </nav>
     <section class="card order-detail__overview">
       <div class="order-detail__heading">

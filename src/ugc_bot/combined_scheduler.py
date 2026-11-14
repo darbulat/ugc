@@ -34,6 +34,7 @@ from ugc_bot.order_image_cleanup_scheduler import (
     run_enabled as image_cleanup_loop,
 )
 from ugc_bot.order_notice_scheduler import run_enabled as order_notice_loop
+from ugc_bot.order_review_scheduler import run_enabled as order_review_loop
 from ugc_bot.paid_selection_delivery_scheduler import (
     run_enabled as selection_loop,
 )
@@ -75,6 +76,17 @@ def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
             )
         )
     order_config = getattr(config, "order", None)
+    if (
+        getattr(order_config, "order_review_alerts_start_at", None) is not None
+        and getattr(order_config, "order_review_duty_admin_id", None)
+        is not None
+    ):
+        tasks.append(
+            asyncio.create_task(
+                order_review_loop(config, container, bot),
+                name="order-review-alerts",
+            )
+        )
     if getattr(order_config, "unpaid_reminders_enabled", False) and getattr(
         order_config, "unpaid_reminders_start_at", None
     ):

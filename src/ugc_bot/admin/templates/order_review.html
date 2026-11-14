@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Требуют проверки{% endblock %}
+{% block content %}
+<div class="section">
+  <div class="admin-actions">
+    <a class="admin-button" href="/admin/order-model/list">← К заказам</a>
+  </div>
+  <h1>Требуют проверки</h1>
+  {% if message %}<p class="alert alert-info" role="status">{{ message }}</p>{% endif %}
+  <nav class="admin-actions" aria-label="Фильтры очереди">
+    <a class="admin-button" href="{{ request.url_for('admin_order_review') }}">Все позиции</a>
+    <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(unassigned='true') }}">Без ответственного</a>
+    {% if order_id %}<span>Выбран один заказ</span>{% endif %}
+    {% if manager_id %}<span>Фильтр по менеджеру</span>{% endif %}
+  </nav>
+  {% for order in orders %}
+  <section class="card section" aria-labelledby="review-{{ order.id }}">
+    <h2 id="review-{{ order.id }}">
+      <a href="{{ request.url_for('admin_order_detail', order_id=order.id) }}">{{ order.number }} · {{ order.title|truncate(85) }}</a>
+    </h2>
+    <p>Кандидатов в резерве {{ order.reserve }} · использовано замен {{ order.used }} · осталось {{ order.left }} из {{ order.cap }}</p>
+    <div class="admin-table-scroll" role="region" aria-label="Позиции заказа {{ order.number }}" tabindex="0">
+    <table class="table">
+      <thead><tr><th scope="col">Позиция</th><th scope="col">Причина и срок</th><th scope="col">Контакт</th><th scope="col">Ответственный</th><th scope="col">Реферальные начисления</th></tr></thead>
+      <tbody>
+      {% for position in order.positions %}
+      <tr>
+        <th scope="row">№{{ position.ordinal }}{% if position.creator %}<br>{{ position.creator }}{% endif %}</th>
+        <td>
+          {{ position.reason }}
+          {% if position.overdue %}<span class="badge badge--alert">Просрочено</span>{% endif %}
+          <br><small>Подбор до {{ position.deadline|admin_date }}</small>
+          {% if position.answer_due_at %}<br><small>Ответ до {{ position.answer_due_at|admin_date }}</small>{% endif %}
+          {% if position.work_due_at %}<br><small>Работа до {{ position.work_due_at|admin_date }}</small>{% endif %}
+        </td>
+        <td>
+          {% if position.contact_at %}Подтверждён<br><small>{{ position.contact_at|admin_date }}</small>
+          {% elif position.delivery_state == 'unknown' %}Результат доставки неизвестен
+          {% elif position.delivery_state == 'failed' %}Доставка отклонена
+          {% elif position.delivery_state in ('ready','sending') %}Ожидает доставки
+          {% else %}Нет подтверждения{% endif %}
+        </td>
+        <td style="min-width: 12rem">
+          {% if position.manager_id %}
+            <a href="{{ request.url_for('admin_order_review').include_query_params(manager_id=position.manager_id) }}">{{ position.manager }}</a>
+          {% else %}{{ position.manager }}{% endif %}
+          {% if order.managers %}
+          <form class="mt-2" method="post" action="{{ request.url_for('assign_review_manager', order_id=order.id, item_id=position.paid_item_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+            <input type="hidden" name="expected" value="{{ position.owner_override or '' }}">
+            <select class="form-select mb-2" name="manager_id" aria-label="Ответственный за позицию {{ position.ordinal }}">
+              <option value="">По назначению в заказе</option>
+              {% for id, name in order.managers.items() %}
+                <option value="{{ id }}" {% if id == position.owner_override %}selected{% endif %}>{{ name }}</option>
+              {% endfor %}
+            </select>
+            <button class="admin-button" type="submit">Сохранить</button>
+          </form>
+          {% endif %}
+        </td>
+        <td>
+          {% for entry in position.entries %}
+          <div class="mb-2">
+            <strong>{{ 'За заказчика' if entry.kind == 'client_referral' else 'За креатора' }}</strong>
+            {% if entry.recipient %} · {{ entry.recipient }}{% endif %}<br>
+            <small>Начислено {{ '%.2f'|format(entry.amount_minor / 100) }} {{ entry.currency }}</small><br>
+            {% for bucket, label in money_states.items() %}
+              {% if entry[bucket] %}<small>{{ label }} · {{ '%.2f'|format(entry[bucket] / 100) }} {{ entry.currency }}</small><br>{% endif %}
+            {% endfor %}
+            {% if entry.hold and entry.available_at %}<small>Дата доступности {{ entry.available_at|admin_date }}</small><br>{% endif %}
+            {% if entry.paid and entry.paid_at %}<small>Последняя выплата {{ entry.paid_at|admin_date }}</small>{% endif %}
+          </div>
+          {% else %}Начислений пока нет{% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {% else %}
+    <p>По этим фильтрам позиций нет.</p>
+  {% endfor %}
+  {% if page > 1 or has_more %}
+  <nav class="admin-actions" aria-label="Страницы очереди">
+    {% if page > 1 %}<a class="admin-button" href="{{ request.url.include_query_params(page=page-1) }}">← Назад</a>{% endif %}
+    {% if has_more %}<a class="admin-button" href="{{ request.url.include_query_params(page=page+1) }}">Дальше →</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

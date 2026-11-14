@@ -12,7 +12,7 @@
   <a class="ugc-nav__brand" href="/admin/dashboard">UGC Админка</a>
   <nav class="ugc-nav__links" aria-label="Разделы админки">
     {{ nav_link('/admin/dashboard', 'Дашборд') }}
-    {{ nav_link('/admin/order-model/list', 'Заказы', (path,) if path == '/admin/orders' or path.startswith('/admin/orders/') else ()) }}
+    {{ nav_link('/admin/order-model/list', 'Заказы', (path,) if path in ('/admin/orders', '/admin/order-review') or path.startswith('/admin/orders/') else ()) }}
     {{ nav_link('/admin/users/advertisers', 'Заказчики') }}
     {{ nav_link('/admin/users/creators', 'Креаторы') }}
     {{ nav_link('/admin/complaint-model/list', 'Жалобы') }}
