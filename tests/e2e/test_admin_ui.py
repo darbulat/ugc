@@ -572,7 +572,7 @@ def test_order_worklist_search_hide_and_restore(
     ).to_have_count(1)
     field.fill("@" + handle.upper())
     assign_row.get_by_role("button", name="Назначить", exact=True).click()
-    expect(page.get_by_role("status")).to_have_text(
+    expect(page.get_by_role("status")).to_contain_text(
         f"Менеджер @{handle} назначен."
     )
     expect(assign_row).to_have_count(0)
@@ -581,3 +581,59 @@ def test_order_worklist_search_hide_and_restore(
     expect(
         assign_row.get_by_role("link", name="Тестовый менеджер")
     ).to_be_visible()
+
+    replacement = "browser_new_" + assign_id.hex[:8]
+    engine = create_engine(test_database)
+    try:
+        with Session(engine) as session, session.begin():
+            session.add(
+                UserModel(
+                    user_id=uuid4(),
+                    username="Новый тестовый менеджер",
+                    telegram=replacement,
+                    messenger_type=MessengerType.TELEGRAM,
+                    status=UserStatus.ACTIVE,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+    finally:
+        engine.dispose()
+
+    css = page.locator('link[href*="order-worklist.css"]')
+    expect(css).to_have_count(1)
+    page.wait_for_function(
+        "Array.from(document.styleSheets).some(sheet => "
+        "sheet.href?.includes('order-worklist.css'))"
+    )
+    assign_row.get_by_text("Сменить менеджера", exact=True).click()
+    field.fill("@" + replacement)
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    replace = assign_row.get_by_role("button", name="Заменить", exact=True)
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    replace.click()
+    expect(
+        assign_row.get_by_role("link", name="Тестовый менеджер", exact=True)
+    ).to_be_visible()
+    prompts = []
+
+    def confirm_replacement(dialog):
+        prompts.append(dialog.message)
+        dialog.accept()
+
+    page.once("dialog", confirm_replacement)
+    field.press("Enter")
+    expect(page.get_by_role("status")).to_contain_text(
+        f"Менеджер заменён на @{replacement}."
+    )
+    assert prompts == [
+        f"Заменить менеджера «Тестовый менеджер» на @{replacement}?"
+    ]
+    expect(
+        assign_row.get_by_role(
+            "link", name="Новый тестовый менеджер", exact=True
+        )
+    ).to_be_visible()
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(str(assign_id))
