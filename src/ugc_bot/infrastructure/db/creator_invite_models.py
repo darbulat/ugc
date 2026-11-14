@@ -51,3 +51,13 @@ MANUAL_READY = "card_ready"
 
 
 INVITES = invite_table(Base.metadata)
+
+for column in (
+    sa.Column("telegram", sa.String(32)),
+    sa.Column("reported_at", sa.DateTime(timezone=True)),
+    sa.Column("reported_by", sa.String(64)),
+    sa.Column("consent_source", sa.String(100)),
+    sa.Column("creator_name", sa.String(80)),
+    sa.Column("manager_notice_at", sa.DateTime(timezone=True)),
+):
+    INVITES.append_column(column)

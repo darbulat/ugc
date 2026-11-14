@@ -46,7 +46,10 @@
           <div class="order-detail__progress" role="progressbar" aria-label="Подобрано креаторов" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
             <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>
           </div>
-          <small>Осталось подобрать {{ order.get('remaining_count', [needed - picked, 0]|max) }}</small>
+          {% if order.manual_creator_count %}
+          <small>Согласились в переписке: {{ order.manual_creator_count }}</small>
+          {% endif %}
+          <small>Осталось подобрать {{ [needed - picked - order.get('manual_creator_count', 0), 0]|max }}</small>
         </article>
         <article>
           <h2>Отклики</h2>

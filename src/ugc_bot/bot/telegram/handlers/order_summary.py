@@ -89,7 +89,10 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
         report = REPORT.get(item["report_state"])
         manual_state = item.get("manual_contact_state")
         card_contact_available = manual_state in {"card_ready", "accepted"}
-        if not item["assignment_id"]:
+        reported = item.get("reported_contact_id")
+        if reported:
+            state = "Согласие получено в переписке"
+        elif not item["assignment_id"]:
             state = {"refunded": "Возврат", "paid": "Ожидает контакта"}.get(
                 item["selection_state"], "Подбор"
             )
@@ -147,6 +150,15 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
                     Button(
                         f"Контакт №{item['ordinal']}",
                         callback_data=f"{PREFIX}manual:{item['assignment_id'].hex}:{page}",
+                    )
+                ]
+            )
+        if mode == "open" and reported:
+            rows.append(
+                [
+                    Button(
+                        f"Контакт №{item['ordinal']}",
+                        callback_data=f"{PREFIX}staff:{reported.hex}:{page}",
                     )
                 ]
             )
@@ -240,7 +252,7 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
 
 
 @router.callback_query(lambda c: bool(c.data and c.data.startswith(PREFIX)))
-async def order_summary_callback(
+async def order_summary_callback(  # noqa: C901
     callback,
     user_role_service,
     order_summary_service=None,
@@ -272,25 +284,42 @@ async def order_summary_callback(
             else UUID(key)
         )
         service = order_summary_service
-        if action == "manual":
+        if action in {"manual", "staff"}:
             if creator_invite_service is None or not incoming.message_id:
                 raise ValueError("creator_invite_contact_unavailable")
-            order_id = await service.manual_contact_order(principal, identity)
+            order_id = (
+                await creator_invite_service.reported_contact(
+                    principal, identity
+                )
+                if action == "staff"
+                else await service.manual_contact_order(principal, identity)
+            )
             data = await service.view(principal, order_id)
             if str(data["message_id"]) != str(incoming.message_id):
                 raise ValueError("creator_invite_contact_unavailable")
             text, keyboard = render_card(service, data, page=int(args[0]))
-            await creator_invite_service.card_contact(
-                principal,
-                identity,
-                CardContactTransport(
-                    messenger,
-                    incoming.chat_id,
-                    incoming.message_id,
-                    text,
-                    keyboard,
-                ),
-            )
+            if action == "staff":
+                contact = await creator_invite_service.reported_contact_text(
+                    principal, identity
+                )
+                await messenger.edit_text(
+                    chat_id=incoming.chat_id,
+                    message_id=incoming.message_id,
+                    text=text + "\n\n" + contact,
+                    keyboard=keyboard,
+                )
+            else:
+                await creator_invite_service.card_contact(
+                    principal,
+                    identity,
+                    CardContactTransport(
+                        messenger,
+                        incoming.chat_id,
+                        incoming.message_id,
+                        text,
+                        keyboard,
+                    ),
+                )
         elif action == "answer":
             accepted = await service.creator_answer(principal, identity)
             if incoming.message_id:

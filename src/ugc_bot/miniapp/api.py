@@ -97,6 +97,7 @@ from ugc_bot.miniapp.financial_review_api import create_financial_review_router
 from ugc_bot.miniapp.manager_directory_api import (
     create_manager_directory_router,
 )
+from ugc_bot.miniapp.manager_invites import register_manager_invites
 from ugc_bot.miniapp.manual_grant_api import create_manual_grant_router
 from ugc_bot.miniapp.messenger_linking_api import (
     create_messenger_linking_router,
@@ -840,6 +841,8 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
         manager_service = dispatcher.get("manager_service")
         if manager_service:
             is_manager = await manager_service.is_manager(user_id)
+    if not is_manager and dispatcher.get("manager_applications") is not None:
+        is_manager = await dispatcher["manager_applications"].approved(user_id)
     return MeResponse(
         user_id=str(user_id),
         external_id=user.telegram_id or user.max_id or "",
@@ -1910,6 +1913,9 @@ async def set_country(request: Request, body: SetCountryRequest) -> dict:
         "currency_code": currency_code,
         "currency_symbol": currency_symbol,
     }
+
+
+register_manager_invites(router, _ensure_recent_user_and_get_id)
 
 
 @router.post("/manager/orders", response_model=ManagerOrdersResponse)

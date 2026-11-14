@@ -1974,3 +1974,51 @@ async def test_link_outcome_send_failure_keeps_event_processed(
     assert result.reason == "private_reason"
     assert "private_send_failure" not in caplog.text
     assert "private_reason" not in caplog.text
+
+
+@pytest.mark.parametrize("signed", [False, True])
+def test_manager_instagram_accepts_only_signed_events_with_legacy_secret(
+    signed: bool, client: TestClient
+) -> None:
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test_token",
+            "DATABASE_URL": "postgresql+psycopg://localhost/test",
+            "INSTAGRAM_APP_SECRET": "",
+            "_INSTAGRAM_APP_SECRET": "legacy-test-secret",
+        }
+    )
+    payload = json.dumps(
+        {
+            "object": "instagram",
+            "entry": [
+                {
+                    "messaging": [
+                        {
+                            "sender": {"id": "123"},
+                            "message": {"text": "UMCM-0123456789AB"},
+                        }
+                    ]
+                }
+            ],
+        }
+    ).encode()
+    headers = {
+        "X-Hub-Signature-256": _create_signature(
+            payload, "legacy-test-secret" if signed else "wrong"
+        )
+    }
+    with (
+        patch("ugc_bot.instagram_webhook_app.load_config", return_value=config),
+        patch("ugc_bot.instagram_webhook_app.Container"),
+        patch("ugc_bot.instagram_webhook_app.ManagerApplications") as service,
+    ):
+        verify = service.return_value.verify_instagram = AsyncMock()
+        response = client.post(
+            "/webhook/instagram", content=payload, headers=headers
+        )
+    assert response.json() == {"status": "ok"}
+    if signed:
+        verify.assert_awaited_once_with("UMCM-0123456789AB", "123")
+    else:
+        verify.assert_not_awaited()

@@ -9,6 +9,7 @@ from sqlalchemy import engine_from_config, pool
 from ugc_bot.infrastructure.db import (  # noqa: F401
     creator_invite_models,
     dispatch_control,
+    manager_application_models,
     models,
     order_review_models,
     order_summary_models,

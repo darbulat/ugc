@@ -64,6 +64,7 @@ from ugc_bot.domain.social import (
     SocialPlatform,
     normalize_social_url,
 )
+from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -78,6 +79,9 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.payout_models import TABLE_MAP as PAYOUT_TABLES
+from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    staff_consent_available,
+)
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
 )
@@ -2130,11 +2134,32 @@ class AdminDashboardService:
             order_age_hours(now, order.created_at)
             >= self._thresholds.no_responses_hours,
         )
+        manual_count = 0
+        if (
+            order.financial_version is not None
+            and not order.complimentary
+            and session.bind is not None
+            and session.bind.dialect.name == "postgresql"
+            and await session.scalar(select(staff_consent_available()))
+        ):
+            manual_count = (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(INVITES)
+                    .where(
+                        INVITES.c.order_id == order_id,
+                        INVITES.c.reported_at.is_not(None),
+                        INVITES.c.consented_at.is_(None),
+                    )
+                )
+                or 0
+            )
         status_label = self._order_status_label(
             order, responses_count, open_count
         )
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
+            "manual_creator_count": manual_count,
             "financial_selection": order.financial_version is not None
             and not order.complimentary,
             "can_delete": deletion_blocker is None,

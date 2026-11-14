@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import (
+    Button,
     IncomingCallback,
     IncomingMessage,
     Keyboard,
@@ -128,6 +129,7 @@ async def start_command(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     creator_invite_service=None,
+    manager_applications=None,
 ) -> None:
     """Handle the /start command. Clears FSM so user always sees role."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -178,6 +180,11 @@ async def start_command(
         message.from_user is None or message.chat.id != message.from_user.id
     ):
         return
+    role_kb = role_inline_keyboard(texts)
+    if manager_applications is not None:
+        role_kb.rows.append(
+            [Button("Хочу стать менеджером", callback_data="mgr:open")]
+        )
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -185,7 +192,7 @@ async def start_command(
         user_role_service=user_role_service,
         referral_service=referral_service,
         start_text=start_text,
-        role_kb=role_inline_keyboard(texts),
+        role_kb=role_kb,
         country_prompt=country_prompt,
         country_kb=country_inline_keyboard(countries),
         tg_language_code=tg_lang,
@@ -208,6 +215,7 @@ async def country_selected(
     bot_texts_service: BotTextsService,
     country_repo: CountryRepository | None = None,
     user_locale: str = "ru",
+    manager_applications=None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
@@ -257,10 +265,15 @@ async def country_selected(
         locale,
     )
     await AiogramStateStore(state).clear()
+    role_kb = role_inline_keyboard(texts)
+    if manager_applications is not None:
+        role_kb.rows.append(
+            [Button("Хочу стать менеджером", callback_data="mgr:open")]
+        )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,
-        keyboard=role_inline_keyboard(texts),
+        keyboard=role_kb,
     )
 
 
