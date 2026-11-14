@@ -4,7 +4,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import String, case, cast, false, func, or_, select, text
+from sqlalchemy import String, and_, case, cast, func, or_, select, text, true
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
 from ugc_bot.admin.complaints import OPEN_COMPLAINT_STATUSES
@@ -230,43 +230,61 @@ def worklist_conditions(group: str, status: str, *, admin_list: bool = False):
     return conditions
 
 
-def search_orders(term: str):
-    term = term.strip()
-    try:
-        order_id = UUID(term)
-    except ValueError:
-        order_id = None
+def _order_search_pattern(term: str) -> str:
     escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    pattern = f"%{escaped}%"
+    return f"%{escaped}%"
+
+
+def _order_search_word(word: str):
+    pattern = _order_search_pattern(word.replace("ё", "е").replace("Ё", "Е"))
+
+    def matches(column):
+        normalized = func.replace(func.replace(column, "ё", "е"), "Ё", "Е")
+        return normalized.ilike(pattern, escape="\\")
+
+    handle = word.removeprefix("@") or word
+    telegram = UserModel.telegram.ilike(
+        _order_search_pattern(handle), escape="\\"
+    )
+
     return or_(
         *(
-            column.ilike(pattern, escape="\\")
+            matches(column)
             for column in (
                 OrderModel.offer_text,
                 OrderModel.barter_description,
                 OrderModel.product_link,
                 OrderModel.geography,
                 OrderModel.brief_link,
-                cast(OrderModel.order_id, String),
             )
         ),
-        OrderModel.order_id == order_id if order_id is not None else false(),
+        cast(OrderModel.order_id, String).ilike(pattern, escape="\\"),
         select(UserModel.user_id)
         .where(
             UserModel.user_id == OrderModel.advertiser_id,
-            or_(
-                UserModel.username.ilike(pattern, escape="\\"),
-                UserModel.telegram.ilike(pattern, escape="\\"),
-            ),
+            or_(matches(UserModel.username), telegram),
         )
         .exists(),
         select(AdvertiserProfileModel.user_id)
         .where(
             AdvertiserProfileModel.user_id == OrderModel.advertiser_id,
-            AdvertiserProfileModel.brand.ilike(pattern, escape="\\"),
+            matches(AdvertiserProfileModel.brand),
         )
         .exists(),
     )
+
+
+def search_orders(term: str):
+    term = term.strip()
+    # Bound the number of SQL predicates. For longer pasted text, keep the
+    # remaining text together as a phrase.
+    terms = dict.fromkeys(term.split(maxsplit=15))
+    condition = and_(true(), *(_order_search_word(word) for word in terms))
+    try:
+        order_id = UUID(term)
+    except ValueError:
+        return condition
+    return or_(OrderModel.order_id == order_id, condition)
 
 
 def worklist_row_details(

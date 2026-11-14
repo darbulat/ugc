@@ -202,12 +202,13 @@ def test_order_worklist_search_hide_and_restore(
     brand = f"Workbench-{order_id.hex[:8]}"
     managed_title = f"Отклик и работа менеджера {managed_id.hex[:8]}"
     handle = "browser_manager_" + manager_id.hex[:9]
+    customer_name = f"Анна Петрова {order_id.hex[:8]}"
     geography = "Новосибирская область, Свердловская область, " * 20
     with Session(engine) as session, session.begin():
         session.add(
             UserModel(
                 user_id=user_id,
-                username="test-merchant",
+                username=customer_name,
                 messenger_type=MessengerType.TELEGRAM,
                 status=UserStatus.ACTIVE,
                 created_at=now,
@@ -310,6 +311,10 @@ def test_order_worklist_search_hide_and_restore(
     )
     _login(page, admin_server)
     page.goto(f"{admin_server}/admin/order-model/list")
+    partial_brand = brand.removeprefix("Work")
+    page.get_by_label("Поиск", exact=True).fill(f"Петрова {partial_brand}")
+    page.locator(".order-worklist").get_by_role("button", name="Найти").click()
+    expect(page.get_by_role("row").filter(has_text=brand)).to_have_count(2)
     page.get_by_label("Поиск", exact=True).fill(brand)
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     expect(page.get_by_role("row").filter(has_text=brand)).to_have_count(2)
@@ -361,7 +366,7 @@ def test_order_worklist_search_hide_and_restore(
         parse_qs(urlsplit(page.url).query)
     )
     expect(matching_rows).to_have_count(2)
-    page.get_by_label("Поиск", exact=True).fill("Браузерный тест черновика")
+    page.get_by_label("Поиск", exact=True).fill("черновика")
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     row = page.get_by_role("row").filter(has_text="Браузерный тест черновика")
     expect(row).to_have_count(1)
@@ -373,9 +378,7 @@ def test_order_worklist_search_hide_and_restore(
     ).to_be_visible()
     page.get_by_role("link", name="Назад к списку").click()
     assert page.url == filtered_list
-    expect(page.get_by_label("Поиск", exact=True)).to_have_value(
-        "Браузерный тест черновика"
-    )
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value("черновика")
     geography_cell = row.locator("td").first.locator("span")
     for width in (1440, 820):
         page.set_viewport_size({"width": width, "height": 800})
@@ -400,15 +403,11 @@ def test_order_worklist_search_hide_and_restore(
     hide.click()
     expect(page.get_by_role("status")).to_have_text("Заказ убран из списка.")
     assert messages and order_id.hex[:8] in messages[0]
-    expect(page.get_by_label("Поиск", exact=True)).to_have_value(
-        "Браузерный тест черновика"
-    )
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value("черновика")
     expect(page.get_by_text("Заказы не найдены")).to_be_visible()
 
     page.get_by_role("link", name="Скрытые").click()
-    expect(page.get_by_label("Поиск", exact=True)).to_have_value(
-        "Браузерный тест черновика"
-    )
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value("черновика")
     restore = row.get_by_role("button", name="Вернуть в список")
     page.once("dialog", lambda dialog: dialog.dismiss())
     restore.click()
