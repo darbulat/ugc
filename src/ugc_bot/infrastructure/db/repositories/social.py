@@ -3,7 +3,7 @@
 from dataclasses import asdict, dataclass
 from uuid import UUID
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
@@ -142,6 +142,7 @@ class SqlAlchemySocialAccountRepository(
             user_id,
             _to_blogger_profile_entity(profile) if profile else None,
             accounts,
+            prompt_dismissed=bool(profile and profile.social_prompt_dismissed),
         )
 
     async def read_editor(
@@ -168,6 +169,14 @@ class SqlAlchemySocialAccountRepository(
         db = self._editor_session(session)
         await self._editor_actor(db, user_id, principal, lock=True)
         return await self._editor_facts(db, user_id, lock=True)
+
+    async def dismiss_prompt(self, user_id: UUID, *, session: object) -> None:
+        db = self._editor_session(session)
+        await db.execute(
+            update(BloggerProfileModel)
+            .where(BloggerProfileModel.user_id == user_id)
+            .values(social_prompt_dismissed=True)
+        )
 
     async def list_accounts(
         self,

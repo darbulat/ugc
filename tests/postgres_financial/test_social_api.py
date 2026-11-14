@@ -6,6 +6,7 @@ from uuid import uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
+from sqlalchemy import update
 
 from tests.e2e.miniapp_helpers import generate_init_data
 from tests.helpers.factories import (
@@ -14,6 +15,7 @@ from tests.helpers.factories import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
+from ugc_bot.infrastructure.db.models import UserModel
 from ugc_bot.miniapp.api import router
 
 
@@ -21,10 +23,11 @@ from ugc_bot.miniapp.api import router
 async def test_signed_social_roundtrip_survives_container_rebuild(
     financial_pg_engine,
 ):
-    external_id = str(uuid4().int % 10**12 + 1)
+    external_id, max_id = (str(uuid4().int % 10**12 + 1) for _ in range(2))
     config = AppConfig.model_validate(
         {
             "BOT_TOKEN": "test-token",
+            "MAX_BOT_TOKEN": "max-test-token",
             "DATABASE_URL": financial_pg_engine.url.render_as_string(
                 hide_password=False
             ),
@@ -45,10 +48,23 @@ async def test_signed_social_roundtrip_survives_container_rebuild(
         await repos["blogger_repo"].save(
             replace(profile, instagram_user_id="ig-" + external_id)
         )
+        async with first.session_factory.begin() as db:
+            await db.execute(
+                update(UserModel)
+                .where(UserModel.user_id == user.user_id)
+                .values(max_id=max_id)
+            )
         body = {
             "init_data": generate_init_data(
                 "test-token", int(external_id), "creator"
             )
+        }
+
+        max_body = {
+            "platform": "max",
+            "init_data": generate_init_data(
+                "max-test-token", int(max_id), "creator"
+            ),
         }
 
         def app(container):
@@ -62,12 +78,26 @@ async def test_signed_social_roundtrip_survives_container_rebuild(
             transport=httpx.ASGITransport(app=app(first)),
             base_url="http://testserver",
         ) as client:
+            before = await client.post(
+                "/miniapp/api/social/accounts", json=body
+            )
+            assert before.status_code == 200 and before.json()["show_prompt"]
+            dismissed = await client.post(
+                "/miniapp/api/social/prompt/dismiss", json=body
+            )
+            assert dismissed.json() == {"dismissed": True}
+            cross_host = await client.post(
+                "/miniapp/api/social/accounts", json=max_body
+            )
+            assert cross_host.status_code == 200
+            assert cross_host.json()["show_prompt"] is False
             saved = await client.post(
                 "/miniapp/api/social/accounts/save",
                 json={
                     **body,
                     "network": "youtube",
                     "url": "https://youtube.com/@creator",
+                    "reported_followers": 1200,
                 },
             )
             assert saved.status_code == 200
@@ -84,7 +114,42 @@ async def test_signed_social_roundtrip_survives_container_rebuild(
             youtube = next(a for a in accounts if a["platform"] == "youtube")
             assert youtube["account_id"] == account_id
             assert youtube["verified"] is False
-            assert youtube["followers_count"] is None
+            assert youtube["followers_count"] == 1200
+            assert youtube["metrics_source"] == "creator_self_reported"
+            assert youtube["metrics_fetched_at"]
+            assert listed.json()["show_prompt"] is False
+            for invalid in (True, -1, 1.5, "1000"):
+                invalid_report = await client.post(
+                    "/miniapp/api/social/accounts/save",
+                    json={
+                        **max_body,
+                        "network": "youtube",
+                        "url": "https://youtube.com/@creator",
+                        "reported_followers": invalid,
+                    },
+                )
+                assert invalid_report.status_code == 422
+            same_link = await client.post(
+                "/miniapp/api/social/accounts/save",
+                json={
+                    **max_body,
+                    "network": "youtube",
+                    "url": "https://youtube.com/@creator",
+                },
+            )
+            assert same_link.status_code == 200
+            assert same_link.json()["account"]["followers_count"] == 1200
+            updated = await client.post(
+                "/miniapp/api/social/accounts/save",
+                json={
+                    **max_body,
+                    "network": "youtube",
+                    "url": "https://youtube.com/@updated",
+                },
+            )
+            assert updated.status_code == 200
+            assert updated.json()["account"]["followers_count"] is None
+            assert updated.json()["account"]["metrics_source"] is None
             removed = await client.post(
                 "/miniapp/api/social/accounts/remove",
                 json={**body, "account_id": account_id},

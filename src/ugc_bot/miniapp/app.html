@@ -369,6 +369,14 @@
   </div>
 
 
+  <section id="screen-social-prompt" class="screen" data-umc-section="peach">
+    <h1 id="social-prompt-title"></h1>
+    <p class="hint" id="social-prompt-text"></p>
+    <button type="button" class="btn" id="btn-social-prompt-add" data-umc-primary="20"></button>
+    <button type="button" class="btn btn-secondary" id="btn-social-prompt-later"></button>
+    <p id="social-prompt-error" class="error" role="alert"></p>
+  </section>
+
   <div id="screen-social-accounts" class="screen" data-umc-section="peach">
     <h1 id="social-accounts-title">Соцсети</h1>
     <p class="hint" id="social-accounts-intro"></p>
@@ -388,17 +396,13 @@
       </div>
       <label for="social-account-url" id="lbl-social-account-url"></label>
       <input type="url" id="social-account-url" required maxlength="2048" inputmode="url" autocomplete="url">
-      <label for="social-account-work-format" id="lbl-social-account-work-format"></label>
-      <select id="social-account-work-format">
-        <option value="ugc_only"></option>
-        <option value="ads_in_account"></option>
-      </select>
+      <label for="social-followers" id="lbl-social-followers"></label>
+      <input id="social-followers" type="number" min="0" max="10000000000" step="1" inputmode="numeric">
       <button type="submit" class="btn" id="btn-social-save" data-umc-primary="20"></button>
       <button type="button" class="btn btn-secondary" id="btn-social-skip"></button>
     </form>
     <ul id="social-accounts-list" class="umc-social-list"></ul>
     <p class="hint" id="social-accounts-empty" hidden></p>
-    <p class="hint" id="social-accounts-done" hidden></p>
     <div id="social-accounts-add-options" class="umc-social-options"></div>
     <button type="button" class="btn btn-secondary" id="btn-social-reload"></button>
     <button type="button" class="btn btn-secondary" id="btn-social-back" data-umc-back></button>

@@ -90,13 +90,15 @@ def prepared_editor(
     native: bool = False,
 ) -> list[str]:
     errors = open_socials(page, network, host, native=native)
+    page.locator("#btn-blogger-social-accounts").click()
     expect(page.locator("#screen-social-accounts")).to_be_visible()
     expect(page.locator(".umc-social-account")).to_have_count(2)
+    page.locator('[data-social-add="youtube"]').click()
     expect(page.locator("#form-social-account")).to_have_attribute(
         "data-network", "youtube"
     )
     page.locator("#social-account-url").fill(PENDING_URL)
-    page.locator("#social-account-work-format").select_option("ads_in_account")
+    page.locator("#social-followers").fill("2100")
     page.evaluate(
         "window.__staleSocialRemove = "
         "document.querySelector('[data-social-remove=\"tiktok\"]')"
@@ -131,9 +133,7 @@ def test_current_denial_clears_private_editor_until_successful_read(
 
     expect(page.locator(".umc-social-account")).to_have_count(0, timeout=700)
     expect(page.locator("#social-account-url")).to_have_value("")
-    expect(page.locator("#social-account-work-format")).to_have_value(
-        "ugc_only"
-    )
+    expect(page.locator("#social-followers")).to_have_value("")
     expect(page.locator("#social-account-editor-title")).to_have_text("")
     expect(page.locator("#form-social-account")).not_to_have_attribute(
         "data-network", "youtube"
@@ -181,6 +181,7 @@ def test_current_denial_clears_private_editor_until_successful_read(
     expect(page.locator('[data-social-network="instagram"]')).to_contain_text(
         network.private_handle
     )
+    page.locator('[data-social-add="tiktok"]').click()
     expect(page.locator("#form-social-account")).to_have_attribute(
         "data-network", "tiktok"
     )
@@ -217,6 +218,7 @@ def test_unknown_response_detail_is_private_and_transient_retry_is_usable(
     network.failure_path = None
     if operation == "list":
         page.locator("#btn-social-reload").click()
+        page.locator('[data-social-add="youtube"]').click()
         expect(page.locator("#form-social-account")).to_be_visible()
     elif operation == "save":
         expect(page.locator("#social-account-url")).to_have_value(PENDING_URL)
@@ -241,9 +243,7 @@ def test_url_validation_failure_keeps_draft_and_allows_correction(
     network.failure_detail = "social_url_invalid"
     trigger(page, "save")
     expect(page.locator("#social-account-url")).to_have_value(PENDING_URL)
-    expect(page.locator("#social-account-work-format")).to_have_value(
-        "ads_in_account"
-    )
+    expect(page.locator("#social-followers")).to_have_value("2100")
     expect(page.locator("#btn-social-save")).to_be_enabled()
     expect(page.locator(".umc-social-account")).to_have_count(2)
     network.failure_path = None
@@ -275,6 +275,8 @@ def test_current_denial_disables_the_native_save_action(
     page.evaluate("window.__host.wa.MainButton.click()")
     network.failure_path = None
     page.locator("#btn-social-reload").click()
+    page.locator('[data-social-add="youtube"]').click()
     expect(page.locator("#form-social-account")).to_be_visible()
+    assert page.evaluate("window.__host.wa.MainButton.visible") is True
     assert sum(path == PATHS["save"] for path, _ in network.requests) == 1
     assert not errors

@@ -30,7 +30,12 @@
           {% if creator and creator.instagram_url %}<span><small>IG</small> {{ instagram(creator.instagram_url) }}</span>{% endif %}
           {% if creator and creator.social_links %}
             {% for link in creator.social_links.values() %}
-              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
+              <span>
+                <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
+                {% if link.reported_followers is defined and link.reported_followers is not none %}
+                  · {{ count(link.reported_followers) }} подписчиков <small>со слов креатора{% if link.reported_at %}, {{ link.reported_at|admin_date }}{% endif %}</small>
+                {% endif %}
+              </span>
             {% endfor %}
           {% endif %}
         </div>

@@ -23,6 +23,7 @@ from ugc_bot.application.social_ports import (
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import WorkFormat
 from ugc_bot.domain.social import (
+    SELF_REPORTED_FOLLOWERS,
     SocialAccount,
     SocialPlatform,
     normalize_social_url,
@@ -30,6 +31,35 @@ from ugc_bot.domain.social import (
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 T = TypeVar("T")
+
+
+def _followers_snapshot(
+    current: SocialAccount | None,
+    url: str,
+    reported: int | None,
+    replace_report: bool,
+    at: datetime,
+) -> tuple[int | None, str | None, datetime | None]:
+    if (
+        current is not None
+        and current.url == url
+        and (
+            not replace_report
+            or current.metrics_source not in {None, SELF_REPORTED_FOLLOWERS}
+            or (
+                current.metrics_source == SELF_REPORTED_FOLLOWERS
+                and current.followers_count == reported
+            )
+        )
+    ):
+        return (
+            current.followers_count,
+            current.metrics_source,
+            current.metrics_fetched_at,
+        )
+    if replace_report and reported is not None:
+        return reported, SELF_REPORTED_FOLLOWERS, at
+    return None, None, None
 
 
 def instagram_account(profile: BloggerProfile) -> SocialAccount:
@@ -184,7 +214,31 @@ class SocialAccountService:
             return SocialEditorState(
                 accounts,
                 self._next(accounts, skipped=skipped, include_vk=include_vk),
+                show_prompt=not facts.prompt_dismissed
+                and any(
+                    a.platform == SocialPlatform.INSTAGRAM and a.verified
+                    for a in accounts
+                )
+                and all(
+                    a.platform == SocialPlatform.INSTAGRAM for a in accounts
+                ),
             )
+
+    async def dismiss_editor_prompt(
+        self, user_id: UUID, *, principal: AuthenticatedMessengerPrincipal
+    ) -> None:
+        repository, transactions = self._editor(user_id, principal)
+        async with transactions.transaction() as session:
+            facts = await repository.prepare_editor_write(
+                user_id, principal=principal, session=session
+            )
+            accounts = self._project(facts, user_id)
+            if not any(
+                a.platform == SocialPlatform.INSTAGRAM and a.verified
+                for a in accounts
+            ):
+                raise ValueError("social_instagram_verification_required")
+            await repository.dismiss_prompt(user_id, session=session)
 
     async def save_editor_account(
         self,
@@ -195,6 +249,8 @@ class SocialAccountService:
         principal: AuthenticatedMessengerPrincipal,
         work_format: WorkFormat | None = None,
         platform_name: str | None = None,
+        reported_followers: int | None = None,
+        replace_report: bool = False,
     ) -> SocialEditorSaved:
         repository, transactions = self._editor(user_id, principal)
         async with transactions.transaction() as session:
@@ -222,6 +278,9 @@ class SocialAccountService:
                 current.work_format if current else facts.profile.work_format
             )
             at = datetime.now(timezone.utc)
+            count, source, observed = _followers_snapshot(
+                current, normalized, reported_followers, replace_report, at
+            )
             saved = await self.account_repo.save(
                 SocialAccount(
                     account_id=uuid4(),
@@ -233,6 +292,9 @@ class SocialAccountService:
                     work_format=WorkFormat(work_format)
                     if work_format is not None
                     else saved_format,
+                    followers_count=count,
+                    metrics_source=source,
+                    metrics_fetched_at=observed,
                     created_at=at,
                     updated_at=at,
                 ),
@@ -358,6 +420,9 @@ class SocialAccountService:
                 else profile.work_format
             )
             now = datetime.now(timezone.utc)
+            count, source, observed = _followers_snapshot(
+                existing, url, None, False, now
+            )
             return await self.account_repo.save(
                 SocialAccount(
                     account_id=uuid4(),
@@ -369,6 +434,9 @@ class SocialAccountService:
                     work_format=WorkFormat(work_format)
                     if work_format is not None
                     else saved_format,
+                    followers_count=count,
+                    metrics_source=source,
+                    metrics_fetched_at=observed,
                     created_at=now,
                     updated_at=now,
                 ),

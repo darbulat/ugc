@@ -1,6 +1,6 @@
 """Authenticated creator social links for both Mini App messengers."""
 
-from typing import cast
+from typing import TypedDict, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
@@ -27,6 +27,15 @@ class AccountSaveRequest(SignedMiniAppRequest):
     url: str = Field(min_length=1, max_length=2048)
     work_format: WorkFormat | None = None
     platform_name: str | None = Field(default=None, max_length=100)
+    reported_followers: int | None = Field(
+        default=None, ge=0, le=10_000_000_000, strict=True
+    )
+
+
+class _SaveOptions(TypedDict, total=False):
+    platform_name: str
+    reported_followers: int | None
+    replace_report: bool
 
 
 class AccountRemoveRequest(SignedMiniAppRequest):
@@ -36,6 +45,7 @@ class AccountRemoveRequest(SignedMiniAppRequest):
 class AccountsResponse(BaseModel):
     accounts: list[SocialAccount]
     next_platform: SocialPlatform | None
+    show_prompt: bool
 
 
 class AccountSavedResponse(BaseModel):
@@ -45,6 +55,16 @@ class AccountSavedResponse(BaseModel):
 
 class AccountRemovedResponse(BaseModel):
     removed: bool
+
+
+def _save_options(body: AccountSaveRequest) -> _SaveOptions:
+    options: _SaveOptions = {}
+    if body.platform_name is not None:
+        options["platform_name"] = body.platform_name
+    if "reported_followers" in body.model_fields_set:
+        options["reported_followers"] = body.reported_followers
+        options["replace_report"] = True
+    return options
 
 
 def create_social_router(
@@ -85,7 +105,16 @@ def create_social_router(
         return AccountsResponse(
             accounts=list(state.accounts),
             next_platform=state.next_platform,
+            show_prompt=state.show_prompt,
         )
+
+    @router.post("/prompt/dismiss")
+    async def dismiss_prompt(request: Request, body: SignedMiniAppRequest):
+        principal, service = await context(request, body)
+        await service.dismiss_editor_prompt(
+            principal.user_id, principal=principal
+        )
+        return {"dismissed": True}
 
     @router.post("/accounts/save")
     async def save_account(
@@ -98,11 +127,7 @@ def create_social_router(
             body.url,
             principal=principal,
             work_format=body.work_format,
-            **(
-                {"platform_name": body.platform_name}
-                if body.platform_name is not None
-                else {}
-            ),
+            **_save_options(body),
         )
         return AccountSavedResponse(
             account=saved.account,
