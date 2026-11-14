@@ -48,9 +48,8 @@ curl -fsS --retry 30 --retry-delay 1 --retry-all-errors "$loki/ready" >/dev/null
 # enough for Docker discovery and make it resemble a Compose admin service.
 cat > "$tmp/fail-import" <<'FIXTURE'
 #!/bin/sh
-[ "$(ls /sys/class/net)" = lo ] || exit 43
 printf 'Traceback (most recent call last): CI release-check probe\n' >&2
-sleep 15
+sleep 20
 exit 42
 FIXTURE
 chmod +x "$tmp/fail-import"
@@ -60,8 +59,23 @@ LABEL ugc.ci.import_smoke=$stack com.docker.compose.project=$stack com.docker.co
 COPY fail-import /usr/local/bin/python
 DOCKERFILE
 
+bash scripts/check_admin_image_import.sh "$failing_image" > "$tmp/failure.log" 2>&1 &
+import_pid=$!
+network_mode=""
+for attempt in {1..30}; do
+    container="$(docker ps -q --filter "ancestor=$failing_image")"
+    if [[ -n "$container" ]]; then
+        network_mode="$(docker inspect --format '{{.HostConfig.NetworkMode}}' "$container")"
+        break
+    fi
+    sleep 1
+done
 status=0
-bash scripts/check_admin_image_import.sh "$failing_image" > "$tmp/failure.log" 2>&1 || status=$?
+wait "$import_pid" || status=$?
+if [[ "$network_mode" != none ]]; then
+    echo "Expected Docker network mode none, got: ${network_mode:-unknown}" >&2
+    exit 1
+fi
 if [[ "$status" != 42 ]]; then
     cat "$tmp/failure.log"
     exit 1
