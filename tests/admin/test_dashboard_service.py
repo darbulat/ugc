@@ -1189,17 +1189,31 @@ async def test_list_delayed_orders_includes_reasons(
     service, thresholds
 ) -> None:
     """Delayed orders list includes orders with delay reasons."""
+    paid_at = datetime.now(timezone.utc) - timedelta(days=4, hours=6)
+    selection_due_at = paid_at + timedelta(days=7)
     order = _make_order(
         bloggers_needed=10,
         created_at=datetime.now(timezone.utc) - timedelta(days=8),
     )
     rows = [
-        (order, 0, 0, "AdvertiserX", PaymentStatus.PAID, False, False),
+        (
+            order,
+            0,
+            0,
+            "AdvertiserX",
+            PaymentStatus.PAID,
+            paid_at,
+            selection_due_at,
+            False,
+            False,
+        ),
         (
             _make_order(status=OrderStatus.NEW, created_at=order.created_at),
             0,
             0,
             "Unpaid advertiser",
+            None,
+            None,
             None,
             None,
             True,
@@ -1210,6 +1224,8 @@ async def test_list_delayed_orders_includes_reasons(
             0,
             "Moderation advertiser",
             PaymentStatus.PAID,
+            paid_at,
+            selection_due_at,
             None,
             False,
         ),
@@ -1219,6 +1235,8 @@ async def test_list_delayed_orders_includes_reasons(
             0,
             "Selection complete",
             PaymentStatus.PAID,
+            paid_at,
+            None,
             False,
             False,
         ),
@@ -1254,6 +1272,11 @@ async def test_list_delayed_orders_includes_reasons(
     assert attention["unpaid"][0]["advertiser"] == "Unpaid advertiser"
     assert attention["moderation"][0]["reasons"] == ["waiting_moderation"]
     assert delayed["needed_count"] == 10
+    assert delayed["days_since_payment"] == pytest.approx(4.25, abs=0.01)
+    assert delayed["selection_days"] == 7
+    assert delayed["selection_due_at"] == selection_due_at
+    assert delayed["selection_target_days"] == thresholds.active_days
+    assert "days_since_payment" not in attention["unpaid"][0]
 
 
 @pytest.mark.asyncio
@@ -1489,7 +1512,19 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
         bloggers_needed=10,
         created_at=datetime.now(timezone.utc) - timedelta(hours=2),
     )
-    rows = [(order, 8, 0, "Advertiser", PaymentStatus.PAID, False, False)]
+    rows = [
+        (
+            order,
+            8,
+            0,
+            "Advertiser",
+            PaymentStatus.PAID,
+            None,
+            None,
+            False,
+            False,
+        )
+    ]
     results = [
         _FakeResult(scalar_value=0),
         _FakeResult(scalar_value=0),

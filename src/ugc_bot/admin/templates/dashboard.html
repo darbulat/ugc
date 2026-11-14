@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}Дашборд{% endblock %}
+{% macro day_count(days) -%}
+  {{ ('%.1f'|format(days)).removesuffix('.0')|replace('.', ',') }} дн.
+{%- endmacro %}
 {% block content %}
   {% set picked_count = payload.get("picked_creators_count", 0) %}
   {% set picked_target = payload.get("picked_creators_target", 1000) %}
@@ -51,7 +54,20 @@
                 {% for reason in row.reasons %}
                   <span class="badge">{{ delay_reason_labels.get(reason, reason) }}</span>
                 {% endfor %}
-                <small>{{ row.age_hours|round|int }} ч с создания{% if key == 'delayed' %} · подобрано {{ row.picked_count }} / {{ row.needed_count }}{% endif %}</small>
+                {% if key == 'delayed' %}
+                  <small>
+                    {% if row.days_since_payment is not none %}
+                      {% if row.days_since_payment < 1 %}Меньше дня{% else %}{{ day_count(row.days_since_payment) }}{% endif %} с оплаты
+                    {% elif row.complimentary %}Без оплаты
+                    {% else %}Дата оплаты неизвестна{% endif %}
+                    {% if row.selection_due_at %}
+                      · Срок подбора {% if row.selection_days is not none %}{{ day_count(row.selection_days) }} · {% endif %}до {{ row.selection_due_at|admin_date }}
+                    {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
+                    · подобрано {{ row.picked_count }} / {{ row.needed_count }}
+                  </small>
+                {% else %}
+                  <small>{{ row.age_hours|round|int }} ч с создания</small>
+                {% endif %}
               {% endif %}
             </div>
           </li>

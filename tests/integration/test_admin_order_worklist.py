@@ -10,11 +10,15 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
 
 from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.admin.app import create_admin_app
-from ugc_bot.admin.dashboard_service import AdminDashboardService
+from ugc_bot.admin.dashboard_service import (
+    AdminDashboardService,
+    DelayThresholds,
+)
 from ugc_bot.domain.enums import (
     AuditAction,
     ComplaintStatus,
@@ -30,6 +34,7 @@ from ugc_bot.infrastructure.db.models import (
     ComplaintModel,
     ManagerOrderModel,
     OfferDispatchModel,
+    OrderItemModel,
     OrderModel,
     PaymentModel,
     UserModel,
@@ -131,6 +136,66 @@ def _login(client):
         follow_redirects=False,
     )
     assert response.status_code == 302
+
+
+@pytest.mark.asyncio
+async def test_dashboard_selection_timing_uses_captured_payment_and_deadline(
+    worklist,
+):
+    _, engine, ids = worklist
+    now = datetime.now(timezone.utc)
+    paid_at = now - timedelta(days=4)
+    deadline = paid_at + timedelta(days=7)
+    with Session(engine) as session, session.begin():
+        for title in ("Paid example", "Financial example", "Active example"):
+            session.get(OrderModel, ids[title]).created_at = now - timedelta(
+                days=9
+            )
+        payment = session.scalar(select(PaymentModel))
+        payment.paid_at = paid_at
+        for ordinal, due in enumerate(
+            (deadline - timedelta(days=1), deadline), 1
+        ):
+            session.add(
+                OrderItemModel(
+                    order_id=ids["Financial example"],
+                    ordinal=ordinal,
+                    currency="RUB",
+                    selection_minor=100,
+                    accompaniment_minor=0,
+                    policy_version="v1",
+                    selection_due_at=due,
+                    captured_at=paid_at,
+                    quote_key="test",
+                    quote_payload={},
+                )
+            )
+
+    database = create_async_engine(
+        engine.url.set(drivername="sqlite+aiosqlite")
+    )
+    sessions = async_sessionmaker(database)
+    service = AdminDashboardService(
+        sessions, "UTC", DelayThresholds(3, 24, 48, 7)
+    )
+    try:
+        async with sessions() as session:
+            attention = await service._get_order_attention(session)
+    finally:
+        await database.dispose()
+
+    by_id = {row["order_id"]: row for row in attention["delayed"]}
+    financial = by_id[str(ids["Financial example"])]
+    assert financial["days_since_payment"] == pytest.approx(4, abs=0.01)
+    assert financial["selection_days"] == 7
+    legacy = by_id[str(ids["Paid example"])]
+    assert legacy["days_since_payment"] == pytest.approx(4, abs=0.01)
+    assert (
+        legacy["selection_days"] is None
+        and legacy["selection_target_days"] == 3
+    )
+    assert by_id[str(ids["Active example"])]["days_since_payment"] is None
+    assert attention["active"] == 3
 
 
 def test_worklist_filters_search_and_pagination(worklist):
