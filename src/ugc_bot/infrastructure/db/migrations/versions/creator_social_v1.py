@@ -40,7 +40,20 @@ def upgrade() -> None:
     )
     # This table has no geometry. Emit its DDL directly so unrelated spatial
     # plugin callbacks cannot mutate the shared ORM metadata during migration.
-    table = cast(sa.Table, SocialAccountModel.__table__)
+    metadata = sa.MetaData()
+    sa.Table(
+        "users", metadata, sa.Column("user_id", sa.Uuid(), primary_key=True)
+    )
+    table = cast(sa.Table, SocialAccountModel.__table__).to_metadata(metadata)
+    for constraint in tuple(table.constraints):
+        if constraint.name == "ck_creator_social_platform":
+            table.constraints.remove(constraint)
+    table.append_constraint(
+        sa.CheckConstraint(
+            "platform IN ('instagram', 'tiktok', 'youtube', 'telegram', 'vk')",
+            name="ck_creator_social_platform",
+        )
+    )
     connection.execute(sa.schema.CreateTable(table))
     for index in sorted(table.indexes, key=lambda index: index.name or ""):
         connection.execute(sa.schema.CreateIndex(index))

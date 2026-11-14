@@ -127,7 +127,8 @@ class SocialNetwork(MiniAppNetwork):
                 "user_id": self.instagram()["user_id"],
                 "platform": network,
                 "url": body["url"],
-                "handle": body["url"].rsplit("/", 1)[-1],
+                "handle": body.get("platform_name")
+                or body["url"].rsplit("/", 1)[-1],
                 "verified": False,
                 "work_format": body["work_format"],
                 "followers_count": None,
@@ -481,3 +482,23 @@ def test_server_instagram_gate_overrides_stale_profile_confirmation(
     expect(page.locator("#social-accounts-add-options button")).to_have_count(0)
     assert not any(path.endswith("/save") for path, _ in network.requests)
     assert not errors
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_add_named_other_platform(page, platform):
+    network = SocialNetwork("ru")
+    open_socials(page, network, platform)
+    page.locator("#btn-social-skip").click()
+    page.locator("#btn-social-skip").click()
+    page.locator("#btn-social-skip").click()
+    page.locator('[data-social-add="other"]').click()
+    page.locator("#social-platform-name").fill("Twitch")
+    save_link(page, "other", "https://twitch.tv/creator")
+    item = page.locator('[data-social-network="other"]')
+    expect(item.get_by_role("heading")).to_have_text("Twitch")
+    expect(item.get_by_role("link")).to_have_attribute(
+        "href", "https://twitch.tv/creator"
+    )
+    page.locator('[data-social-edit="other"]').click()
+    expect(page.locator("#social-platform-name")).to_have_value("Twitch")

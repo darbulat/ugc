@@ -3,6 +3,9 @@
 {% macro day_count(days) -%}
   {{ ('%.1f'|format(days)).removesuffix('.0')|replace('.', ',') }} дн.
 {%- endmacro %}
+{% macro deadline_duration(days) -%}
+  {% if days < 1 %}меньше дня{% else %}{{ day_count(days) }}{% endif %}
+{%- endmacro %}
 {% block content %}
   {% set picked_count = payload.get("picked_creators_count", 0) %}
   {% set picked_target = payload.get("picked_creators_target", 1000) %}
@@ -62,6 +65,9 @@
                     {% else %}Дата оплаты неизвестна{% endif %}
                     {% if row.selection_due_at %}
                       · Срок подбора {% if row.selection_days is not none %}{{ day_count(row.selection_days) }} · {% endif %}до {{ row.selection_due_at|admin_date }}
+                      {% if row.days_until_selection_due is defined and row.days_until_selection_due is not none %}
+                        · <strong>{% if row.days_until_selection_due < 0 %}Просрочено {% if row.days_until_selection_due <= -1 %}на {% endif %}{{ deadline_duration(-row.days_until_selection_due) }}{% elif row.days_until_selection_due > 0 %}Осталось {{ deadline_duration(row.days_until_selection_due) }}{% else %}Срок истёк{% endif %}</strong>
+                      {% endif %}
                     {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
                     · подобрано {{ row.picked_count }} / {{ row.needed_count }}
                   </small>
@@ -194,9 +200,15 @@
         </div>
         {% for payment in payload.get('payments_by_currency', []) %}
           <div class="metric">
-            <span class="metric__label">{{ payment.currency }}</span>
+            <span class="metric__label">Оборот · {{ payment.currency }}</span>
             <strong class="metric__value">{{ "{:,.2f}".format(payment.amount|float).replace(',', ' ').replace('.', ',') }}</strong>
           </div>
+          {% if payment.average_check is defined %}
+          <div class="metric">
+            <span class="metric__label">Средний чек · {{ payment.currency }}</span>
+            <strong class="metric__value">{{ "{:,.2f}".format(payment.average_check|float).replace(',', ' ').replace('.', ',') }}</strong>
+          </div>
+          {% endif %}
         {% else %}
           <p class="muted">За выбранный период оплат нет.</p>
         {% endfor %}

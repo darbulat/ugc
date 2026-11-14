@@ -7,7 +7,7 @@ from uuid import UUID
 
 from ugc_bot.domain.campaigns import digest
 from ugc_bot.domain.enums import WorkFormat
-from ugc_bot.domain.social import SocialPlatform
+from ugc_bot.domain.social import ORDER_TARGET_PLATFORMS, SocialPlatform
 
 
 def fields(value, required=(), optional=()):
@@ -105,7 +105,8 @@ class CampaignSocialFilter:
     followers_max: int | None = None
 
     def __post_init__(self):
-        SocialPlatform(self.platform)
+        if self.platform not in ORDER_TARGET_PLATFORMS:
+            raise ValueError("Invalid campaign social platform")
         if self.work_format is not None:
             WorkFormat(self.work_format)
         for value in (self.followers_min, self.followers_max):

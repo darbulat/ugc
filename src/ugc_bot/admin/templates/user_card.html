@@ -29,10 +29,8 @@
           {% if user.telegram %}<span><small>TG</small> {{ telegram(user.telegram) }}</span>{% endif %}
           {% if creator and creator.instagram_url %}<span><small>IG</small> {{ instagram(creator.instagram_url) }}</span>{% endif %}
           {% if creator and creator.social_links %}
-            {% for platform, label in (('tiktok', 'TikTok'), ('youtube', 'YouTube')) %}
-              {% if creator.social_links.get(platform) %}
-                <a href="{{ creator.social_links[platform] }}" target="_blank" rel="noopener noreferrer">{{ label }}</a>
-              {% endif %}
+            {% for link in creator.social_links.values() %}
+              <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>
             {% endfor %}
           {% endif %}
         </div>

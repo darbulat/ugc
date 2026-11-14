@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 from urllib.parse import urlsplit
 
 from ugc_bot.domain.enums import BloggerGender
-from ugc_bot.domain.social import SocialPlatform
+from ugc_bot.domain.social import ORDER_TARGET_PLATFORMS, SocialPlatform
 
 
 def validate_range(low, high, maximum):
@@ -66,6 +66,7 @@ class OrderTargeting:
         if (
             not isinstance(self.platforms, tuple)
             or len(self.platforms) > 5
+            or any(p not in ORDER_TARGET_PLATFORMS for p in self.platforms)
             or len(set(self.platforms)) != len(self.platforms)
         ):
             raise ValueError("invalid_targeting_platforms")

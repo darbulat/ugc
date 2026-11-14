@@ -97,6 +97,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         "age_hours": 101,
         "days_since_payment": 4.2,
         "selection_days": 7,
+        "days_until_selection_due": 2,
         "selection_due_at": datetime(2026, 11, 12, tzinfo=timezone.utc),
         "selection_target_days": 3,
         "picked_count": 2,
@@ -116,6 +117,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "order_attention": {
                 "delayed": [
                     delayed,
+                    dict(delayed, days_until_selection_due=-1.2),
                     dict(
                         delayed,
                         days_since_payment=None,
@@ -129,8 +131,18 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "turnover_period": 0,
             "paid_orders": 3,
             "payments_by_currency": [
-                {"currency": "RUB", "amount": "139000.00", "count": 2},
-                {"currency": "USD", "amount": "250.10", "count": 1},
+                {
+                    "currency": "RUB",
+                    "amount": "139000.00",
+                    "count": 2,
+                    "average_check": "69500.00",
+                },
+                {
+                    "currency": "USD",
+                    "amount": "250.10",
+                    "count": 1,
+                    "average_check": "250.10",
+                },
             ],
             "referrals": {
                 "referrers": [],
@@ -151,6 +163,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert response.status_code == 200
     assert "4,2 дн. с оплаты" in response.text
     assert "Срок подбора 7 дн." in response.text
+    assert "Осталось 2 дн." in response.text
+    assert "Просрочено на 1,2 дн." in response.text
+    assert "Средний чек · RUB" in response.text
+    assert "69 500,00" in response.text
+    assert "Средний чек · USD" in response.text
     assert "Ориентир админки 3 дн." in response.text
     assert "Дата оплаты неизвестна" in response.text
     assert "101 ч с создания" not in response.text
