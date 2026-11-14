@@ -3,7 +3,7 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
 from ugc_bot.application.customer_offer_texts import offer_text
@@ -15,6 +15,10 @@ from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
     NoticeReceiptTransport,
+)
+from ugc_bot.application.order_summary_admin_text import (
+    is_order_summary_review,
+    order_summary_admin_text,
 )
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.domain.financial import utc
@@ -50,6 +54,7 @@ class CustomerWorkflowDelivery:
     lease_seconds: int = 120
     followups_enabled: bool = True
     offer_loader: Callable[[dict], Awaitable[dict | None]] | None = None
+    admin_base_url: str = ""
 
     async def prepare(self) -> dict | None:
         async with self.transactions.transaction() as session:
@@ -66,6 +71,14 @@ class CustomerWorkflowDelivery:
         url, label = None, None
         if current["request_id"]:
             text = current["text"]
+            if is_order_summary_review(current):
+                text = order_summary_admin_text(current)
+                order_id = current["order_id"]
+                if self.admin_base_url and order_id:
+                    base = self.admin_base_url.rstrip("/")
+                    if not urlsplit(base).path:
+                        base += "/admin"
+                    text += f"\nКарточка заказа: {base}/orders/{order_id}"
         else:
             stage, locale = current["stage"], current["language"]
             defaults = FOLLOWUP_TEXTS.get(locale, FOLLOWUP_TEXTS["ru"])

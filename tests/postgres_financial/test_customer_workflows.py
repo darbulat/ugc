@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from tests.helpers.factories import create_test_order
@@ -38,6 +38,9 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
 from ugc_bot.infrastructure.db.repositories.customer_workflows import (
     SqlAlchemyCustomerWorkflowRepository,
+)
+from ugc_bot.infrastructure.db.repositories.order_summary import (
+    SqlOrderSummary,
 )
 
 
@@ -94,6 +97,72 @@ def rows(env, table):
 async def order(env):
     return await create_test_order(
         env["repos"]["order_repo"], advertiser_id=env["user"].user_id
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_chunks", [False, True])
+async def test_automatic_order_summary_sends_one_readable_admin_notification(
+    intake_env, legacy_chunks
+):
+    env = intake_env
+    created = await order(env)
+    reports = [
+        {
+            "paid_item_id": str(uuid4()),
+            "reason": "contact_or_refund_unconfirmed",
+        }
+        for _ in range(30)
+    ]
+    receiver = Receiver(env)
+    delivery = worker(env, receiver)
+    delivery.admin_base_url = "https://admin.example.test"
+    now = env["clock"].now()
+    async with delivery.transactions.transaction() as db:
+        case_id = await SqlOrderSummary().enqueue_review(
+            created.order_id,
+            env["user"].user_id,
+            "selection-deadline",
+            [*reports, reports[0]],
+            now,
+            session=db,
+        )
+        if legacy_chunks:
+            await db.execute(
+                update(REQUESTS)
+                .where(REQUESTS.c.request_id == case_id)
+                .values(expanded_at=now)
+            )
+            await db.execute(
+                insert(JOBS),
+                [
+                    dict(
+                        job_id=uuid4(),
+                        request_id=case_id,
+                        recipient_id=env["admin"].user_id,
+                        part=part,
+                        text=f"{part + 1}/2\n{{technical JSON}}",
+                        due_at=now,
+                        state="ready",
+                    )
+                    for part in range(2)
+                ],
+            )
+
+    await delivery.run_once()
+    assert await delivery.run_once() == 0
+    (message,) = receiver.messages
+    assert message.text.startswith("Истёк срок подбора · UMC-")
+    assert "30 поз. · Передача контакта или полный возврат" in message.text
+    assert str(case_id) in message.text
+    assert f"https://admin.example.test/admin/orders/{created.order_id}" in (
+        message.text
+    )
+    assert "{" not in message.text
+    assert reports[0]["paid_item_id"] not in message.text
+    states = {row["part"]: row["state"] for row in rows(env, JOBS)}
+    assert states == (
+        {0: "accepted", 1: "obsolete"} if legacy_chunks else {0: "accepted"}
     )
 
 

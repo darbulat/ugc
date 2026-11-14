@@ -109,6 +109,7 @@ def build_customer_workflow_delivery(
             "max": max_base + "/miniapp/max_app.html" if max_base else "",
         },
         texts=texts,
+        admin_base_url=config.admin.admin_base_url.strip(),
         followups_enabled=getattr(config, "customer_workflows_enabled", False),
         offer_loader=CustomerOfferService(
             SqlAlchemyOrderNoticeDetailsRepository(),
