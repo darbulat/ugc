@@ -3,6 +3,7 @@
 import re
 from datetime import datetime, timedelta, timezone
 from html import unescape
+from unittest.mock import AsyncMock
 from urllib.parse import urlencode
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from tests.helpers.sqlite_schema import legacy_sqlite_tables
 from ugc_bot.admin.app import create_admin_app
+from ugc_bot.admin.dashboard_service import AdminDashboardService
 from ugc_bot.domain.enums import (
     AuditAction,
     ComplaintStatus,
@@ -307,6 +309,75 @@ def test_quick_filters_use_activity_and_assignments_before_pagination(worklist):
             if title in response.text
         )
     assert seen == {"Active example", "Quiet second order"}
+
+
+def test_dashboard_shortcuts_count_the_same_orders_as_the_list(
+    worklist, monkeypatch
+):
+    client, engine, ids = worklist
+    _login(client)
+    now = datetime.now(timezone.utc)
+    old = now - timedelta(days=8)
+    with Session(engine) as session, session.begin():
+        for order in session.scalars(select(OrderModel)):
+            order.created_at = order.updated_at = old
+        advertiser = session.get(
+            OrderModel, ids["Active example"]
+        ).advertiser_id
+        session.add(
+            ManagerOrderModel(
+                user_id=advertiser,
+                order_id=ids["Active example"],
+                created_at=old,
+            )
+        )
+        for title, entity_type, flag in (
+            ("Draft example", "order_worklist_visibility", {"visible": False}),
+            ("Financial example", "order_worklist_archive", {"archived": True}),
+            ("Paid example", "order_test_marker", {"test": True}),
+        ):
+            session.add(
+                AuditLogModel(
+                    entity_type=entity_type,
+                    entity_id=ids[title],
+                    action=AuditAction.UPDATE,
+                    new_values=flag,
+                    changed_at=now,
+                )
+            )
+
+    # The charts and historical metrics also use PostgreSQL-only tables.
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_dashboard",
+        AsyncMock(
+            return_value={
+                "problems": {"open_complaints": 0},
+                "registrations": {
+                    "creators": {"count": 0},
+                    "advertisers": {"count": 0},
+                },
+                "payout_requests": [],
+            }
+        ),
+    )
+    dashboard = client.get("/admin/dashboard")
+    assert dashboard.status_code == 200
+    assert dashboard.text.count("attention-queue--shortcut") == 2
+    for key, title in (
+        ("no_manager", "Dispatch example"),
+        ("inactive", "Active example"),
+    ):
+        link = re.search(
+            rf'href="([^"]*{key}=1)"[^>]*>[^<]*<span>.*?</span>\s*<strong>(\d+)</strong>',
+            dashboard.text,
+            re.DOTALL,
+        )
+        assert link is not None and link[2] == "1"
+        result = client.get(unescape(link[1]))
+        assert result.status_code == 200
+        assert "Всего заказов: 1" in result.text
+        assert {name for name in ids if name in result.text} == {title}
 
 
 def test_order_links_preserve_list_search_and_reject_external_return(worklist):

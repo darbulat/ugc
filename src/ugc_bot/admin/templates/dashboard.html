@@ -67,6 +67,13 @@
         {% endif %}
       </details>
       {% endfor %}
+      {% for key, label in order_quick_filter_labels.items() %}
+        <a class="card attention-queue attention-queue--shortcut"
+           href="/admin/order-model/list?group=work&amp;{{ key }}=1">
+          <span>{{ label }}{% if key == 'inactive' %} <small>· от {{ order_inactivity_days }} дней</small>{% endif %}</span>
+          <strong>{{ order_attention_counts[key] }}</strong>
+        </a>
+      {% endfor %}
       <details class="card attention-queue payout-queue" id="payout-requests"{% if payout_attention %} open{% endif %}>
         <summary>
           <span>Заявки на вывод</span>

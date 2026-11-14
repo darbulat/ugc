@@ -519,6 +519,29 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+.attention-queue--shortcut {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .45rem .75rem;
+  color: #194693;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.attention-queue--shortcut:hover > span {
+  text-decoration: underline;
+}
+
+.attention-queue--shortcut small {
+  color: #536078;
+  font-weight: 400;
+}
+
+.attention-queue--shortcut strong {
+  font-variant-numeric: tabular-nums;
+}
+
 .attention-list {
   max-height: 18rem;
   overflow: auto;
