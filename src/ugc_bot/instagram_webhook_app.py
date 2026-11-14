@@ -237,9 +237,18 @@ async def handle_webhook(
         container = Container(config)
     verification_service = container.build_instagram_verification_service()
     manager_verifier = None
+    # Some deployments retain the Meta secret under its old variable name.
+    # Manager verification still requires a signed event in that case.
+    manager_secret = config.instagram.instagram_app_secret or (
+        config.instagram.instagram_legacy_app_secret.get_secret_value()
+    )
     if (
-        config.instagram.instagram_app_secret
+        manager_secret
+        and x_hub_signature_256
         and config.db.database_url.startswith("postgresql")
+        and _verify_signature(
+            payload_bytes, x_hub_signature_256, manager_secret
+        )
     ):
         manager_verifier = ManagerApplications(
             container.transaction_manager,
