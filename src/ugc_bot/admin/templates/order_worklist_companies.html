@@ -1,0 +1,35 @@
+{% set company_url = request.url.remove_query_params(['company', 'companyPage']) %}
+<div class="list-group list-group-flush">
+  {% for company in pagination.rows %}
+    {% set company_id = company.advertiser_id|string %}
+    {% set expanded = request.query_params.get('company') == company_id %}
+    {% set section_id = 'company-' ~ company_id %}
+    <section id="{{ section_id }}" class="list-group-item px-0 py-0">
+      <a class="order-company-toggle d-flex align-items-center gap-2 px-3 py-3"
+         href="{{ (company_url if expanded else company_url.include_query_params(company=company_id)).replace(fragment=section_id) }}"
+         aria-expanded="{{ 'true' if expanded else 'false' }}">
+        <span aria-hidden="true">{{ '▾' if expanded else '▸' }}</span>
+        <strong class="flex-grow-1 text-break">{{ company.name }}</strong>
+        <span class="text-muted text-nowrap">Заказов: {{ company.order_count }}</span>
+      </a>
+      {% if expanded %}
+        {% set orders = model_view.company_orders(request, company.advertiser_id, company.order_count, pagination.page_size) %}
+        {% set order_rows = orders.rows %}
+        {% include 'order_worklist_table.html' %}
+        {% if orders.has_previous or orders.has_next %}
+          <nav class="d-flex align-items-center gap-2 px-3 py-2" aria-label="Страницы заказов компании">
+            {% if orders.has_previous %}
+              <a class="btn btn-sm btn-outline-secondary" href="{{ request.url.include_query_params(companyPage=orders.page - 1).replace(fragment=section_id) }}">Назад</a>
+            {% endif %}
+            <span class="text-muted">Страница {{ orders.page }}</span>
+            {% if orders.has_next %}
+              <a class="btn btn-sm btn-outline-secondary" href="{{ request.url.include_query_params(companyPage=orders.page + 1).replace(fragment=section_id) }}">Далее</a>
+            {% endif %}
+          </nav>
+        {% endif %}
+      {% endif %}
+    </section>
+  {% else %}
+    <p class="text-center text-muted py-4 mb-0">Заказы не найдены</p>
+  {% endfor %}
+</div>

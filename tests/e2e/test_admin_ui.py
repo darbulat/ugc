@@ -309,6 +309,25 @@ def test_order_worklist_search_hide_and_restore(
     page.get_by_label("Поиск", exact=True).fill(brand)
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     expect(page.get_by_role("row").filter(has_text=brand)).to_have_count(2)
+    page.get_by_role("link", name="По компаниям", exact=True).click()
+    company = page.get_by_role("link", name=f"{brand} Заказов: 2")
+    expect(company).to_have_attribute("aria-expanded", "false")
+    expect(page.get_by_role("row").filter(has_text=brand)).to_have_count(0)
+    company.click()
+    expect(company).to_have_attribute("aria-expanded", "true")
+    expect(page.get_by_role("row").filter(has_text=brand)).to_have_count(2)
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(brand)
+    expanded_list = page.url
+    page.get_by_role("row").filter(has_text=managed_title).get_by_role(
+        "link", name="Открыть", exact=True
+    ).click()
+    page.get_by_role("link", name="Назад к списку").click()
+    assert page.url.split("#", 1)[0] == expanded_list.split("#", 1)[0]
+    expect(company).to_have_attribute("aria-expanded", "true")
+    company.click()
+    expect(company).to_have_attribute("aria-expanded", "false")
+    page.get_by_role("link", name="Списком", exact=True).click()
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(brand)
     page.get_by_label("Поиск", exact=True).fill("Браузерный тест черновика")
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     row = page.get_by_role("row").filter(has_text="Браузерный тест черновика")

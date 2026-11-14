@@ -19,7 +19,8 @@ from aiogram.types import BufferedInputFile
 from fastapi import Depends, FastAPI, HTTPException
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
-from sqlalchemy import exists, select, text
+from sqladmin.pagination import Pagination
+from sqlalchemy import exists, func, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -2348,7 +2349,99 @@ class OrderAdmin(ModelView, model=OrderModel):
     def search_query(self, stmt, term: str):
         return stmt.where(search_orders(term)) if term.strip() else stmt
 
+    def grouped_by_company(self, request: Request) -> bool:
+        return (
+            request.query_params.get("view") == "companies"
+            and self.customer_filter(request) is None
+        )
+
+    def _matching_orders(self, request: Request):
+        return self.search_query(
+            self.list_query(request), request.query_params.get("search", "")
+        )
+
+    async def _company_list(self, request: Request) -> Pagination:
+        requested_size = self.validate_page_number(
+            request.query_params.get("pageSize"), self.page_size
+        )
+        page_size = min(
+            requested_size if requested_size > 0 else self.page_size,
+            max(self.page_size_options),
+        )
+        orders = self._matching_orders(request).subquery()
+        companies = (
+            select(
+                orders.c.advertiser_id,
+                func.count().label("order_count"),
+            )
+            .group_by(orders.c.advertiser_id)
+            .subquery()
+        )
+        count = await self.count(
+            request, select(func.count()).select_from(companies)
+        )
+        last_page = max(1, (count + page_size - 1) // page_size)
+        page = min(
+            max(
+                1,
+                self.validate_page_number(request.query_params.get("page"), 1),
+            ),
+            last_page,
+        )
+        name = func.coalesce(
+            func.nullif(func.trim(AdvertiserProfileModel.brand), ""),
+            func.nullif(func.trim(UserModel.username), ""),
+            "Заказчик",
+        )
+        rows = await self._run_arbitrary_query(
+            select(
+                companies.c.advertiser_id,
+                companies.c.order_count,
+                name.label("name"),
+            )
+            .select_from(companies)
+            .outerjoin(
+                UserModel, UserModel.user_id == companies.c.advertiser_id
+            )
+            .outerjoin(
+                AdvertiserProfileModel,
+                AdvertiserProfileModel.user_id == companies.c.advertiser_id,
+            )
+            .order_by(func.lower(name), companies.c.advertiser_id)
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )
+        return Pagination(
+            rows=rows, count=count, page=page, page_size=page_size
+        )
+
+    async def company_orders(
+        self, request: Request, advertiser_id: UUID, count: int, page_size: int
+    ) -> Pagination:
+        page = min(
+            max(
+                1,
+                self.validate_page_number(
+                    request.query_params.get("companyPage"), 1
+                ),
+            ),
+            max(1, (count + page_size - 1) // page_size),
+        )
+        stmt = self._matching_orders(request).where(
+            OrderModel.advertiser_id == advertiser_id
+        )
+        rows = await self._run_query(
+            self.sort_query(stmt, request)
+            .limit(page_size)
+            .offset((page - 1) * page_size)
+        )
+        return Pagination(
+            rows=rows, count=count, page=page, page_size=page_size
+        )
+
     async def list(self, request: Request):
+        if self.grouped_by_company(request):
+            return await self._company_list(request)
         pagination = await super().list(request)
         page_size = pagination.page_size
         last_page = max(1, (pagination.count + page_size - 1) // page_size)
