@@ -541,6 +541,47 @@ async def test_update_order_wrong_status_rejected(
 
 
 @pytest.mark.asyncio
+async def test_update_order_cannot_restore_order_deleted_while_geocoding(
+    user_repo, advertiser_repo, order_repo
+) -> None:
+    from dataclasses import replace
+
+    user_id = await create_test_advertiser(
+        user_repo, advertiser_repo, status=UserStatus.ACTIVE
+    )
+    service = build_order_service(user_repo, advertiser_repo, order_repo)
+    order = await service.create_order(
+        advertiser_id=user_id,
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.com",
+        offer_text="Offer",
+        barter_description=None,
+        price=1000.0,
+        bloggers_needed=3,
+    )
+    deleted = replace(order, status=OrderStatus.DELETED, dispatch_stopped=True)
+
+    class Geocoder:
+        async def get_multipolygon_wkt_for_queries(self, queries):
+            await order_repo.save(deleted)
+
+    service.geocoder = Geocoder()
+    with pytest.raises(OrderCreationError, match="cannot be edited"):
+        await service.update_order(
+            order_id=order.order_id,
+            advertiser_id=user_id,
+            product_link="https://example.com",
+            offer_text="New offer",
+            barter_description=None,
+            price=1000.0,
+            bloggers_needed=3,
+            order_type=OrderType.UGC_ONLY,
+            geography="Казань",
+        )
+    assert await order_repo.get_by_id(order.order_id) == deleted
+
+
+@pytest.mark.asyncio
 async def test_create_order_currency_from_user_country(
     user_repo, advertiser_repo, order_repo
 ) -> None:

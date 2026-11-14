@@ -56,6 +56,12 @@ from ugc_bot.admin.dashboard_service import (
     dashboard_period_window,
     paid_in_period,
 )
+from ugc_bot.admin.order_editor import (
+    ORDER_EDITOR_HINTS,
+    ORDER_EDITOR_LIMITS,
+    ORDER_EDITOR_SECTIONS,
+    changed_text_errors,
+)
 from ugc_bot.admin.order_worklist import (
     ORDER_STATUS_LABELS,
     UNPAID_GROUP,
@@ -652,6 +658,7 @@ def _build_templates(app: FastAPI, zone: ZoneInfo) -> Jinja2Templates:
     )
     templates.env.globals["order_return_url"] = _order_return_url
     templates.env.globals["admin_asset"] = _admin_asset
+    templates.env.globals["admin_action_token"] = _admin_action_token
     templates.env.filters["instagram_link"] = instagram_link
     templates.env.filters["telegram_handle"] = telegram_handle
     templates.env.filters["admin_date"] = lambda value: _admin_date(value, zone)
@@ -745,7 +752,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v4:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v5:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -1185,7 +1192,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v4:{period_key}"
+        f"dashboard_api:v5:{period_key}"
         if cache and not include_timings
         else None
     )
@@ -1216,7 +1223,7 @@ async def _api_charts_json(
     """Charts payload as JSON."""
     period_key = _normalize_period(period)
     if cache:
-        cache_key = f"charts:v3:{period_key}"
+        cache_key = f"charts:v4:{period_key}"
         raw = await cache.get(cache_key)
         if raw is not None:
             return cast(
@@ -2160,7 +2167,7 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.barter_description: "Описание бартера",
         OrderModel.product_photo_file_id: "ID фото товара",
         OrderModel.filter_by_price: "Фильтр по цене",
-        OrderModel.price_filter_delta: "Дельта цены (диапазон ±)",
+        OrderModel.price_filter_delta: "Допуск по цене (±)",
         OrderModel.filter_by_placement: "Фильтр по размещению",
         OrderModel.filter_by_barter: "Фильтр по бартеру",
         OrderModel.brief_link: "Ссылка на ТЗ",
@@ -2192,6 +2199,16 @@ class OrderAdmin(ModelView, model=OrderModel):
         OrderModel.brief_link,
     ]
     edit_template = "order_edit.html"
+
+    def _stmt_by_identifier(self, identifier: str):
+        # Serialize SQLAdmin writes with deletion and other order transitions.
+        return super()._stmt_by_identifier(identifier).with_for_update()
+
+    async def on_model_change(self, data, model, is_created, request):
+        if model is None or model.status == OrderStatus.DELETED:
+            raise ValueError("Заказ удалён.")
+        if data.get("status") == OrderStatus.DELETED:
+            raise ValueError("Для удаления используйте кнопку «Удалить заказ».")
 
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update order with banned content check and activation publishing."""
@@ -2361,8 +2378,11 @@ class OrderAdmin(ModelView, model=OrderModel):
     worklist_csrf_token = staticmethod(_admin_action_token)
 
     def form_edit_query(self, request: Request):
-        stmt = super().form_edit_query(request)
-        return stmt.where(OrderModel.status != OrderStatus.DELETED)
+        return (
+            super()
+            ._stmt_by_identifier(request.path_params["pk"])
+            .where(OrderModel.status != OrderStatus.DELETED)
+        )
 
     @action(
         name="duplicate_order",
@@ -2944,12 +2964,11 @@ class PaymentAdmin(ModelView, model=PaymentModel):
 
     def _for_paid_period(self, stmt, request: Request):
         if period := request.query_params.get("paid_period"):
+            window = dashboard_period_window(
+                _normalize_period(period), self.dashboard_timezone
+            )
             return stmt.where(
-                paid_in_period(
-                    dashboard_period_window(
-                        _normalize_period(period), self.dashboard_timezone
-                    )
-                )
+                paid_in_period(window.current_start, window.current_end)
             )
         return stmt
 
@@ -3353,6 +3372,15 @@ class EnumAwareAdmin(Admin):
         await _inject_order_eligible_bloggers_count(context, model_view, model)
         await _inject_order_managers(context, model_view, model)
         await _inject_order_quote_details(context, model_view, model)
+        if isinstance(model_view, OrderAdmin):
+            details = await model_view.worklist_details([model])
+            context.update(
+                order_actions=details.get(model.order_id),
+                order_sections=ORDER_EDITOR_SECTIONS,
+                order_limits=ORDER_EDITOR_LIMITS,
+                order_hints=ORDER_EDITOR_HINTS,
+                order_status_labels=ORDER_STATUS_LABELS,
+            )
 
         if request.method == "GET":
             return await self.templates.TemplateResponse(
@@ -3361,8 +3389,13 @@ class EnumAwareAdmin(Admin):
 
         form_data_post = await self._handle_form_data(request, model)
         form = Form(form_data_post)
-        if not form.validate():
-            context["form"] = form
+        context["form"] = form
+        valid = form.validate()
+        if isinstance(model_view, OrderAdmin):
+            for name, error in changed_text_errors(model, form.data).items():
+                form[name].errors = [*form[name].errors, error]
+                valid = False
+        if not valid:
             return await self.templates.TemplateResponse(
                 request, model_view.edit_template, context, status_code=400
             )
@@ -3489,7 +3522,14 @@ def _register_order_worklist_action(
             message = await _change_order_dispatch(order_id, operation)
         else:
             message = await asyncio.to_thread(update)
-        if operation == "delete-test":
+        if operation in {
+            "delete-test",
+            "mark-test",
+            "unmark-test",
+            "hide",
+            "restore",
+            "close",
+        }:
             await cache.invalidate_prefixes(
                 "dashboard:",
                 "dashboard_api:",
@@ -3497,19 +3537,22 @@ def _register_order_worklist_action(
                 "charts:",
                 "advertisers:",
             )
-        elif operation in {
-            "mark-test",
-            "unmark-test",
-            "hide",
-            "restore",
-            "close",
-        }:
-            await cache.invalidate_prefixes("dashboard:", "dashboard_api:")
         request.session["order_worklist_message"] = message
-        target = request.url_for("admin:list", identity=OrderAdmin.identity)
-        return RedirectResponse(
-            target.replace(query=request.url.query), status_code=303
-        )
+        if "return_to" in request.query_params:
+            target = _order_return_url(request)
+            if URL(target).path != _ORDER_LIST_PATH:
+                target = str(
+                    URL(_ORDER_LIST_PATH).include_query_params(
+                        search=str(order_id)
+                    )
+                )
+        else:
+            target = str(
+                request.url_for(
+                    "admin:list", identity=OrderAdmin.identity
+                ).replace(query=request.url.query)
+            )
+        return RedirectResponse(target, status_code=303)
 
 
 def _register_complaint_action(

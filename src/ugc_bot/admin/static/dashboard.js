@@ -60,8 +60,28 @@ function chartData(data) {
   };
 }
 
+const dayValueLabels = {
+  id: "dayValueLabels",
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    ctx.save();
+    ctx.font = "600 14px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    chart.data.datasets.forEach((dataset, index) => {
+      if (!chart.isDatasetVisible(index)) return;
+      const bar = chart.getDatasetMeta(index).data[0];
+      ctx.fillStyle = dataset.backgroundColor;
+      ctx.fillText(dataset.dayLabel, bar.x, bar.y - 5);
+    });
+    ctx.restore();
+  },
+};
+
 function renderChart(canvas, config, dates, large = false) {
   if (!window.Chart) return undefined;
+  const singleDay = dates.length === 1;
+  const type = singleDay ? "bar" : config.type;
   const multipleCurrencies = config.money && config.series.length > 1;
   const format = config.money ? amounts : integers;
   const scales = {
@@ -75,6 +95,7 @@ function renderChart(canvas, config, dates, large = false) {
         maxTicksLimit: large ? 12 : 6,
       },
       grid: { display: false },
+      offset: singleDay || type === "bar",
     },
   };
   config.series.forEach(({ label }, index) => {
@@ -82,6 +103,7 @@ function renderChart(canvas, config, dates, large = false) {
     scales[multipleCurrencies ? `y${index}` : "y"] = {
       type: "linear",
       beginAtZero: true,
+      grace: singleDay ? "15%" : 0,
       title: { display: multipleCurrencies, text: label },
       position: index % 2 ? "right" : "left",
       grid: { drawOnChartArea: !multipleCurrencies || index === 0 },
@@ -89,7 +111,8 @@ function renderChart(canvas, config, dates, large = false) {
     };
   });
   return new window.Chart(canvas, {
-    type: config.type,
+    type,
+    plugins: singleDay ? [dayValueLabels] : [],
     data: {
       labels: dates,
       datasets: config.series.map(({ label, byDate, color }, index) => ({
@@ -97,9 +120,10 @@ function renderChart(canvas, config, dates, large = false) {
         data: dates.map((date) => byDate.get(date) ?? 0),
         backgroundColor: color,
         borderColor: color,
-        borderWidth: config.type === "line" ? 2 : 0,
+        borderWidth: type === "line" ? 2 : 0,
+        dayLabel: singleDay ? format.format(byDate.get(dates[0]) ?? 0) : undefined,
         pointRadius: dates.length <= 31 ? 2 : 0,
-        maxBarThickness: 34,
+        maxBarThickness: singleDay ? 60 : 34,
         yAxisID: multipleCurrencies ? `y${index}` : "y",
       })),
     },
@@ -107,6 +131,7 @@ function renderChart(canvas, config, dates, large = false) {
       responsive: true,
       maintainAspectRatio: false,
       animation: false,
+      layout: { padding: { top: singleDay ? 14 : 0 } },
       interaction: { mode: "index", intersect: false },
       scales,
       plugins: {
@@ -155,7 +180,9 @@ function updateDetail() {
     return;
   }
   visibleDates = dates;
-  detail.querySelector(".chart-range").textContent = longDate(dates[0]) + " — " + longDate(dates.at(-1));
+  detail.querySelector(".chart-range").textContent = dates.length === 1
+    ? longDate(dates[0])
+    : longDate(dates[0]) + " — " + longDate(dates.at(-1));
   expandedChart?.destroy();
   expandedChart = renderChart(detail.querySelector("canvas"), selected, dates, true);
   if (values.open) renderValues(dates);
@@ -232,7 +259,7 @@ async function loadDashboardCharts() {
       button.textContent = "Открыть таблицу";
     }
   }
-  renderPeaks(charts);
+  if (calendar.length > 1) renderPeaks(charts);
 }
 
 controls.addEventListener("submit", (event) => {

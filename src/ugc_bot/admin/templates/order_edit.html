@@ -1,35 +1,94 @@
 {% extends "sqladmin/layout.html" %}
-{% from 'sqladmin/_macros.html' import render_form_fields %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="{{ admin_asset(request, 'order-editor.css') }}">
+{% endblock %}
+{% macro order_field(field) %}
+{% set hint = order_hints.get(field.name) %}
+{% set limit = order_limits.get(field.name) %}
+{% set checkbox = field.type == 'BooleanField' %}
+{% set long_text = field.type == 'TextAreaField' %}
+{% set described_by = ([field.id ~ '-hint'] if hint else []) + ([field.id ~ '-count'] if limit else []) + ([field.id ~ '-error'] if field.errors else []) %}
+<div class="order-editor__field{% if long_text or checkbox %} order-editor__field--wide{% endif %}">
+  <div{% if checkbox %} class="form-check"{% endif %}>
+    {% if not checkbox %}{{ field.label(class_='form-label' ~ (' required-label' if field.flags.required else '')) }}{% endif %}
+    {% if field.name == 'status' %}
+      <select class="form-select" name="status" id="status" required aria-describedby="{{ described_by|join(' ') }}">
+        {% for value, label, selected, _ in field.iter_choices() if value in order_status_labels %}
+        <option value="{{ value }}"{% if selected %} selected{% endif %}>{{ order_status_labels[value] }}</option>
+        {% endfor %}
+      </select>
+    {% else %}
+      {% set attributes = {'aria-describedby': described_by|join(' ')} if described_by else {} %}
+      {% if field.errors %}{% set _ = attributes.update({'aria-invalid': 'true'}) %}{% endif %}
+      {{ field(**attributes) }}
+    {% endif %}
+    {% if checkbox %}{{ field.label(class_='form-check-label') }}{% endif %}
+  </div>
+  {% if hint %}<small id="{{ field.id }}-hint" class="form-hint">{{ hint }}</small>{% endif %}
+  {% if limit %}<small id="{{ field.id }}-count" class="form-hint order-editor__count" data-field="{{ field.id }}" data-character-limit="{{ limit }}">До {{ limit }} символов</small>{% endif %}
+  {% if field.errors %}<div class="text-danger" id="{{ field.id }}-error">{{ field.errors|join(' ') }}</div>{% endif %}
+</div>
+{% endmacro %}
 {% block content %}
 {% set back_url = order_return_url(request) %}
 {% set order_url = request.url_for('admin_order_detail', order_id=obj.order_id).include_query_params(return_to=back_url) %}
-<div class="col-12">
-  <div class="d-flex flex-wrap gap-2">
-    <a href="{{ back_url }}" class="btn btn-outline-secondary">← Назад к списку</a>
-    <a href="{{ order_url }}" class="btn btn-outline-secondary">Карточка заказа</a>
+<div class="col-12 order-editor">
+  <div class="order-editor__top">
+    <nav class="d-flex flex-wrap gap-2" aria-label="Навигация по заказу">
+      <a href="{{ back_url }}" class="btn btn-outline-secondary">← Назад к списку</a>
+      <a href="{{ order_url }}" class="btn btn-outline-secondary">Карточка заказа</a>
+      <a href="{{ request.url_for('admin_user_card', user_id=obj.advertiser_id).include_query_params(from_order=obj.order_id, return_to=back_url) }}" class="btn btn-outline-secondary">{{ order_actions.brand or order_actions.username or 'Профиль заказчика' }}</a>
+    </nav>
+    <div class="order-editor__heading">
+      <div>
+        <span class="order-editor__status">{{ order_status_labels.get(obj.status, obj.status) }}</span>
+        {% if order_actions.is_test %}<span class="order-editor__status">Тестовый</span>{% endif %}
+        {% if obj.complimentary %}<span class="order-editor__status">Запущен без оплаты</span>{% endif %}
+        <h1>{{ obj.offer_text|default('Заказ', true)|truncate(120) }}</h1>
+        <span class="text-muted">{{ obj.geography or 'География не задана' }}</span>
+      </div>
+      {% if order_actions.can_delete %}
+        {% set delete_title = obj.offer_text or 'Заказ' %}
+        {% set delete_url = request.url_for('update_order_worklist', order_id=obj.order_id, operation='delete-test').include_query_params(return_to=back_url) %}
+        {% include 'order_delete_button.html' %}
+      {% endif %}
+    </div>
   </div>
-</div>
-{% if order_geography_unavailable %}
-<div class="col-12 mb-2">
-  <div class="alert alert-danger py-2 mb-0" role="alert">
-    Не удалось применить географию заказа. Рассылка заблокирована до исправления геофильтра.
+  <div class="order-editor__bar">
+    <nav class="order-editor__links" aria-label="Разделы заказа">
+      <a href="#order-edit-brief">Бриф</a>
+      <a href="#order-edit-terms">Условия</a>
+      <a href="#order-edit-audience">Подбор креаторов</a>
+      <a href="#order-edit-files">Фото и менеджеры</a>
+    </nav>
+    <div class="order-editor__audience" role="status">
+      {% if order_geography_unavailable %}
+        <strong class="text-danger">География не распознана</strong>
+        <small>Рассылка заблокирована до исправления геофильтра.</small>
+      {% elif eligible_bloggers_count is not none %}
+        <strong>Подходят <span>{{ eligible_bloggers_count }}</span> креаторов</strong>
+        <small>По сохранённым фильтрам</small>
+      {% else %}
+        <strong>Выборка недоступна</strong>
+      {% endif %}
+      <small id="order-audience-dirty" hidden>Фильтры изменились. Нажмите «Сохранить и продолжить».</small>
+    </div>
   </div>
-</div>
-{% elif eligible_bloggers_count is not none %}
-<div class="col-12 mb-2">
-  <div class="alert alert-info py-2 mb-0" role="status">
-    Креаторов под выборку: <strong>{{ eligible_bloggers_count }}</strong>
-  </div>
-</div>
-{% endif %}
-{% if obj.complimentary %}
-<div class="alert alert-info" role="status">Запущен администратором без оплаты.</div>
-{% endif %}
+  <form id="order-edit-form" action="{{ model_view._build_url_for('admin:edit', request, obj).include_query_params(return_to=back_url) }}" method="POST" enctype="multipart/form-data">
+    {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
+    {% for field in form if field.widget.input_type == 'hidden' %}{{ field }}{% endfor %}
+    {% for key, title in [('brief', 'Бриф заказа'), ('terms', 'Условия и статус'), ('audience', 'Подбор креаторов')] %}
+    <section class="order-editor__panel" id="order-edit-{{ key }}" aria-labelledby="order-edit-{{ key }}-title">
+      <h2 id="order-edit-{{ key }}-title">{{ title }}</h2>
+      <div class="order-editor__fields">
+        {% for name in order_sections[key] %}{{ order_field(form[name]) }}{% endfor %}
+      </div>
+      {% if key == 'terms' %}
 {% if order_quote_details %}
-<div class="col-12 mb-3">
-  <div class="card">
-    <div class="card-header"><h3 class="card-title">Сохранённые условия заказа</h3></div>
-    <div class="card-body">
+<details class="order-editor__quote">
+  <summary>Сохранённые условия заказа · {{ order_quote_details.total_display }} {{ order_quote_details.currency }}</summary>
+    <div class="pt-3">
       <dl class="row mb-0" id="order-saved-quote">
         <dt class="col-sm-5">Контакт клиента</dt><dd class="col-sm-7">{{ order_quote_details.contact_reference }}</dd>
         <dt class="col-sm-5">Формат работы</dt><dd class="col-sm-7">{{ 'С сопровождением менеджера' if order_quote_details.format == 'with_manager' else 'Самостоятельный подбор' }}</dd>
@@ -44,32 +103,18 @@
       </dl>
       <p class="text-muted mb-0 mt-2">Суммы сохранены при создании заказа.</p>
     </div>
-  </div>
-</div>
+</details>
 {% endif %}
-{% if order_image_preview %}
-<div class="col-12 mb-3">
-  <div class="card"><div class="card-body">
-    <h3 class="card-title">Изображение товара</h3>
-    <img src="{{ order_image_preview }}" alt="Изображение товара из сохранённого заказа" class="img-fluid rounded" style="max-width: 360px; width: 100%;" loading="lazy">
-  </div></div>
-</div>
-{% endif %}
-<div class="col-12">
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title">Редактирование заказа</h3>
-    </div>
-    <div class="card-body border-bottom py-3">
-      <form action="{{ model_view._build_url_for('admin:edit', request, obj).include_query_params(return_to=back_url) }}" method="POST"
-        enctype="multipart/form-data">
-        <div class="row">
-          {% if error %}
-          <div class="alert alert-danger" role="alert">{{ error }}</div>
-          {% endif %}
-        </div>
-        <fieldset class="form-fieldset">
-          {{ render_form_fields(form, form_opts=form_opts) }}
+      {% elif key == 'audience' %}
+        <p class="form-hint mt-2 mb-0">«Сохранить и продолжить» пересчитает выборку по новым фильтрам.</p>
+      {% endif %}
+    </section>
+    {% endfor %}
+    <section class="order-editor__panel" id="order-edit-files" aria-labelledby="order-edit-files-title">
+      <h2 id="order-edit-files-title">Фото и менеджеры</h2>
+      {% if order_image_preview %}
+        <img src="{{ order_image_preview }}" alt="Изображение товара из сохранённого заказа" class="order-editor__photo" loading="lazy">
+      {% endif %}
           <div class="mb-3">
             <label for="order-photo-upload" class="form-label">Загрузить картинку товара (PNG/JPG)</label>
             <div class="d-flex flex-wrap gap-2">
@@ -79,61 +124,35 @@
             <small class="form-hint">До 10 МБ. Telegram file_id заполнится автоматически; сохраните заказ.</small>
             <div id="order-photo-upload-status" class="mt-1" role="status"></div>
           </div>
+      <details class="mb-3">
+        <summary>Идентификатор фото в Telegram</summary>
+        {{ order_field(form.product_photo_file_id) }}
+      </details>
           <div class="mb-3">
             <label for="managers" class="form-label">Менеджеры (через запятую @username)</label>
             <input type="text" class="form-control" id="managers" name="managers"
                    value="{{ managers_value|default('', true) }}"
                    placeholder="@username1, @username2">
           </div>
-        </fieldset>
-        <div class="row">
-          <div class="col-md-2">
-            <a href="{{ back_url }}" class="btn">
-              Отмена
-            </a>
-            {% if model_view.can_create %}
-            <a class="btn btn-outline-secondary ms-1"
-               href="{{ model_view._url_for_action(request, 'duplicate-order') }}?pks={{ obj.order_id }}">
-              Дублировать заказ
-            </a>
-            {% endif %}
-          </div>
-          <div class="col-md-6">
-            <div class="d-flex flex-wrap gap-2">
-              <button type="submit" name="save" value="Save" class="btn btn-primary">Сохранить</button>
-              <button type="submit" name="save" value="Save and continue editing" class="btn">Сохранить и продолжить</button>
-              {% if model_view.can_create %}
-              {% if model_view.save_as %}
-              <button type="submit" name="save" value="Save as new" class="btn">Сохранить как новый</button>
-              {% else %}
-              <button type="submit" name="save" value="Save and add another" class="btn">Сохранить и добавить заказ</button>
-              {% endif %}
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      </form>
+    </section>
+    <div class="order-editor__footer">
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить и продолжить</button>
+        <button type="submit" name="save" value="Save" class="btn btn-outline-secondary">Сохранить</button>
+        {% if model_view.can_create %}
+          {% if model_view.save_as %}
+          <button type="submit" name="save" value="Save as new" class="btn">Сохранить как новый</button>
+          {% else %}
+          <button type="submit" name="save" value="Save and add another" class="btn">Сохранить и добавить заказ</button>
+          {% endif %}
+        {% endif %}
+      </div>
+      {% if model_view.can_create %}
+      <a class="btn btn-outline-secondary" href="{{ model_view._url_for_action(request, 'duplicate-order') }}?pks={{ obj.order_id }}">Дублировать заказ</a>
+      {% endif %}
     </div>
-  </div>
+  </form>
 </div>
-<script>
-  document.getElementById('order-photo-upload-button')?.addEventListener('click', async () => {
-    const picker = document.getElementById('order-photo-upload');
-    const status = document.getElementById('order-photo-upload-status');
-    const button = document.getElementById('order-photo-upload-button');
-    if (!picker.files.length) { status.textContent = 'Сначала выберите изображение.'; return; }
-    const data = new FormData(); data.append('photo', picker.files[0]);
-    button.disabled = true; status.textContent = 'Загружаю в Telegram…';
-    try {
-      const response = await fetch('/admin/order-photo-upload', {method: 'POST', body: data, credentials: 'same-origin'});
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Не удалось загрузить фото');
-      const field = document.querySelector('[name="product_photo_file_id"]');
-      if (!field) throw new Error('Не найдено поле Telegram file_id');
-      field.value = result.file_id;
-      status.textContent = 'Готово. Сохраните заказ, чтобы применить картинку.';
-    } catch (error) { status.textContent = error.message; }
-    finally { button.disabled = false; }
-  });
-</script>
+<script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
+<script defer src="{{ admin_asset(request, 'order-editor.js') }}"></script>
 {% endblock %}

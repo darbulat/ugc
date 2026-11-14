@@ -116,7 +116,7 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     "currency": "RUB",
                     "paid_at": boundary,
                 }
-                for order_id in (normal, old)
+                for order_id in (normal, old, test)
             ],
         )
         db.execute(

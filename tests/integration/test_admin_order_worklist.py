@@ -336,12 +336,16 @@ def test_test_order_requires_marker_and_keeps_audit(worklist):
 
     assert post(draft_id, "mark-test", "").status_code == 403
     assert "Удалить можно только" in post(draft_id, "delete-test").text
-    assert (
-        "Отметить можно только" in post(ids["Paid example"], "mark-test").text
-    )
+    paid = ids["Paid example"]
+    assert "Заказ отмечен" in post(paid, "mark-test").text
+    test_list = client.get(LIST, params={"group": "test"})
+    assert "Paid example" in test_list.text
+    assert "Paid example" not in client.get(LIST).text
+    assert "Удалить можно только" in post(paid, "delete-test").text
+    assert "Тестовая отметка снята" in post(paid, "unmark-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
-    assert "Удалить тестовый" in client.get(LIST, params={"group": "test"}).text
+    assert "Удалить заказ" in client.get(LIST, params={"group": "test"}).text
     assert "Тестовая отметка снята" in post(draft_id, "unmark-test").text
     assert "Удалить можно только" in post(draft_id, "delete-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
@@ -373,6 +377,104 @@ def test_test_order_requires_marker_and_keeps_audit(worklist):
             session.get(OrderModel, ids["Paid example"]).status
             == OrderStatus.ACTIVE
         )
+
+
+def test_delete_marked_draft_from_card_without_touching_related_orders(
+    worklist,
+):
+    client, engine, ids = worklist
+    _login(client)
+    draft_id = ids["Draft example"]
+    source = f"{LIST}?group=all&search=Draft"
+    edit = f"/admin/order-model/edit/{draft_id}"
+    detail = f"/admin/orders/{draft_id}"
+    with Session(engine) as session, session.begin():
+        draft = session.get(OrderModel, draft_id)
+        draft.status = OrderStatus.PENDING_MODERATION
+        draft.financial_version = "v1"
+
+    page = client.get(LIST)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
+    action = f"/admin/order-worklist/{draft_id}/delete-test"
+    assert "Удалить заказ" not in client.get(detail).text
+    assert (
+        "Удалить можно только"
+        in client.post(action, data={"csrf_token": token}).text
+    )
+    assert (
+        "Заказ отмечен"
+        in client.post(
+            f"/admin/order-worklist/{draft_id}/mark-test",
+            data={"csrf_token": token},
+        ).text
+    )
+    for url in (edit, detail):
+        page = client.get(url, params={"return_to": source})
+        assert page.status_code == 200
+        assert "Удалить заказ" in page.text
+    assert (
+        "Удалить заказ"
+        not in client.get(f"/admin/orders/{ids['Paid example']}").text
+    )
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
+    assert client.post(action).status_code == 403
+    for name in ("Paid example", "Active example", "Dispatch example"):
+        denied = client.post(
+            f"/admin/order-worklist/{ids[name]}/delete-test",
+            data={"csrf_token": token},
+        )
+        assert "Удалить можно только" in denied.text
+    removed = client.post(
+        action,
+        params={"return_to": source},
+        data={"csrf_token": token},
+        follow_redirects=False,
+    )
+    assert removed.status_code == 303 and removed.headers["location"] == source
+    assert client.get(detail).status_code == 404
+    assert client.get(edit).status_code == 404
+    with Session(engine) as session:
+        draft = session.get(OrderModel, draft_id)
+        assert draft.status == OrderStatus.DELETED and draft.dispatch_stopped
+        event = session.scalars(
+            select(AuditLogModel).where(
+                AuditLogModel.entity_id == draft_id,
+                AuditLogModel.action == AuditAction.DELETE,
+            )
+        ).one()
+        assert event.old_values == {"status": "pending_moderation"}
+        assert event.new_values == {"status": "deleted", "test": True}
+
+
+def test_order_editor_rejects_new_overflow_and_preserves_legacy_text(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    oid = ids["Draft example"]
+    edit = f"/admin/order-model/edit/{oid}"
+    legacy = "Старый регион, " * 25
+    with Session(engine) as session, session.begin():
+        session.get(OrderModel, oid).geography = legacy
+    data = {
+        "order_type": "ugc_only",
+        "product_link": "https://example.com",
+        "offer_text": "Draft example",
+        "barter_description": "я" * 4001,
+        "price": "1200",
+        "bloggers_needed": "4",
+        "status": "new",
+        "geography": legacy,
+        "save": "Save and continue editing",
+    }
+    invalid = client.post(edit, data=data)
+    assert invalid.status_code == 400
+    assert "Максимум 4000 символов. Сейчас 4001." in invalid.text
+    assert "Максимум 200 символов." not in invalid.text
+    saved = client.post(edit, data={**data, "barter_description": "Билеты"})
+    assert saved.status_code == 200 and "Билеты" in saved.text
+    with Session(engine) as session:
+        order = session.get(OrderModel, oid)
+        assert order.geography == legacy
+        assert order.barter_description == "Билеты"
 
 
 def test_complaint_read_search_and_close_without_measures(worklist):

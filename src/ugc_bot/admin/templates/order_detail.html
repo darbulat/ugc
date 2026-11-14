@@ -6,6 +6,12 @@
   <div class="admin-actions">
     <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
     <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
+    {% if order.can_delete %}
+      {% set delete_title = order.offer_text or 'Заказ' %}
+      {% set delete_url = request.url_for('update_order_worklist', order_id=order.order_id, operation='delete-test').include_query_params(return_to=back_url) %}
+      {% set delete_button_class = 'admin-button admin-button--danger' %}
+      {% include 'order_delete_button.html' %}
+    {% endif %}
   </div>
   <section class="section">
     <div class="card order-summary">
@@ -83,7 +89,7 @@
         <div class="detail-label">Подобрано</div>
         <div class="detail-value">{{ order.picked_count }} / {{ order.bloggers_needed }}</div>
       </div>
-      {% if order.eligible_creators_count is not none %}
+      {% if order.eligible_creators_count is defined and order.eligible_creators_count is not none %}
       <div class="detail-row">
         <div class="detail-label">Подходящих креаторов</div>
         <div class="detail-value">{{ order.eligible_creators_count }}</div>
@@ -208,4 +214,5 @@
     </div>
     {% endif %}
   </section>
+  <script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
 {% endblock %}

@@ -1,0 +1,129 @@
+.order-editor {
+  width: 100%;
+  max-width: 75rem;
+  margin-inline: auto;
+}
+
+.order-editor__top,
+.order-editor__panel,
+.order-editor__footer,
+.order-editor__bar {
+  padding: clamp(.9rem, 2vw, 1.5rem);
+  background: var(--tblr-bg-surface, #fff);
+  border: 1px solid var(--tblr-border-color, #dce1e7);
+  border-radius: .6rem;
+}
+
+.order-editor__heading,
+.order-editor__bar,
+.order-editor__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .75rem 1.25rem;
+}
+
+.order-editor__heading {
+  align-items: end;
+  margin-top: 1rem;
+}
+
+.order-editor__heading h1 {
+  margin: .45rem 0 .2rem;
+  font-size: clamp(1.2rem, 2.8vw, 1.8rem);
+  overflow-wrap: anywhere;
+}
+
+.order-editor__status {
+  display: inline-block;
+  padding: .2rem .5rem;
+  border-radius: .3rem;
+  background: #e9f1fc;
+  color: #23497c;
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+.order-editor__bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin-block: .7rem;
+  padding-block: .65rem;
+}
+
+.order-editor__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem 1rem;
+}
+
+.order-editor__audience strong,
+.order-editor__audience small {
+  display: block;
+}
+
+.order-editor__audience small[hidden] {
+  display: none;
+}
+
+.order-editor__panel {
+  margin-bottom: .7rem;
+  scroll-margin-top: 8rem;
+}
+
+.order-editor__panel h2 {
+  margin-bottom: .9rem;
+  font-size: 1.1rem;
+}
+
+.order-editor__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem 1.2rem;
+}
+
+.order-editor__field--wide {
+  grid-column: 1 / -1;
+}
+
+.order-editor__field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+.order-editor__count {
+  display: block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-editor__quote {
+  margin-top: 1rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--tblr-border-color, #dce1e7);
+}
+
+.order-editor summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.order-editor__photo {
+  display: block;
+  max-width: min(100%, 15rem);
+  max-height: 15rem;
+  object-fit: contain;
+  margin-bottom: 1rem;
+  border-radius: .35rem;
+}
+
+@media (max-width: 36rem) {
+  .order-editor__fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .order-editor__panel {
+    scroll-margin-top: 11rem;
+  }
+}

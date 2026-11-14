@@ -448,6 +448,14 @@ body {
   color: #fff;
 }
 
+.admin-button--danger {
+  background: #fff;
+  border-color: #c63142;
+  color: #a51f32;
+  cursor: pointer;
+  font: inherit;
+}
+
 .admin-actions {
   display: flex;
   flex-wrap: wrap;

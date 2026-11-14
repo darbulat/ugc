@@ -23,6 +23,7 @@ from ugc_bot.admin.complaints import (
 from ugc_bot.admin.order_worklist import (
     aging_unpaid_condition,
     business_order_conditions,
+    can_delete_order,
     worklist_conditions,
 )
 from ugc_bot.admin.people import (
@@ -126,12 +127,15 @@ def dashboard_period_window(
     )
 
 
-def paid_in_period(window: PeriodWindow) -> ColumnElement[bool]:
+def paid_in_period(start: datetime, end: datetime) -> ColumnElement[bool]:
     paid_at = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
     return and_(
         PaymentModel.status == PaymentStatus.PAID,
-        paid_at >= window.current_start,
-        paid_at < window.current_end,
+        paid_at >= start,
+        paid_at < end,
+        PaymentModel.order_id.in_(
+            select(OrderModel.order_id).where(*business_order_conditions())
+        ),
     )
 
 
@@ -518,7 +522,7 @@ class AdminDashboardService:
                 func.sum(PaymentModel.amount),
             )
             .select_from(PaymentModel)
-            .where(paid_in_period(window))
+            .where(paid_in_period(window.current_start, window.current_end))
             .group_by(PaymentModel.currency)
             .order_by(PaymentModel.currency)
         )
@@ -551,13 +555,7 @@ class AdminDashboardService:
                 ),
             )
             .select_from(PaymentModel)
-            .where(
-                and_(
-                    PaymentModel.status == PaymentStatus.PAID,
-                    date_col >= start,
-                    date_col < end,
-                )
-            )
+            .where(paid_in_period(start, end))
             .group_by(day, PaymentModel.currency)
             .order_by(day, PaymentModel.currency)
         )
@@ -793,7 +791,7 @@ class AdminDashboardService:
                 open_complaints.c.order_id == OrderModel.order_id,
             )
             .where(
-                *worklist_conditions("all", ""),
+                *business_order_conditions(),
                 and_(
                     OrderModel.created_at >= window.current_start,
                     OrderModel.created_at < window.current_end,
@@ -821,7 +819,13 @@ class AdminDashboardService:
         query = (
             select(func.count(distinct(OfferDispatchModel.blogger_id)))
             .select_from(OfferDispatchModel)
-            .where(OfferDispatchModel.in_offer.is_(True))
+            .join(
+                OrderModel, OrderModel.order_id == OfferDispatchModel.order_id
+            )
+            .where(
+                OfferDispatchModel.in_offer.is_(True),
+                *business_order_conditions(),
+            )
         )
         result = await session.execute(query)
         return int(result.scalar() or 0)
@@ -1335,7 +1339,7 @@ class AdminDashboardService:
             )
             .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
             .where(
-                *worklist_conditions("work", ""),
+                *business_order_conditions(),
                 OrderModel.status.in_(_ACTIVE_ORDER_STATUSES),
             )
             .order_by(OrderModel.created_at, OrderModel.order_id)
@@ -1883,6 +1887,9 @@ class AdminDashboardService:
         query = (
             select(
                 OrderModel,
+                can_delete_order(
+                    postgresql=session.get_bind().dialect.name == "postgresql"
+                ).label("can_delete"),
                 func.coalesce(responses.c.responses, 0).label("responses"),
                 func.coalesce(open_complaints.c.open_complaints, 0).label(
                     "open_complaints"
@@ -1915,7 +1922,10 @@ class AdminDashboardService:
                 open_complaints,
                 open_complaints.c.order_id == OrderModel.order_id,
             )
-            .where(OrderModel.order_id == order_id)
+            .where(
+                OrderModel.order_id == order_id,
+                OrderModel.status != OrderStatus.DELETED,
+            )
         )
         result = await session.execute(query)
         row = result.one_or_none()
@@ -1923,6 +1933,7 @@ class AdminDashboardService:
             return None
         (
             order,
+            can_delete,
             responses_count,
             open_count,
             advertiser_name,
@@ -1957,6 +1968,7 @@ class AdminDashboardService:
         )
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
+            "can_delete": bool(can_delete),
             "advertiser_id": str(order.advertiser_id),
             "advertiser": advertiser_name,
             "order_type": order.order_type.value,
