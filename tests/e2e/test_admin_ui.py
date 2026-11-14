@@ -174,6 +174,7 @@ def test_order_worklist_search_hide_and_restore(
 ):
     """Check the layout, saved edits, and confirmed actions on isolated data."""
     from datetime import datetime, timedelta, timezone
+    from urllib.parse import parse_qs, urlsplit
     from uuid import uuid4
 
     from playwright.sync_api import expect
@@ -231,8 +232,8 @@ def test_order_worklist_search_hide_and_restore(
                 geography=geography,
                 price=1850,
                 bloggers_needed=5,
-                created_at=now,
-                updated_at=now,
+                created_at=now - timedelta(days=8),
+                updated_at=now - timedelta(days=8),
             )
         )
         session.add_all(
@@ -308,7 +309,29 @@ def test_order_worklist_search_hide_and_restore(
     page.goto(f"{admin_server}/admin/order-model/list")
     page.get_by_label("Поиск", exact=True).fill(brand)
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
-    expect(page.get_by_role("row").filter(has_text=brand)).to_have_count(2)
+    matching_rows = page.get_by_role("row").filter(has_text=brand)
+    expect(matching_rows).to_have_count(2)
+    quick = page.get_by_role("navigation", name="Быстрые фильтры")
+    no_manager = quick.get_by_role("link", name="Без менеджера")
+    inactive = quick.get_by_role("link", name="Давно без активности")
+    no_manager.click()
+    expect(matching_rows).to_have_count(1)
+    expect(matching_rows).to_contain_text("Браузерный тест черновика")
+    inactive.click()
+    expect(matching_rows).to_have_count(1)
+    expect(no_manager).to_contain_text("снять фильтр")
+    expect(inactive).to_contain_text("снять фильтр")
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(brand)
+    page.get_by_label("Статус").select_option("active")
+    page.locator(".order-worklist").get_by_role("button", name="Найти").click()
+    expect(matching_rows).to_have_count(0)
+    expect(no_manager).to_contain_text("снять фильтр")
+    expect(inactive).to_contain_text("снять фильтр")
+    page.get_by_role("link", name="Сбросить", exact=True).click()
+    assert not {"inactive", "no_manager"} & set(
+        parse_qs(urlsplit(page.url).query)
+    )
+    expect(matching_rows).to_have_count(2)
     page.get_by_label("Поиск", exact=True).fill("Браузерный тест черновика")
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
     row = page.get_by_role("row").filter(has_text="Браузерный тест черновика")
