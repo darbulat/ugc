@@ -182,10 +182,23 @@ jobs:
       - name: Exercise orders on synthetic data
         run: uv run pytest -q tests/e2e/test_admin_ui.py::test_order_worklist_search_hide_and_restore
 
+  admin-image-import:
+    name: Admin image import and alert isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the release image
+        run: docker build -t ugc-admin-import:ci .
+
+      - name: Check offline import and alert routing
+        run: bash tests/monitoring/check_admin_image_import.sh ugc-admin-import:ci
+
   lint-and-test:
     name: lint-and-test (3.13)
     if: always()
-    needs: [lint, migrations, test-shards, admin-browser]
+    needs: [lint, migrations, test-shards, admin-browser, admin-image-import]
     runs-on: ubuntu-latest
     steps:
       - name: Require all checks and test shards to pass
@@ -195,15 +208,18 @@ jobs:
           MIGRATION_RESULT: ${{ needs.migrations.result }}
           TEST_RESULT: ${{ needs.test-shards.result }}
           BROWSER_RESULT: ${{ needs.admin-browser.result }}
+          IMPORT_RESULT: ${{ needs.admin-image-import.result }}
         run: |
           if [[ "$LINT_RESULT" != "success" || \
                 "$MIGRATION_RESULT" != "success" || \
                 "$TEST_RESULT" != "success" || \
-                "$BROWSER_RESULT" != "success" ]]; then
+                "$BROWSER_RESULT" != "success" || \
+                "$IMPORT_RESULT" != "success" ]]; then
             echo "Lint: $LINT_RESULT"
             echo "Migrations: $MIGRATION_RESULT"
             echo "Test shards: $TEST_RESULT"
             echo "Admin browser: $BROWSER_RESULT"
+            echo "Admin image import: $IMPORT_RESULT"
             exit 1
           fi
 
