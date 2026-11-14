@@ -151,6 +151,28 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             },
             "payout_requests": [],
             "creators_by_city": [],
+            "weekly_registrations": {
+                "creators": {
+                    "count": 8,
+                    "previous_count": 4,
+                    "change_pct": 100,
+                },
+                "advertisers": {
+                    "count": 3,
+                    "previous_count": 0,
+                    "change_pct": None,
+                },
+            },
+            "creator_metrics": {
+                "profiles": 2128,
+                "telegram": 2127,
+                "bot_blocked": 207,
+                "ever_worked": 195,
+                "worked_period": 5,
+                "first_period": 3,
+                "returning_period": 2,
+            },
+            "admin_launches": [("usemycontent", 3)],
             "picked_creators_count": 100,
             "picked_creators_target": 1000,
         },
@@ -187,7 +209,20 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             f'href="/admin/order-model/list?group=work&amp;{key}=1">', 1
         )[1].split("</a>", 1)[0]
         assert label in link and f"<strong>{count}</strong>" in link
-    assert "Подобранных креаторов" in response.text
+    assert "Креаторы, получившие назначение" in response.text
+    assert "Последние 7 дней к предыдущим 7 дням" in response.text
+    assert "было 4" in response.text and "+100,0%" in response.text
+    assert "было 0" in response.text
+    assert "9,7%" in response.text
+    assert "@usemycontent" in response.text and "0 ₽" in response.text
+    assert "Участвовали за период" in response.text
+    assert "Участвовали впервые" in response.text
+    assert "Участвовали повторно" in response.text
+    all_periods = client.get("/admin/dashboard?period=all")
+    assert all_periods.status_code == 200
+    assert "Участвовали за всё время" in all_periods.text
+    assert "Участвовали за период" not in all_periods.text
+    assert "Участвовали впервые" not in all_periods.text
     assert "100 / 1000" in response.text
     assert "progress-bar" in response.text
 

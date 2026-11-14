@@ -15,7 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
-from ugc_bot.admin.business_metrics import creator_metrics, order_conversion
+from ugc_bot.admin.business_metrics import (
+    admin_launches,
+    count_picked_creators,
+    creator_metrics,
+    order_conversion,
+)
 from ugc_bot.admin.complaints import (
     COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
@@ -168,7 +173,10 @@ def paid_in_period(start: datetime, end: datetime) -> ColumnElement[bool]:
         paid_at >= start,
         paid_at < end,
         PaymentModel.order_id.in_(
-            select(OrderModel.order_id).where(*business_order_conditions())
+            select(OrderModel.order_id).where(
+                *business_order_conditions(),
+                OrderModel.complimentary.is_(False),
+            )
         ),
     )
 
@@ -262,7 +270,7 @@ class AdminDashboardService:
             creators_by_city = await self._get_creators_by_city(session)
             timings["creators_by_city"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
-            picked_creators_count = await self._count_picked_creators(session)
+            picked_creators_count = await count_picked_creators(session)
             timings["picked_creators"] = (time.perf_counter() - t0) * 1000
             creators = await creator_metrics(
                 session, window.current_start, window.current_end
@@ -278,6 +286,16 @@ class AdminDashboardService:
                 else None
             )
             pending_payouts = await self._count_pending_payouts(session)
+            weekly_registrations = (
+                registrations
+                if period == "7d"
+                else await self._get_registration_cards(
+                    session, self._build_period_window("7d")
+                )
+            )
+            launches = await admin_launches(
+                session, window.current_start, window.current_end
+            )
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -356,6 +374,8 @@ class AdminDashboardService:
         result = {
             "period": period,
             "registrations": registrations,
+            "weekly_registrations": weekly_registrations,
+            "admin_launches": launches,
             "imbalance": {
                 "creators": creators_count,
                 "advertisers": advertisers_count,
@@ -841,22 +861,6 @@ class AdminDashboardService:
         """Count open complaints across all orders."""
         query = select(func.count(ComplaintModel.complaint_id)).where(
             ComplaintModel.status.in_(OPEN_COMPLAINT_STATUSES)
-        )
-        result = await session.execute(query)
-        return int(result.scalar() or 0)
-
-    async def _count_picked_creators(self, session: AsyncSession) -> int:
-        """Count unique creators with at least one in_offer dispatch."""
-        query = (
-            select(func.count(distinct(OfferDispatchModel.blogger_id)))
-            .select_from(OfferDispatchModel)
-            .join(
-                OrderModel, OrderModel.order_id == OfferDispatchModel.order_id
-            )
-            .where(
-                OfferDispatchModel.in_offer.is_(True),
-                *business_order_conditions(),
-            )
         )
         result = await session.execute(query)
         return int(result.scalar() or 0)
@@ -2237,7 +2241,11 @@ class AdminDashboardService:
         change_pct = (
             None if previous == 0 else (current - previous) / previous * 100
         )
-        return {"count": current, "change_pct": change_pct}
+        return {
+            "count": current,
+            "previous_count": previous,
+            "change_pct": change_pct,
+        }
 
     def _order_responses_subquery(self):
         """Build accepted (in_offer) count subquery per order."""

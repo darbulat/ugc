@@ -84,9 +84,23 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     """Custom dashboard loads with KPI cards (needs PostgreSQL)."""
     _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
-    page.goto(f"{admin_server}/admin/dashboard")
-    page.wait_for_load_state("networkidle")
-    assert "Дашборд" in page.content()
+    response = page.goto(f"{admin_server}/admin/dashboard?period=all")
+    assert response is not None and response.ok
+    assert page.get_by_role("heading", name="Дашборд", exact=True).is_visible()
+    assert page.get_by_text("Последние 7 дней к предыдущим 7 дням").is_visible()
+    assert page.get_by_role(
+        "heading", name="Запуски админом без оплаты"
+    ).is_visible()
+    assert page.get_by_text("Участвовали за всё время").is_visible()
+    assert page.get_by_text("Участвовали за период").count() == 0
+
+    page.get_by_role("navigation", name="Период аналитики").get_by_role(
+        "link", name="7 дней"
+    ).click()
+    assert page.get_by_text("Участвовали впервые").is_visible()
+    assert page.get_by_text("Участвовали повторно").is_visible()
+    page.get_by_text("Как считаем участие").click()
+    assert page.get_by_text("Начали платное сотрудничество").is_visible()
 
 
 @pytest.mark.e2e

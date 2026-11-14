@@ -581,6 +581,29 @@ body {
   margin-top: .7rem;
 }
 
+.dashboard-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 38rem) {
+  .dashboard-summary {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 75rem) {
+  .dashboard-summary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.metric__values {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: .4rem;
+}
+
 .dashboard-metrics .muted,
 .progress-bar .muted {
   margin: .6rem 0 0;

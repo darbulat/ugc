@@ -11,6 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
 
+from ugc_bot.admin.business_metrics import (
+    count_picked_creators,
+    creator_metrics,
+)
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
@@ -26,6 +30,7 @@ from ugc_bot.application.services.collaboration_service import (
 )
 from ugc_bot.domain.enums import (
     AudienceGender,
+    AuditAction,
     MessengerType,
     OrderStatus,
     PaymentStatus,
@@ -33,6 +38,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    AuditLogModel,
     BloggerProfileModel,
     FinancialPolicyVersionModel,
     ItemAssignmentModel,
@@ -203,6 +209,40 @@ async def collaboration_pg(financial_pg_engine, request):
     )
     yield factory, service, repo, clock, data
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_dashboard_counts_paid_assignment_before_collaboration_start(
+    collaboration_pg,
+):
+    factory, _, _, clock, ids = collaboration_pg
+    period_start, end = (
+        clock.now() - timedelta(days=1),
+        clock.now() + timedelta(days=1),
+    )
+    async with factory() as db:
+        picks = await count_picked_creators(db)
+        before = await creator_metrics(db, period_start, end)
+
+    await start(collaboration_pg)
+    async with factory() as db:
+        after = await creator_metrics(db, period_start, end)
+        assert await count_picked_creators(db) == picks
+    assert after["paid_started_period"] == before["paid_started_period"] + 1
+    assert after["worked_period"] == before["worked_period"] + 1
+
+    async with factory.begin() as db:
+        db.add(
+            AuditLogModel(
+                entity_type="order_test_marker",
+                entity_id=ids["order"],
+                action=AuditAction.UPDATE,
+                new_values={"test": True},
+            )
+        )
+    async with factory() as db:
+        assert await count_picked_creators(db) == picks - 1
+        assert await creator_metrics(db, period_start, end) == before
 
 
 @pytest.mark.asyncio
