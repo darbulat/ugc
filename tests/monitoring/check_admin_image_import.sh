@@ -10,12 +10,16 @@ stack="admin-import-${tmp##*.}"
 network="$stack-net"
 failing_image="$stack:failure"
 cleanup() {
+    if [[ "$1" != 0 ]]; then
+        docker logs --tail 30 "$stack-promtail" >&2 || true
+        docker logs --tail 30 "$stack-loki" >&2 || true
+    fi
     docker rm -f -v "$stack-promtail" "$stack-loki" "$stack-app" >/dev/null 2>&1 || true
     docker network rm "$network" >/dev/null 2>&1 || true
     docker image rm "$failing_image" >/dev/null 2>&1 || true
     rm -rf "$tmp"
 }
-trap cleanup EXIT
+trap 'cleanup "$?"' EXIT
 
 bash scripts/check_admin_image_import.sh "$image" | tee "$tmp/import.log"
 grep -Fxq 'Admin Python import OK' "$tmp/import.log"
@@ -31,7 +35,7 @@ docker run -d --name "$stack-loki" --network "$network" --network-alias loki \
     -p 127.0.0.1::3100 \
     -v "$root/config/monitoring/loki.yml:/etc/loki/loki.yml:ro" \
     -v "$root/config/monitoring/loki-alerts:/loki/rules:ro" \
-    -v /loki grafana/loki:3.6.0 -config.file=/etc/loki/loki.yml >/dev/null
+    --tmpfs /loki:uid=10001,gid=10001,mode=0755 grafana/loki:3.6.0 -config.file=/etc/loki/loki.yml >/dev/null
 docker run -d --name "$stack-promtail" --network "$network" \
     -v "$tmp/promtail.yml:/etc/promtail/promtail.yml:ro" \
     -v /var/run/docker.sock:/var/run/docker.sock:ro \
