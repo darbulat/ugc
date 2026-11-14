@@ -8,7 +8,7 @@ tmp="$(mktemp -d)"
 chmod 755 "$tmp"
 stack="admin-import-${tmp##*.}"
 network="$stack-net"
-failing_image="$stack:failure"
+failing_image="ugc-admin-import-probe:${tmp##*.}"
 cleanup() {
     if [[ "$1" != 0 ]]; then
         docker logs --tail 30 "$stack-promtail" >&2 || true
