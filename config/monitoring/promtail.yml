@@ -16,6 +16,22 @@ scrape_configs:
     relabel_configs:
       - source_labels: [__meta_docker_container_label_com_docker_compose_service]
         target_label: service
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project, __meta_docker_container_label_com_docker_compose_oneoff, __meta_docker_container_label_ugc_log_scope]
+        regex: '[^;]+;(?i:false);'
+        target_label: log_scope
+        replacement: compose_service
+      - source_labels: [__meta_docker_container_label_com_docker_compose_oneoff]
+        regex: '(?i:true)'
+        target_label: log_scope
+        replacement: compose_oneoff
+      - source_labels: [__meta_docker_container_label_ugc_log_scope]
+        regex: release_check
+        target_label: log_scope
+        replacement: release_check
+      - source_labels: [__meta_docker_container_label_ugc_log_scope]
+        regex: release_check
+        target_label: service
+        replacement: release_check
       - source_labels: [__meta_docker_container_name]
         target_label: container
       - source_labels: [__meta_docker_container_id]

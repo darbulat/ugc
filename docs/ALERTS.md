@@ -158,8 +158,10 @@ TELEGRAM_CRITICAL_CHAT_ID=your_critical_chat_id
 #### UnhandledErrorInService
 - **Тип:** Critical
 - **Источник:** Loki Ruler (правила в `config/monitoring/loki-alerts/`)
-- **Условие:** В логах сервиса обнаружен Traceback или "Exception was never retrieved" в течение 5 минут
-- **Сервисы:** app, app_2, instagram_webhook, kafka_consumer, feedback_scheduler, outbox_processor
+- **Условие:** Traceback или "Exception was never retrieved" за последние 5 минут в потоке с меткой `log_scope=compose_service`. Условие должно выполняться 1 минуту.
+- **Сервисы:** список задан в `config/monitoring/loki-alerts/fake/unhandled_errors.yml`.
+- **Маркировка:** Promtail присваивает `compose_service` штатным контейнерам Compose. Разовые запуски `docker compose run` получают `compose_oneoff`, а проверка импорта образа админки получает `release_check`. Их логи доступны в Loki.
+- **Обновление мониторинга:** сначала загрузите обновлённую конфигурацию Promtail и убедитесь, что новые записи от `app` и `app_2` получили `log_scope=compose_service`. Затем загрузите правило Loki.
 - **Описание:** Необработанное исключение в указанном сервисе
 
 Для обнаружения необработанных ошибок используются:
