@@ -120,6 +120,15 @@ async def test_paid_positions_queue_and_deadline_alerts(
     transport.send.assert_not_awaited()
 
     clock.at += timedelta(seconds=1)
+    await run_once(
+        engine,
+        transport,
+        clock,
+        clock.now() + timedelta(seconds=1),
+        duty.user_id,
+        args[-1],
+    )
+    transport.send.assert_not_awaited()
     await run_once(*args)
     await run_once(*args)
     messages = {

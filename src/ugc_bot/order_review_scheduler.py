@@ -92,7 +92,10 @@ async def run_once(
         with Session(engine) as db, db.begin():
             finish_alert(db, job, state, reference, retry_at)
 
-    await asyncio.to_thread(schedule, clock.now())
+    at = clock.now()
+    if at < start_at:
+        return
+    await asyncio.to_thread(schedule, at)
     for _ in range(limit):
         job = await asyncio.to_thread(claim, clock.now())
         if job is None:
