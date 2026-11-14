@@ -98,6 +98,7 @@ def business_order_conditions():
 def can_delete_order(*, postgresql: bool):
     eligible = (
         OrderModel.status.in_((OrderStatus.NEW, OrderStatus.PENDING_MODERATION))
+        & _is_test_order()
         & _without_order_activity()
         & OrderModel.complimentary.is_(False)
         & ~select(INBOX.c.order_id)
@@ -172,14 +173,14 @@ def worklist_conditions(group: str, status: str):
     if group == "hidden":
         return [hidden]
 
-    conditions = [
-        OrderModel.status != OrderStatus.DELETED,
-        ~hidden,
-    ]
+    if group == "test":
+        return [OrderModel.status != OrderStatus.DELETED, _is_test_order()]
+
+    conditions = [OrderModel.status != OrderStatus.DELETED, ~hidden]
+    if group != "all":
+        conditions.append(~_is_test_order())
     if group == "closed":
         conditions.append(OrderModel.status == OrderStatus.CLOSED)
-    elif group == "test":
-        conditions.append(_is_test_order())
     elif group != "all":
         conditions.append(OrderModel.status != OrderStatus.CLOSED)
     if status in ORDER_STATUS_LABELS:
@@ -255,13 +256,9 @@ def worklist_row_details(session: Session, order_ids: list[UUID]):
 
 
 def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
-    eligible, was_marked = session.execute(
-        select(_can_hide(), _is_test_order()).where(
-            OrderModel.order_id == order_id
-        )
-    ).one()
-    if marked and not eligible:
-        return "Отметить можно только черновик без оплаты и связанных действий."
+    was_marked = session.scalar(
+        select(_is_test_order()).where(OrderModel.order_id == order_id)
+    )
     if was_marked != marked:
         session.add(
             AuditLogModel(
@@ -277,45 +274,31 @@ def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
     )
 
 
-def _delete_order(
-    session: Session, order: OrderModel, *, test_only: bool
-) -> str:
+def _delete_test_order(session: Session, order: OrderModel) -> str:
     eligible = can_delete_order(
         postgresql=session.get_bind().dialect.name == "postgresql"
     )
-    if test_only:
-        eligible = eligible & _is_test_order()
     if not session.scalar(
         select(eligible).where(OrderModel.order_id == order.order_id)
     ):
         return (
-            "Удалить можно только тестовый черновик "
-            "без оплаты и связанных действий."
-            if test_only
-            else "Удалить можно только заказ без оплаты, "
+            "Удалить можно только тестовый черновик без оплаты, "
             "рассылки и связанных действий."
         )
     previous_status = order.status.value
     order.status = OrderStatus.DELETED
     order.dispatch_stopped = True
     order.updated_at = datetime.now(timezone.utc)
-    values: dict[str, str | bool] = {"status": OrderStatus.DELETED.value}
-    if test_only:
-        values["test"] = True
     session.add(
         AuditLogModel(
             entity_type="order",
             entity_id=order.order_id,
             action=AuditAction.DELETE,
             old_values={"status": previous_status},
-            new_values=values,
+            new_values={"status": OrderStatus.DELETED.value, "test": True},
         )
     )
-    return (
-        "Тестовый заказ удалён."
-        if test_only
-        else "Заказ удалён. История сохранена."
-    )
+    return "Тестовый заказ удалён."
 
 
 def _set_order_visibility(
@@ -356,7 +339,7 @@ def change_order_worklist(
     session: Session, order_id: UUID, operation: str
 ) -> str:
     if (
-        operation in {"delete", "delete-test"}
+        operation == "delete-test"
         and session.get_bind().dialect.name == "postgresql"
     ):
         # Use the same lock order as native checkout and customer cancellation.
@@ -369,10 +352,8 @@ def change_order_worklist(
         return "Заказ не найден."
     if operation in {"mark-test", "unmark-test"}:
         return _mark_test_order(session, order_id, operation == "mark-test")
-    if operation in {"delete", "delete-test"}:
-        return _delete_order(
-            session, order, test_only=operation == "delete-test"
-        )
+    if operation == "delete-test":
+        return _delete_test_order(session, order)
     if operation in {"hide", "restore"}:
         return _set_order_visibility(session, order_id, operation == "restore")
     if not session.scalar(

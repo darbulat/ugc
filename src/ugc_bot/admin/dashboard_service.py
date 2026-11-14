@@ -127,12 +127,15 @@ def dashboard_period_window(
     )
 
 
-def paid_in_period(window: PeriodWindow) -> ColumnElement[bool]:
+def paid_in_period(start: datetime, end: datetime) -> ColumnElement[bool]:
     paid_at = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
     return and_(
         PaymentModel.status == PaymentStatus.PAID,
-        paid_at >= window.current_start,
-        paid_at < window.current_end,
+        paid_at >= start,
+        paid_at < end,
+        PaymentModel.order_id.in_(
+            select(OrderModel.order_id).where(*business_order_conditions())
+        ),
     )
 
 
@@ -519,7 +522,7 @@ class AdminDashboardService:
                 func.sum(PaymentModel.amount),
             )
             .select_from(PaymentModel)
-            .where(paid_in_period(window))
+            .where(paid_in_period(window.current_start, window.current_end))
             .group_by(PaymentModel.currency)
             .order_by(PaymentModel.currency)
         )
@@ -552,13 +555,7 @@ class AdminDashboardService:
                 ),
             )
             .select_from(PaymentModel)
-            .where(
-                and_(
-                    PaymentModel.status == PaymentStatus.PAID,
-                    date_col >= start,
-                    date_col < end,
-                )
-            )
+            .where(paid_in_period(start, end))
             .group_by(day, PaymentModel.currency)
             .order_by(day, PaymentModel.currency)
         )
@@ -794,7 +791,7 @@ class AdminDashboardService:
                 open_complaints.c.order_id == OrderModel.order_id,
             )
             .where(
-                *worklist_conditions("all", ""),
+                *business_order_conditions(),
                 and_(
                     OrderModel.created_at >= window.current_start,
                     OrderModel.created_at < window.current_end,
@@ -822,7 +819,13 @@ class AdminDashboardService:
         query = (
             select(func.count(distinct(OfferDispatchModel.blogger_id)))
             .select_from(OfferDispatchModel)
-            .where(OfferDispatchModel.in_offer.is_(True))
+            .join(
+                OrderModel, OrderModel.order_id == OfferDispatchModel.order_id
+            )
+            .where(
+                OfferDispatchModel.in_offer.is_(True),
+                *business_order_conditions(),
+            )
         )
         result = await session.execute(query)
         return int(result.scalar() or 0)
@@ -1336,7 +1339,7 @@ class AdminDashboardService:
             )
             .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
             .where(
-                *worklist_conditions("work", ""),
+                *business_order_conditions(),
                 OrderModel.status.in_(_ACTIVE_ORDER_STATUSES),
             )
             .order_by(OrderModel.created_at, OrderModel.order_id)

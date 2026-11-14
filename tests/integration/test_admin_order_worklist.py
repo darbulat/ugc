@@ -336,9 +336,13 @@ def test_test_order_requires_marker_and_keeps_audit(worklist):
 
     assert post(draft_id, "mark-test", "").status_code == 403
     assert "Удалить можно только" in post(draft_id, "delete-test").text
-    assert (
-        "Отметить можно только" in post(ids["Paid example"], "mark-test").text
-    )
+    paid = ids["Paid example"]
+    assert "Заказ отмечен" in post(paid, "mark-test").text
+    test_list = client.get(LIST, params={"group": "test"})
+    assert "Paid example" in test_list.text
+    assert "Paid example" not in client.get(LIST).text
+    assert "Удалить можно только" in post(paid, "delete-test").text
+    assert "Тестовая отметка снята" in post(paid, "unmark-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
     assert "Удалить заказ" in client.get(LIST, params={"group": "test"}).text
@@ -375,7 +379,7 @@ def test_test_order_requires_marker_and_keeps_audit(worklist):
         )
 
 
-def test_delete_ordinary_order_from_card_without_touching_related_orders(
+def test_delete_marked_draft_from_card_without_touching_related_orders(
     worklist,
 ):
     client, engine, ids = worklist
@@ -389,6 +393,21 @@ def test_delete_ordinary_order_from_card_without_touching_related_orders(
         draft.status = OrderStatus.PENDING_MODERATION
         draft.financial_version = "v1"
 
+    page = client.get(LIST)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
+    action = f"/admin/order-worklist/{draft_id}/delete-test"
+    assert "Удалить заказ" not in client.get(detail).text
+    assert (
+        "Удалить можно только"
+        in client.post(action, data={"csrf_token": token}).text
+    )
+    assert (
+        "Заказ отмечен"
+        in client.post(
+            f"/admin/order-worklist/{draft_id}/mark-test",
+            data={"csrf_token": token},
+        ).text
+    )
     for url in (edit, detail):
         page = client.get(url, params={"return_to": source})
         assert page.status_code == 200
@@ -398,11 +417,10 @@ def test_delete_ordinary_order_from_card_without_touching_related_orders(
         not in client.get(f"/admin/orders/{ids['Paid example']}").text
     )
     token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
-    action = f"/admin/order-worklist/{draft_id}/delete"
     assert client.post(action).status_code == 403
     for name in ("Paid example", "Active example", "Dispatch example"):
         denied = client.post(
-            f"/admin/order-worklist/{ids[name]}/delete",
+            f"/admin/order-worklist/{ids[name]}/delete-test",
             data={"csrf_token": token},
         )
         assert "Удалить можно только" in denied.text
@@ -419,10 +437,13 @@ def test_delete_ordinary_order_from_card_without_touching_related_orders(
         draft = session.get(OrderModel, draft_id)
         assert draft.status == OrderStatus.DELETED and draft.dispatch_stopped
         event = session.scalars(
-            select(AuditLogModel).where(AuditLogModel.entity_id == draft_id)
+            select(AuditLogModel).where(
+                AuditLogModel.entity_id == draft_id,
+                AuditLogModel.action == AuditAction.DELETE,
+            )
         ).one()
         assert event.old_values == {"status": "pending_moderation"}
-        assert event.new_values == {"status": "deleted"}
+        assert event.new_values == {"status": "deleted", "test": True}
 
 
 def test_order_editor_rejects_new_overflow_and_preserves_legacy_text(worklist):

@@ -8,7 +8,7 @@
     <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
     {% if order.can_delete %}
       {% set delete_title = order.offer_text or 'Заказ' %}
-      {% set delete_url = request.url_for('update_order_worklist', order_id=order.order_id, operation='delete').include_query_params(return_to=back_url) %}
+      {% set delete_url = request.url_for('update_order_worklist', order_id=order.order_id, operation='delete-test').include_query_params(return_to=back_url) %}
       {% set delete_button_class = 'admin-button admin-button--danger' %}
       {% include 'order_delete_button.html' %}
     {% endif %}

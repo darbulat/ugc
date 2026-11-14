@@ -50,7 +50,7 @@
       </div>
       {% if order_actions.can_delete %}
         {% set delete_title = obj.offer_text or 'Заказ' %}
-        {% set delete_url = request.url_for('update_order_worklist', order_id=obj.order_id, operation='delete').include_query_params(return_to=back_url) %}
+        {% set delete_url = request.url_for('update_order_worklist', order_id=obj.order_id, operation='delete-test').include_query_params(return_to=back_url) %}
         {% include 'order_delete_button.html' %}
       {% endif %}
     </div>

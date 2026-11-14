@@ -48,6 +48,9 @@
         </a>
         {% endfor %}
       </nav>
+      {% if group == 'test' %}
+        <p class="text-muted mb-3">Пометьте свой заказ кнопкой «Это тест». Удаление доступно для черновиков без оплаты, рассылки и других связанных действий. Остальные тестовые заказы можно хранить здесь отдельно.</p>
+      {% endif %}
       {% if group == 'unpaid' %}
         <p class="text-muted mb-3">Новые заявки, ожидающие оплаты от {{ model_view.unpaid_age_hours }} ч.</p>
         {% if not model_view.unpaid_reminders_enabled %}<p class="text-muted mb-3">Автонапоминания выключены.</p>{% endif %}
@@ -177,18 +180,18 @@
                     </button>
                   </form>
                 {% endif %}
-                {% if info.is_test or (info.can_hide and group != 'hidden') %}
+                {% if info %}
                   <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='unmark-test' if info.is_test else 'mark-test').replace(query=request.url.query) }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     {% if info.is_test %}
                       <button type="submit" class="btn btn-sm btn-outline-secondary">Снять отметку</button>
                     {% else %}
-                      <button type="button" class="btn btn-sm btn-outline-secondary" data-admin-confirm="Отметить заказ «{{ row.offer_text|truncate(70) }}» как тестовый? Используйте эту отметку для своих тестовых заказов.">Это тест</button>
+                      <button type="button" class="btn btn-sm btn-outline-secondary" data-admin-confirm="Отметить заказ «{{ row.offer_text|truncate(70) }}» как тестовый? Заказ уйдёт во вкладку «Тестовые» и будет исключён из рабочих показателей.">Это тест</button>
                     {% endif %}
                   </form>
                 {% endif %}
                 {% if info.can_delete %}
-                  {% set delete_url = request.url_for('update_order_worklist', order_id=row.order_id, operation='delete').replace(query=request.url.query) %}
+                  {% set delete_url = request.url_for('update_order_worklist', order_id=row.order_id, operation='delete-test').replace(query=request.url.query) %}
                   {% set delete_title = row.offer_text or 'Заказ' %}
                   {% set delete_button_class = 'btn btn-sm btn-outline-danger' %}
                   {% include 'order_delete_button.html' %}

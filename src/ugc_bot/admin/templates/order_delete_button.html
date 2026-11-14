@@ -1,5 +1,5 @@
 <form method="post" action="{{ delete_url }}">
   <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
   <button type="button" class="{{ delete_button_class|default('btn btn-outline-danger') }}"
-          data-admin-confirm="Удалить заказ «{{ delete_title|truncate(70) }}»? Заказ исчезнет из списка. Запись в журнале сохранится.">Удалить заказ</button>
+          data-admin-confirm="Удалить тестовый заказ «{{ delete_title|truncate(70) }}»? Заказ исчезнет из списка. Запись в журнале сохранится.">Удалить заказ</button>
 </form>

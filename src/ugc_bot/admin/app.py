@@ -752,7 +752,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v4:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v5:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -1192,7 +1192,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v4:{period_key}"
+        f"dashboard_api:v5:{period_key}"
         if cache and not include_timings
         else None
     )
@@ -1223,7 +1223,7 @@ async def _api_charts_json(
     """Charts payload as JSON."""
     period_key = _normalize_period(period)
     if cache:
-        cache_key = f"charts:v3:{period_key}"
+        cache_key = f"charts:v4:{period_key}"
         raw = await cache.get(cache_key)
         if raw is not None:
             return cast(
@@ -2964,12 +2964,11 @@ class PaymentAdmin(ModelView, model=PaymentModel):
 
     def _for_paid_period(self, stmt, request: Request):
         if period := request.query_params.get("paid_period"):
+            window = dashboard_period_window(
+                _normalize_period(period), self.dashboard_timezone
+            )
             return stmt.where(
-                paid_in_period(
-                    dashboard_period_window(
-                        _normalize_period(period), self.dashboard_timezone
-                    )
-                )
+                paid_in_period(window.current_start, window.current_end)
             )
         return stmt
 
@@ -3511,7 +3510,6 @@ def _register_order_worklist_action(
             "mark-test",
             "unmark-test",
             "delete-test",
-            "delete",
         }:
             raise HTTPException(status_code=404)
         await _require_action_token(request)
@@ -3524,7 +3522,14 @@ def _register_order_worklist_action(
             message = await _change_order_dispatch(order_id, operation)
         else:
             message = await asyncio.to_thread(update)
-        if operation in {"delete", "delete-test"}:
+        if operation in {
+            "delete-test",
+            "mark-test",
+            "unmark-test",
+            "hide",
+            "restore",
+            "close",
+        }:
             await cache.invalidate_prefixes(
                 "dashboard:",
                 "dashboard_api:",
@@ -3532,14 +3537,6 @@ def _register_order_worklist_action(
                 "charts:",
                 "advertisers:",
             )
-        elif operation in {
-            "mark-test",
-            "unmark-test",
-            "hide",
-            "restore",
-            "close",
-        }:
-            await cache.invalidate_prefixes("dashboard:", "dashboard_api:")
         request.session["order_worklist_message"] = message
         if "return_to" in request.query_params:
             target = _order_return_url(request)
