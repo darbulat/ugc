@@ -39,9 +39,14 @@ In the Docker stack, app services connect to PostgreSQL via PgBouncer
 (pgbouncer:6432); backup and postgres_exporter use a direct connection to db:5432.
 PgBouncer uses session pooling so Alembic migrations work without changes.
 
+## Local tests
+
+- Run `make test-local-full` for unit and integration tests, including the PostgreSQL financial suite. The runner and PostgreSQL share the Docker VM clock, so host and VM clock drift cannot invalidate timestamp checks. The test stack uses a fresh database. `UGC_TEST_POSTGIS_IMAGE` can select a compatible PostgreSQL 16/PostGIS test image for the local Docker architecture.
+- Run `make e2e-synthetic` for browser tests with the synthetic Mini App and admin services.
+
 ## E2E tests
 
-- **Local** (admin started automatically on port 8001): `make e2e`
+- **Local** (admin starts automatically on a free loopback port): `make e2e`
 - **Against deployed dev (Playwright)**: set `E2E_BASE_URL` (and optionally `E2E_ADMIN_USERNAME` / `E2E_ADMIN_PASSWORD`) in `.env` or the environment, then run `make e2e-dev`
 - **Against deployed dev (Telegram)**: set `E2E_DATABASE_URL` to the dev DB and `E2E_CLEAN_TELEGRAM=darbulat` in `.env`, then run `make e2e-telegram-dev` (or `make e2e-telegram`). Only the user with that telegram is removed before tests so the rest of dev data is untouched.
 - **Full suite against dev** (unit + integration + Playwright e2e + Telegram e2e, no Docker): set `E2E_BASE_URL` in `.env`; for Telegram e2e also set `E2E_DATABASE_URL` and `E2E_CLEAN_TELEGRAM=darbulat`. Then run `make test-all-dev`.
