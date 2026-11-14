@@ -141,6 +141,15 @@ git push -u origin feature/your-feature-name
 
 Then create a pull request on GitHub (never push directly to main).
 
+### Pull request review
+
+The Lint and Test workflow runs the repository checks. For automatic code
+review, connect `darbulat/ugc` in
+[Codex code review settings](https://chatgpt.com/settings/code-review) and
+enable **Automatic review** for the repository. Confirm setup by checking for
+a Codex review on a pull request. To request one on an open PR, comment
+`@codex review`.
+
 ## Development on Dev Server
 
 ### SSH to Dev Server
