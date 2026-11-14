@@ -655,6 +655,117 @@ def test_delete_marked_draft_from_card_without_touching_related_orders(
         assert event.new_values == {"status": "deleted", "test": True}
 
 
+def test_assign_manager_from_filtered_list_preserves_order_and_audit(worklist):
+    client, engine, ids = worklist
+    order_id = ids["Paid example"]
+    action = f"/admin/order-worklist/{order_id}/assign-manager"
+    params = {"group": "work", "search": str(order_id), "no_manager": "1"}
+    manager_id, other_manager_id = uuid4(), uuid4()
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        session.add_all(
+            UserModel(
+                user_id=user_id,
+                username=label,
+                telegram=handle,
+                messenger_type=MessengerType.TELEGRAM,
+                status=UserStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            )
+            for user_id, label, handle in (
+                (manager_id, "Manager One", "manager_one"),
+                (other_manager_id, "Manager Two", "manager_two"),
+            )
+        )
+        session.add(
+            ManagerOrderModel(
+                order_id=ids["Financial example"],
+                user_id=other_manager_id,
+                created_at=now,
+            )
+        )
+
+    assert client.get(action, follow_redirects=False).status_code == 404
+    assert client.post(action).status_code == 401
+    _login(client)
+    assert (
+        client.post(
+            action, data={"manager_telegram": "manager_one"}
+        ).status_code
+        == 403
+    )
+    assert client.get(action).status_code == 404
+    page = client.get(LIST, params=params)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
+    assert "Назначить менеджера" in page.text
+    assert '<option value="@manager_two">' in page.text
+    assert '<option value="@manager_one">' not in page.text
+
+    invalid = client.post(
+        action,
+        params=params,
+        data={
+            "csrf_token": token,
+            "manager_telegram": "@missing_user",
+        },
+    )
+    assert "не найден в боте" in invalid.text and "Paid example" in invalid.text
+
+    saved = client.post(
+        action,
+        params=params,
+        data={"csrf_token": token, "manager_telegram": " @Manager_One "},
+    )
+    assert "Менеджер @manager_one назначен." in saved.text
+    assert "Paid example" not in saved.text
+    assert "Всего заказов: 0" in saved.text
+    assert saved.url.params["no_manager"] == "1"
+    assert saved.url.params["search"] == str(order_id)
+    listing = client.get(LIST, params={"search": str(order_id)})
+    assert "Paid example" in listing.text and "Manager One" in listing.text
+
+    stale = client.post(
+        action,
+        params=params,
+        data={
+            "csrf_token": token,
+            "manager_telegram": "manager_two",
+        },
+    )
+    assert "У заказа уже есть менеджер" in stale.text
+    closed = client.post(
+        f"/admin/order-worklist/{ids['Closed example']}/assign-manager",
+        data={"csrf_token": token, "manager_telegram": "manager_two"},
+    )
+    assert "Заказ недоступен для назначения менеджера" in closed.text
+
+    with Session(engine) as session:
+        assignments = session.scalars(
+            select(ManagerOrderModel).where(
+                ManagerOrderModel.order_id.in_(
+                    [order_id, ids["Closed example"]]
+                )
+            )
+        ).all()
+        assert [(m.order_id, m.user_id) for m in assignments] == [
+            (order_id, manager_id)
+        ]
+        assert session.get(OrderModel, order_id).status == OrderStatus.ACTIVE
+        payment = session.scalars(
+            select(PaymentModel).where(PaymentModel.order_id == order_id)
+        ).one()
+        assert payment.status == PaymentStatus.PAID and payment.amount == 200
+        event = session.scalars(
+            select(AuditLogModel).where(
+                AuditLogModel.entity_id == order_id,
+                AuditLogModel.entity_type == "order_manager_assignment",
+            )
+        ).one()
+        assert event.old_values == {"manager_id": None}
+        assert event.new_values == {"manager_id": str(manager_id)}
+
+
 def test_archive_paid_order_preserves_status_payment_and_audit(worklist):
     client, engine, ids = worklist
     _login(client)

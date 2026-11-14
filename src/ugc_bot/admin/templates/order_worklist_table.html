@@ -132,6 +132,19 @@
             {% set restore_button_class = 'btn btn-sm btn-outline-primary' %}
             {% include 'order_delete_button.html' %}
           </div>
+          {% if manager_assignment and not info.managers and not info.archived and row.status != 'closed' %}
+            <details class="order-manager-assign mt-2">
+              <summary class="text-primary">Назначить менеджера</summary>
+              <form method="post" class="mt-2 d-flex flex-column align-items-start gap-1"
+                    action="{{ request.url_for('assign_order_manager', order_id=row.order_id).replace(query=request.url.query) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input class="form-control form-control-sm" aria-label="Telegram-ник менеджера"
+                       name="manager_telegram" list="worklist-managers" placeholder="@username"
+                       maxlength="33" required autocapitalize="off" spellcheck="false">
+                <button type="submit" class="btn btn-sm btn-primary">Назначить</button>
+              </form>
+            </details>
+          {% endif %}
           {% if group == 'test' and info.deletion_blocker %}
             <small class="order-row-note" title="Причина ограничения удаления">Нельзя удалить: {{ info.deletion_blocker|lower }}.</small>
           {% endif %}

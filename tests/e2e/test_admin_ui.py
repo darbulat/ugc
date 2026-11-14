@@ -201,6 +201,7 @@ def test_order_worklist_search_hide_and_restore(
     )
     brand = f"Workbench-{order_id.hex[:8]}"
     managed_title = f"Отклик и работа менеджера {managed_id.hex[:8]}"
+    handle = "browser_manager_" + manager_id.hex[:9]
     geography = "Новосибирская область, Свердловская область, " * 20
     with Session(engine) as session, session.begin():
         session.add(
@@ -242,13 +243,15 @@ def test_order_worklist_search_hide_and_restore(
                 username=name,
                 telegram=telegram,
                 messenger_type=MessengerType.TELEGRAM,
-                status=UserStatus.BOT_BLOCKED,
+                status=UserStatus.ACTIVE
+                if uid == manager_id
+                else UserStatus.BOT_BLOCKED,
                 created_at=now,
                 updated_at=now,
             )
             for uid, name, telegram in (
                 (creator_id, "Тестовый креатор", "browser_creator"),
-                (manager_id, "Тестовый менеджер", None),
+                (manager_id, "Тестовый менеджер", handle),
             )
         )
         session.add(
@@ -526,3 +529,54 @@ def test_order_worklist_search_hide_and_restore(
     expect(managed_row).to_have_count(0)
     page.get_by_role("link", name="Тестовые", exact=True).click()
     expect(managed_row).to_be_visible()
+
+    # A separate unmanaged order keeps the existing deletion scenario intact.
+    assign_id = uuid4()
+    assign_title = f"Назначение менеджера {assign_id.hex[:8]}"
+    engine = create_engine(test_database)
+    try:
+        with Session(engine) as session, session.begin():
+            session.add(
+                OrderModel(
+                    order_id=assign_id,
+                    advertiser_id=user_id,
+                    status=OrderStatus.NEW,
+                    offer_text=assign_title,
+                    product_link="https://example.test",
+                    price=100,
+                    bloggers_needed=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+    finally:
+        engine.dispose()
+
+    page.goto(
+        f"{admin_server}/admin/order-model/list?no_manager=1&search={assign_id}"
+    )
+    assign_row = page.get_by_role("row").filter(has_text=assign_title)
+    expect(
+        assign_row.get_by_text("Назначить менеджера", exact=True)
+    ).to_be_visible()
+    page.set_viewport_size({"width": 390, "height": 800})
+    assign_row.get_by_text("Назначить менеджера", exact=True).click()
+    field = assign_row.get_by_label("Telegram-ник менеджера")
+    expect(field).to_be_visible()
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    expect(
+        page.locator(f'#worklist-managers option[value="@{handle}"]')
+    ).to_have_count(1)
+    field.fill("@" + handle.upper())
+    assign_row.get_by_role("button", name="Назначить", exact=True).click()
+    expect(page.get_by_role("status")).to_have_text(
+        f"Менеджер @{handle} назначен."
+    )
+    expect(assign_row).to_have_count(0)
+    expect(page.get_by_label("Поиск", exact=True)).to_have_value(str(assign_id))
+    page.get_by_role("link", name="Без менеджера").click()
+    expect(
+        assign_row.get_by_role("link", name="Тестовый менеджер")
+    ).to_be_visible()

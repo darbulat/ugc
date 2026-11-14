@@ -11,6 +11,7 @@
 {% set advertiser_id = model_view.customer_filter(request) %}
 {% set customer = model_view.customer_context(advertiser_id) if advertiser_id else none %}
 {% set company_view = model_view.grouped_by_company(request) %}
+{% set manager_assignment = model_view.show_manager_assignment(request, group) %}
 {% set csrf_token = model_view.worklist_csrf_token(request) %}
 {% set message = request.session.pop('order_worklist_message', '') %}
 <section class="col-12 order-worklist">
@@ -123,6 +124,12 @@
     {% else %}
       {% set order_rows = pagination.rows %}
       {% include 'order_worklist_table.html' %}
+    {% endif %}
+
+    {% if manager_assignment and pagination.count %}
+      <datalist id="worklist-managers">
+        {% for handle in model_view.manager_suggestions() %}<option value="@{{ handle }}">{% endfor %}
+      </datalist>
     {% endif %}
 
     <div class="card-footer d-flex flex-wrap align-items-center gap-3">
