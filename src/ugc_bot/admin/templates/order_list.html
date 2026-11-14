@@ -7,6 +7,7 @@
 {% set group = request.query_params.get('group', 'work') %}
 {% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'removed', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
+{% set quick_filters = model_view.quick_filters(request) %}
 {% set advertiser_id = model_view.customer_filter(request) %}
 {% set customer = model_view.customer_context(advertiser_id) if advertiser_id else none %}
 {% set company_view = model_view.grouped_by_company(request) %}
@@ -59,6 +60,9 @@
       {% endif %}
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="group" value="{{ group }}">
+        {% for key in quick_filters %}
+          <input type="hidden" name="{{ key }}" value="1">
+        {% endfor %}
         {% if advertiser_id %}<input type="hidden" name="advertiser_id" value="{{ advertiser_id }}">{% endif %}
         {% if company_view %}<input type="hidden" name="view" value="companies">{% endif %}
         {% for name in ['sortBy', 'sort', 'pageSize'] %}
@@ -86,9 +90,9 @@
         </div>
         {% endif %}
         <button class="btn btn-primary" type="submit">Найти</button>
-        {% if request.query_params.get('search') or status %}
+        {% if request.query_params.get('search') or status or quick_filters %}
         <a class="btn btn-outline-secondary"
-           href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'search', 'status']) }}">Сбросить</a>
+           href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'search', 'status'] + (model_view.quick_filter_labels | list)) }}">Сбросить</a>
         {% endif %}
       </form>
       {% if not advertiser_id %}
@@ -100,6 +104,18 @@
            href="{{ view_url.include_query_params(view='companies') }}"{% if company_view %} aria-current="true"{% endif %}>По компаниям</a>
       </nav>
       {% endif %}
+      <nav class="d-flex flex-wrap gap-2 mt-3" aria-label="Быстрые фильтры">
+        {% for key, label in model_view.quick_filter_labels.items() %}
+          {% set enabled = key in quick_filters %}
+          {% set url = request.url.remove_query_params(['page', 'companyPage', key]) %}
+          <a class="btn btn-sm {{ 'btn-primary' if enabled else 'btn-outline-secondary' }}"
+             href="{{ url if enabled else url.include_query_params(**{key: '1'}) }}">
+            {% if enabled %}<span aria-hidden="true">✓</span>{% endif %}
+            {{ label }}{% if key == 'inactive' %} <small>· от {{ model_view.inactivity_days }} дней</small>{% endif %}
+            {% if enabled %}<span class="visually-hidden">, снять фильтр</span>{% endif %}
+          </a>
+        {% endfor %}
+      </nav>
     </div>
 
     {% if company_view %}
