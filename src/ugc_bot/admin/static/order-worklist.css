@@ -73,3 +73,13 @@
 .order-status-pending_moderation { background: #fff0ce; color: #794700; }
 .order-status-active { background: #dcf4e5; color: #17663a; }
 .order-status-closed { background: #e9edf2; color: #475569; }
+
+.order-company-toggle {
+  color: inherit;
+  text-decoration: none;
+}
+
+.order-company-toggle:hover,
+.order-company-toggle[aria-expanded="true"] {
+  background: #f7faff;
+}

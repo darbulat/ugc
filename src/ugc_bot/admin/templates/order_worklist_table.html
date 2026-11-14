@@ -1,0 +1,145 @@
+{% set details = model_view.worklist_details(order_rows) %}
+{% set reminders = model_view.unpaid_reminder_statuses(order_rows) if group == 'unpaid' else {} %}
+<div class="table-responsive" tabindex="0" role="region" aria-label="Таблица заказов">
+  <table class="table card-table table-vcenter order-worklist-table">
+    <colgroup>
+      <col class="order-geography"><col class="order-price"><col class="order-status">
+      <col class="order-customer"><col class="order-needed"><col class="order-offer">
+      <col class="order-date"><col class="order-actions">
+    </colgroup>
+    <thead>
+      <tr>
+        {% for name, label in model_view.worklist_columns.items() if name != 'brand' %}
+        {% set sorted = request.query_params.get('sortBy', 'created_at') == name %}
+        {% set direction = request.query_params.get('sort', 'desc' if name == 'created_at' and group != 'unpaid' else 'asc') %}
+        <th scope="col" {% if sorted %}aria-sort="{{ 'ascending' if direction == 'asc' else 'descending' }}"{% endif %}>
+          {% if name in ('username', 'brand') %}
+            {{ 'Заказчик / компания' if name == 'username' else label }}
+          {% else %}
+            <a href="{{ request.url.remove_query_params('companyPage' if company_view else 'page').include_query_params(sortBy=name, sort='desc' if sorted and direction == 'asc' else 'asc') }}"{% if name == 'created_at' %} title="Сортировка по дате создания"{% endif %}>
+              {{ 'Подбор' if name == 'bloggers_needed' else label }}{% if sorted %}<span aria-hidden="true">{{ ' ↑' if direction == 'asc' else ' ↓' }}</span>{% endif %}
+            </a>{% if name == 'created_at' %}<small class="order-row-note">Последняя активность</small>{% endif %}
+          {% endif %}
+        </th>
+        {% endfor %}
+        <th scope="col">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in order_rows %}
+      {% set info = details.get(row.order_id) %}
+      {% set list_url = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+      {% set detail_url = request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=list_url) %}
+      <tr>
+        <td><span class="order-clamp" title="{{ row.geography or '' }}">{{ row.geography or '—' }}</span></td>
+        <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
+        <td>
+          <span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>
+          {% if not info.archived %}
+          {% for reason in info.attention_reasons %}
+            <small class="order-row-note order-row-alert">{{ model_view.worklist_reason_labels[reason] }}</small>
+          {% endfor %}
+          {% endif %}
+          {% if info.has_complaints %}<a class="order-row-note" href="/admin/complaint-model/list?status=open&amp;search={{ row.order_id }}">Открытые жалобы</a>{% endif %}
+          {% if row.order_id in reminders %}
+            {% set reminder_state, reminder_at = reminders[row.order_id] %}
+            <small class="d-block mt-1">{{ {
+              'accepted': 'Напоминание отправлено',
+              'unavailable': 'Бот недоступен',
+              'rate_limited': 'Telegram ограничил отправку',
+              'unknown': 'Отправка не подтверждена',
+              'sending': 'Отправка не подтверждена'
+            }.get(reminder_state, reminder_state) }} · {{ reminder_at|admin_date }}</small>
+          {% endif %}
+        </td>
+        <td>
+          <a class="order-clamp fw-semibold" href="{{ request.url_for('admin:list', identity=model_view.identity).include_query_params(group='all', advertiser_id=row.advertiser_id) }}">{{ info.brand or info.username or 'Заказы заказчика' }}</a>
+          {% if info.brand and info.username and info.brand != info.username %}<small class="order-row-note order-clamp">{{ info.username }}</small>{% endif %}
+          {% if info.managers %}
+            <small class="order-row-note">
+              Менеджер
+              {% for manager in info.managers %}
+                <a href="{{ request.url_for('admin_user_card', user_id=manager.id).include_query_params(from_order=row.order_id, return_to=list_url) }}">{{ manager.name or 'Профиль' }}</a>{{ ', ' if not loop.last else '' }}
+              {% endfor %}
+            </small>
+          {% else %}
+            <small class="order-row-note">Без менеджера</small>
+          {% endif %}
+        </td>
+        <td class="order-number">
+          <strong>{{ info.picked }} / {{ row.bloggers_needed }}</strong>
+          {% if info.picked < row.bloggers_needed %}<small class="order-row-note">Осталось {{ row.bloggers_needed - info.picked }}</small>{% endif %}
+        </td>
+        <td>
+          {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Тестовый</small>{% endif %}
+          <a class="order-clamp fw-semibold" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a>
+        </td>
+        <td>
+          <time datetime="{{ row.created_at.isoformat() }}">{{ row.created_at|admin_date }}</time>
+          {% if info.last_activity_at != row.created_at %}<small class="order-row-note">Активность {{ info.last_activity_at|admin_date }}</small>{% endif %}
+        </td>
+        <td>
+          <div class="d-flex flex-wrap gap-1">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ detail_url }}">Открыть</a>
+            {% if model_view.can_edit %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="{{ model_view._build_url_for('admin:edit', request, row).include_query_params(return_to=list_url) }}"
+               title="Редактировать" aria-label="Редактировать">
+              <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+            </a>
+            {% endif %}
+            <a class="btn btn-sm btn-outline-secondary"
+               href="{{ model_view._url_for_action(request, 'duplicate-order') }}?pks={{ row.order_id }}"
+               title="Дублировать заказ" aria-label="Дублировать заказ">
+              <i class="fa-solid fa-copy" aria-hidden="true"></i>
+            </a>
+            {% if not info.archived and row.status == 'active' and not row.dispatch_stopped and info.dispatch_paused is not none %}
+              {% set dispatch_action = 'resume' if info.dispatch_paused else 'pause' %}
+              {% set dispatch_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=dispatch_action) %}
+              <form method="post" action="{{ dispatch_url.replace(query=request.url.query) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-sm btn-outline-primary">{{ 'Возобновить рассылку' if info.dispatch_paused else 'Пауза рассылки' }}</button>
+              </form>
+            {% endif %}
+            {% set operation = none if info.archived else ('restore' if group == 'hidden' else ('close' if info.can_close else ('hide' if info.can_hide else none))) %}
+            {% if operation %}
+              {% set label = {'close': 'Закрыть', 'hide': 'Убрать из списка', 'restore': 'Вернуть в список'}[operation] %}
+              {% set confirm_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=operation) %}
+              <form method="post" action="{{ confirm_url.replace(query=request.url.query) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="button" class="btn btn-sm btn-outline-primary"
+                        data-admin-confirm="Заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }}). {{ label }}?{% if operation == 'hide' %} Запись сохранится.{% endif %}">
+                  {{ label }}
+                </button>
+              </form>
+            {% endif %}
+            {% if not info.archived %}
+              <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='unmark-test' if info.is_test else 'mark-test').replace(query=request.url.query) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if info.is_test %}
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Снять отметку</button>
+                {% else %}
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-admin-confirm="Отметить заказ «{{ row.offer_text|truncate(70) }}» как тестовый? Заказ уйдёт во вкладку «Тестовые» и будет исключён из рабочих показателей.">Это тест</button>
+                {% endif %}
+              </form>
+            {% endif %}
+            {% set delete_order_id = row.order_id %}
+            {% set delete_title = row.offer_text or 'Заказ' %}
+            {% set delete_return_url = list_url %}
+            {% set deletion_blocker = info.deletion_blocker %}
+            {% set archived = info.archived %}
+            {% set delete_button_class = 'btn btn-sm btn-outline-danger' if group == 'test' else 'btn btn-sm btn-outline-secondary' %}
+            {% set restore_button_class = 'btn btn-sm btn-outline-primary' %}
+            {% include 'order_delete_button.html' %}
+          </div>
+          {% if group == 'test' and info.deletion_blocker %}
+            <small class="order-row-note" title="Причина ограничения удаления">Нельзя удалить: {{ info.deletion_blocker|lower }}.</small>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="text-center text-muted py-4">Заказы не найдены</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

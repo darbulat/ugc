@@ -172,6 +172,57 @@ def test_worklist_filters_search_and_pagination(worklist):
     }
 
 
+def test_company_view_filters_before_pagination_and_expansion(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    with Session(engine) as session:
+        company_id = session.get(
+            OrderModel, ids["Active example"]
+        ).advertiser_id
+
+    params = {"view": "companies", "group": "all", "pageSize": 1}
+    first = client.get(LIST, params=params)
+    assert first.status_code == 200
+    assert "Найдено компаний: 2" in first.text
+    assert "Northwind" in first.text
+    assert "Active example" not in first.text
+    assert "Closed example" not in first.text
+    assert first.text.count('aria-expanded="false"') == 1
+
+    second = client.get(LIST, params={**params, "page": 2})
+    assert "Найдено компаний: 2" in second.text
+    assert "Northwind" not in second.text
+    assert second.text.count('aria-expanded="false"') == 1
+
+    params |= {
+        "company": str(company_id),
+        "status": "active",
+        "search": "example",
+        "sortBy": "offer_text",
+        "sort": "asc",
+    }
+    expanded = client.get(LIST, params=params)
+    assert expanded.status_code == 200
+    assert "Найдено компаний: 1" in expanded.text
+    assert "Заказов: 3" in expanded.text
+    assert 'aria-expanded="true"' in expanded.text
+    assert "Active example" in expanded.text
+    assert "Draft example" not in expanded.text
+    assert "Closed example" not in expanded.text
+    assert "companyPage=2" in expanded.text
+
+    next_orders = client.get(LIST, params={**params, "companyPage": 2})
+    assert "Financial example" in next_orders.text
+    assert "Active example" not in next_orders.text
+
+    only_kazan = client.get(LIST, params={**params, "search": "Казань"})
+    assert "Заказов: 1" in only_kazan.text
+    assert "Active example" in only_kazan.text
+
+    empty = client.get(LIST, params={**params, "search": "no matching orders"})
+    assert "Заказы не найдены" in empty.text
+
+
 def test_quick_filters_use_activity_and_assignments_before_pagination(worklist):
     client, engine, ids = worklist
     _login(client)
