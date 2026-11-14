@@ -1080,7 +1080,20 @@ async def test_get_order_card_returns_detail(service) -> None:
     """get_order_card returns full order detail."""
     order_id = uuid4()
     order = _make_order(order_id=order_id, bloggers_needed=10)
-    row = (order, False, 5, 0, "Brand Inc", 5, 5)
+    row = (
+        order,
+        "Есть рассылка или отклики",
+        5,
+        0,
+        "Brand Inc",
+        5,
+        5,
+        True,
+        False,
+        None,
+        None,
+        None,
+    )
     results = [
         _FakeResult(one_or_none_value=row),
         _FakeResult(all_rows=[]),
@@ -1123,7 +1136,7 @@ async def test_get_order_card_includes_eligible_creators_count_for_new_order(
         bloggers_needed=5,
         status=OrderStatus.NEW,
     )
-    row = (order, True, 0, 0, "Brand", 0, 0)
+    row = (order, None, 0, 0, "Brand", 0, 0, True, False, None, None, None)
     mock_dispatch = AsyncMock()
     mock_dispatch.count_eligible_bloggers = AsyncMock(return_value=42)
     svc = AdminDashboardService(
@@ -1152,7 +1165,7 @@ async def test_get_order_card_eligible_creators_count_none_when_dispatch_raises(
         bloggers_needed=5,
         status=OrderStatus.PENDING_MODERATION,
     )
-    row = (order, True, 0, 0, "Brand", 0, 0)
+    row = (order, None, 0, 0, "Brand", 0, 0, True, False, None, None, None)
     mock_dispatch = AsyncMock()
     mock_dispatch.count_eligible_bloggers = AsyncMock(
         side_effect=RuntimeError("db error")
@@ -1356,7 +1369,20 @@ async def test_build_delta_negative_change(service) -> None:
 async def test_progress_ratio_capped_at_one(service) -> None:
     """Progress ratio is capped at 1.0."""
     order = _make_order(bloggers_needed=5)
-    row = (order, False, 10, 0, "Advertiser", 10, 10)
+    row = (
+        order,
+        "Есть рассылка или отклики",
+        10,
+        0,
+        "Advertiser",
+        10,
+        10,
+        False,
+        False,
+        None,
+        None,
+        None,
+    )
     results = [
         _FakeResult(one_or_none_value=row),
         _FakeResult(all_rows=[]),
@@ -1488,7 +1514,20 @@ async def test_delayed_orders_skips_when_no_reasons(service) -> None:
 async def test_progress_ratio_zero_when_needed_zero(service) -> None:
     """Progress ratio returns 0 when needed is 0."""
     order = _make_order(bloggers_needed=0)
-    row = (order, False, 5, 0, "Advertiser", 5, 5)
+    row = (
+        order,
+        "Есть рассылка или отклики",
+        5,
+        0,
+        "Advertiser",
+        5,
+        5,
+        False,
+        False,
+        None,
+        None,
+        None,
+    )
     results = [
         _FakeResult(one_or_none_value=row),
         _FakeResult(all_rows=[]),

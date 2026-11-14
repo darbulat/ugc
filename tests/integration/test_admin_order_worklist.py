@@ -136,7 +136,7 @@ def test_worklist_filters_search_and_pagination(worklist):
     response = client.get(LIST)
     assert response.status_code == 200
     html = response.text
-    assert html.index("География") < html.index("Компания / бренд")
+    assert html.index("География") < html.index("Заказчик / компания")
     assert "1 200,00 RUB" in html
     assert "Closed example" not in html
     assert "Deleted example" not in html
@@ -396,7 +396,7 @@ def test_delete_marked_draft_from_card_without_touching_related_orders(
     page = client.get(LIST)
     token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
     action = f"/admin/order-worklist/{draft_id}/delete-test"
-    assert "Удалить заказ" not in client.get(detail).text
+    assert ">Удалить заказ</button>" not in client.get(detail).text
     assert (
         "Удалить можно только"
         in client.post(action, data={"csrf_token": token}).text
@@ -411,9 +411,9 @@ def test_delete_marked_draft_from_card_without_touching_related_orders(
     for url in (edit, detail):
         page = client.get(url, params={"return_to": source})
         assert page.status_code == 200
-        assert "Удалить заказ" in page.text
+        assert ">Удалить заказ</button>" in page.text
     assert (
-        "Удалить заказ"
+        ">Удалить заказ</button>"
         not in client.get(f"/admin/orders/{ids['Paid example']}").text
     )
     token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
@@ -444,6 +444,66 @@ def test_delete_marked_draft_from_card_without_touching_related_orders(
         ).one()
         assert event.old_values == {"status": "pending_moderation"}
         assert event.new_values == {"status": "deleted", "test": True}
+
+
+def test_archive_paid_order_preserves_status_payment_and_audit(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    order_id = ids["Paid example"]
+    actions = f"/admin/order-worklist/{order_id}"
+    params = {"search": str(order_id)}
+    page = client.get(LIST, params=params)
+    token = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
+    assert "Удалить из списка" in page.text
+    assert client.post(f"{actions}/archive-order").status_code == 403
+    for _ in range(2):
+        response = client.post(
+            f"{actions}/archive-order",
+            params=params,
+            data={"csrf_token": token},
+        )
+        assert "Заказ удалён из списка" in response.text
+        assert "Paid example" not in response.text
+    assert (
+        "Paid example"
+        not in client.get(LIST, params={**params, "group": "all"}).text
+    )
+    removed_params = {**params, "group": "removed"}
+    assert "Paid example" in client.get(LIST, params=removed_params).text
+
+    with Session(engine) as session:
+        order = session.get(OrderModel, order_id)
+        assert order.status == OrderStatus.ACTIVE and not order.dispatch_stopped
+        payment = session.scalars(
+            select(PaymentModel).where(PaymentModel.order_id == order_id)
+        ).one()
+        assert payment.status == PaymentStatus.PAID and payment.amount == 200
+
+    response = client.post(
+        f"{actions}/restore-archived",
+        params=removed_params,
+        data={"csrf_token": token},
+    )
+    assert "Заказ возвращён из удалённых" in response.text
+    assert "Paid example" not in response.text
+    assert "Paid example" in client.get(LIST, params=params).text
+    with Session(engine) as session:
+        events = session.scalars(
+            select(AuditLogModel)
+            .where(AuditLogModel.entity_id == order_id)
+            .order_by(AuditLogModel.changed_at)
+        ).all()
+        assert [row.entity_type for row in events] == [
+            "order_worklist_archive"
+        ] * 2
+        assert [row.old_values for row in events] == [
+            {"archived": False},
+            {"archived": True},
+        ]
+        assert [row.new_values for row in events] == [
+            {"archived": True},
+            {"archived": False},
+        ]
 
 
 def test_order_editor_rejects_new_overflow_and_preserves_legacy_text(worklist):

@@ -1,6 +1,8 @@
 .order-editor {
+  display: block;
   width: 100%;
-  max-width: 75rem;
+  min-width: 0;
+  max-width: 65rem;
   margin-inline: auto;
 }
 
@@ -16,7 +18,8 @@
 
 .order-editor__heading,
 .order-editor__bar,
-.order-editor__footer {
+.order-editor__footer,
+.order-editor__danger {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -27,6 +30,11 @@
 .order-editor__heading {
   align-items: end;
   margin-top: 1rem;
+}
+
+.order-editor__intro {
+  flex: 1 1 22rem;
+  min-width: 0;
 }
 
 .order-editor__heading h1 {
@@ -99,6 +107,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+.order-editor__field {
+  min-width: 0;
+}
+
 .order-editor__quote {
   margin-top: 1rem;
   padding-top: .75rem;
@@ -119,11 +131,23 @@
   border-radius: .35rem;
 }
 
-@media (max-width: 36rem) {
+.order-editor__danger {
+  margin-top: .8rem;
+}
+
+.order-editor__danger p {
+  margin: 0;
+  color: #52617a;
+}
+
+@media (max-width: 40rem) {
   .order-editor__fields {
     grid-template-columns: minmax(0, 1fr);
   }
+  .order-editor__bar {
+    position: static;
+  }
   .order-editor__panel {
-    scroll-margin-top: 11rem;
+    scroll-margin-top: 1rem;
   }
 }

@@ -62,6 +62,7 @@ from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_SECTIONS,
     changed_text_errors,
 )
+from ugc_bot.admin.order_summary import safe_order_link
 from ugc_bot.admin.order_worklist import (
     ORDER_STATUS_LABELS,
     UNPAID_GROUP,
@@ -531,7 +532,7 @@ _USER_STATUS_LABELS = {
 }
 _DELAY_REASON_LABELS = {
     "active_overdue": "Долгий подбор",
-    "no_responses": "Нет откликов",
+    "no_responses": "Никого не подобрали",
     "low_picked": "Мало подобрано",
     "dispatch_paused": "Рассылка на паузе",
     "waiting_moderation": "Ожидает модерации",
@@ -597,16 +598,19 @@ def _normalize_period(period: str) -> PeriodKey:
     return cast(PeriodKey, normalized)
 
 
-def _build_dashboard_service(
-    config: AppConfig, container: Container
-) -> AdminDashboardService:
-    """Build AdminDashboardService from config and container."""
-    thresholds = DelayThresholds(
+def _admin_delay_thresholds(config: AppConfig) -> DelayThresholds:
+    return DelayThresholds(
         active_days=config.admin.admin_delay_active_days,
         no_responses_hours=config.admin.admin_no_responses_hours,
         low_picked_hours=config.admin.admin_low_picked_hours,
         archive_days=config.admin.admin_archive_days,
     )
+
+
+def _build_dashboard_service(
+    config: AppConfig, container: Container
+) -> AdminDashboardService:
+    """Build AdminDashboardService from config and container."""
     referral_income_service: ReferralIncomeService | None = None
     if container.session_factory and container.transaction_manager:
         referral_income_service = container.build_referral_income_service()
@@ -618,7 +622,7 @@ def _build_dashboard_service(
     return AdminDashboardService(
         session_factory=container.session_factory,
         timezone_name=config.admin.admin_dashboard_timezone,
-        thresholds=thresholds,
+        thresholds=_admin_delay_thresholds(config),
         referral_income_service=referral_income_service,
         offer_dispatch_service=offer_dispatch_service,
     )
@@ -661,6 +665,7 @@ def _build_templates(app: FastAPI, zone: ZoneInfo) -> Jinja2Templates:
     templates.env.globals["admin_asset"] = _admin_asset
     templates.env.globals["admin_action_token"] = _admin_action_token
     templates.env.filters["instagram_link"] = instagram_link
+    templates.env.filters["safe_order_link"] = safe_order_link
     templates.env.filters["telegram_handle"] = telegram_handle
     templates.env.filters["admin_date"] = lambda value: _admin_date(value, zone)
     app.mount(
@@ -753,7 +758,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v5:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v6:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -1126,6 +1131,7 @@ async def _render_order_detail_page(
         {
             "order": order,
             "status_labels": ORDER_STATUS_LABELS,
+            "delay_reason_labels": _DELAY_REASON_LABELS,
         },
     )
 
@@ -1193,7 +1199,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v5:{period_key}"
+        f"dashboard_api:v6:{period_key}"
         if cache and not include_timings
         else None
     )
@@ -2101,6 +2107,8 @@ class OrderAdmin(ModelView, model=OrderModel):
     unpaid_age_hours = 24
     unpaid_reminders_enabled = False
     worklist_status_labels = ORDER_STATUS_LABELS
+    worklist_reason_labels = _DELAY_REASON_LABELS
+    delay_thresholds = DelayThresholds(7, 24, 48, 7)
     worklist_columns = {
         "geography": "География",
         "price": "Цена",
@@ -2297,13 +2305,15 @@ class OrderAdmin(ModelView, model=OrderModel):
             if getattr(request.state, "unpaid_now", None) is None:
                 request.state.unpaid_now = datetime.now(timezone.utc)
             return stmt.where(
-                *worklist_conditions("work", ""),
+                *worklist_conditions("work", "", admin_list=True),
                 aging_unpaid_condition(
                     request.state.unpaid_now, self.unpaid_age_hours
                 ),
             )
         return stmt.where(
-            *worklist_conditions(group, request.query_params.get("status", ""))
+            *worklist_conditions(
+                group, request.query_params.get("status", ""), admin_list=True
+            )
         )
 
     @staticmethod
@@ -2362,7 +2372,9 @@ class OrderAdmin(ModelView, model=OrderModel):
         def load():
             with self.session_maker() as session:
                 return worklist_row_details(
-                    session, [row.order_id for row in rows]
+                    session,
+                    [row.order_id for row in rows],
+                    self.delay_thresholds,
                 )
 
         return await asyncio.to_thread(load)
@@ -3288,6 +3300,7 @@ class EnumAwareAdmin(Admin):
         templates.env.globals["admin_asset"] = _admin_asset
         templates.env.globals["admin_action_token"] = _admin_action_token
         templates.env.globals["complaint_return_url"] = _complaint_return_url
+        templates.env.filters["telegram_handle"] = telegram_handle
         return templates
 
     @login_required
@@ -3511,6 +3524,8 @@ def _register_order_worklist_action(
             "mark-test",
             "unmark-test",
             "delete-test",
+            "archive-order",
+            "restore-archived",
         }:
             raise HTTPException(status_code=404)
         await _require_action_token(request)
@@ -3525,6 +3540,8 @@ def _register_order_worklist_action(
             message = await asyncio.to_thread(update)
         if operation in {
             "delete-test",
+            "archive-order",
+            "restore-archived",
             "mark-test",
             "unmark-test",
             "hide",
@@ -3656,7 +3673,8 @@ def create_admin_app() -> FastAPI:
     _add_admin_views(admin)
     for view in admin.views:
         if isinstance(view, OrderAdmin):
-            view.unpaid_age_hours = config.admin.admin_no_responses_hours
+            view.delay_thresholds = _admin_delay_thresholds(config)
+            view.unpaid_age_hours = view.delay_thresholds.no_responses_hours
             view.unpaid_reminders_enabled = bool(
                 config.order.unpaid_reminders_enabled
                 and config.order.unpaid_reminders_start_at

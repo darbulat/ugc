@@ -9,7 +9,13 @@ import pytest_asyncio
 from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.orm import Session
 
+from ugc_bot.admin.dashboard_service import (
+    AdminDashboardService,
+    DelayThresholds,
+)
+from ugc_bot.admin.order_worklist import worklist_row_details
 from ugc_bot.application.collaboration_ports import CollaborationCommand
 from ugc_bot.application.services.collaboration_service import (
     CollaborationService,
@@ -193,6 +199,35 @@ async def collaboration_pg(financial_pg_engine, request):
     )
     yield factory, service, repo, clock, data
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_admin_reads_paid_assignment_in_order_list_and_card(
+    collaboration_pg,
+    financial_pg_engine,
+):
+    factory, _, _, _, ids = collaboration_pg
+    thresholds = DelayThresholds(7, 24, 48, 7)
+    card = await AdminDashboardService(
+        factory, "Europe/Moscow", thresholds
+    ).get_order_card(ids["order"])
+    assert card is not None
+    assert card["picked_count"] == 1
+    assert card["remaining_count"] == 0
+    assert card["dispatched_count"] == 0
+    assert card["managers"][0]["id"] == str(ids["manager"])
+    assert len(card["managers"]) == 1
+    (creator,) = card["responses_list"]
+    assert creator["blogger_id"] == str(ids["creator"])
+    assert creator["name"] == "synthetic"
+    assert creator["in_offer"] is True
+    assert creator["instagram"] == f"https://instagram.com/{ids['creator'].hex}"
+
+    with Session(financial_pg_engine) as db:
+        row = worklist_row_details(db, [ids["order"]], thresholds)[ids["order"]]
+    assert row["picked"] == card["picked_count"]
+    assert row["managers"] == card["managers"]
+    assert row["deletion_blocker"] == "Заказ не отмечен как тестовый"
 
 
 def command(data, action, actor, version, key=None, **extra):
