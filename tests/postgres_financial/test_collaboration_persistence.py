@@ -16,7 +16,10 @@ from ugc_bot.admin.dashboard_service import (
     DelayThresholds,
 )
 from ugc_bot.admin.order_summary import order_has_manager
-from ugc_bot.admin.order_worklist import worklist_row_details
+from ugc_bot.admin.order_worklist import (
+    assign_worklist_manager,
+    worklist_row_details,
+)
 from ugc_bot.application.collaboration_ports import CollaborationCommand
 from ugc_bot.application.services.collaboration_service import (
     CollaborationService,
@@ -237,6 +240,13 @@ async def test_admin_reads_paid_assignment_in_order_list_and_card(
             OrderModel.order_id == ids["order"], ~order_has_manager()
         )
         assert db.scalar(unmanaged) is None
+        managed_user = db.get(UserModel, ids["manager"])
+        managed_user.telegram = "paid_manager_" + ids["manager"].hex[:12]
+        db.flush()
+        assert "уже есть менеджер" in assign_worklist_manager(
+            db, ids["order"], managed_user.telegram
+        )
+        assert db.get(ManagerOrderModel, (ids["manager"], ids["order"])) is None
     assert row["picked"] == card["picked_count"]
     assert row["managers"] == card["managers"]
     assert row["deletion_blocker"] == "Заказ не отмечен как тестовый"

@@ -14,10 +14,16 @@ from ugc_bot.admin.order_summary import (
     latest_order_activity,
     manager_contact,
     order_activity_at,
+    order_has_manager,
     order_managers_query,
     picked_order_count,
 )
-from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
+from ugc_bot.domain.enums import (
+    AuditAction,
+    OrderStatus,
+    PaymentStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS, INBOX
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.models import (
@@ -46,6 +52,7 @@ _VISIBILITY_ENTITY = "order_worklist_visibility"
 _TEST_ORDER_ENTITY = "order_test_marker"
 _ARCHIVE_ENTITY = "order_worklist_archive"
 UNPAID_GROUP = "unpaid"
+MANAGER_ASSIGNMENT_GROUPS = ("work", UNPAID_GROUP, "all", "test")
 
 
 _ORDER_ACTIVITY = (
@@ -421,6 +428,82 @@ def _set_order_visibility(
         session, order_id, _VISIBILITY_ENTITY, "visible", visible
     )
     return "Заказ возвращён в список." if visible else "Заказ убран из списка."
+
+
+def worklist_manager_suggestions(session: Session) -> list[str]:
+    """Suggest existing managers without including other users."""
+    telegram = func.lower(UserModel.telegram)
+    has_assignment = (
+        select(1).where(ManagerOrderModel.user_id == UserModel.user_id).exists()
+    )
+    return list(
+        session.scalars(
+            select(telegram)
+            .where(
+                has_assignment,
+                UserModel.telegram.is_not(None),
+                UserModel.telegram != "",
+                UserModel.status == UserStatus.ACTIVE,
+            )
+            .distinct()
+            .order_by(telegram)
+        )
+    )
+
+
+def assign_worklist_manager(
+    session: Session, order_id: UUID, telegram: str
+) -> str:
+    """Set the first manager using the order lock shared by admin edits."""
+    candidates = session.scalars(
+        select(UserModel)
+        .where(func.lower(UserModel.telegram) == telegram)
+        .limit(2)
+        .with_for_update(read=True)
+    ).all()
+    if not candidates:
+        return "Пользователь с таким Telegram-ником не найден в боте."
+    if len(candidates) > 1:
+        return "По этому Telegram-нику найдено несколько аккаунтов."
+    manager = candidates[0]
+    if manager.status != UserStatus.ACTIVE:
+        return "Для назначения нужен активный аккаунт в боте."
+
+    order = session.get(OrderModel, order_id, with_for_update=True)
+    eligible_order = select(OrderModel.order_id).where(
+        OrderModel.order_id == order_id,
+        OrderModel.status != OrderStatus.CLOSED,
+        *worklist_conditions("all", "", admin_list=True),
+    )
+    if order is None or session.scalar(eligible_order) is None:
+        return "Заказ недоступен для назначения менеджера."
+    if manager.user_id == order.advertiser_id:
+        return "Выберите менеджера, который не является заказчиком."
+    if session.scalar(
+        select(order_has_manager()).where(OrderModel.order_id == order_id)
+    ):
+        return "У заказа уже есть менеджер. Обновили список."
+
+    now = datetime.now(timezone.utc)
+    session.add(
+        ManagerOrderModel(
+            user_id=manager.user_id,
+            order_id=order_id,
+            created_at=now,
+            updated_at=now,
+        )
+    )
+    session.add(
+        AuditLogModel(
+            entity_type="order_manager_assignment",
+            entity_id=order_id,
+            action=AuditAction.UPDATE,
+            old_values={"manager_id": None},
+            new_values={"manager_id": str(manager.user_id)},
+            changed_at=now,
+        )
+    )
+    return f"Менеджер @{telegram} назначен."
 
 
 def change_order_worklist(

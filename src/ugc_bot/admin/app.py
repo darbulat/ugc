@@ -71,12 +71,15 @@ from ugc_bot.admin.order_summary import (
     safe_order_link,
 )
 from ugc_bot.admin.order_worklist import (
+    MANAGER_ASSIGNMENT_GROUPS,
     ORDER_STATUS_LABELS,
     UNPAID_GROUP,
     aging_unpaid_condition,
+    assign_worklist_manager,
     change_order_worklist,
     search_orders,
     worklist_conditions,
+    worklist_manager_suggestions,
     worklist_row_details,
 )
 from ugc_bot.admin.people import instagram_link, telegram_handle
@@ -2496,6 +2499,22 @@ class OrderAdmin(ModelView, model=OrderModel):
             return stmt.order_by(OrderModel.created_at, OrderModel.order_id)
         return stmt.order_by(OrderModel.created_at.desc(), OrderModel.order_id)
 
+    def show_manager_assignment(self, request: Request, group: str) -> bool:
+        return (
+            group in MANAGER_ASSIGNMENT_GROUPS
+            and "no_manager" in self.quick_filters(request)
+        )
+
+    async def manager_suggestions(self) -> Sequence[str]:
+        def load() -> list[str]:
+            with self.session_maker() as session:
+                return worklist_manager_suggestions(session)
+
+        handles = await asyncio.to_thread(load)
+        return [
+            handle for handle in handles if telegram_handle(handle) == handle
+        ]
+
     async def worklist_details(self, rows: Sequence[OrderModel]):
         def load():
             with self.session_maker() as session:
@@ -3637,6 +3656,29 @@ def _register_order_worklist_action(
     app: FastAPI, auth: AdminAuth, engine: Engine, cache: AdminCache
 ) -> None:
     @app.post(
+        "/admin/order-worklist/{order_id}/assign-manager",
+        dependencies=[Depends(_make_require_admin(auth))],
+    )
+    async def assign_order_manager(
+        request: Request, order_id: UUID
+    ) -> Response:
+        await _require_action_token(request)
+        raw = (await request.form()).get("manager_telegram")
+        handle = telegram_handle(raw) if isinstance(raw, str) else None
+        if not handle:
+            message = "Введите Telegram-ник менеджера."
+        else:
+
+            def assign() -> str:
+                with Session(engine) as session, session.begin():
+                    return assign_worklist_manager(
+                        session, order_id, handle.lower()
+                    )
+
+            message = await asyncio.to_thread(assign)
+        return _worklist_action_redirect(request, order_id, message)
+
+    @app.post(
         "/admin/order-worklist/{order_id}/{operation}",
         dependencies=[Depends(_make_require_admin(auth))],
     )
@@ -3683,22 +3725,26 @@ def _register_order_worklist_action(
                 "charts:",
                 "advertisers:",
             )
-        request.session["order_worklist_message"] = message
-        if "return_to" in request.query_params:
-            target = _order_return_url(request)
-            if URL(target).path != _ORDER_LIST_PATH:
-                target = str(
-                    URL(_ORDER_LIST_PATH).include_query_params(
-                        search=str(order_id)
-                    )
-                )
-        else:
+        return _worklist_action_redirect(request, order_id, message)
+
+
+def _worklist_action_redirect(
+    request: Request, order_id: UUID, message: str
+) -> RedirectResponse:
+    request.session["order_worklist_message"] = message
+    if "return_to" in request.query_params:
+        target = _order_return_url(request)
+        if URL(target).path != _ORDER_LIST_PATH:
             target = str(
-                request.url_for(
-                    "admin:list", identity=OrderAdmin.identity
-                ).replace(query=request.url.query)
+                URL(_ORDER_LIST_PATH).include_query_params(search=str(order_id))
             )
-        return RedirectResponse(target, status_code=303)
+    else:
+        target = str(
+            request.url_for("admin:list", identity=OrderAdmin.identity).replace(
+                query=request.url.query
+            )
+        )
+    return RedirectResponse(target, status_code=303)
 
 
 def _register_complaint_action(

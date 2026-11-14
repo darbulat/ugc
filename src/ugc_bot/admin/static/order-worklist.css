@@ -61,6 +61,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+.order-manager-assign {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.order-manager-assign summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.order-manager-assign input {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .order-status-label {
   display: inline-block;
   padding: .25rem .45rem;
