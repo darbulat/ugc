@@ -138,6 +138,7 @@ def open_app(
     init_data: str = "synthetic-test-auth",
     query: str = "",
 ) -> list[str]:
+    page.set_default_timeout(8_000)
     errors: list[str] = []
     page.on("pageerror", lambda error: errors.append(str(error)))
     page.route("**/*", network.route)

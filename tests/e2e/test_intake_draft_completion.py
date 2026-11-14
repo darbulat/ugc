@@ -3,6 +3,7 @@
 import pytest
 from playwright.sync_api import expect
 
+from tests.e2e.miniapp_helpers import reset_intake_storage
 from tests.e2e.test_miniapp_design_system import open_app
 from tests.e2e.test_miniapp_selection_ui import (
     POLICY,
@@ -87,18 +88,13 @@ def test_legacy_session_draft_is_migrated_before_webview_closes(page, platform):
     page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#intake-brief").fill("Legacy draft before upgrade")
-    page.evaluate("() => UMCIntakeProgress.flush()")
+    reset_intake_storage(page)
     key = f"umc:intake-draft:{platform}:{CLIENT}"
     page.evaluate(
-        """async key => {
+        """key => {
       const data = JSON.parse(sessionStorage.getItem(key));
       for (const name of Object.keys(localStorage))
         if (name.startsWith(key + ':v:')) localStorage.removeItem(name);
-      await new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('umc-intake-recovery');
-        request.onsuccess = resolve;
-        request.onerror = () => reject(request.error);
-      });
       sessionStorage.setItem(key,
         JSON.stringify({values:data.values, flow:data.flow}));
     }""",
@@ -145,19 +141,16 @@ def test_two_legacy_windows_cannot_submit_the_same_draft_twice(page, platform):
         open_app(other, network, platform, init_data=SIGNED)
         other.wait_for_function("window.__umcAppReady === true")
         other.evaluate("() => UMCIntakeProgress.prepare()")
+        reset_intake_storage(page)
         other.evaluate(
             "data => sessionStorage.setItem(data.key, data.legacy)",
             {"key": key, "legacy": legacy},
         )
         page.evaluate(
-            """async data => {
+            """data => {
           for (const name of Object.keys(localStorage))
             if (name.startsWith(data.key + ':v:'))
               localStorage.removeItem(name);
-          await new Promise((resolve, reject) => {
-            const req=indexedDB.deleteDatabase('umc-intake-recovery');
-            req.onsuccess=resolve; req.onerror=() => reject(req.error);
-          });
           sessionStorage.setItem(data.key, data.legacy);
         }""",
             {"key": key, "legacy": legacy},
@@ -172,6 +165,10 @@ def test_two_legacy_windows_cannot_submit_the_same_draft_twice(page, platform):
         expect(other.locator("#intake-brief")).to_have_value(
             "Shared legacy draft"
         )
+        # A restored field can have its value before the form is ready. Wait
+        # for both tabs to finish recovery before submitting in the first tab.
+        expect(page.locator("#btn-intake-create")).to_be_visible()
+        expect(other.locator("#btn-intake-create")).to_be_visible()
         first_group = page.evaluate(
             "JSON.parse(UMCIntakeProgress.snapshot()).draft_group"
         )
@@ -200,11 +197,11 @@ def test_legacy_request_cannot_resubmit_its_restored_draft(page, platform):
     page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#intake-brief").fill("Previously sent legacy draft")
-    page.evaluate("() => UMCIntakeProgress.flush()")
+    reset_intake_storage(page)
     key = f"umc:intake-draft:{platform}:{CLIENT}"
     pending_key = f"umc:intake:{platform}:{CLIENT}"
     page.evaluate(
-        """async data => {
+        """data => {
       const field = id => document.getElementById(id).value;
       const saved=JSON.parse(sessionStorage.getItem(data.key));
       const request={
@@ -221,10 +218,6 @@ def test_legacy_request_cannot_resubmit_its_restored_draft(page, platform):
       };
       for (const name of Object.keys(localStorage))
         if (name.startsWith(data.key + ':v:')) localStorage.removeItem(name);
-      await new Promise((resolve, reject) => {
-        const req=indexedDB.deleteDatabase('umc-intake-recovery');
-        req.onsuccess=resolve; req.onerror=() => reject(req.error);
-      });
       sessionStorage.setItem(data.key,
         JSON.stringify({values:saved.values,flow:saved.flow}));
       sessionStorage.setItem(data.pending,JSON.stringify(request));
@@ -265,18 +258,13 @@ def test_legacy_draft_reports_session_only_when_durable_storage_fails(
     page.locator("#btn-show-create-order").click()
     fill(page)
     page.locator("#intake-brief").fill("Legacy session draft")
-    page.evaluate("() => UMCIntakeProgress.flush()")
+    reset_intake_storage(page)
     key = f"umc:intake-draft:{platform}:{CLIENT}"
     page.evaluate(
-        """async key => {
+        """key => {
       const data = JSON.parse(sessionStorage.getItem(key));
       for (const name of Object.keys(localStorage))
         if (name.startsWith(key + ':v:')) localStorage.removeItem(name);
-      await new Promise((resolve, reject) => {
-        const request = indexedDB.deleteDatabase('umc-intake-recovery');
-        request.onsuccess = resolve;
-        request.onerror = () => reject(request.error);
-      });
       sessionStorage.setItem(key,
         JSON.stringify({values:data.values, flow:data.flow}));
     }""",
