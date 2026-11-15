@@ -74,6 +74,9 @@ def _directory(db, query, status, offset):  # noqa: PLR0913
                 APPLICATIONS.c.answers["location"]
                 .as_string()
                 .ilike(pattern, escape="\\"),
+                APPLICATIONS.c.answers["location_country"]
+                .as_string()
+                .ilike(pattern, escape="\\"),
             )
         )
     if status == "busy":

@@ -1,18 +1,27 @@
 """Questions and response options for Telegram manager onboarding."""
 
+import re
 from collections.abc import Mapping
 
+from ugc_bot.domain.creator_invites import instagram_handle
+
 INTRO = (
-    "UMC даёт бриф и отклики. Менеджер согласует работу с авторами, "
-    "следит за сроками и фиксирует результат.\n\n"
-    "Укажите вашу ожидаемую ставку в анкете. Условия обсудим перед заказом."
+    "UMC подбирает блогеров и передаёт вам заказ с брифом и откликами. "
+    "Вы общаетесь с блогерами, согласуете детали, следите за сроками "
+    "и фиксируете результат.\n\n"
+    "Укажите вашу ожидаемую ставку за сопровождение одного блогера."
 )
+
+MIN_WRITTEN_LENGTH = 20
+WRITTEN_FIELDS = frozenset({"case", "shortfall_plan"})
 
 FIELDS = {
     "name": ("Как к вам обращаться?", 80),
     "rate": (
-        "Сколько вы хотите получать за одного автора с подтверждённым "
-        "результатом? Напишите сумму или диапазон в ₽ либо выберите «Обсудим».",
+        "Сколько вы хотите получать за сопровождение одного блогера? "
+        "UMC даёт бриф, подбор и отклики, а вы ведёте переписку с блогером "
+        "и сопровождаете его до результата. Введите сумму в рублях "
+        "или две суммы через тире.",
         80,
     ),
     "work_format": ("В каком формате вы работаете?", 40),
@@ -21,19 +30,31 @@ FIELDS = {
         "Сколько авторов вы можете пригласить за неделю?",
         20,
     ),
-    "location": ("В какой стране и городе вы живёте?", 100),
+    "location": ("В каком городе вы живёте? Напишите название города.", 100),
     "phone": ("Поделитесь своим номером телефона для анкеты менеджера.", 20),
     "instagram": ("Укажите ник или ссылку на свой Instagram.", 250),
     "settlement": ("Как вам удобно получать оплату?", 40),
     "case": (
         "Расскажите об одном проекте с блогерами. Какая была задача, "
         "что вы делали и какой получился результат? Ссылка на кейс по желанию. "
-        "Если кейса пока нет, расскажите, как организовали бы первый заказ.",
+        "Если кейса пока нет, расскажите, как организовали бы первый заказ. "
+        "Напишите хотя бы одно короткое предложение "
+        f"(от {MIN_WRITTEN_LENGTH} символов).",
         500,
     ),
     "reliability": (
         "До публикации остался день, и блогер отказался от участия. "
         "Что вы сделаете и когда предупредите команду UMC?",
+        500,
+    ),
+    "shortfall_plan": (
+        "Вы взяли заказ на 30 блогеров. UMC подобрала 25, а ещё 5 авторов "
+        "в нужном городе или районе пока нет. Что вы сделаете? "
+        "Сможете ли вы найти и привлечь блогеров вне базы UMC? "
+        "Расскажите, где будете искать, как проверите, что они подходят, "
+        "и когда сообщите команде о результате. "
+        f"Напишите ответ от {MIN_WRITTEN_LENGTH} символов. "
+        "После этого ответа заявка отправится автоматически.",
         500,
     ),
     # Preserve the prompt and answers for older applications.
@@ -60,9 +81,70 @@ def application_fields(answers: Mapping[str, str]) -> tuple[str, ...]:
     return tuple(
         field
         for field in FIELDS
-        if field != "coverage"
+        if field not in {"coverage", "reliability"}
         and (
             field != "work_format_details"
             or answers.get("work_format") == "Другое"
+        )
+    )
+
+
+_AMOUNT = r"([0-9]{1,3}(?: [0-9]{3})+|[0-9]+)\s*₽?"
+_RATE = re.compile(rf"{_AMOUNT}(?:\s*[-–—]\s*{_AMOUNT})?")
+
+
+def normalize_manager_rate(value: str) -> str | None:
+    match = _RATE.fullmatch(" ".join(value.split()))
+    if not match:
+        return None
+    start, end = match.groups()
+    amount = int(start.replace(" ", ""))
+    upper = int(end.replace(" ", "")) if end else amount
+    if not 0 < amount <= upper:
+        return None
+    return str(amount) if amount == upper else f"{amount}–{upper}"
+
+
+def validate_application_answer(field: str, value: str) -> str:
+    value = value.strip()
+    if (
+        field in WRITTEN_FIELDS
+        and len(" ".join(value.split())) < MIN_WRITTEN_LENGTH
+    ):
+        raise ValueError(
+            f"Напишите хотя бы одно предложение от {MIN_WRITTEN_LENGTH} "
+            "символов."
+        )
+    if field not in FIELDS or not 0 < len(value) <= FIELDS[field][1]:
+        raise ValueError("Проверьте длину ответа.")
+    if field == "rate":
+        rate = normalize_manager_rate(value)
+        if rate is None:
+            raise ValueError("Введите сумму в рублях или две суммы через тире.")
+        return rate
+    if field == "instagram":
+        try:
+            return instagram_handle(value)
+        except ValueError as exc:
+            raise ValueError(
+                "Укажите ник или ссылку на свой Instagram."
+            ) from exc
+    if field in FIELD_CHOICES and value not in FIELD_CHOICES[field]:
+        raise ValueError("Выберите один из предложенных вариантов.")
+    if field == "phone" and not re.fullmatch(r"\+?[0-9]{7,15}", value):
+        raise ValueError("Поделитесь своим номером через кнопку.")
+    return value
+
+
+def missing_application_fields(answers: Mapping[str, str]) -> tuple[str, ...]:
+    return tuple(
+        field
+        for field in application_fields(answers)
+        if not answers.get(field)
+        or (field == "rate" and normalize_manager_rate(answers[field]) is None)
+        or (field == "location" and not answers.get("location_country"))
+        or (
+            field in WRITTEN_FIELDS
+            and len(" ".join(answers[field].split())) < MIN_WRITTEN_LENGTH
         )
     )

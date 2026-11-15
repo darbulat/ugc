@@ -11,7 +11,11 @@ from ugc_bot.bot.telegram.handlers.manager_application import (
     manager_application_answer,
     open_manager_application,
 )
-from ugc_bot.domain.manager_application import application_fields
+from ugc_bot.domain.manager_application import (
+    MIN_WRITTEN_LENGTH,
+    missing_application_fields,
+    normalize_manager_rate,
+)
 
 
 @pytest.mark.asyncio
@@ -39,6 +43,10 @@ async def test_manager_application_uses_private_telegram_profile(config):
     assert "ожидаемую ставку" in intro
     assert all(amount not in intro for amount in ("600", "1200", "1 200"))
     assert "продолжить" in message.answers[-1][1].inline_keyboard[0][0].text
+    assert (
+        message.answers[-1][1].inline_keyboard[1][0].text
+        == "Как устроена работа"
+    )
 
 
 @pytest.mark.asyncio
@@ -58,13 +66,19 @@ async def test_manager_phone_must_belong_to_telegram_sender(config):
     roles = SimpleNamespace(
         get_user=AsyncMock(return_value=SimpleNamespace(user_id=uid))
     )
-    answers = dict.fromkeys(application_fields({}), "Ответ")
     service = SimpleNamespace(
-        answer=AsyncMock(),
-        open=AsyncMock(
+        answer=AsyncMock(
             return_value={
                 "state": "draft",
-                "answers": answers,
+                "answers": {
+                    "name": "Кандидат",
+                    "work_format": "Фрилансер",
+                    "rate": "900",
+                    "weekly_capacity": "1–10",
+                    "location": "Казань",
+                    "location_country": "Россия",
+                    "phone": "+70000000000",
+                },
             }
         ),
     )
@@ -85,9 +99,8 @@ async def test_manager_phone_must_belong_to_telegram_sender(config):
     message.contact.user_id = 100
     await manager_application_answer(message, state, roles, config, service)
     service.answer.assert_awaited_once_with(uid, "phone", "+70000000000")
-    assert (
-        "Отправить заявку" in message.answers[-1][1].inline_keyboard[0][0].text
-    )
+    assert (await state.get_data())["field"] == "instagram"
+    assert "Instagram" in message.answers[-1]
 
 
 @pytest.mark.asyncio
@@ -105,16 +118,20 @@ async def test_manager_edits_submits_and_verifies_application(config):
         answers={"name": "Кандидат"},
     )
 
-    async def answer(_, field, value):
+    async def answer(_, field, value, *, location_context=None):
         row["answers"][field] = value
-
-    async def submit(_):
-        row["state"] = "submitted"
+        if location_context:
+            region, country = location_context
+            row["answers"].update(
+                location_region=region, location_country=country
+            )
+        if not missing_application_fields(row["answers"]):
+            row["state"] = "submitted"
+        return row
 
     service = SimpleNamespace(
         open=AsyncMock(return_value=row),
         answer=AsyncMock(side_effect=answer),
-        submit=AsyncMock(side_effect=submit),
         instagram_challenge=AsyncMock(return_value="MGR-123456"),
     )
     roles = SimpleNamespace(
@@ -122,6 +139,15 @@ async def test_manager_edits_submits_and_verifies_application(config):
     )
     callback = SimpleNamespace(
         message=message, from_user=user, answer=AsyncMock()
+    )
+    geocoder = SimpleNamespace(
+        resolve_city_identity=AsyncMock(
+            side_effect=[
+                None,
+                ("Казань", "Татарстан", "Россия"),
+                ("Алматы", None, "Казахстан"),
+            ]
+        )
     )
 
     async def tap(action):
@@ -132,10 +158,10 @@ async def test_manager_edits_submits_and_verifies_application(config):
 
     await tap("next")
     assert (await state.get_data())["field"] == "rate"
-    assert message.answers[-1][1].inline_keyboard[0][0].text == "Обсудим"
+    assert isinstance(message.answers[-1], str)
+    assert "бриф, подбор и отклики" in message.answers[-1]
     await tap("rate:0")
-    assert row["answers"]["rate"] == "Обсудим"
-    await tap("field:rate")
+    assert "rate" not in row["answers"]
     message.text = "900–1500"
     await manager_application_answer(message, state, roles, config, service)
     assert row["answers"]["rate"] == "900–1500"
@@ -168,8 +194,32 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("weekly_capacity:3")
     assert row["answers"]["weekly_capacity"] == "31–100"
     assert (await state.get_data())["field"] == "location"
-    message.text = "Россия, Казань"
-    await manager_application_answer(message, state, roles, config, service)
+    message.text = "?"
+    await manager_application_answer(
+        message, state, roles, config, service, geocoder
+    )
+    geocoder.resolve_city_identity.assert_not_awaited()
+    message.text = "Неизвестный"
+    await manager_application_answer(
+        message, state, roles, config, service, geocoder
+    )
+    assert "Город не найден" in message.answers[-1]
+    message.text = "казань"
+    await manager_application_answer(
+        message, state, roles, config, service, geocoder
+    )
+    assert "Казань, Татарстан, Россия" in message.answers[-1][0]
+    old_city = message.answers[-1][1].inline_keyboard[0][0].callback_data
+    message.text = "алматы"
+    await manager_application_answer(
+        message, state, roles, config, service, geocoder
+    )
+    await tap(old_city.removeprefix("mgr:"))
+    assert "location" not in row["answers"]
+    city = message.answers[-1][1].inline_keyboard[0][0].callback_data
+    await tap(city.removeprefix("mgr:"))
+    assert row["answers"]["location"] == "Алматы"
+    assert row["answers"]["location_country"] == "Казахстан"
     assert (await state.get_data())["field"] == "phone"
     assert "Поделиться номером" in message.answers[-1][1].keyboard[0][0].text
     await tap("edit")
@@ -189,46 +239,42 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("work_format:1")
     await tap("field:case")
     assert "какие проекты ведёт ваша команда" in message.answers[-1]
-    service.answer.side_effect = ValueError("too long")
-    message.text = "x" * 501
-    await manager_application_answer(message, state, roles, config, service)
-    assert "Проверьте формат" in message.answers[-1]
-    row["answers"].update(
-        {
-            field: "Ответ"
-            for field in application_fields(row["answers"])
-            if field not in row["answers"]
-        }
+    service.answer.side_effect = ValueError(
+        f"Напишите от {MIN_WRITTEN_LENGTH} символов."
     )
-    # An old review message can still be submitted after the release.
-    row["answers"]["coverage"] = "Казань, гастрономия"
-    del row["answers"]["work_format"]
+    message.text = "Коротко"
+    await manager_application_answer(message, state, roles, config, service)
+    assert f"от {MIN_WRITTEN_LENGTH} символов" in message.answers[-1]
+    assert (await state.get_data())["field"] == "case"
     service.answer.side_effect = answer
-    await tap("submit")
-    assert (await state.get_data())["field"] == "work_format"
-    service.submit.assert_not_awaited()
-    assert row["answers"]["coverage"] == "Казань, гастрономия"
-    del row["answers"]["reliability"]
-    await tap("work_format:0")
-    assert (await state.get_data())["field"] == "reliability"
-    assert "блогер отказался от участия" in message.answers[-1]
-    message.text = "Сразу предупрежу команду и согласую замену"
+    row["answers"].update(phone="+70000000000", instagram="candidate")
+    message.text = "Я сопровождал десять блогеров для кафе."
     await manager_application_answer(message, state, roles, config, service)
-    assert "Авторов в неделю · 31–100" in message.answers[-1][0]
-    assert "Действия при срыве · Сразу предупрежу" in message.answers[-1][0]
-    assert "Казань, гастрономия" not in message.answers[-1][0]
-    service.submit.side_effect = submit
-    await tap("next")
-    assert "Проверьте заявку" in message.answers[-1][0]
+    # An old review message must prompt for the new scenario before submission.
+    row["answers"]["coverage"] = "Казань, гастрономия"
+    row["answers"]["reliability"] = "Согласую замену."
+    await state.set_data({"field": "reliability"})
+    message.text = "Старый ответ"
+    await manager_application_answer(message, state, roles, config, service)
+    assert (await state.get_data())["field"] == "shortfall_plan"
     await tap("submit")
-    assert "Заявка на рассмотрении." in message.answers[-1][0]
-    assert (
-        message.answers[-1][1].inline_keyboard[0][0].text
-        == "Подтвердить Instagram"
+    assert (await state.get_data())["field"] == "shortfall_plan"
+    assert row["state"] == "draft"
+    assert row["answers"]["coverage"] == "Казань, гастрономия"
+    assert "30 блогеров" in message.answers[-1]
+    assert "25" in message.answers[-1]
+    message.text = (
+        "Уточню у команды сроки и подберу авторов через местные сообщества."
     )
-    del row["answers"]["weekly_capacity"]
+    await manager_application_answer(message, state, roles, config, service)
+    assert "Заявка на рассмотрении." in message.answers[-2][0]
+    assert [row[0].text for row in message.answers[-2][1].inline_keyboard] == [
+        "Подтвердить Instagram"
+    ]
+    assert "MGR-123456" in message.answers[-1]
+    assert not await state.get_data()
     await tap("submit")
-    service.submit.assert_awaited_once()
+    service.instagram_challenge.assert_awaited_once_with("candidate")
     await tap("next")
     assert "Заявка на рассмотрении." in message.answers[-1][0]
     await tap("instagram")
@@ -237,13 +283,29 @@ async def test_manager_edits_submits_and_verifies_application(config):
     row["instagram_verified_at"] = object()
     service.instagram_challenge.return_value = None
     await tap("instagram")
-    assert "Instagram подтверждён" in message.answers[-1][0]
+    assert "Instagram подтверждён" in message.answers[-1]
     row.update(state="clarify", decision_note="Уточните загрузку")
     await tap("open")
     assert "Уточните загрузку" in message.answers[-1][0]
     row["state"] = "approved"
     await tap("open")
     assert "/app" in message.answers[-1]
+
+
+@pytest.mark.parametrize(
+    ("value", "normalized"),
+    [
+        ("1500", "1500"),
+        ("1 500 ₽", "1500"),
+        ("950 - 1 500 ₽", "950–1500"),
+        ("800—1200", "800–1200"),
+        ("Обсудим", None),
+        ("2000–1000", None),
+        ("0", None),
+    ],
+)
+def test_manager_rate_accepts_only_positive_amount_or_range(value, normalized):
+    assert normalize_manager_rate(value) == normalized
 
 
 @pytest.mark.asyncio

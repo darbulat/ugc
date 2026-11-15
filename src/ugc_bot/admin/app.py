@@ -25,8 +25,8 @@ from sqladmin.pagination import Pagination
 from sqlalchemy import exists, func, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-from starlette.datastructures import URL
+from sqlalchemy.orm import Session, object_session
+from starlette.datastructures import URL, QueryParams
 from starlette.datastructures import UploadFile as StarletteUploadFile
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.requests import Request
@@ -77,12 +77,15 @@ from ugc_bot.admin.order_summary import (
 )
 from ugc_bot.admin.order_worklist import (
     MANAGER_ASSIGNMENT_GROUPS,
+    ORDER_CLOSED_MESSAGE,
+    ORDER_CLOSURE_REASON_LIMIT,
     ORDER_STATUS_LABELS,
     UNPAID_GROUP,
     ManagerChange,
     aging_unpaid_condition,
     assign_worklist_manager,
     change_order_worklist,
+    close_order_with_reason,
     search_orders,
     worklist_closure_reasons,
     worklist_conditions,
@@ -2165,6 +2168,7 @@ class OrderAdmin(ModelView, model=OrderModel):
     unpaid_age_hours = 24
     unpaid_reminders_enabled = False
     worklist_status_labels = ORDER_STATUS_LABELS
+    closure_reason_limit = ORDER_CLOSURE_REASON_LIMIT
     worklist_reason_labels = _DELAY_REASON_LABELS
     quick_filter_labels = _ORDER_QUICK_FILTER_LABELS
     inactivity_days = ORDER_INACTIVITY_DAYS
@@ -2278,6 +2282,16 @@ class OrderAdmin(ModelView, model=OrderModel):
             raise ValueError("Заказ удалён.")
         if data.get("status") == OrderStatus.DELETED:
             raise ValueError("Для удаления используйте кнопку «Удалить заказ».")
+        if (
+            not is_created
+            and data.get("status") == OrderStatus.CLOSED
+            and model.status != OrderStatus.CLOSED
+        ):
+            session = object_session(model)
+            assert session is not None
+            reason = (await request.form()).get("closure_reason")
+            close_order_with_reason(session, model, reason)
+            request.state.order_closed_manually = True
 
     async def update_model(self, request: Request, pk: str, data: dict):
         """Update order with banned content check and activation publishing."""
@@ -2571,16 +2585,15 @@ class OrderAdmin(ModelView, model=OrderModel):
         return await asyncio.to_thread(load)
 
     async def closure_reasons(self, rows: Sequence[OrderModel]):
+        order_ids = [
+            row.order_id for row in rows if row.status == OrderStatus.CLOSED
+        ]
+        if not order_ids:
+            return {}
+
         def load():
             with self.session_maker() as session:
-                return worklist_closure_reasons(
-                    session,
-                    [
-                        row.order_id
-                        for row in rows
-                        if row.status == OrderStatus.CLOSED
-                    ],
-                )
+                return worklist_closure_reasons(session, order_ids)
 
         return await asyncio.to_thread(load)
 
@@ -3516,6 +3529,14 @@ class EnumAwareAdmin(Admin):
         url = super().get_save_redirect_url(request, form, model_view, obj)
         if not isinstance(model_view, OrderAdmin) or request.method != "POST":
             return url
+        if form.get("save") == "Save" and getattr(
+            request.state, "order_closed_manually", False
+        ):
+            return _closed_order_list_url(
+                obj.order_id,
+                _order_return_url(request),
+                order_actions=getattr(request.state, "order_actions", None),
+            )
         if "return_to" not in request.query_params:
             return url
         if form.get("save") == "Save":
@@ -3593,8 +3614,12 @@ class EnumAwareAdmin(Admin):
         await _inject_order_quote_details(context, model_view, model)
         if isinstance(model_view, OrderAdmin):
             details = await model_view.worklist_details([model])
+            reasons = await model_view.closure_reasons([model])
+            order_actions = details.get(model.order_id, {})
+            request.state.order_actions = order_actions
             context.update(
-                order_actions=details.get(model.order_id),
+                order_actions=order_actions,
+                saved_closure_reason=reasons.get(model.order_id),
                 order_sections=ORDER_EDITOR_SECTIONS,
                 order_limits=ORDER_EDITOR_LIMITS,
                 order_hints=ORDER_EDITOR_HINTS,
@@ -3609,6 +3634,11 @@ class EnumAwareAdmin(Admin):
         form_data_post = await self._handle_form_data(request, model)
         form = Form(form_data_post)
         context["form"] = form
+        if isinstance(model_view, OrderAdmin):
+            reason = form_data_post.get("closure_reason")
+            context["closure_reason_value"] = (
+                reason if isinstance(reason, str) else ""
+            )
         valid = form.validate()
         if isinstance(model_view, OrderAdmin):
             for name, error in changed_text_errors(model, form.data).items():
@@ -3791,6 +3821,27 @@ def _register_order_worklist_manager_action(
         return _worklist_action_redirect(request, order_id, message)
 
 
+def _closed_order_list_url(
+    order_id: UUID, previous_url: str, *, order_actions: dict | None = None
+) -> str:
+    previous_group = QueryParams(URL(previous_url).query).get("group", "")
+    group = (
+        previous_group
+        if previous_group in {"repeat", "removed", "test", "all"}
+        else "closed"
+    )
+    if order_actions:
+        if order_actions.get("archived"):
+            group = "removed"
+        elif order_actions.get("is_test"):
+            group = "test"
+    return str(
+        URL(_ORDER_LIST_PATH).include_query_params(
+            group=group, search=str(order_id)
+        )
+    )
+
+
 def _register_order_worklist_action(
     app: FastAPI, auth: AdminAuth, engine: Engine, cache: AdminCache
 ) -> None:
@@ -3815,10 +3866,17 @@ def _register_order_worklist_action(
         }:
             raise HTTPException(status_code=404)
         await _require_action_token(request)
+        reason = (
+            (await request.form()).get("closure_reason")
+            if operation == "close"
+            else None
+        )
 
         def update() -> str:
             with Session(engine) as session, session.begin():
-                return change_order_worklist(session, order_id, operation)
+                return change_order_worklist(
+                    session, order_id, operation, closure_reason=reason
+                )
 
         if operation in {"pause", "resume"}:
             message = await _change_order_dispatch(order_id, operation)
@@ -3840,6 +3898,16 @@ def _register_order_worklist_action(
                 "orders:",
                 "charts:",
                 "advertisers:",
+            )
+        if operation == "close" and message == ORDER_CLOSED_MESSAGE:
+            request.session["order_worklist_message"] = message
+            previous_url = (
+                _order_return_url(request)
+                if "return_to" in request.query_params
+                else str(request.url)
+            )
+            return RedirectResponse(
+                _closed_order_list_url(order_id, previous_url), status_code=303
             )
         return _worklist_action_redirect(request, order_id, message)
 

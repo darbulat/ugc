@@ -669,3 +669,93 @@ def test_order_worklist_search_hide_and_restore(
         )
     ).to_be_visible()
     expect(page.get_by_label("Поиск", exact=True)).to_have_value(str(assign_id))
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+def test_manual_order_closure_requires_and_displays_reason(
+    admin_server: str, page, test_database
+):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    from playwright.sync_api import expect
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+    from ugc_bot.infrastructure.db.models import OrderModel, UserModel
+
+    if not test_database:
+        pytest.skip("Requires the isolated local browser test database")
+
+    engine = create_engine(test_database)
+    now = datetime.now(timezone.utc)
+    user_id, quick_id, editor_id = (uuid4() for _ in range(3))
+    try:
+        with Session(engine) as session, session.begin():
+            session.add(
+                UserModel(
+                    user_id=user_id,
+                    username="Тестовый заказчик",
+                    messenger_type=MessengerType.TELEGRAM,
+                    status=UserStatus.ACTIVE,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+            session.add_all(
+                OrderModel(
+                    order_id=order_id,
+                    advertiser_id=user_id,
+                    status=OrderStatus.ACTIVE,
+                    offer_text=title,
+                    product_link="https://example.test",
+                    price=100,
+                    bloggers_needed=1,
+                    created_at=now,
+                    updated_at=now,
+                )
+                for order_id, title in (
+                    (quick_id, "Проверка закрытия из списка"),
+                    (editor_id, "Проверка закрытия из редактора"),
+                )
+            )
+    finally:
+        engine.dispose()
+
+    _login(page, admin_server)
+    listing = f"{admin_server}/admin/order-model/list"
+    page.goto(f"{listing}?search={quick_id}")
+    row = page.get_by_role("row").filter(has_text="Проверка закрытия из списка")
+    close = row.get_by_role("button", name="Закрыть", exact=True)
+    close.click()
+    dialog = page.get_by_role("dialog", name="Закрыть заказ")
+    reason = dialog.get_by_label("Причина закрытия")
+    expect(reason).to_be_focused()
+    dialog.get_by_role("button", name="Закрыть заказ").click()
+    assert reason.evaluate("(field) => field.validity.valueMissing")
+    dialog.get_by_role("button", name="Отмена").click()
+    expect(dialog).to_be_hidden()
+    expect(row.get_by_text("Активный", exact=True)).to_be_visible()
+    close.click()
+    reason.fill("Клиент перенёс запуск")
+    dialog.get_by_role("button", name="Закрыть заказ").click()
+    expect(row.get_by_text("Закрытый", exact=True)).to_be_visible()
+    expect(row.get_by_text("Клиент перенёс запуск", exact=True)).to_be_visible()
+    expect(page).to_have_url(f"{listing}?group=closed&search={quick_id}")
+
+    page.goto(f"{admin_server}/admin/order-model/edit/{editor_id}")
+    reason = page.get_by_label("Причина закрытия")
+    expect(reason).to_be_hidden()
+    page.locator("#status").select_option("closed")
+    expect(reason).to_be_visible()
+    assert reason.evaluate("(field) => field.validity.valueMissing")
+    reason.fill("Клиент отменил заказ")
+    page.get_by_role("button", name="Сохранить изменения", exact=True).click()
+    expect(page.get_by_text("Клиент отменил заказ", exact=True)).to_be_visible()
+    page.goto(f"{listing}?group=closed&search={editor_id}")
+    row = page.get_by_role("row").filter(
+        has_text="Проверка закрытия из редактора"
+    )
+    expect(row.get_by_text("Клиент отменил заказ", exact=True)).to_be_visible()

@@ -6,7 +6,7 @@
   {% if message %}<p role="status">{{ message }}</p>{% endif %}
   {% set states = {'submitted':'На проверке','clarify':'Нужно уточнение','approved':'Одобрен','declined':'Отклонён','existing':'Уже назначался','busy':'Ведёт заказ','available':'Свободен'} %}
   <form method="get" class="card section">
-    <label for="manager-search">Имя, Telegram или город</label>
+    <label for="manager-search">Имя, Telegram, город или страна</label>
     <input class="form-control" id="manager-search" name="q" value="{{ q }}" maxlength="100">
     <label for="manager-status">Статус</label>
     <select class="form-select" id="manager-status" name="status">
@@ -31,7 +31,7 @@
   <article class="card section">
     {% set answers = row.answers or {} %}
     <h2>{{ answers.name or row.username or row.telegram }}</h2>
-    <p>{{ states.get(row.state, row.state) }} · {% if row.telegram %}@{{ row.telegram }} · {% endif %}{{ answers.location or 'Город не указан' }} · Активных заказов {{ row.orders }}</p>
+    <p>{{ states.get(row.state, row.state) }} · {% if row.telegram %}@{{ row.telegram }} · {% endif %}{{ answers.location or 'Город не указан' }}{% if answers.location_region and answers.location_region != answers.location %}, {{ answers.location_region }}{% endif %}{% if answers.location_country %}, {{ answers.location_country }}{% endif %} · Активных заказов {{ row.orders }}</p>
     {% if row.registered_by_admin %}<p>Добавлен администратором</p>{% endif %}
     {% if answers %}
     <p>Instagram {% if row.instagram_verified_at %}подтверждён{% else %}ожидает подтверждения{% endif %}{% if answers.work_format %} · {{ answers.work_format }}{% endif %}{% if answers.settlement %} · {{ answers.settlement }}{% endif %}{% if answers.rate %} · Ставка {{ answers.rate }}{% endif %}{% if answers.weekly_capacity %} · Авторов в неделю {{ answers.weekly_capacity }}{% endif %}</p>

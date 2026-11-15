@@ -18,3 +18,10 @@ document.querySelectorAll("[data-admin-manager-confirm]").forEach((form) => {
     }
   });
 });
+
+
+document.querySelectorAll("[data-order-close]").forEach((button) => {
+  const dialog = button.form.querySelector("dialog");
+  button.addEventListener("click", () => dialog.showModal());
+  dialog.querySelector("[data-order-close-cancel]").addEventListener("click", () => dialog.close());
+});

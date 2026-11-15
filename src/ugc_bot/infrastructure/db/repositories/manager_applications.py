@@ -7,11 +7,10 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
-from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.manager_application import (
-    FIELD_CHOICES,
-    FIELDS,
     application_fields,
+    missing_application_fields,
+    validate_application_answer,
 )
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
@@ -60,17 +59,13 @@ class ManagerApplications:
             .one()
         )
 
-    async def answer(self, user_id, field, value):
+    async def answer(self, user_id, field, value, *, location_context=None):
         now = datetime.now(timezone.utc)
-        value = value.strip()
-        if field not in FIELDS or not 0 < len(value) <= FIELDS[field][1]:
-            raise ValueError("Проверьте длину ответа.")
-        if field == "instagram":
-            value = instagram_handle(value)
-        if field in FIELD_CHOICES and value not in FIELD_CHOICES[field]:
-            raise ValueError("Выберите один из предложенных вариантов.")
-        if field == "phone" and not re.fullmatch(r"\+?[0-9]{7,15}", value):
-            raise ValueError("Поделитесь своим номером через кнопку.")
+        value = validate_application_answer(field, value)
+        if field == "location" and (
+            not location_context or not location_context[1]
+        ):
+            raise ValueError("Выберите город из найденного варианта.")
         async with self.transactions.transaction() as session:
             db = _session(session)
             row = await self._row(db, user_id, lock=True)
@@ -82,6 +77,11 @@ class ManagerApplications:
             answers = {**row["answers"], field: value}
             if field == "work_format" and value != "Другое":
                 answers.pop("work_format_details", None)
+            if field == "location":
+                region, country = location_context
+                answers.update(
+                    location_region=region or "", location_country=country
+                )
             values = dict(answers=answers, updated_at=now)
             if field == "instagram" and value != row["instagram"]:
                 proof = await db.scalar(
@@ -101,40 +101,24 @@ class ManagerApplications:
                     challenge=None,
                     challenge_until=None,
                 )
-            await db.execute(
+            if field != "coverage" and not missing_application_fields(answers):
+                values.update(
+                    state="submitted",
+                    submitted_at=now,
+                    decision_note=None,
+                )
+            result = await db.execute(
                 update(APPLICATIONS)
                 .where(APPLICATIONS.c.user_id == user_id)
                 .values(**values)
+                .returning(*APPLICATIONS.c)
             )
+            return result.mappings().one()
 
     @staticmethod
     def _editable(row):
         if row["state"] not in {"draft", "clarify", "declined"}:
             raise ValueError("Заявка уже на рассмотрении или одобрена.")
-
-    async def submit(self, user_id):
-        now = datetime.now(timezone.utc)
-        async with self.transactions.transaction() as session:
-            db = _session(session)
-            row = await self._row(db, user_id, lock=True)
-            if row["state"] == "submitted":
-                return
-            self._editable(row)
-            if (
-                not set(application_fields(row["answers"]))
-                <= row["answers"].keys()
-            ):
-                raise ValueError("Заполните пропущенные ответы.")
-            await db.execute(
-                update(APPLICATIONS)
-                .where(APPLICATIONS.c.user_id == user_id)
-                .values(
-                    state="submitted",
-                    submitted_at=now,
-                    updated_at=now,
-                    decision_note=None,
-                )
-            )
 
     async def instagram_challenge(self, user_id):
         now = datetime.now(timezone.utc)
