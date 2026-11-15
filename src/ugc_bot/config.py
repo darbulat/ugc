@@ -88,6 +88,7 @@ _FLAT_KEYS = {
     "instagram": [
         "INSTAGRAM_WEBHOOK_VERIFY_TOKEN",
         "INSTAGRAM_APP_SECRET",
+        "_INSTAGRAM_APP_SECRET",
         "ADMIN_INSTAGRAM_USERNAME",
         "INSTAGRAM_ACCESS_TOKEN",
         "INSTAGRAM_API_BASE_URL",
@@ -398,6 +399,9 @@ class InstagramConfig(BaseSettings):
         default="", alias="INSTAGRAM_WEBHOOK_VERIFY_TOKEN"
     )
     instagram_app_secret: str = Field(default="", alias="INSTAGRAM_APP_SECRET")
+    instagram_legacy_app_secret: SecretStr = Field(
+        default=SecretStr(""), alias="_INSTAGRAM_APP_SECRET", exclude=True
+    )
     admin_instagram_username: str = Field(
         default="usemycontent", alias="ADMIN_INSTAGRAM_USERNAME"
     )

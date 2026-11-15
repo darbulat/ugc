@@ -26,6 +26,7 @@ from ugc_bot.infrastructure.db.paid_selection_models import (
 from ugc_bot.infrastructure.db.replacement_models import TABLES as REPLACEMENTS
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
     invitations_available,
+    staff_consent_available,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
@@ -131,6 +132,20 @@ class SqlOrderSummary:
             if await invitations_available(db)
             else null()
         )
+        reported_contact = (
+            select(INVITES.c.id)
+            .where(
+                INVITES.c.item_id == item.paid_item_id,
+                INVITES.c.reported_at.is_not(None),
+                INVITES.c.consented_at.is_(None),
+                item.selection_state == "paid",
+                assignment.assignment_id.is_(None),
+            )
+            .correlate(item, assignment)
+            .scalar_subquery()
+            if await db.scalar(select(staff_consent_available()))
+            else null()
+        )
         return (
             (
                 await db.execute(
@@ -153,6 +168,7 @@ class SqlOrderSummary:
                         REPORTS.c.answer_due_at,
                         REPLACEMENTS["allocations"].c.replacement_id,
                         manual_contact.label("manual_contact_state"),
+                        reported_contact.label("reported_contact_id"),
                         delivered_at.label("contact_at"),
                         delivered_at.is_not(None).label("contact_delivered"),
                     )

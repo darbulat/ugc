@@ -348,6 +348,28 @@
     <button type="button" class="btn" id="btn-mgr-creators-in-offer" data-umc-primary="10">В заказе</button>
     <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">В резерве</button>
     <button type="button" class="btn btn-secondary" id="btn-mgr-creators-expensive">Дороже</button>
+    <button type="button" class="btn btn-secondary" id="mgr-invite-toggle">Добавить креатора</button>
+    <section id="mgr-invite-box" hidden>
+      <form id="mgr-invite-form">
+        <label>Позиция <select name="item_id" required></select></label>
+        <label>Instagram <input name="instagram" required maxlength="250" placeholder="@username"></label>
+        <label>Telegram <input name="telegram" maxlength="100" placeholder="@username"></label>
+        <label>Имя <input name="name" maxlength="80"></label>
+        <label>Согласие на участие и передачу контакта
+          <select name="consent_source">
+            <option value="">Запросить по ссылке</option>
+            <option value="instagram">Получено в Instagram Direct</option>
+            <option value="telegram">Получено в Telegram</option>
+            <option value="other">Получено в другой переписке</option>
+          </select>
+        </label>
+        <button type="submit" class="btn">Создать ссылку</button>
+      </form>
+      <input id="mgr-invite-link" aria-label="Ссылка для креатора" readonly hidden>
+      <button type="button" class="btn btn-secondary" id="mgr-copy-invite" hidden>Скопировать ссылку</button>
+      <p id="mgr-invite-status" role="status"></p>
+      <ul id="mgr-invite-history"></ul>
+    </section>
     <button type="button" class="btn btn-secondary" id="mgr-order-detail-back" data-umc-back>Назад</button>
   </div>
 
@@ -2414,11 +2436,80 @@
 
       function openManagerOrder(orderId, title, currencySymbol) {
         window._mgrCurrentOrderId = orderId;
+        document.getElementById('mgr-invite-box').hidden = true;
+        document.getElementById('mgr-invite-link').hidden = true;
+        document.getElementById('mgr-copy-invite').hidden = true;
+        document.getElementById('mgr-invite-history').replaceChildren();
+        document.getElementById('mgr-invite-form').reset();
         if (currencySymbol) window._mgrCurrentCurrencySymbol = currencySymbol;
         var titleEl = document.getElementById('mgr-order-detail-title');
         if (titleEl) titleEl.textContent = tx('mgr_order_detail_title') + ' ' + title;
         showScreen('screen-manager-order-detail');
       }
+
+      async function managerInvite(fields) {
+        const orderId = window._mgrCurrentOrderId;
+        const identity = window._me && window._me.user_id;
+        const form = document.getElementById('mgr-invite-form');
+        const status = document.getElementById('mgr-invite-status');
+        const link = document.getElementById('mgr-invite-link');
+        const history = document.getElementById('mgr-invite-history');
+        const copy = document.getElementById('mgr-copy-invite');
+        const button = form.querySelector('button');
+        button.disabled = true;
+        status.textContent = '';
+        try {
+          const data = await api('/manager/orders/' + orderId + '/creator-invites', fields);
+          if (window._mgrCurrentOrderId !== orderId || (window._me && window._me.user_id) !== identity) return;
+          form.elements.item_id.replaceChildren();
+          data.positions.forEach(function (item) {
+            form.elements.item_id.add(new Option('№' + item.ordinal, item.id));
+          });
+          history.replaceChildren();
+          data.invites.forEach(function (item) {
+            const row = document.createElement('li');
+            const state = item.consented_at ? 'Подтверждено в боте' :
+              Date.parse(item.expires_at) <= Date.now() ? 'Срок ссылки истёк' :
+              item.reported_at ? 'Согласие в переписке' : 'Ждём согласия';
+            row.textContent = '№' + item.ordinal + ' · @' + item.instagram + ' · ' + state;
+            history.append(row);
+          });
+          if (data.link) {
+            link.hidden = false;
+            copy.hidden = false;
+            link.value = data.link;
+            link.focus();
+            link.select();
+            status.textContent = 'Скопируйте ссылку. Она действует до 30 дней.';
+          } else if (!data.positions.length) {
+            status.textContent = 'Свободных оплаченных позиций нет.';
+          }
+        } catch (_) {
+          status.textContent = 'Проверьте контакты и доступность позиции.';
+        } finally {
+          button.disabled = !form.elements.item_id.options.length;
+        }
+      }
+      document.getElementById('mgr-invite-toggle').addEventListener('click', function () {
+        const box = document.getElementById('mgr-invite-box');
+        box.hidden = !box.hidden;
+        if (!box.hidden) managerInvite({});
+      });
+      document.getElementById('mgr-copy-invite').addEventListener('click', async function () {
+        const link = document.getElementById('mgr-invite-link');
+        const status = document.getElementById('mgr-invite-status');
+        try {
+          await navigator.clipboard.writeText(link.value);
+          status.textContent = 'Ссылка скопирована.';
+        } catch (_) {
+          link.focus();
+          link.select();
+        }
+      });
+      document.getElementById('mgr-invite-form').addEventListener('submit', function (event) {
+        event.preventDefault();
+        managerInvite(Object.fromEntries(new FormData(event.currentTarget)));
+      });
 
       function loadManagerCreators(orderId, filterType, offset) {
         var ul = document.getElementById('manager-creators-list');

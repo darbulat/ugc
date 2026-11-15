@@ -14,7 +14,7 @@
       <input id="invite-link" class="form-control" value="{{ link }}" readonly>
       <button class="admin-button" type="button" id="copy-invite-link">Скопировать ссылку</button>
       <span id="invite-copy-status" role="status"></span>
-      <p>Перешлите ссылку креатору. Она действует 7 дней.</p>
+      <p>Перешлите ссылку креатору. Она действует до 30 дней.</p>
       <script>
         document.getElementById('copy-invite-link').addEventListener('click', async function () {
           const link = document.getElementById('invite-link');
@@ -37,16 +37,36 @@
       <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
       <label for="invite-item">Свободная оплаченная позиция</label>
       <select name="item_id" id="invite-item" class="form-select mb-3">
-        {% for item in items %}<option value="{{ item.paid_item_id }}">№{{ item.ordinal }}{% if item.pending_invites %} · Ссылка уже создана{% endif %}</option>{% endfor %}
+        {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}{% if item.pending_invites %} · Ссылка уже создана{% endif %}</option>{% endfor %}
       </select>
       <label for="invite-instagram">Ник или ссылка на Instagram</label>
-      <input id="invite-instagram" class="form-control mb-3" name="instagram" maxlength="250" placeholder="@username" required>
+      <input id="invite-instagram" class="form-control mb-3" name="instagram" value="{{ instagram }}" maxlength="250" placeholder="@username" required>
+      <label for="invite-telegram">Telegram креатора</label>
+      <input id="invite-telegram" class="form-control mb-3" name="telegram" value="{{ telegram }}" maxlength="100" placeholder="@username">
+      <button type="submit" class="admin-button" name="operation" value="preview">Проверить в базе</button>
+      {% if known %}<p role="status">{{ known }}</p>{% endif %}
+      <label for="invite-name">Имя креатора для карточки</label>
+      <input id="invite-name" class="form-control mb-3" name="creator_name" value="{{ creator_name }}" maxlength="80">
       <label for="invite-manager">Кто ведёт креатора</label>
       <select id="invite-manager" name="manager_id" class="form-select mb-3">
         <option value="">Администратор</option>
-        {% for manager in managers %}<option value="{{ manager.user_id }}">{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
+        {% for manager in managers %}<option value="{{ manager.user_id }}"{% if manager.user_id == manager_id %} selected{% endif %}>{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
       </select>
       <p>Подтверждённый профиль из базы определится по Instagram. Внешний креатор зарегистрируется по ссылке. Контакт станет доступен заказчику после согласия креатора.</p>
+      <details class="mb-3">
+        <summary>Креатор уже согласился в личной переписке</summary>
+        <label><input type="checkbox" name="record_consent" value="1"{% if consent_source %} checked{% endif %}>
+          Креатор согласился участвовать в этом заказе и разрешил показать указанные контакты заказчику.
+        </label>
+        <label for="invite-source">Где получено согласие</label>
+        <select id="invite-source" name="consent_source" class="form-select">
+          <option value="">Выберите источник</option>
+          <option value="instagram"{% if consent_source == "instagram" %} selected{% endif %}>Instagram Direct</option>
+          <option value="telegram"{% if consent_source == "telegram" %} selected{% endif %}>Telegram</option>
+          <option value="other"{% if consent_source == "other" %} selected{% endif %}>Другая переписка</option>
+        </select>
+        <p>Контакт появится в итогах заказа. Подтверждение Instagram можно пройти позднее по той же ссылке.</p>
+      </details>
       <button class="admin-button admin-button--primary" type="submit">Создать ссылку</button>
     </form>
   </section>
@@ -57,7 +77,7 @@
     <h2>Приглашения</h2>
     <ul>
       {% for invite in invites %}
-      <li>№{{ invite.ordinal }} · @{{ invite.instagram }} · {{ 'Из базы' if invite.target_id else 'Внешний креатор' }} · {% if invite.consented_at %}Участие подтверждено{% elif invite.expires_at <= now %}Срок истёк{% else %}Ждём подтверждения · <input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}</li>
+      <li>№{{ invite.ordinal }} · @{{ invite.instagram }}{% if invite.telegram %} · Telegram @{{ invite.telegram }}{% endif %}{% if invite.reported_at %} · Согласие в переписке{% endif %} · {{ 'Из базы' if invite.target_id else 'Внешний креатор' }} · {% if invite.consented_at %}Участие подтверждено{% elif invite.expires_at <= now %}Срок истёк{% else %}Ждём подтверждения · <input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}</li>
       {% endfor %}
     </ul>
   </section>

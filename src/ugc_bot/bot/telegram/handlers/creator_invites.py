@@ -1,7 +1,9 @@
 """A private start link reuses the standard creator registration flow."""
 
+from logging import getLogger
+
 from aiogram import Router
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -16,6 +18,7 @@ from ugc_bot.domain.creator_invites import invite_id
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.domain.order_display import public_order_number
 
+logger = getLogger(__name__)
 router = Router()
 PREFIX = "oi:"
 
@@ -56,7 +59,15 @@ async def show_invite(message, user_role_service, service, payload):
             "Вы уже подтвердили участие в этом заказе.", parse_mode=None
         )
         return
+    if str(row["status"]) != "active":
+        await message.answer("Заказ закрыт. Отклик больше не принимается.")
+        return
     text, keyboard = invitation_text(row, payload)
+    if row.get("reported_at"):
+        text += (
+            "\n\nМенеджер уже отметил ваше согласие. "
+            "Здесь можно подтвердить участие через бота."
+        )
     await message.answer(text, reply_markup=keyboard, parse_mode=None)
 
 
@@ -70,6 +81,9 @@ ERRORS = {
     ),
     "creator_invite_position_unavailable": (
         "Позиция уже занята. Напишите менеджеру."
+    ),
+    "creator_invite_use_personal_link": (
+        "Подтвердите участие по персональной ссылке от менеджера."
     ),
     "creator_invite_already_interested": (
         "Ваш отклик на этот заказ уже есть. Напишите менеджеру."
@@ -99,9 +113,8 @@ async def accept_creator_invite(
         )
         return
     try:
-        await creator_invite_service.accept(
-            invite_id((callback.data or "")[len(PREFIX) :]), user.user_id
-        )
+        identity = invite_id((callback.data or "")[len(PREFIX) :])
+        await creator_invite_service.accept(identity, user.user_id)
     except ValueError as exc:
         await callback.answer(
             ERRORS.get(str(exc), "Приглашение недоступно. Напишите менеджеру."),
@@ -109,6 +122,26 @@ async def accept_creator_invite(
         )
         return
     await callback.answer("Участие подтверждено.", show_alert=True)
+    bot = callback.bot
+    if bot is not None:
+        notice = await creator_invite_service.claim_manager_notice(identity)
+        if notice is not None:
+            address, order_id, ordinal = notice
+            try:
+                await bot.send_message(
+                    chat_id=address,
+                    text=(
+                        "Креатор подтвердил участие в заказе "
+                        f"{public_order_number(order_id)}, позиция №{ordinal}. "
+                        "Откройте «Менеджер → Мои заказы» в приложении."
+                    ),
+                    parse_mode=None,
+                )
+            except (TelegramAPIError, TimeoutError) as exc:
+                logger.warning(
+                    "Manager confirmation notice not confirmed (%s)",
+                    type(exc).__name__,
+                )
 
 
 class CardContactTransport:

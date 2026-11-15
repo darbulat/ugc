@@ -15,6 +15,7 @@
     {{ nav_link('/admin/order-model/list', 'Заказы', (path,) if path in ('/admin/orders', '/admin/order-review') or path.startswith('/admin/orders/') else ()) }}
     {{ nav_link('/admin/users/advertisers', 'Заказчики') }}
     {{ nav_link('/admin/users/creators', 'Креаторы') }}
+    {{ nav_link('/admin/managers', 'Менеджеры') }}
     {{ nav_link('/admin/complaint-model/list', 'Жалобы') }}
     <details class="ugc-nav__group"{% if finance %} data-current{% endif %}>
       <summary>Финансы</summary>
