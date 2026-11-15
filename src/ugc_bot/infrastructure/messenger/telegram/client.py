@@ -1,6 +1,7 @@
 """Telegram messenger client implementation."""
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
@@ -33,6 +34,7 @@ TELEGRAM_API_RETRY_ATTEMPTS = 3
 TELEGRAM_API_RETRY_DELAY_SECONDS = 0.5
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 def is_user_blocked_bot(exc: BaseException) -> bool:
@@ -61,13 +63,17 @@ class TelegramMessengerClient(MessengerClient):
         *,
         retry_attempts: int = TELEGRAM_API_RETRY_ATTEMPTS,
         retry_delay_seconds: float = TELEGRAM_API_RETRY_DELAY_SECONDS,
+        on_confirmed_block: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         """Initialize with aiogram Bot and optional retry parameters."""
         self._bot = bot
         self._retry_attempts = retry_attempts
         self._retry_delay_seconds = retry_delay_seconds
+        self._on_confirmed_block = on_confirmed_block
 
-    async def _with_retry(self, coro_factory: Callable[[], Awaitable[T]]) -> T:
+    async def _with_retry(
+        self, coro_factory: Callable[[], Awaitable[T]], *, chat_id: str = ""
+    ) -> T:
         """Execute coroutine with retry on TelegramNetworkError only.
 
         Do not retry when user blocked the bot (TelegramForbiddenError or
@@ -77,7 +83,16 @@ class TelegramMessengerClient(MessengerClient):
         for attempt in range(1, self._retry_attempts + 1):
             try:
                 return await coro_factory()
-            except (TelegramForbiddenError, TelegramBadRequest):
+            except (TelegramForbiddenError, TelegramBadRequest) as exc:
+                if (
+                    self._on_confirmed_block is not None
+                    and chat_id.isdecimal()
+                    and "bot was blocked by the user" in exc.message.lower()
+                ):
+                    try:
+                        await self._on_confirmed_block(chat_id)
+                    except Exception:
+                        logger.error("Telegram send refusal was not saved")
                 raise
             except TelegramNetworkError as exc:
                 last_exc = exc
@@ -106,7 +121,8 @@ class TelegramMessengerClient(MessengerClient):
                 reply_markup=_build_markup(keyboard),
                 parse_mode=parse_mode,
                 disable_web_page_preview=disable_preview,
-            )
+            ),
+            chat_id=chat_id,
         )
 
     async def send_photo(
@@ -126,7 +142,8 @@ class TelegramMessengerClient(MessengerClient):
                 caption=caption,
                 reply_markup=_build_markup(keyboard),
                 parse_mode=parse_mode,
-            )
+            ),
+            chat_id=chat_id,
         )
 
     async def edit_text(

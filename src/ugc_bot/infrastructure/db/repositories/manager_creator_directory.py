@@ -15,6 +15,9 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
     UserReferralBindingModel,
 )
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    creator_directory_status,
+)
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
@@ -29,7 +32,7 @@ def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
         else inviter.max_id
     )
     return (
-        select(UserModel, creator)
+        select(UserModel, creator, creator_directory_status().label("status"))
         .select_from(binding)
         .join(inviter, inviter.user_id == binding.referrer_user_id)
         .join(UserModel, UserModel.user_id == binding.referred_user_id)
@@ -54,7 +57,9 @@ async def invited_creator_page(
 ):
     query = _invited_creators_query(principal)
     if bot_unavailable:
-        query = query.where(UserModel.status == UserStatus.BOT_BLOCKED)
+        query = query.where(
+            creator_directory_status() == UserStatus.BOT_BLOCKED
+        )
     term = q.strip().removeprefix("@").strip()
     if term:
         query = query.where(

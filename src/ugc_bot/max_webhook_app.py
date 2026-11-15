@@ -8,6 +8,7 @@ import hmac
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 
 import aiohttp
@@ -47,7 +48,8 @@ from ugc_bot.config import load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
-    record_bot_unavailable,
+    record_bot_availability,
+    record_telegram_send_block,
 )
 from ugc_bot.infrastructure.messenger.max.adapter import MaxEventAdapter
 from ugc_bot.infrastructure.messenger.max.client import (
@@ -118,7 +120,15 @@ async def _lifespan(app: FastAPI):
     event_adapter = MaxEventAdapter()
 
     telegram_bot = Bot(token=config.bot.bot_token)
-    telegram_messenger_client = TelegramMessengerClient(telegram_bot)
+    recorder = bot_services.get("transaction_manager")
+    telegram_messenger_client = TelegramMessengerClient(
+        telegram_bot,
+        on_confirmed_block=(
+            partial(record_telegram_send_block, recorder)
+            if recorder is not None
+            else None
+        ),
+    )
 
     app.state.config = config
     app.state.redis = redis
@@ -205,7 +215,7 @@ async def _record_bot_stopped(data: dict, bot_services: dict) -> JSONResponse:
     except (OverflowError, OSError, ValueError):
         return JSONResponse({"ok": False}, status_code=400)
     try:
-        await record_bot_unavailable(
+        await record_bot_availability(
             bot_services["transaction_manager"],
             platform=MessengerType.MAX,
             external_id=str(user_id),
