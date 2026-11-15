@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from ugc_bot.admin.dashboard_service import (
@@ -21,6 +21,7 @@ from ugc_bot.domain.enums import (
     OrderStatus,
     UserStatus,
 )
+from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
 from ugc_bot.infrastructure.db.models import (
     AuditLogModel,
     BloggerProfileModel,
@@ -139,6 +140,25 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     accepted=accepted,
                     in_offer=in_offer,
                     created_at=now - timedelta(days=days),
+                )
+                for oid, uid, accepted, in_offer, days in (
+                    (order, both, True, True, 2),
+                    (duplicate_order, both, True, True, 1),
+                    (order, tg_only, None, False, 2),
+                    (order, pending, False, False, 2),
+                    (order, max_only, True, False, 40),
+                    (duplicate_order, older, True, True, 100),
+                    (duplicate_order, max_only, True, True, 100),
+                    (order, deleted, True, True, 1),
+                )
+            ],
+        )
+        db.execute(
+            insert(OFFER_CHANNELS),
+            [
+                dict(
+                    order_id=oid,
+                    blogger_id=uid,
                     telegram_sent_at=now - timedelta(days=days)
                     if (oid, uid) == (order, both)
                     else None,
@@ -152,15 +172,12 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     if (oid, uid) in ((order, both), (order, pending))
                     else None,
                 )
-                for oid, uid, accepted, in_offer, days in (
-                    (order, both, True, True, 2),
-                    (duplicate_order, both, True, True, 1),
-                    (order, tg_only, None, False, 2),
-                    (order, pending, False, False, 2),
-                    (order, max_only, True, False, 40),
-                    (duplicate_order, older, True, True, 100),
-                    (duplicate_order, max_only, True, True, 100),
-                    (order, deleted, True, True, 1),
+                for oid, uid, days in (
+                    (order, both, 2),
+                    (duplicate_order, both, 1),
+                    (order, pending, 2),
+                    (order, max_only, 40),
+                    (duplicate_order, max_only, 100),
                 )
             ],
         )
@@ -262,10 +279,12 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
         await dispatch_repo.record_response(
             order, tg_only, True, True, channel=MessengerType.MAX
         )
-        saved = {
-            row.blogger_id: row
-            for row in await dispatch_repo.list_responses_by_order(order)
-        }[tg_only]
+        statement = select(OFFER_CHANNELS).where(
+            OFFER_CHANNELS.c.order_id == order,
+            OFFER_CHANNELS.c.blogger_id == tg_only,
+        )
+        with financial_pg_engine.connect() as db:
+            saved = db.execute(statement).one()
         assert saved.max_sent_at and saved.telegram_sent_at
         assert saved.response_at and saved.response_channel == MessengerType.MAX
         await dispatch_repo.record_sent(
@@ -274,13 +293,14 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
         await dispatch_repo.record_response(
             order, tg_only, True, True, channel=MessengerType.TELEGRAM
         )
-        repeated = {
-            row.blogger_id: row
-            for row in await dispatch_repo.list_responses_by_order(order)
-        }[tg_only]
-        assert repeated.max_sent_at == saved.max_sent_at
-        assert repeated.response_channel == saved.response_channel
-        assert repeated.response_at == saved.response_at
-        assert repeated.in_offer
+        with financial_pg_engine.connect() as db:
+            repeated = db.execute(statement).one()
+            assert db.scalar(
+                select(OfferDispatchModel.in_offer).where(
+                    OfferDispatchModel.order_id == order,
+                    OfferDispatchModel.blogger_id == tg_only,
+                )
+            )
+        assert repeated == saved
     finally:
         await engine.dispose()

@@ -19,6 +19,10 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    OFFER_CHANNELS,
+    REGISTRATION_CHANNELS,
+)
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     InteractionModel,
@@ -212,25 +216,34 @@ def _activity_conditions(
         dispatch.accepted.is_not(None), in_window(response_at)
     )
     activity = _creator_order_activity()
-    max_offers = offers.where(in_window(dispatch.max_sent_at))
-    telegram_offers = offers.where(in_window(dispatch.telegram_sent_at))
+    channels = OFFER_CHANNELS.c
+    tracked = (
+        select(channels.blogger_id)
+        .join(OrderModel, OrderModel.order_id == channels.order_id)
+        .where(*business_order_conditions())
+    )
+    max_offers = tracked.where(in_window(channels.max_sent_at))
+    telegram_offers = tracked.where(in_window(channels.telegram_sent_at))
+    registration = REGISTRATION_CHANNELS.c
     user_id = UserModel.user_id
     return {
         "offered_via_max": user_id.in_(max_offers),
         "max_only_offer": user_id.in_(
-            max_offers.where(dispatch.telegram_sent_at.is_(None))
+            max_offers.where(channels.telegram_sent_at.is_(None))
         ),
         "max_only_reached": user_id.in_(max_offers)
         & user_id.not_in(telegram_offers),
         "responded_via_max": user_id.in_(
-            offers.where(
-                dispatch.response_channel == MessengerType.MAX,
-                in_window(dispatch.response_at),
+            tracked.where(
+                channels.response_channel == MessengerType.MAX,
+                in_window(channels.response_at),
             )
         ),
-        "registered_via_max": (
-            (BloggerProfileModel.registration_channel == MessengerType.MAX)
-            & in_window(BloggerProfileModel.registration_completed_at)
+        "registered_via_max": user_id.in_(
+            select(registration.user_id).where(
+                registration.channel == MessengerType.MAX,
+                in_window(registration.completed_at),
+            )
         ),
         "offered": UserModel.user_id.in_(
             offers.where(in_window(dispatch.created_at))

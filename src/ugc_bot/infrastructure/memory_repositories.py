@@ -1108,15 +1108,6 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
                 accepted=None,
                 in_offer=False,
             )
-        row = self._dispatches[key]
-        if channel is MessengerType.TELEGRAM and row.telegram_sent_at is None:
-            self._dispatches[key] = replace(
-                row, telegram_sent_at=datetime.now(timezone.utc)
-            )
-        if channel is MessengerType.MAX and row.max_sent_at is None:
-            self._dispatches[key] = replace(
-                row, max_sent_at=datetime.now(timezone.utc)
-            )
 
     async def record_response(
         self,
@@ -1136,13 +1127,8 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         now = datetime.now(timezone.utc)
         if key in self._dispatches:
             d = self._dispatches[key]
-            first_response = d.accepted is None and channel is not None
             self._dispatches[key] = replace(
                 d,
-                response_channel=channel
-                if first_response
-                else d.response_channel,
-                response_at=now if first_response else d.response_at,
                 updated_at=now,
                 accepted=accepted,
                 in_offer=in_offer,

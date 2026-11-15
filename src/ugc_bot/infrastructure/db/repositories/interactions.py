@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import String, and_, bindparam, case, cast, func, select, update
+from sqlalchemy import String, and_, bindparam, cast, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -23,6 +23,10 @@ from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     RejectionReason,
+)
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    OFFER_CHANNELS,
+    remember_offer_response,
 )
 from ugc_bot.infrastructure.db.models import (
     InteractionModel,
@@ -53,26 +57,46 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     ) -> None:
         """Save the first successful send on this channel for the offer."""
         async with _resolve_session(self.session_factory, session) as db:
-            table = OfferDispatchModel.__table__
+            if channel is None:
+                await db.merge(
+                    OfferDispatchModel(
+                        order_id=order_id, blogger_id=blogger_id, in_offer=False
+                    )
+                )
+                return
             insert = (
                 sqlite_insert
                 if db.get_bind().dialect.name == "sqlite"
                 else pg_insert
             )
-            stmt = insert(OfferDispatchModel).values(
-                order_id=order_id, blogger_id=blogger_id, in_offer=False
-            )
-            key = (table.c.order_id, table.c.blogger_id)
-            if channel is None:
-                stmt = stmt.on_conflict_do_nothing(index_elements=key)
-            else:
-                column = table.c[f"{channel.value}_sent_at"]
-                sent_at = datetime.now(timezone.utc)
-                stmt = stmt.values({column.key: sent_at}).on_conflict_do_update(
-                    index_elements=key,
-                    set_={column.key: func.coalesce(column, sent_at)},
+            dispatch = OfferDispatchModel.__table__
+            await db.execute(
+                insert(OfferDispatchModel)
+                .values(
+                    order_id=order_id, blogger_id=blogger_id, in_offer=False
                 )
-            await db.execute(stmt)
+                .on_conflict_do_nothing(
+                    index_elements=(dispatch.c.order_id, dispatch.c.blogger_id)
+                )
+            )
+            column = OFFER_CHANNELS.c[f"{channel.value}_sent_at"]
+            sent_at = datetime.now(timezone.utc)
+            await db.execute(
+                insert(OFFER_CHANNELS)
+                .values(
+                    order_id=order_id,
+                    blogger_id=blogger_id,
+                    **{column.key: sent_at},
+                )
+                .on_conflict_do_update(
+                    index_elements=(
+                        OFFER_CHANNELS.c.order_id,
+                        OFFER_CHANNELS.c.blogger_id,
+                    ),
+                    set_={column.key: sent_at},
+                    where=column.is_(None),
+                )
+            )
 
     async def record_response(
         self,
@@ -92,25 +116,27 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             self.session_factory, session
         ) as db_session:
             now = datetime.now(timezone.utc)
-            first_response = OfferDispatchModel.accepted.is_(None)
-            attribution = {}
+            key = (
+                OfferDispatchModel.order_id == order_id,
+                OfferDispatchModel.blogger_id == blogger_id,
+            )
             if channel is not None:
-                attribution = {
-                    "response_channel": case(
-                        (first_response, channel.value),
-                        else_=OfferDispatchModel.response_channel,
-                    ),
-                    "response_at": case(
-                        (first_response, now),
-                        else_=OfferDispatchModel.response_at,
-                    ),
-                }
+                previous = (
+                    await db_session.execute(
+                        select(OfferDispatchModel.accepted)
+                        .where(*key)
+                        .with_for_update()
+                    )
+                ).one_or_none()
+                if previous is not None and previous[0] is None:
+                    await db_session.execute(
+                        remember_offer_response(
+                            order_id, blogger_id, channel, now
+                        )
+                    )
             await db_session.execute(
                 update(OfferDispatchModel)
-                .where(
-                    OfferDispatchModel.order_id == order_id,
-                    OfferDispatchModel.blogger_id == blogger_id,
-                )
+                .where(*key)
                 .values(
                     accepted=accepted,
                     in_offer=in_offer,
@@ -118,7 +144,6 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                     manager_id=manager_id,
                     rejection_reason=rejection_reason,
                     desired_price=desired_price,
-                    **attribution,
                 )
             )
 
@@ -697,12 +722,6 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         if model.rejection_reason
         else None,
         desired_price=model.desired_price,
-        telegram_sent_at=model.telegram_sent_at,
-        max_sent_at=model.max_sent_at,
-        response_channel=MessengerType(model.response_channel)
-        if model.response_channel
-        else None,
-        response_at=model.response_at,
     )
 
 

@@ -16,6 +16,9 @@ from ugc_bot.infrastructure.db.creator_invite_models import (
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
 )
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    remember_offer_response,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -483,10 +486,6 @@ class SqlAlchemyPaidSelectionRepository:
         dispatch_values = dict(
             accepted=True, in_offer=accepted, manager_id=manager, updated_at=at
         )
-        if channel is not None:
-            dispatch_values.update(
-                response_channel=channel.value, response_at=at
-            )
         if dispatch is None:
             await db.execute(
                 insert(OfferDispatchModel).values(
@@ -508,6 +507,11 @@ class SqlAlchemyPaidSelectionRepository:
                     OfferDispatchModel.blogger_id == creator_id,
                 )
                 .values(**dispatch_values)
+            )
+
+        if channel is not None:
+            await db.execute(
+                remember_offer_response(order_id, creator_id, channel, at)
             )
 
     @staticmethod

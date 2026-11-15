@@ -219,11 +219,6 @@ class BloggerProfileModel(Base):
         ),
     )
 
-    registration_channel: Mapped[str | None] = mapped_column(String(8))
-    registration_completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
-
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("users.user_id", ondelete="CASCADE"),
@@ -574,17 +569,6 @@ class OfferDispatchModel(Base):
     """ORM model for tracking offer dispatches and responses."""
 
     __tablename__ = "offer_dispatches"
-
-    telegram_sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
-    max_sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
-    response_channel: Mapped[str | None] = mapped_column(String(8))
-    response_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True)
-    )
 
     order_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
