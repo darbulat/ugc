@@ -6,6 +6,12 @@
 {% macro deadline_duration(days) -%}
   {% if days < 1 %}меньше дня{% else %}{{ day_count(days) }}{% endif %}
 {%- endmacro %}
+{% macro cohort_rate(rate) -%}
+  <span class="metric__values">
+    <strong class="metric__value">{{ ('%.1f'|format(rate.percent)|replace('.', ',') ~ '%') if rate.percent is not none else '—' }}</strong>
+    <span class="metric__delta">{{ rate.converted }} из {{ rate.eligible }}</span>
+  </span>
+{%- endmacro %}
 {% block content %}
   {% set picked_count = payload.get("picked_creators_count", 0) %}
   {% set picked_target = payload.get("picked_creators_target", 1000) %}
@@ -303,6 +309,49 @@
       </article>
     </div>
   </section>
+
+  {% set cohorts = payload.get('cohort_metrics') %}
+  {% if cohorts %}
+  <section class="section" aria-labelledby="cohorts-heading">
+    <div class="page-heading">
+      <h2 id="cohorts-heading">Активация и повторные заказы</h2>
+      <span class="muted">За всё время</span>
+    </div>
+    <div class="grid dashboard-metrics">
+      <article class="card">
+        <h3>Креаторы</h3>
+        <div class="metric">
+          <span class="metric__label">Первый заказ за 30 дней</span>
+          {{ cohort_rate(cohorts.creator_activation) }}
+        </div>
+        <p class="muted">Считаем первые 30 дней после регистрации и берём креаторов, у которых прошёл весь срок. Первый заказ засчитывается при принятии оффера в пределах лимита или старте платного сотрудничества. Даты старых откликов приблизительные.</p>
+      </article>
+      <article class="card">
+        <h3>Заказчики</h3>
+        <div class="metric">
+          <span class="metric__label">Первая оплата за 30 дней</span>
+          {{ cohort_rate(cohorts.customer_activation) }}
+        </div>
+        <p class="muted">Считаем первые 30 дней после регистрации и берём заказчиков, у которых прошёл весь срок.</p>
+      </article>
+      <article class="card">
+        <h3>Повторные заказы</h3>
+        <div class="metric">
+          <span class="metric__label">Оплатили два заказа или больше</span>
+          <span class="metric__values">
+            <strong class="metric__value">{{ cohorts.repeat_customers }}</strong>
+            <span class="metric__delta">из {{ cohorts.paying_customers }} плативших</span>
+          </span>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Оплатили второй за 90 дней</span>
+          {{ cohort_rate(cohorts.customer_repeat_90d) }}
+        </div>
+        <p class="muted">Для доли учитываются заказчики, чья первая оплата была 90 дней назад или раньше.</p>
+      </article>
+    </div>
+  </section>
+  {% endif %}
 
   <section class="section dashboard-charts-section" aria-labelledby="charts-heading">
     <div class="page-heading">

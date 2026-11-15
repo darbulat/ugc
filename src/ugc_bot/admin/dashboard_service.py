@@ -17,6 +17,7 @@ from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.admin.business_metrics import (
     admin_launches,
+    cohort_metrics,
     count_picked_creators,
     creator_metrics,
     order_conversion,
@@ -300,6 +301,9 @@ class AdminDashboardService:
             launches = await admin_launches(
                 session, window.current_start, window.current_end
             )
+            t0 = time.perf_counter()
+            cohorts = await cohort_metrics(session, datetime.now(timezone.utc))
+            timings["cohort_metrics"] = (time.perf_counter() - t0) * 1000
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -416,6 +420,7 @@ class AdminDashboardService:
             "picked_creators_count": picked_creators_count,
             "picked_creators_target": PICKED_CREATORS_TARGET,
             "creator_metrics": creators,
+            "cohort_metrics": cohorts,
             "order_conversion": conversion,
             "previous_conversion": previous_conversion,
             "pending_payouts": pending_payouts,

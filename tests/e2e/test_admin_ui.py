@@ -94,9 +94,16 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     assert page.get_by_text("Участвовали за всё время").is_visible()
     assert page.get_by_text("Участвовали за период").count() == 0
 
+    cohorts = page.get_by_role("region", name="Активация и повторные заказы")
+    assert cohorts.get_by_text("Первый заказ за 30 дней").is_visible()
+    assert cohorts.get_by_text("Первая оплата за 30 дней").is_visible()
+    assert cohorts.get_by_text("Оплатили два заказа или больше").is_visible()
+    assert cohorts.get_by_text("Оплатили второй за 90 дней").is_visible()
+
     page.get_by_role("navigation", name="Период аналитики").get_by_role(
         "link", name="7 дней"
     ).click()
+    assert cohorts.get_by_text("За всё время").is_visible()
     assert page.get_by_text("Участвовали впервые").is_visible()
     assert page.get_by_text("Участвовали повторно").is_visible()
     page.get_by_text("Как считаем участие").click()
