@@ -75,6 +75,9 @@ from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
     validate_init_data_for_platform,
 )
+from ugc_bot.miniapp.business_order_prompt_api import (
+    router as business_order_prompt_router,
+)
 from ugc_bot.miniapp.campaign_analytics_api import (
     create_campaign_analytics_router,
 )
@@ -647,6 +650,7 @@ router.include_router(create_subscription_router(resolve_financial_principal))
 router.include_router(create_checkout_router(_checkout_actor))
 router.include_router(create_order_intake_router(resolve_financial_principal))
 router.include_router(create_order_image_router(resolve_financial_principal))
+router.include_router(business_order_prompt_router)
 router.include_router(create_order_support_router(resolve_financial_principal))
 router.include_router(create_service_lead_router(resolve_financial_principal))
 router.include_router(
@@ -1463,6 +1467,7 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
                 user_role_service=user_role_service,
                 content_moderation=content_moderation_service,
                 admin_base_url=config.admin.admin_base_url,
+                webhook_base_url=config.webhook.webhook_base_url,
                 currency_symbol=config.market.currency_symbol,
                 country_repo=country_repo,
                 advertiser_profile=advertiser,

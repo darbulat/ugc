@@ -391,7 +391,12 @@ async def test_requested_facts_cannot_be_rewritten_or_deleted(
 async def test_requested_targeting_reaches_real_order_matcher_and_replay(
     intake_env,
 ):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from tests.e2e.miniapp_helpers import generate_init_data
     from ugc_bot.domain.order_targeting import OrderTargeting
+    from ugc_bot.miniapp.business_order_prompt_api import router
 
     env = intake_env
     intake_service = service(env)
@@ -403,6 +408,7 @@ async def test_requested_targeting_reaches_real_order_matcher_and_replay(
             min_age=18,
             max_age=40,
             gender="f",
+            platforms=("instagram", "tiktok"),
         ),
     )
     result = await intake_service.create(request)
@@ -415,6 +421,29 @@ async def test_requested_targeting_reaches_real_order_matcher_and_replay(
         await intake_service.create(
             replace(request, targeting=OrderTargeting(min_followers=5000))
         )
+
+    app = FastAPI()
+    app.include_router(router)
+    app.state.config = env["config"]
+    app.state.dispatcher = {
+        **env["container"].build_bot_services(),
+        "container": env["container"],
+    }
+    signed = generate_init_data(
+        env["config"].bot.bot_token, int(env["admin"].telegram_id), "test_admin"
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://local.test"
+    ) as client:
+        export = await client.post(
+            "/orders/gpt-copy",
+            json={"init_data": signed, "order_id": str(result.order_id)},
+        )
+    assert export.status_code == 200
+    prompt = export.json()["prompt"]
+    assert "Площадки — Instagram, TikTok" in prompt
+    assert "Сопровождение менеджером — не требуется" in prompt
+    assert request.contact_reference not in prompt
 
 
 @pytest.mark.asyncio
