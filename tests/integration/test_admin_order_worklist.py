@@ -1398,12 +1398,19 @@ def test_closed_card_records_and_updates_reason_for_repeat_order(worklist):
     card = f"/admin/orders/{order_id}"
     action = card + "/closure-reason"
     repeat_url = f"{LIST}?group=repeat"
+    missing_url = f"{LIST}?group=missing-reason"
     assert client.post(action).status_code == 401
     _login(client)
     assert client.post(action).status_code == 403
     repeat = client.get(repeat_url)
     assert "Причина закрытия не записана." in repeat.text
     assert "Указать причину" in repeat.text
+    missing = client.get(missing_url)
+    assert missing.status_code == 200
+    assert "Dispatch example" in missing.text
+    assert "Указать причину" in missing.text
+    assert "Closed example" not in missing.text
+    assert "Active example" not in missing.text
     token = re.search(r'name="csrf_token" value="([^"]+)"', repeat.text)[1]
     page = client.get(card, params={"return_to": repeat_url})
     assert 'name="closure_reason"' in page.text
@@ -1415,7 +1422,9 @@ def test_closed_card_records_and_updates_reason_for_repeat_order(worklist):
             data={"csrf_token": token, "closure_reason": reason},
         )
 
-    assert "Укажите причину закрытия." in save("  ").text
+    invalid = save("  ")
+    assert "Укажите причину закрытия." in invalid.text
+    assert 'role="alert"' in invalid.text
     assert "не длиннее 500 символов" in save("я" * 501).text
     assert (
         "только для закрытого заказа"
@@ -1434,8 +1443,13 @@ def test_closed_card_records_and_updates_reason_for_repeat_order(worklist):
     result = save(f" {first} ")
     assert result.status_code == 200 and result.url.path == card
     assert result.url.params["return_to"] == repeat_url
+    assert result.url.fragment == "order-closure"
     assert "Причина закрытия сохранена." in result.text and first in result.text
+    assert 'role="status"' in result.text
+    assert "Вернуться к списку" in result.text
+    assert "Причина закрытия сохранена." not in client.get(card).text
     assert first in client.get(repeat_url).text
+    assert "Dispatch example" not in client.get(missing_url).text
     assert "Причина закрытия сохранена." in save(second).text
     save(second)
     repeated = client.get(repeat_url).text

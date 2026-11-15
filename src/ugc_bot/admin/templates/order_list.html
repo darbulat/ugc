@@ -4,8 +4,10 @@
 <link rel="stylesheet" href="{{ admin_asset(request, 'order-worklist.css') }}">
 {% endblock %}
 {% block content %}
+{% set groups = [('work', 'В работе'), ('repeat', 'Повторные'), ('closed', 'Закрытые')] %}
+{% set more_groups = {'unpaid': 'Давно без оплаты', 'missing-reason': 'Без причины закрытия', 'check-test': 'Проверить на тест', 'test': 'Тестовые', 'hidden': 'Скрытые', 'removed': 'Удалённые'} %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'check-test', 'removed', 'repeat', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ['all', 'work', 'repeat', 'closed'] and group not in more_groups %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
 {% set quick_filters = model_view.quick_filters(request) %}
 {% set advertiser_id = model_view.customer_filter(request) %}
@@ -14,10 +16,15 @@
 {% set manager_actions = group in model_view.manager_assignment_groups %}
 {% set csrf_token = model_view.worklist_csrf_token(request) %}
 {% set message = request.session.pop('order_worklist_message', '') %}
+{% macro group_link(key, label, class_name) %}
+  <a class="{{ class_name }}{% if group == key %} active{% endif %}"
+     {% if group == key %}aria-current="page"{% endif %}
+     href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'status', 'sortBy', 'sort'] if key == 'unpaid' else ['page', 'company', 'companyPage', 'status']).include_query_params(group=key) }}">{{ label }}</a>
+{% endmacro %}
 <section class="col-12 order-worklist">
   <div class="card">
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
-      <h2 class="card-title me-auto">{{ 'Повторные заявки' if group == 'repeat' else 'Заказы заказчика' if advertiser_id else 'Заказы' }}</h2>
+      <h2 class="card-title me-auto">{{ 'Повторные заявки' if group == 'repeat' else 'Закрытые заказы без причины' if group == 'missing-reason' else 'Заказы заказчика' if advertiser_id else 'Заказы' }}</h2>
       {% if model_view.can_export %}
         {% for export_type in model_view.export_types %}
         <a class="btn btn-sm btn-outline-secondary"
@@ -40,15 +47,19 @@
           <a class="btn btn-sm btn-outline-secondary" href="{{ request.url.remove_query_params(['advertiser_id', 'page']) }}">Снять фильтр заказчика</a>
         </div>
       {% endif %}
-      <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('check-test', 'Проверить на тест'), ('removed', 'Удалённые'), ('repeat', 'Повторные'), ('all', 'Все')] %}
-        <a class="nav-link{% if group == key %} active{% endif %}"
-           {% if group == key %}aria-current="page"{% endif %}
-           href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'status', 'sortBy', 'sort'] if key == 'unpaid' else ['page', 'company', 'companyPage', 'status']).include_query_params(group=key) }}">
-          {{ label }}
-        </a>
-        {% endfor %}
+      <nav class="order-worklist-nav" aria-label="Группы заказов">
+        {% for key, label in groups %}{{ group_link(key, label, 'nav-link') }}{% endfor %}
         <a class="nav-link" href="{{ request.url_for('admin_order_review') }}">Требуют проверки</a>
+        <details class="order-worklist-more">
+          <summary class="nav-link{% if group in more_groups %} active{% endif %}">
+            {{ more_groups[group] if group in more_groups else 'Ещё' }}
+            <span class="order-worklist-more__chevron" aria-hidden="true"></span>
+          </summary>
+          <div class="order-worklist-more__links">
+            {% for key, label in more_groups.items() %}{{ group_link(key, label, 'nav-link') }}{% endfor %}
+          </div>
+        </details>
+        {{ group_link('all', 'Все', 'nav-link') }}
       </nav>
       {% if group == 'test' %}
         <p class="text-muted mb-3">Пометьте свой заказ кнопкой «Это тест». Удаление доступно для черновиков без оплаты, рассылки и других связанных действий. Остальные тестовые заказы можно хранить здесь отдельно.</p>
@@ -64,7 +75,12 @@
         {% if not model_view.unpaid_reminders_enabled %}<p class="text-muted mb-3">Автонапоминания выключены.</p>{% endif %}
       {% endif %}
       {% if group == 'repeat' %}
-        <p class="text-muted mb-3">Заказы, созданные после первой оплаты заказчика. <a href="{{ request.url_for('admin_dashboard').include_query_params(period='all') }}">Дашборд</a></p>
+        <p class="text-muted mb-2">Заказы, созданные после первой оплаты заказчика. <a href="{{ request.url_for('admin_dashboard').include_query_params(period='all') }}">Дашборд</a></p>
+      {% endif %}
+      {% if group in ('repeat', 'closed') %}
+        <p class="mb-3"><a href="{{ request.url_for('admin:list', identity=model_view.identity).include_query_params(group='missing-reason') }}">Все закрытые заказы без причины</a></p>
+      {% elif group == 'missing-reason' %}
+        <p class="text-muted mb-3">Заказы с оплатой, запуском или подбором креатора, для которых не указана причина закрытия.</p>
       {% endif %}
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="group" value="{{ group }}">
@@ -103,16 +119,17 @@
            href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'search', 'status'] + (model_view.quick_filter_labels | list)) }}">Сбросить</a>
         {% endif %}
       </form>
+      <div class="order-worklist-tools">
       {% if not advertiser_id %}
       {% set view_url = request.url.remove_query_params(['page', 'view', 'company', 'companyPage']) %}
-      <nav class="d-flex flex-wrap gap-1 mt-3" aria-label="Вид списка заказов">
+      <nav class="btn-group" aria-label="Вид списка заказов">
         <a class="btn btn-sm {{ 'btn-outline-secondary' if company_view else 'btn-secondary' }}"
            href="{{ view_url }}"{% if not company_view %} aria-current="true"{% endif %}>Списком</a>
         <a class="btn btn-sm {{ 'btn-secondary' if company_view else 'btn-outline-secondary' }}"
            href="{{ view_url.include_query_params(view='companies') }}"{% if company_view %} aria-current="true"{% endif %}>По компаниям</a>
       </nav>
       {% endif %}
-      <nav class="d-flex flex-wrap gap-2 mt-3" aria-label="Быстрые фильтры">
+      <nav class="d-flex flex-wrap gap-2" aria-label="Быстрые фильтры">
         {% for key, label in model_view.quick_filter_labels.items() %}
           {% set enabled = key in quick_filters %}
           {% set url = request.url.remove_query_params(['page', 'companyPage', key]) %}
@@ -124,6 +141,7 @@
           </a>
         {% endfor %}
       </nav>
+      </div>
     </div>
 
     {% if company_view %}

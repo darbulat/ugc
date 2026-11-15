@@ -36,10 +36,15 @@
         <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
         <td>
           <span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>
-          {% if row.status == 'closed' and (group == 'repeat' or row.order_id in closure_reasons) %}
-            <small class="order-row-note">{{ closure_reasons.get(row.order_id) or 'Причина закрытия не записана.' }}</small>
-            {% if row.order_id not in closure_reasons and info.requires_closure_reason %}
-              <a class="order-row-note" href="{{ detail_url }}#order-closure">Указать причину</a>
+          {% if row.status == 'closed' %}
+            {% if row.order_id in closure_reasons %}
+              {% set reason = closure_reasons[row.order_id] %}
+              <a class="order-row-note order-clamp order-row-reason" href="{{ detail_url }}#order-closure" title="{{ reason }}">{{ reason }}</a>
+            {% elif info.requires_closure_reason %}
+              <a class="order-row-note order-row-reason" href="{{ detail_url }}#order-closure">Указать причину</a>
+              {% if group == 'repeat' %}<small class="visually-hidden">Причина закрытия не записана.</small>{% endif %}
+            {% elif group == 'repeat' %}
+              <small class="order-row-note">Причина закрытия не записана.</small>
             {% endif %}
           {% endif %}
           {% if not info.archived %}
