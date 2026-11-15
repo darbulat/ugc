@@ -97,6 +97,9 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.payout_models import TABLE_MAP as PAYOUT_TABLES
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    creator_directory_status,
+)
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
     staff_consent_available,
 )
@@ -1287,7 +1290,12 @@ class AdminDashboardService:
     ) -> dict | None:
         """Load user with optional blogger and advertiser profiles."""
         query = (
-            select(UserModel, BloggerProfileModel, AdvertiserProfileModel)
+            select(
+                UserModel,
+                BloggerProfileModel,
+                AdvertiserProfileModel,
+                creator_directory_status(),
+            )
             .outerjoin(
                 BloggerProfileModel,
                 BloggerProfileModel.user_id == UserModel.user_id,
@@ -1302,7 +1310,7 @@ class AdminDashboardService:
         row = result.one_or_none()
         if row is None:
             return None
-        user, blogger, advertiser = row
+        user, blogger, advertiser, directory_status = row
         card: dict = {
             "user_id": str(user.user_id),
             "telegram_id": user.telegram_id or "",
@@ -1312,7 +1320,9 @@ class AdminDashboardService:
             else "",
             "username": user.username,
             "status": user.status.value if user.status else "",
-            "status_label": self._user_status_label(user.status),
+            "status_label": self._user_status_label(
+                directory_status if blogger is not None else user.status
+            ),
             "issue_count": int(user.issue_count),
             "created_at": user.created_at,
             "role_chosen_at": user.role_chosen_at,
@@ -1670,6 +1680,7 @@ class AdminDashboardService:
         query = (
             select(
                 UserModel,
+                creator_directory_status().label("directory_status"),
                 BloggerProfileModel.instagram_url,
                 BloggerProfileModel.city,
                 BloggerProfileModel.instagram_followers_count,
@@ -1724,12 +1735,13 @@ class AdminDashboardService:
         for row in rows:
             (
                 user,
+                directory_status,
                 instagram_url,
                 city,
                 followers_count,
                 resp_count,
                 compl_count,
-            ) = row[:6]
+            ) = row[:7]
             item = {
                 "user_id": str(user.user_id),
                 "username": user.username,
@@ -1739,11 +1751,11 @@ class AdminDashboardService:
                 "created_at": user.created_at,
                 "responses": int(resp_count),
                 "complaints": int(compl_count),
-                "status": self._user_status_label(user.status),
+                "status": self._user_status_label(directory_status),
                 "instagram_followers_count": followers_count,
             }
             if platform is not None:
-                number, observed, source = row[6:]
+                number, observed, source = row[7:]
                 item["audience"] = {
                     "followers": number,
                     "observed_at": observed,
@@ -1771,7 +1783,7 @@ class AdminDashboardService:
         if sort_by == "complaints":
             return func.coalesce(complaints.c.complaints, 0)
         if sort_by == "status":
-            return UserModel.status
+            return creator_directory_status()
         return None
 
     async def _count_advertisers(

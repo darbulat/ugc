@@ -16,7 +16,9 @@ from ugc_bot.container import Container
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.infrastructure.db.models import AuditLogModel, UserModel
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    BOT_AVAILABLE_EVENT,
     BOT_UNAVAILABLE_EVENT,
+    creator_directory_status,
 )
 
 
@@ -135,6 +137,51 @@ async def test_native_bot_blocks_are_recorded_once_on_both_webhooks(
                 identity: platform.value for platform, identity in ids.items()
             }
             assert all(row.changed_at == active_at for row in rows)
+            assert (
+                db.scalar(
+                    select(creator_directory_status()).where(
+                        UserModel.user_id == ids[MessengerType.MAX]
+                    )
+                )
+                == UserStatus.ACTIVE
+            )
+        membership = telegram_payload["my_chat_member"]
+        unblock_payload = {
+            "update_id": 124,
+            "my_chat_member": {
+                **membership,
+                "old_chat_member": membership["new_chat_member"],
+                "new_chat_member": membership["old_chat_member"],
+            },
+        }
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=telegram),
+            base_url="http://test",
+            headers={"X-Telegram-Bot-Api-Secret-Token": "synthetic_secret"},
+        ) as client:
+            with Session(financial_pg_engine) as db:
+                status_query = select(creator_directory_status()).where(
+                    UserModel.user_id == ids[MessengerType.TELEGRAM],
+                )
+                assert db.scalar(status_query) == UserStatus.BOT_BLOCKED
+            for payload in (unblock_payload, telegram_payload, unblock_payload):
+                response = await client.post("/webhook/telegram", json=payload)
+                assert response.status_code == 200
+            with Session(financial_pg_engine) as db:
+                assert db.scalar(status_query) == UserStatus.ACTIVE
+                assert (
+                    len(
+                        db.scalars(
+                            select(AuditLogModel).where(
+                                AuditLogModel.entity_type
+                                == BOT_AVAILABLE_EVENT,
+                                AuditLogModel.entity_id
+                                == ids[MessengerType.TELEGRAM],
+                            )
+                        ).all()
+                    )
+                    == 1
+                )
     finally:
         await bot.session.close()
         await container.dispose()
