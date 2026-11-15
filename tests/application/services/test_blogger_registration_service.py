@@ -219,6 +219,53 @@ async def test_resolve_city_from_location_returns_result_from_geocoder() -> (
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("query", "details", "reverse", "expected"),
+    [
+        (
+            "алматы",
+            (43.24, 76.94, "boundary", "administrative", None, "Kazakhstan"),
+            ("Алматы", None, "Казахстан"),
+            ("Алматы", None, "Казахстан"),
+        ),
+        (
+            "Казахстан",
+            (48.0, 68.0, "place", "country", None, "Kazakhstan"),
+            ("Улытау", None, "Казахстан"),
+            None,
+        ),
+        (
+            "Тверская",
+            (55.76, 37.61, "highway", "primary", None, "Russia"),
+            ("Москва", None, "Россия"),
+            None,
+        ),
+        (
+            "Казань",
+            (55.79, 49.12, "place", "city", "Tatarstan", "Russia"),
+            ("Казань", "Татарстан", None),
+            None,
+        ),
+        ("Неизвестный", None, None, None),
+    ],
+)
+async def test_resolve_city_identity(query, details, reverse, expected):
+    from unittest.mock import AsyncMock
+
+    from ugc_bot.application.services.geocoder import NominatimGeocoder
+
+    geocoder = NominatimGeocoder()
+    geocoder.geocode_with_details = AsyncMock(return_value=details)
+    geocoder.reverse_geocode = AsyncMock(return_value=reverse)
+    service = BloggerRegistrationService(
+        user_repo=InMemoryUserRepository(),
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=geocoder,
+    )
+    assert await service.resolve_city_identity(query) == expected
+
+
+@pytest.mark.asyncio
 async def test_resolve_city_to_location_returns_none_when_geocoder_none() -> (
     None
 ):
@@ -229,6 +276,7 @@ async def test_resolve_city_to_location_returns_none_when_geocoder_none() -> (
         geocoder=None,
     )
     assert await service.resolve_city_to_location("Moscow") is None
+    assert await service.resolve_city_identity("Moscow") is None
 
 
 @pytest.mark.asyncio

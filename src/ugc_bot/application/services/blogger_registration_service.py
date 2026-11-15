@@ -9,6 +9,7 @@ from ugc_bot.application.errors import (
     BloggerRegistrationError,
     UserNotFoundError,
 )
+from ugc_bot.application.geography import normalize_geo_token
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     CountryRepository,
@@ -134,6 +135,34 @@ class BloggerRegistrationService:
         if self.geocoder is None:
             return None
         return await self.geocoder.reverse_geocode(lat, lon)
+
+    async def resolve_city_identity(
+        self, query: str
+    ) -> tuple[str, str | None, str] | None:
+        """Look up the canonical city name, region and country."""
+        if self.geocoder is None:
+            return None
+        details = await self.geocoder.geocode_with_details(query)
+        if details is None:
+            return None
+        lat, lon, place_class, place_type, _, _ = details
+        if not self.geocoder.accepts_as_place_or_region(
+            place_class, place_type
+        ):
+            return None
+        result = await self.resolve_city_from_location(lat, lon)
+        if result is None:
+            return None
+        city, region, country = result
+        if not country:
+            return None
+        token = normalize_geo_token(query.split(",", 1)[0])
+        if token != normalize_geo_token(city) and token in {
+            normalize_geo_token(region or ""),
+            normalize_geo_token(country),
+        }:
+            return None
+        return city, region, country
 
     async def resolve_city_to_coordinates(
         self,

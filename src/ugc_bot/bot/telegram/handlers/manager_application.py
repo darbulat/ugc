@@ -1,5 +1,7 @@
 """The application lives in the bot chat and resumes from the last answer."""
 
+from secrets import token_hex
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.state import State, StatesGroup
@@ -17,30 +19,26 @@ from ugc_bot.domain.manager_application import (
     FIELDS,
     INTRO,
     application_fields,
+    missing_application_fields,
 )
 
 router = Router()
 PREFIX = "mgr:"
-CONSENT = (
-    "Отправляя заявку, вы соглашаетесь на обработку анкеты для отбора "
-    "и готовы фиксировать сроки, результаты и согласованные расходы в UMC."
-)
 LABELS = {
     "name": "Имя",
     "rate": "Ожидаемая ставка",
     "work_format": "Формат работы",
     "work_format_details": "Другой формат работы",
     "weekly_capacity": "Авторов в неделю",
-    "location": "Страна и город",
+    "location": "Город",
     "phone": "Телефон",
     "instagram": "Instagram",
     "case": "Кейс",
     "settlement": "Расчёт",
-    "reliability": "Действия при срыве",
+    "shortfall_plan": "Если не хватает блогеров",
 }
 BUTTON_CHOICES = {
     **FIELD_CHOICES,
-    "rate": ("Обсудим",),
     "coverage": ("Пропустить",),
 }
 PHONE_KEYBOARD = ReplyKeyboardMarkup(
@@ -84,20 +82,25 @@ async def show(message, row):
     actions = []
     if row["state"] != "submitted":
         actions.append([button("Заполнить или продолжить", "next")])
+    if row["state"] in {"clarify", "declined"}:
+        actions.append([button("Изменить ответы", "edit")])
     if row["instagram"] and not row["instagram_verified_at"]:
         actions.append([button("Подтвердить Instagram", "instagram")])
     if row["instagram_verified_at"]:
         status += "\n\nInstagram подтверждён."
-    actions.append(
-        [
-            InlineKeyboardButton(
-                text="Как устроена работа",
-                url="https://usemycontent.ru/partner",
-            )
-        ]
-    )
+    if row["state"] == "draft" and not row.get("answers"):
+        actions.append(
+            [
+                InlineKeyboardButton(
+                    text="Как устроена работа",
+                    url="https://usemycontent.ru/partner",
+                )
+            ]
+        )
     await message.answer(
-        status, reply_markup=keyboard(actions), parse_mode=None
+        status,
+        reply_markup=keyboard(actions) if actions else None,
+        parse_mode=None,
     )
 
 
@@ -129,52 +132,104 @@ async def _user(roles, external_id):
     )
 
 
-async def ask(message, state, row, field=None, config=None):
+async def ask(message, state, row, field=None):
     if row["state"] in {"submitted", "approved"}:
         await state.clear()
         await show(message, row)
         return
     answers = row["answers"]
     fields = application_fields(answers)
-    field = field or next((key for key in fields if key not in answers), None)
-    if field:
-        await state.set_state(ManagerForm.answer)
-        await state.set_data({"field": field})
-        markup = None
-        if field == "phone":
-            markup = PHONE_KEYBOARD
-        elif field in BUTTON_CHOICES:
-            markup = keyboard(
-                [
-                    [button(label, f"{field}:{i}")]
-                    for i, label in enumerate(BUTTON_CHOICES[field])
-                ]
-            )
-        prompt = FIELDS[field][0]
-        if field == "case" and answers.get("work_format") in {
-            "Агентство",
-            "В команде бренда",
-        }:
-            prompt += " Можете добавить, какие проекты ведёт ваша команда."
-        await message.answer(prompt, reply_markup=markup, parse_mode=None)
-        return
-    await state.clear()
-    rows = [[button("Отправить заявку", "submit"), button("Изменить", "edit")]]
-    privacy = config.docs.docs_privacy_url
-    if privacy.startswith("https://"):
-        rows.append(
+    field = field or next(iter(missing_application_fields(answers)), fields[-1])
+    await state.set_state(ManagerForm.answer)
+    await state.set_data({"field": field})
+    markup = None
+    if field == "phone":
+        markup = PHONE_KEYBOARD
+    elif field in BUTTON_CHOICES:
+        markup = keyboard(
             [
-                InlineKeyboardButton(
-                    text="Политика конфиденциальности", url=privacy
-                )
+                [button(label, f"{field}:{i}")]
+                for i, label in enumerate(BUTTON_CHOICES[field])
             ]
         )
-    lines = [f"{LABELS[field]} · {answers[field]}" for field in fields]
+    prompt = FIELDS[field][0]
+    if field == "case" and answers.get("work_format") in {
+        "Агентство",
+        "В команде бренда",
+    }:
+        prompt += " Можете добавить, какие проекты ведёт ваша команда."
+    await message.answer(prompt, reply_markup=markup, parse_mode=None)
+
+
+async def send_instagram_challenge(message, service, row, config):
+    if row["instagram_verified_at"]:
+        return
+    target = config.instagram.admin_instagram_username.strip().lstrip("@")
+    if not target:
+        await message.answer("Проверка Instagram временно недоступна.")
+        return
+    code = await service.instagram_challenge(row["user_id"])
+    if not code:
+        await show(message, await service.open(row["user_id"]))
+        return
     await message.answer(
-        "\n\n".join(["Проверьте заявку", "\n".join(lines), CONSENT]),
-        reply_markup=keyboard(rows),
+        f"Отправьте код {code} в Direct аккаунту @{target} "
+        "с Instagram, указанного в анкете. Код действует 15 минут. "
+        "Проверьте статус в /manager.",
         parse_mode=None,
     )
+
+
+async def after_answer(message, state, service, row, config):
+    await ask(message, state, row)
+    if row["state"] == "submitted":
+        await send_instagram_challenge(message, service, row, config)
+
+
+async def find_city(message, state, query, blogger_registration_service):
+    lookup = token_hex(6)
+    await state.update_data(city_lookup=lookup, city_candidate=None)
+    if len(query) > FIELDS["location"][1] or not any(
+        char.isalpha() for char in query
+    ):
+        await message.answer(FIELDS["location"][0])
+        return
+    location = (
+        await blogger_registration_service.resolve_city_identity(query)
+        if blogger_registration_service is not None
+        else None
+    )
+    if (await state.get_data()).get("city_lookup") != lookup:
+        return
+    if location is None:
+        await message.answer(
+            "Город не найден. Проверьте название. Если есть тёзки, "
+            "добавьте область через запятую."
+        )
+        return
+    await state.update_data(city_candidate=list(location))
+    label = ", ".join(dict.fromkeys(part for part in location if part))
+    await message.answer(
+        f"Подходит город {label}? Если нужен другой, напишите его название.",
+        reply_markup=keyboard(
+            [[button("Да, выбрать город", f"city:{lookup}")]]
+        ),
+        parse_mode=None,
+    )
+
+
+async def select_city(message, state, service, row, config, index):
+    data = await state.get_data()
+    if data.get("field") != "location" or data.get("city_lookup") != index:
+        return
+    location = data.get("city_candidate")
+    if not location:
+        return
+    city, region, country = location
+    row = await service.answer(
+        row["user_id"], "location", city, location_context=(region, country)
+    )
+    await after_answer(message, state, service, row, config)
 
 
 @router.callback_query(F.data.startswith(PREFIX))
@@ -212,8 +267,8 @@ async def _action(  # noqa: C901
     if action == "open":
         await state.clear()
         await show(message, row)
-    elif action == "next":
-        await ask(message, state, row, config=config)
+    elif action in {"next", "submit"}:
+        await ask(message, state, row)
     elif action == "edit" and row["state"] not in {"submitted", "approved"}:
         await message.answer(
             "Что изменить?",
@@ -222,7 +277,9 @@ async def _action(  # noqa: C901
             ),
         )
     elif field == "field" and index in fields:
-        await ask(message, state, row, field=index, config=config)
+        await ask(message, state, row, field=index)
+    elif field == "city":
+        await select_city(message, state, service, row, config, index)
     elif separator and field in BUTTON_CHOICES:
         if (await state.get_data()).get("field") != field:
             return
@@ -230,37 +287,41 @@ async def _action(  # noqa: C901
         if index not in {str(i) for i in range(len(options))}:
             return
         value = "Не указано" if field == "coverage" else options[int(index)]
-        await service.answer(user_id, field, value)
-        await ask(message, state, await service.open(user_id), config=config)
-    elif action == "submit":
-        if any(key not in row["answers"] for key in fields):
-            await ask(message, state, row, config=config)
-            return
-        await service.submit(user_id)
-        await state.clear()
-        await show(message, await service.open(user_id))
+        row = await service.answer(user_id, field, value)
+        await after_answer(message, state, service, row, config)
     elif action == "instagram":
-        code = await service.instagram_challenge(user_id)
-        if not code:
-            await show(message, await service.open(user_id))
-            return
-        target = config.instagram.admin_instagram_username.strip().lstrip("@")
-        if not target:
-            await message.answer("Проверка Instagram временно недоступна.")
-            return
-        await message.answer(
-            f"Отправьте код {code} в Direct аккаунту @{target} "
-            "с Instagram, указанного в анкете. Код действует 15 минут. "
-            "Проверьте статус в /manager.",
-            parse_mode=None,
-        )
+        if row["instagram_verified_at"]:
+            await show(message, row)
+        else:
+            await send_instagram_challenge(message, service, row, config)
+
+
+def answer_text(message, field):
+    if field == "phone":
+        contact = message.contact
+        if not contact or contact.user_id != message.from_user.id:
+            raise ValueError(
+                "Нажмите «Поделиться номером», "
+                "чтобы продолжить анкету менеджера."
+            )
+        return contact.phone_number
+    if field in FIELD_CHOICES:
+        raise ValueError("Выберите один из вариантов кнопкой.")
+    if not message.text:
+        raise ValueError("Введите ответ на вопрос текстом.")
+    return message.text
 
 
 @router.message(
     ManagerForm.answer, F.contact | (F.text & ~F.text.startswith("/"))
 )
 async def manager_application_answer(
-    message, state, user_role_service, config, manager_applications=None
+    message,
+    state,
+    user_role_service,
+    config,
+    manager_applications=None,
+    blogger_registration_service=None,
 ):
     if message.chat.type != "private" or manager_applications is None:
         return
@@ -268,41 +329,34 @@ async def manager_application_answer(
     if user is None:
         return
     field = (await state.get_data()).get("field")
+    if field in {"reliability", "coverage"}:
+        await ask(message, state, await manager_applications.open(user.user_id))
+        return
     if field not in FIELDS:
         await state.clear()
         return
-    if field == "phone":
-        contact = message.contact
-        if not contact or contact.user_id != message.from_user.id:
-            await message.answer(
-                "Нажмите «Поделиться номером», "
-                "чтобы продолжить анкету менеджера.",
-                reply_markup=PHONE_KEYBOARD,
-            )
-            return
-        value = contact.phone_number
-    elif field in FIELD_CHOICES:
-        await message.answer("Выберите один из вариантов кнопкой.")
-        return
-    elif not message.text:
-        await message.answer("Введите ответ на вопрос текстом.")
-        return
-    else:
-        value = message.text
     try:
-        await manager_applications.answer(user.user_id, field, value)
-    except ValueError:
+        value = answer_text(message, field)
+    except ValueError as exc:
+        markup = PHONE_KEYBOARD if field == "phone" else None
+        await message.answer(str(exc), reply_markup=markup)
+        return
+    if field == "location":
+        await find_city(
+            message, state, value.strip(), blogger_registration_service
+        )
+        return
+    try:
+        row = await manager_applications.answer(user.user_id, field, value)
+    except ValueError as exc:
         await message.answer(
-            "Проверьте формат и длину ответа. " + FIELDS[field][0]
+            f"{exc}\n\n{FIELDS[field][0]}",
+            reply_markup=PHONE_KEYBOARD if field == "phone" else None,
+            parse_mode=None,
         )
         return
     if field == "phone":
         await message.answer(
             "Номер сохранён.", reply_markup=ReplyKeyboardRemove()
         )
-    await ask(
-        message,
-        state,
-        await manager_applications.open(user.user_id),
-        config=config,
-    )
+    await after_answer(message, state, manager_applications, row, config)
