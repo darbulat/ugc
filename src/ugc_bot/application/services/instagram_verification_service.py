@@ -89,6 +89,7 @@ class VerificationSuccess:
     """Instagram verification succeeded; profile confirmed."""
 
     user_id: UUID
+    registration_completed: bool = False
 
 
 @dataclass(slots=True)
@@ -108,6 +109,7 @@ class VerificationLinkSuccess:
     user_id: UUID
     linked_user_id: UUID
     max_chat_id: str | None = None
+    registration_completed: bool = False
 
 
 @dataclass(slots=True)
@@ -128,6 +130,28 @@ class VerificationLinkUnavailable:
     max_chat_id: str | None
     reason: str
     locale: str = "ru"
+
+
+def _confirmation_result(
+    user_id: UUID,
+    linked: (
+        VerificationLinkSuccess
+        | VerificationLinkConflict
+        | VerificationLinkUnavailable
+        | None
+    ),
+    registration_completed: bool,
+) -> (
+    VerificationSuccess
+    | VerificationLinkSuccess
+    | VerificationLinkConflict
+    | VerificationLinkUnavailable
+):
+    if linked is None:
+        return VerificationSuccess(user_id, registration_completed)
+    if isinstance(linked, VerificationLinkSuccess):
+        return replace(linked, registration_completed=registration_completed)
+    return linked
 
 
 @dataclass(slots=True)
@@ -423,6 +447,15 @@ class InstagramVerificationService:
             )
             if unavailable is not None:
                 return unavailable
+        registration_completed = (
+            sender is not None
+            and profile.agreement_confirmed_at is not None
+            and not profile.confirmed
+            and not (profile.instagram_user_id or "").strip()
+            and not await self.blogger_repo.has_verified_identity_history(
+                current.user_id, session=session
+            )
+        )
         now = datetime.now(timezone.utc)
         confirmed = replace(profile, confirmed=True, updated_at=now)
         if sender is not None:
@@ -450,8 +483,8 @@ class InstagramVerificationService:
         linked = await self._try_link_max_account(
             current, preparation, confirmed, session=session
         )
-        return (
-            VerificationSuccess(current.user_id) if linked is None else linked
+        return _confirmation_result(
+            current.user_id, linked, registration_completed
         )
 
     async def _try_link_max_account(

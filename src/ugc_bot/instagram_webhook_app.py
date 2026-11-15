@@ -7,12 +7,14 @@ import logging
 from contextlib import asynccontextmanager
 from functools import partial
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ugc_bot.application.legacy_link_ports import validated_max_chat_id
+from ugc_bot.application.messenger.dto import Button
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
@@ -25,6 +27,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     ManagerApplications,
 )
@@ -284,10 +287,13 @@ async def _notify_user_verification_success(
     user_id: UUID,
     verification_service: InstagramVerificationService,
     config: AppConfig,
+    *,
+    registration_completed: bool = False,
 ) -> None:
     """Send notification to user about successful verification."""
     try:
         from ugc_bot.bot.telegram.handlers.keyboards import (
+            CALLBACK_SUPPORT,
             blogger_menu_inline_keyboard,
         )
 
@@ -319,18 +325,46 @@ async def _notify_user_verification_success(
             "msg_instagram_confirmed",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
-        async with messenger_cm as messenger_client:
-            msg_confirmed = locale_texts.get(
-                "msg_instagram_confirmed",
-                "Instagram подтверждён ✅. "
-                "Бренды могут отправлять предложения.",
+        message = locale_texts.get(
+            "msg_instagram_confirmed",
+            "Instagram подтверждён ✅. Бренды могут отправлять предложения.",
+        )
+        keyboard = blogger_menu_inline_keyboard(
+            texts, confirmed=confirmed, verification_started=False
+        )
+        if registration_completed:
+            message = locale_texts["msg_creator_registration_complete"]
+            max_route = user.messenger_type == MessengerType.MAX and bool(
+                user.max_chat_id
             )
+            if max_route and config.max_bot:
+                url = urlsplit(config.max_bot.webhook_url)
+                base = f"{url.scheme}://{url.netloc}" if url.netloc else ""
+                page = "max_app.html"
+            else:
+                base = config.webhook.webhook_base_url.rstrip("/")
+                page = "app.html"
+            if base:
+                keyboard.rows.insert(
+                    0,
+                    [
+                        Button(
+                            text=locale_texts["btn_creator_add_socials"],
+                            web_app_url=f"{base}/miniapp/{page}?view=socials",
+                        )
+                    ],
+                )
+            keyboard.rows.append(
+                [
+                    Button(
+                        text=locale_texts["btn_support"],
+                        callback_data=CALLBACK_SUPPORT,
+                    )
+                ]
+            )
+        async with messenger_cm as messenger_client:
             await messenger_client.send_text(
-                chat_id=chat_id,
-                text=msg_confirmed,
-                keyboard=blogger_menu_inline_keyboard(
-                    texts, confirmed=confirmed, verification_started=False
-                ),
+                chat_id=chat_id, text=message, keyboard=keyboard
             )
     except Exception:
         logger.warning(
@@ -588,20 +622,20 @@ async def _dispatch_verification_result(
         await _notify_max_user_link_outcome(result, config)
     elif isinstance(result, VerificationUnavailable):
         return
-    elif isinstance(result, VerificationLinkSuccess):
+    elif isinstance(result, VerificationSuccess | VerificationLinkSuccess):
         await _notify_user_verification_success(
-            result.user_id, verification_service, config
-        )
-        await _notify_user_account_linked(
-            result.linked_user_id,
+            result.user_id,
             verification_service,
             config,
-            max_chat_id=result.max_chat_id,
+            registration_completed=result.registration_completed,
         )
-    elif isinstance(result, VerificationSuccess):
-        await _notify_user_verification_success(
-            result.user_id, verification_service, config
-        )
+        if isinstance(result, VerificationLinkSuccess):
+            await _notify_user_account_linked(
+                result.linked_user_id,
+                verification_service,
+                config,
+                max_chat_id=result.max_chat_id,
+            )
     elif isinstance(result, VerificationMismatch):
         if result.link_max_chat_id:
             await _notify_max_user_mismatch(result, config)

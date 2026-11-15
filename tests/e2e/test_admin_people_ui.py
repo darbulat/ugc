@@ -658,3 +658,32 @@ def test_dashboard_social_summary_links_and_layout(
     expect(
         page.get_by_role("link", name=creator_name, exact=True)
     ).to_be_visible()
+
+
+@pytest.mark.e2e
+def test_creator_base_opens_filtered_directory(
+    admin_server, page, people_records
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/dashboard?period=7d")
+    section = page.get_by_role("region", name="Состояние базы")
+    expect(section).to_be_visible()
+    section.get_by_role("link", name="90 дней").click()
+    expect(section.get_by_role("link", name="90 дней")).to_have_attribute(
+        "aria-current", "page"
+    )
+    offered = section.get_by_role(
+        "link", name=re.compile("Получили предложение")
+    )
+    count = offered.locator(".metric__value").inner_text()
+    offered.click()
+    expect(page.locator(".people-count")).to_contain_text(f"Найдено {count}")
+    expect(
+        page.get_by_role("link", name="Получили предложение · 90 дней")
+    ).to_be_visible()
+    page.locator("#people-query").fill("не существует")
+    page.locator(".people-filters").get_by_role("button", name="Найти").click()
+    expect(page.locator('input[name="work_period"]')).to_have_value("90d")
+    expect(page.locator(".people-count")).to_contain_text("Найдено 0")

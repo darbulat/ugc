@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -2042,3 +2043,61 @@ def test_manager_instagram_uses_graph_proof_without_a_valid_legacy_signature(
         )
     else:
         direct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", [MessengerType.TELEGRAM, MessengerType.MAX]
+)
+async def test_first_registration_adds_socials_and_support(platform):
+    user = User(
+        user_id=uuid4(),
+        username="Synthetic creator",
+        messenger_type=platform,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+        telegram_id="123",
+        max_id="456",
+        max_chat_id="789",
+        language="ru",
+    )
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test-token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "WEBHOOK_BASE_URL": "https://telegram.example.test",
+            "MAX_BOT_TOKEN": "max-token",
+            "MAX_BOT_WEBHOOK_URL": "https://max.example.test/webhook/max",
+        }
+    )
+    service = AsyncMock()
+    service.get_notification_recipient.return_value = (
+        user,
+        SimpleNamespace(confirmed=True),
+    )
+    factory, origin, page = (
+        ("_create_max_messenger", "max", "max_app.html")
+        if platform == MessengerType.MAX
+        else ("_create_messenger", "telegram", "app.html")
+    )
+    messenger = AsyncMock()
+    with patch(f"ugc_bot.instagram_webhook_app.{factory}") as create:
+        create.return_value.__aenter__ = AsyncMock(return_value=messenger)
+        create.return_value.__aexit__ = AsyncMock(return_value=False)
+        await _notify_user_verification_success(
+            user.user_id, service, config, registration_completed=True
+        )
+        await _notify_user_verification_success(user.user_id, service, config)
+
+    welcome, reverified = [
+        call.kwargs for call in messenger.send_text.call_args_list
+    ]
+    assert "Регистрация завершена" in welcome["text"]
+    assert (
+        welcome["keyboard"].rows[0][0].web_app_url
+        == f"https://{origin}.example.test/miniapp/{page}?view=socials"
+    )
+    assert welcome["keyboard"].rows[-1][0].callback_data == "support"
+    assert len(reverified["keyboard"].rows) == 1
+    assert "Instagram" in reverified["text"]

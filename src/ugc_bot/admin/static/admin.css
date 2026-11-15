@@ -843,3 +843,31 @@ body {
   background: #d9f4e8;
   color: #135840;
 }
+
+.creator-base .creator-base-metric {
+  color: inherit;
+  text-decoration: none;
+}
+
+.creator-base-metric:is(:hover, :focus-visible) .metric__label {
+  text-decoration: underline;
+}
+
+.creator-base-work {
+  margin-top: .75rem;
+}
+
+.creator-work-periods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem .8rem;
+}
+
+.creator-work-periods [aria-current="page"] {
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.creator-base-work .creator-base-metric {
+  min-width: 0;
+}
