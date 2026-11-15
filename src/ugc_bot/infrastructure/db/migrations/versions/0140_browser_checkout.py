@@ -13,8 +13,8 @@ from ugc_bot.infrastructure.db.browser_checkout_models import (
 )
 from ugc_bot.infrastructure.db.invite_handoff_schema import FIRST, NATIVE
 
-revision = "0139_browser_checkout"
-down_revision = "0138_invite_handoff"
+revision = "0140_browser_checkout"
+down_revision = "0139_messenger_attribution"
 branch_labels = None
 depends_on = None
 

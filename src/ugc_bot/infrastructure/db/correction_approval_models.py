@@ -79,7 +79,7 @@ def install_final_guard(metadata, connection, **kw):
                 if BROWSER_ATTEMPTS.name in names:
                     browser = import_module(
                         "ugc_bot.infrastructure.db.migrations.versions."
-                        "0139_browser_checkout"
+                        "0140_browser_checkout"
                     )
                     connection.exec_driver_sql(
                         browser._authority_sql(browser=True)
