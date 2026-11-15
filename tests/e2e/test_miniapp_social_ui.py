@@ -81,7 +81,7 @@ class SocialNetwork(MiniAppNetwork):
                     "locale": self.locale,
                     "country": "ru",
                     "currency_symbol": self.symbol,
-                    "has_advertiser_profile": False,
+                    "has_advertiser_profile": self.registered,
                     "has_blogger_profile": True,
                     "blogger_profile": {
                         "confirmed": self.me_confirmed,
@@ -501,8 +501,12 @@ def test_add_named_other_platform(page, platform):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-def test_registration_message_opens_social_editor(page: Page, platform: str):
+@pytest.mark.parametrize("also_advertiser", [False, True])
+def test_registration_message_opens_social_editor(
+    page: Page, platform: str, also_advertiser: bool
+):
     network = SocialNetwork()
+    network.registered = also_advertiser
     errors = open_app(
         page, network, platform, init_data=SIGNED_DATA, query="?view=socials"
     )
