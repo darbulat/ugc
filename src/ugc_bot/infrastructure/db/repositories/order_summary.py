@@ -29,6 +29,10 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     staff_consent_available,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+    first_staff_open,
+    handoff_installed,
+)
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 from ugc_bot.infrastructure.db.selection_maturity_models import (
     TABLES as MATURITY,
@@ -120,8 +124,16 @@ class SqlOrderSummary:
             .correlate(item, allocations)
             .scalar_subquery()
         )
-        delivered_at = func.coalesce(original_contact, replacement_contact)
         db = _session(session)
+        installed = await handoff_installed(db)
+        staff_opened = first_staff_open(item, installed)
+        delivered_at = case(
+            (
+                allocations.c.replacement_id.is_not(None),
+                func.coalesce(original_contact, replacement_contact),
+            ),
+            else_=func.least(original_contact, staff_opened),
+        )
         manual_contact = (
             select(DELIVERY_JOBS.c.state)
             .join(INVITES, INVITES.c.interest_id == DELIVERY_JOBS.c.interest_id)
@@ -169,6 +181,7 @@ class SqlOrderSummary:
                         REPLACEMENTS["allocations"].c.replacement_id,
                         manual_contact.label("manual_contact_state"),
                         reported_contact.label("reported_contact_id"),
+                        staff_opened.label("staff_opened_at"),
                         delivered_at.label("contact_at"),
                         delivered_at.is_not(None).label("contact_delivered"),
                     )

@@ -4109,7 +4109,13 @@ def create_admin_app() -> FastAPI:
     register_managers(app, auth, engine, templates, _require_action_token)
     register_order_review(app, auth, engine, templates, _require_action_token)
     register_creator_invites(
-        app, auth, engine, templates, _require_action_token, config
+        app,
+        auth,
+        engine,
+        templates,
+        _require_action_token,
+        config,
+        transactions=container.transaction_manager,
     )
     _register_order_worklist_manager_action(app, auth, engine, config)
     _register_order_worklist_action(app, auth, engine, admin_cache)

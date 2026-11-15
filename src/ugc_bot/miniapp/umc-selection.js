@@ -240,10 +240,10 @@
       var proof=(position.deliveries || []).find(function(delivery) { return delivery.current && position.current && delivery.assignment_id===position.assignment_id && delivery.creator_id===position.creator_id && delivery.accepted_at && position.delivered_at && !isNaN(new Date(delivery.accepted_at).getTime()) && new Date(delivery.accepted_at).getTime()===new Date(position.delivered_at).getTime(); });
       var deliveryState=position.delivery_state==='accepted' && !proof?'unknown':position.delivery_state;
       var current=node('div'); current.dataset.currentDelivery=''; current.dataset.state=deliveryState;
-      var stateKey=deliveryState==='sending'?'sendingState':deliveryState;
+      var stateKey=deliveryState==='sending'?'sendingState':deliveryState==='staff_confirmed'?'accepted':deliveryState;
       current.appendChild(node('p',c[stateKey] || c.unknown,'umc-selection-state'));
       if(position.creator_id) { current.appendChild(node('p',c.current)); if(position.instagram_url) link(current,position.instagram_url); }
-      else current.appendChild(node('p',c.waiting,'hint'));
+      else if(deliveryState!=='staff_confirmed') current.appendChild(node('p',c.waiting,'hint'));
       if(proof && deliveryState==='accepted') current.appendChild(node('p',c.delivered+': '+date(proof.accepted_at)));
       article.appendChild(current);
       if(position.fulfilled_at) article.appendChild(node('p',c.fulfilled+': '+date(position.fulfilled_at),'hint'));

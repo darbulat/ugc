@@ -5,6 +5,7 @@ from sqlalchemy import exists, select, text
 from ugc_bot.application.native_principal_ports import require_current_principal
 from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.invite_handoff_models import STAFF_DELIVERIES
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     FinancialPolicyVersionModel,
@@ -17,6 +18,9 @@ from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.repositories.financial_policy import (
     decode_policy_version,
+)
+from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+    handoff_installed,
 )
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 from ugc_bot.infrastructure.db.selection_maturity_models import (
@@ -148,6 +152,20 @@ class SqlAlchemySelectionViewRepository:
                 raise ValueError("selection_delivery_scope_mismatch")
         by_job = {row["interest_id"]: row for row in jobs}
         by_item = {row["paid_item_id"]: row for row in assignments}
+        staff = (
+            {
+                row["paid_item_id"]: row["accepted_at"]
+                for row in await _rows(
+                    db,
+                    select(STAFF_DELIVERIES).where(
+                        STAFF_DELIVERIES.c.order_id == order_id,
+                        STAFF_DELIVERIES.c.client_id == client_id,
+                    ),
+                )
+            }
+            if await handoff_installed(db)
+            else {}
+        )
         positions = [
             self._position(
                 item,
@@ -156,6 +174,7 @@ class SqlAlchemySelectionViewRepository:
                 by_interest,
                 by_job,
                 deliveries,
+                staff.get(item["paid_item_id"]),
             )
             for item in items
         ]
@@ -164,7 +183,6 @@ class SqlAlchemySelectionViewRepository:
             order_id,
             order["financial_version"],
             items,
-            deliveries,
             positions,
         )
         return dict(
@@ -187,9 +205,7 @@ class SqlAlchemySelectionViewRepository:
         )
 
     @staticmethod
-    async def _closure_policy(
-        db, order_id, policy_version, items, deliveries, positions
-    ):
+    async def _closure_policy(db, order_id, policy_version, items, positions):
         stored_policy = await db.get(
             FinancialPolicyVersionModel, policy_version
         )
@@ -238,12 +254,9 @@ class SqlAlchemySelectionViewRepository:
                 if position["paid_item_id"] in refunded:
                     position["delivery_state"] = "refunded"
             resolved = all(
-                item["paid_item_id"] in refunded
-                or any(
-                    fact["paid_item_id"] == item["paid_item_id"]
-                    for fact in deliveries
-                )
-                for item in items
+                position["paid_item_id"] in refunded
+                or position["fulfilled_at"] is not None
+                for position in positions
             )
             closure_policy = dict(
                 mode=rules.selection_closure_mode,
@@ -268,7 +281,13 @@ class SqlAlchemySelectionViewRepository:
 
     @staticmethod
     def _position(
-        item, assignment, by_assignment, by_interest, by_job, deliveries
+        item,
+        assignment,
+        by_assignment,
+        by_interest,
+        by_job,
+        deliveries,
+        staff_at,
     ):
         current_id = assignment["assignment_id"] if assignment else None
         interest = by_assignment.get(current_id)
@@ -291,6 +310,8 @@ class SqlAlchemySelectionViewRepository:
             state = "unknown"
         elif current_fact is not None:
             state = "accepted"
+        elif assignment is None and staff_at is not None:
+            state = "staff_confirmed"
         elif (
             state == "accepted"
             or item["selection_state"] == "delivered"
@@ -319,6 +340,17 @@ class SqlAlchemySelectionViewRepository:
             delivery_state=state,
             current=assignment is not None,
             delivered_at=current_fact["accepted_at"] if current_fact else None,
-            fulfilled_at=facts[0]["accepted_at"] if facts else None,
+            fulfilled_at=min(
+                (
+                    at
+                    for at in (
+                        facts[0]["accepted_at"] if facts else None,
+                        staff_at,
+                    )
+                    if at is not None
+                ),
+                default=None,
+            ),
+            **({"staff_contact_at": staff_at} if staff_at is not None else {}),
             deliveries=history,
         )

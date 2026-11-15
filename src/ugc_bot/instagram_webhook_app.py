@@ -283,6 +283,40 @@ async def handle_webhook(
     return {"status": "ok"}
 
 
+async def _invitation_resume_button(
+    user, chat_id, verification_service, config
+):
+    if (
+        not user.telegram_id
+        or str(user.telegram_id) != str(chat_id)
+        or (user.messenger_type == MessengerType.MAX and user.max_chat_id)
+        or not config.db.database_url.startswith("postgresql")
+    ):
+        return None
+    from datetime import datetime, timezone
+
+    from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+        recent_invitation,
+    )
+
+    try:
+        invite = await recent_invitation(
+            verification_service.transaction_manager,
+            user.user_id,
+            datetime.now(timezone.utc),
+        )
+    except Exception:
+        logger.warning("Could not load the creator's pending invitation")
+        return None
+    bot = config.bot.bot_username.strip().lstrip("@")
+    if not invite or not bot:
+        return None
+    return Button(
+        "Вернуться к приглашению",
+        url=f"https://t.me/{bot}?start=oi_{invite.hex}",
+    )
+
+
 async def _notify_user_verification_success(
     user_id: UUID,
     verification_service: InstagramVerificationService,
@@ -362,6 +396,11 @@ async def _notify_user_verification_success(
                     )
                 ]
             )
+        resume = await _invitation_resume_button(
+            user, chat_id, verification_service, config
+        )
+        if resume is not None:
+            keyboard.rows.insert(0, [resume])
         async with messenger_cm as messenger_client:
             await messenger_client.send_text(
                 chat_id=chat_id, text=message, keyboard=keyboard

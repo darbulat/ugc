@@ -3,7 +3,7 @@
 from dataclasses import asdict
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.application.selection_maturity_ports import (
@@ -29,6 +29,9 @@ from ugc_bot.infrastructure.db.repositories.financial_items import (
 )
 from ugc_bot.infrastructure.db.repositories.financial_policy import (
     decode_policy_version,
+)
+from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+    handoff_installed,
 )
 from ugc_bot.infrastructure.db.repositories.work_entitlements import (
     SqlAlchemyWorkEntitlementRepository,
@@ -88,6 +91,7 @@ class SqlAlchemySelectionMaturityRepository:
         ):
             raise ValueError("selection_capture_scope_mismatch")
         positions = []
+        handoff = await handoff_installed(db)
         for item in items:
             if (
                 item["policy_version"] != approved.version
@@ -96,12 +100,27 @@ class SqlAlchemySelectionMaturityRepository:
                 != approved.terms_reference
             ):
                 raise ValueError("selection_item_scope_mismatch")
-            deliveries = await rows(
-                db,
-                "paid_selection_accepted_deliveries",
-                paid_item_id=item["paid_item_id"],
-            )
-            delivered = deliveries[0] if deliveries else None
+            if handoff:
+                delivered = (
+                    (
+                        await db.execute(
+                            text(
+                                "SELECT * FROM order_first_selection_contacts "
+                                "WHERE paid_item_id=:item"
+                            ),
+                            {"item": item["paid_item_id"]},
+                        )
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+            else:
+                deliveries = await rows(
+                    db,
+                    "paid_selection_accepted_deliveries",
+                    paid_item_id=item["paid_item_id"],
+                )
+                delivered = deliveries[0] if deliveries else None
             if delivered is not None and (
                 delivered["order_id"] != order_id
                 or delivered["payment_id"] != payment_id

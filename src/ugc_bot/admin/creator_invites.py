@@ -7,18 +7,20 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from ugc_bot.admin.auth import admin_login_redirect
+from ugc_bot.application.services.invite_handoff_notices import dispatch_invite
 from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
+from ugc_bot.infrastructure.db.invite_handoff_models import NOTICES, VISITS
 from ugc_bot.infrastructure.db.models import OrderItemModel
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    available_positions,
     create_invite,
-    free_positions,
-    matching_creator_profiles,
+    creator_availability,
     order_for_invite,
     team,
 )
@@ -26,7 +28,17 @@ from ugc_bot.infrastructure.db.repositories.invite_preview import (
     PREVIEW_CONSENT,
 )
 
+AVAILABILITY = {
+    "ready": "Подтверждённый профиль из базы · бот доступен",
+    "external": "Профиль не найден · можно создать ссылку",
+    "unverified": "Анкета в базе · нужно подтвердить Instagram",
+    "blocked": "Профиль из базы · бот заблокирован",
+    "unavailable": "Профиль из базы · отправка в бот недоступна",
+}
 ERRORS = {
+    "creator_invite_direct_unavailable": (
+        "Проверьте профиль заново. Отправка в бот недоступна."
+    ),
     "creator_invite_telegram_invalid": "Укажите корректный Telegram-ник.",
     "creator_invite_already_interested": (
         "Этот креатор уже добавлен к другой позиции."
@@ -45,7 +57,13 @@ ERRORS = {
 
 
 def register_creator_invites(  # noqa: C901
-    app, auth, engine, templates, require_action_token, config
+    app,
+    auth,
+    engine,
+    templates,
+    require_action_token,
+    config,
+    transactions=None,
 ):
     bot = config.bot.bot_username.strip().lstrip("@")
     if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", bot):
@@ -56,7 +74,7 @@ def register_creator_invites(  # noqa: C901
         item_id,
         manager_id,
         instagram,
-        create,
+        operation,
         telegram,
         consent_source,
         creator_name,
@@ -67,8 +85,8 @@ def register_creator_invites(  # noqa: C901
             order = order_for_invite(db, order_id)
             if order is None:
                 return None
-            link, error = None, None
-            if create:
+            link, error, identity = None, None, None
+            if operation in {"create", "send"}:
                 try:
                     identity = create_invite(
                         db,
@@ -80,21 +98,18 @@ def register_creator_invites(  # noqa: C901
                         telegram=telegram,
                         consent_source=consent_source,
                         creator_name=creator_name,
+                        direct=operation == "send",
                     )
                     link = f"https://t.me/{bot}?start=oi_{identity.hex}"
                 except ValueError as exc:
                     error = ERRORS.get(
                         str(exc), "Не удалось создать приглашение."
                     )
-            known = None
+            known, availability = None, None
             if instagram:
                 try:
-                    matches = matching_creator_profiles(db, instagram, telegram)
-                    known = (
-                        "Подтверждённый профиль из базы"
-                        if matches
-                        else "Нужна регистрация в боте"
-                    )
+                    availability = creator_availability(db, instagram, telegram)
+                    known = AVAILABILITY[availability]
                 except ValueError as exc:
                     known = ERRORS.get(str(exc), "Проверьте контакты.")
             now = datetime.now(timezone.utc)
@@ -108,7 +123,7 @@ def register_creator_invites(  # noqa: C901
                 .scalar_subquery()
             )
             items = db.execute(
-                free_positions(order_id)
+                available_positions(order_id, now)
                 .with_only_columns(
                     OrderItemModel.paid_item_id,
                     OrderItemModel.ordinal,
@@ -118,7 +133,20 @@ def register_creator_invites(  # noqa: C901
             ).all()
             invites = (
                 db.execute(
-                    select(INVITES, OrderItemModel.ordinal)
+                    select(
+                        INVITES,
+                        OrderItemModel.ordinal,
+                        exists()
+                        .where(VISITS.c.invite_id == INVITES.c.id)
+                        .label("opened"),
+                        select(NOTICES.c.state)
+                        .where(
+                            NOTICES.c.invite_id == INVITES.c.id,
+                            NOTICES.c.kind == "creator",
+                        )
+                        .scalar_subquery()
+                        .label("notice_state"),
+                    )
                     .join(
                         OrderItemModel,
                         OrderItemModel.paid_item_id == INVITES.c.item_id,
@@ -143,6 +171,8 @@ def register_creator_invites(  # noqa: C901
                 invites=invites,
                 now=now,
                 known=known,
+                availability=availability,
+                identity=identity,
                 instagram=instagram,
                 telegram=telegram,
                 creator_name=creator_name,
@@ -156,7 +186,7 @@ def register_creator_invites(  # noqa: C901
         methods=["GET", "POST"],
         response_class=HTMLResponse,
     )
-    async def admin_creator_invites(request: Request, order_id: UUID):
+    async def admin_creator_invites(request: Request, order_id: UUID):  # noqa: C901
         if not await auth.authenticate(request):
             return admin_login_redirect(request)
         item_id, manager_id, instagram = None, None, ""
@@ -165,7 +195,7 @@ def register_creator_invites(  # noqa: C901
             instagram = request.query_params.get("instagram", "")[:250]
             telegram = request.query_params.get("telegram", "")[:100]
         posted = request.method == "POST"
-        create = posted
+        operation = ""
         if posted:
             await require_action_token(request)
             if (
@@ -175,9 +205,15 @@ def register_creator_invites(  # noqa: C901
             ):
                 raise HTTPException(503, "Приглашения пока недоступны.")
             form = await request.form()
-            create = form.get("operation") != "preview"
+            operation = str(form.get("operation") or "create")
+            if operation not in {"preview", "create", "send"}:
+                raise HTTPException(422, "Проверьте действие.")
+            if operation == "send" and transactions is None:
+                raise HTTPException(503, "Отправка в бот сейчас недоступна.")
             try:
-                item_id = UUID(str(form.get("item_id", "")))
+                item_id = (
+                    UUID(str(form["item_id"])) if form.get("item_id") else None
+                )
                 manager_id = (
                     UUID(str(form["manager_id"]))
                     if form.get("manager_id")
@@ -188,12 +224,13 @@ def register_creator_invites(  # noqa: C901
                 creator_name = str(form.get("creator_name", "")).strip()[:80]
                 if form.get("record_consent") == "1":
                     consent_source = str(form.get("consent_source", ""))
-                    if create and consent_source not in {
+                    if operation != "preview" and consent_source not in {
                         "instagram",
                         "telegram",
                         "other",
                     }:
                         raise ValueError("Укажите источник согласия.")
+                    operation = "create" if operation == "send" else operation
 
             except ValueError as exc:
                 raise HTTPException(
@@ -205,13 +242,31 @@ def register_creator_invites(  # noqa: C901
             item_id,
             manager_id,
             instagram,
-            create,
+            operation,
             telegram,
             consent_source,
             creator_name,
         )
         if data is None:
             raise HTTPException(404, "Нужен активный оплаченный заказ.")
+        if operation == "send" and data["identity"]:
+            from ugc_bot.container.creator_invite_factory import (
+                build_creator_invites,
+            )
+
+            status = await dispatch_invite(
+                config, build_creator_invites(transactions), data["identity"]
+            )
+            data["status"] = {
+                "sent": "Приглашение отправлено в Telegram.",
+                "sending": "Отправка уже началась.",
+                "unknown": "Telegram не подтвердил отправку. Повтор отключён.",
+            }.get(
+                status,
+                "Бот не смог отправить приглашение. Ссылку можно скопировать.",
+            )
+            if status == "sent":
+                data["link"] = None
         data["enabled"] = bool(
             bot
             and config.financial.core_enabled

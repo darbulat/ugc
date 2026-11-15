@@ -158,21 +158,14 @@ async def test_notify_user_verification_missing_telegram_user(
 
 
 @pytest.mark.asyncio
-async def test_notify_user_verification_success(test_config: AppConfig) -> None:
+@pytest.mark.parametrize(
+    ("lookup", "completed"),
+    [("off", False), ("found", False), ("found", True), ("timeout", True)],
+)
+async def test_notify_user_verification_success(
+    test_config: AppConfig, lookup: str, completed: bool
+) -> None:
     """Send notification when user and telegram record exist."""
-
-    class DummySession:
-        async def close(self) -> None:
-            return None
-
-    class DummyBot:
-        def __init__(self, token: str) -> None:
-            self.token = token
-            self.session = DummySession()
-            self.sent = []
-
-        async def send_message(self, chat_id: int, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            self.sent.append((chat_id, text, kwargs))
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -210,9 +203,53 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
         instagram_api_client=None,
     )
 
-    with patch("aiogram.Bot", DummyBot):
+    if lookup != "off":
+        test_config.db.database_url = "postgresql://testserver/test"
+    test_config.bot.bot_username = "test_bot"
+    test_config.webhook.webhook_base_url = "https://example.test"
+    invite = uuid4()
+    resume = AsyncMock(
+        return_value=invite,
+        side_effect=TimeoutError if lookup == "timeout" else None,
+    )
+    sent = AsyncMock()
+
+    @asynccontextmanager
+    async def messenger():
+        yield type("Messenger", (), {"send_text": sent})()
+
+    with (
+        patch(
+            "ugc_bot.instagram_webhook_app._get_chat_id_and_messenger_factory",
+            return_value=("12345", messenger()),
+        ),
+        patch(
+            "ugc_bot.infrastructure.db.repositories.invite_handoff.recent_invitation",
+            resume,
+        ),
+    ):
         await _notify_user_verification_success(
-            user.user_id, service, test_config
+            user.user_id, service, test_config, registration_completed=completed
+        )
+
+    sent.assert_awaited_once()
+    keyboard = sent.call_args.kwargs["keyboard"].rows
+    urls = [button.url for row in keyboard for button in row if button.url]
+    if lookup == "off":
+        resume.assert_not_awaited()
+    else:
+        resume.assert_awaited_once()
+    if lookup == "found":
+        assert urls == [f"https://t.me/test_bot?start=oi_{invite.hex}"]
+        assert keyboard[0][0].url == urls[0]
+    else:
+        assert not urls
+    if completed:
+        assert any(
+            button.web_app_url
+            == "https://example.test/miniapp/app.html?view=socials"
+            for row in keyboard
+            for button in row
         )
 
 

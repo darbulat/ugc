@@ -18,6 +18,9 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    creator_directory_status,
+)
 from ugc_bot.infrastructure.db.repositories.invite_preview import (
     preview_item,
     preview_order,
@@ -51,6 +54,50 @@ def free_positions(order_id):
             ItemAssignmentModel.paid_item_id == OrderItemModel.paid_item_id
         ),
     )
+
+
+def available_positions(order_id, at):
+    return free_positions(order_id).where(
+        ~exists().where(
+            INVITES.c.item_id == OrderItemModel.paid_item_id,
+            or_(INVITES.c.reported_at.is_not(None), INVITES.c.expires_at > at),
+        )
+    )
+
+
+def creator_availability(db, instagram, telegram):
+    targets = matching_creator_profiles(db, instagram, telegram)
+    if not targets:
+        handle = instagram_handle(instagram)
+        pending = db.scalars(
+            select(BloggerProfileModel.instagram_url).where(
+                BloggerProfileModel.instagram_url.ilike(f"%{handle}%")
+            )
+        )
+        return (
+            "unverified"
+            if any(_matches(url, handle) for url in pending)
+            else "external"
+        )
+    user, status, stable_id = db.execute(
+        select(
+            UserModel,
+            creator_directory_status(),
+            BloggerProfileModel.instagram_user_id,
+        )
+        .join(
+            BloggerProfileModel,
+            BloggerProfileModel.user_id == UserModel.user_id,
+        )
+        .where(UserModel.user_id == next(iter(targets)))
+    ).one()
+    if not stable_id:
+        return "unverified"
+    if status == "bot_blocked":
+        return "blocked"
+    if status == "active" and user.telegram_id and user.telegram_id.isdecimal():
+        return "ready"
+    return "unavailable"
 
 
 def team(order):
@@ -144,11 +191,39 @@ def create_invite(  # noqa: C901, PLR0912
     actor_id=None,
     consent_source="",
     creator_name="",
+    direct=False,
 ):
     handle = instagram_handle(instagram)
     telegram = telegram_handle(telegram) if telegram else None
     order = order_for_invite(db, order_id, lock=True)
-    if order is None or not db.scalar(
+    if order is None:
+        raise ValueError("creator_invite_position_unavailable")
+    if direct and creator_availability(db, handle, telegram) != "ready":
+        raise ValueError("creator_invite_direct_unavailable")
+    if item_id is None:
+        previous_item = db.scalar(
+            select(INVITES.c.item_id)
+            .where(
+                INVITES.c.order_id == order_id,
+                INVITES.c.instagram == handle,
+                INVITES.c.telegram.is_not_distinct_from(telegram),
+                INVITES.c.manager_id.is_not_distinct_from(manager_id),
+                INVITES.c.consented_at.is_(None),
+                or_(
+                    INVITES.c.reported_at.is_not(None),
+                    INVITES.c.expires_at > at,
+                ),
+            )
+            .order_by(INVITES.c.expires_at.desc())
+            .limit(1)
+        )
+        item_id = previous_item or db.scalar(
+            available_positions(order_id, at)
+            .with_only_columns(OrderItemModel.paid_item_id)
+            .order_by(OrderItemModel.ordinal)
+            .limit(1)
+        )
+    if not db.scalar(
         free_positions(order_id).where(OrderItemModel.paid_item_id == item_id)
     ):
         raise ValueError("creator_invite_position_unavailable")
@@ -166,7 +241,7 @@ def create_invite(  # noqa: C901, PLR0912
     target_id = next(iter(matches), None)
     if consent_source and not telegram:
         raise ValueError("creator_invite_telegram_invalid")
-    if consent_source and db.scalar(
+    if (consent_source or direct) and db.scalar(
         select(INTERESTS.c.interest_id).where(
             INTERESTS.c.order_id == order_id,
             func.lower(

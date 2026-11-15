@@ -3,6 +3,7 @@
 from dataclasses import dataclass, replace
 
 from sqlalchemy import select, update
+from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.native_principal_ports import require_current_principal
@@ -18,10 +19,12 @@ from ugc_bot.infrastructure.db.creator_invite_models import (
     INVITES,
     MANUAL_READY,
 )
+from ugc_bot.infrastructure.db.invite_handoff_models import STAFF_DELIVERIES
 from ugc_bot.infrastructure.db.models import (
     ManagerOrderModel,
     OrderItemModel,
     OrderModel,
+    PaymentModel,
     UserModel,
 )
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
@@ -29,6 +32,14 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     invitation,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+    creator_destination,
+    handoff_installed,
+    public_telegram,
+    save_sharing,
+    sharing_state,
+    track_visit,
+)
 from ugc_bot.infrastructure.db.repositories.invite_preview import (
     PREVIEW_CONSENT,
     confirm_preview,
@@ -48,6 +59,152 @@ class CreatorInviteService:
         async with self.transactions.transaction() as session:
             db = _session(session)
             return await invitation(db, identity, self.clock.now(), user_id)
+
+    async def open_invite(self, identity, user_id):
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            now = self.clock.now()
+            row = await invitation(db, identity, now, user_id)
+            if (
+                user_id
+                and row["status"] == "active"
+                and await handoff_installed(db)
+            ):
+                await track_visit(db, identity, user_id, now)
+            return row
+
+    async def creator_contact(self, identity, user_id):
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            if not await handoff_installed(db):
+                return None
+            return await creator_destination(
+                db, identity, user_id, self.clock.now()
+            )
+
+    @staticmethod
+    async def _owner(db, principal):
+        user = await db.get(UserModel, principal.user_id)
+        require_current_principal(
+            principal,
+            principal.user_id,
+            user.user_id if user else None,
+            user.telegram_id if user else None,
+            None,
+        )
+        if user is None or user.status != "active":
+            raise PermissionError("invite_order_unavailable")
+        return user
+
+    async def client_sharing(self, principal, order_id, enabled=None):
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            if not await handoff_installed(db):
+                raise ValueError("invite_handoff_unavailable")
+            user = await self._owner(db, principal)
+            if enabled is not None:
+                await save_sharing(db, order_id, user, enabled)
+            shared = await sharing_state(db, order_id, user)
+            staff = (
+                (
+                    await db.execute(
+                        select(
+                            INVITES.c.id,
+                            OrderItemModel.ordinal,
+                            STAFF_DELIVERIES.c.accepted_at,
+                        )
+                        .join(
+                            OrderItemModel,
+                            OrderItemModel.paid_item_id == INVITES.c.item_id,
+                        )
+                        .outerjoin(
+                            STAFF_DELIVERIES,
+                            STAFF_DELIVERIES.c.delivery_id == INVITES.c.id,
+                        )
+                        .where(
+                            INVITES.c.order_id == order_id,
+                            INVITES.c.reported_at.is_not(None),
+                            INVITES.c.consented_at.is_(None),
+                            OrderItemModel.selection_state == "paid",
+                        )
+                        .order_by(OrderItemModel.ordinal)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            return {
+                "enabled": shared,
+                "telegram": public_telegram(user.telegram),
+                "staff": [dict(row) for row in staff],
+            }
+
+    async def acknowledge_staff_contact(self, principal, identity):
+        from ugc_bot.infrastructure.db.repositories.correction_funding import (
+            require_forward_clear,
+        )
+
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            user = await self._owner(db, principal)
+            item = (
+                await db.execute(
+                    select(
+                        OrderItemModel.paid_item_id,
+                        OrderModel.order_id,
+                        PaymentModel.payment_id,
+                        INVITES.c.reported_at,
+                        INVITES.c.consented_at,
+                        OrderModel.status.label("order_status"),
+                    )
+                    .select_from(INVITES)
+                    .join(OrderModel, OrderModel.order_id == INVITES.c.order_id)
+                    .join(
+                        OrderItemModel,
+                        OrderItemModel.paid_item_id == INVITES.c.item_id,
+                    )
+                    .join(
+                        PaymentModel,
+                        PaymentModel.order_id == OrderModel.order_id,
+                    )
+                    .where(
+                        INVITES.c.id == identity,
+                        OrderModel.advertiser_id == user.user_id,
+                        OrderModel.status.in_(("active", "closed")),
+                        OrderModel.complimentary.is_(False),
+                        OrderItemModel.captured_at.is_not(None),
+                        PaymentModel.status == "paid",
+                    )
+                    .with_for_update(of=OrderModel)
+                )
+            ).one_or_none()
+            if item is None or item.reported_at is None:
+                raise ValueError("creator_invite_contact_unavailable")
+            present = await db.scalar(
+                select(STAFF_DELIVERIES.c.delivery_id).where(
+                    STAFF_DELIVERIES.c.paid_item_id == item.paid_item_id
+                )
+            )
+            if present == identity:
+                return item.order_id
+            if (
+                present is not None
+                or item.consented_at is not None
+                or item.order_status != "active"
+            ):
+                raise ValueError("creator_invite_contact_unavailable")
+            await require_forward_clear(item.paid_item_id, session=db)
+            await db.execute(
+                insert(STAFF_DELIVERIES).values(
+                    paid_item_id=item.paid_item_id,
+                    delivery_id=identity,
+                    order_id=item.order_id,
+                    payment_id=item.payment_id,
+                    client_id=user.user_id,
+                    accepted_at=self.clock.now(),
+                )
+            )
+            return item.order_id
 
     async def accept(self, identity, user_id):
         row = await self.preview(identity, user_id)
@@ -196,7 +353,7 @@ class CreatorInviteService:
                             INVITES.c.reported_at.is_not(None),
                             INVITES.c.consented_at.is_(None),
                             OrderModel.advertiser_id == principal.user_id,
-                            OrderModel.status == "active",
+                            OrderModel.status.in_(("active", "closed")),
                             OrderItemModel.selection_state == "paid",
                             ItemAssignmentModel.assignment_id.is_(None),
                         )
