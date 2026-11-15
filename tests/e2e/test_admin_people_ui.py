@@ -1,6 +1,7 @@
 """Authenticated directory and profile flows on an isolated PostGIS database."""
 
 import os
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -519,3 +520,73 @@ def test_selected_platform_audience_with_search_and_blocked_bot(
     expect(minimum).to_have_value("")
     expect(unknown).not_to_be_checked()
     expect(unknown).to_be_disabled()
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+@pytest.mark.parametrize("width", [320, 360, 768, 1024, 1152, 1440])
+def test_platform_audience_sort_and_layout(
+    admin_server, page, people_records, width
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _, city, instagram, _, active_name = people_records
+    token = instagram.removeprefix("city_creator_")
+    blocked_name = f"Ирина {token}"
+    page.set_viewport_size({"width": width, "height": 900})
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/users/creators")
+    form = page.locator(".people-filters")
+    form.get_by_label("Поиск").fill(token)
+    form.get_by_label("Город").select_option(city.lower())
+    form.get_by_label("Есть ссылка на площадку").select_option("youtube")
+    form.get_by_label("От N подписчиков").fill("1000")
+    form.get_by_role("button", name="Найти").click()
+    table = page.locator(".people-table")
+    names = table.locator(".people-name")
+    mobile_menu = page.locator(".people-mobile-sort")
+    label = "Подписчики · YouTube"
+    mobile = width <= 1088
+    if mobile:
+        expect(mobile_menu).to_be_visible()
+        expect(table.locator("thead")).to_be_hidden()
+        expect(table.locator("tbody tr").first).to_have_css("display", "grid")
+    else:
+        expect(mobile_menu).to_be_hidden()
+        expect(table.locator("thead")).to_be_visible()
+
+    def sort_audience():
+        if mobile:
+            mobile_menu.locator("summary").click()
+            mobile_menu.get_by_role("link", name=label, exact=True).click()
+        else:
+            table.get_by_role("columnheader", name=label).get_by_role(
+                "link"
+            ).click()
+
+    sort_audience()
+    expect(names).to_have_text([active_name, blocked_name])
+    audience = table.locator(".people-audience").nth(1)
+    expect(audience).to_contain_text("1 200")
+    expect(audience).to_contain_text("Со слов креатора")
+    expect(audience).to_contain_text(re.compile(r"\d{2}\.\d{2}\.\d{4}"))
+
+    sort_audience()
+    expect(names).to_have_text([blocked_name, active_name])
+    page.get_by_role("link", name="Креаторы с недоступным ботом").click()
+    expect(names).to_have_text([blocked_name])
+    expect(form.get_by_label("Поиск")).to_have_value(token)
+    expect(form.get_by_label("Статус")).to_have_value("bot_blocked")
+    expect(form.get_by_label("От N подписчиков")).to_have_value("1000")
+    assert "sort=followers" in page.url and "order=asc" in page.url
+    names.first.click()
+    page.get_by_role("link", name="Назад к списку").click()
+    expect(names).to_have_text([blocked_name])
+
+    assert page.evaluate(
+        "document.documentElement.scrollWidth === window.innerWidth"
+    )
+    container = page.locator(".people-scroll")
+    assert container.evaluate(
+        "(element) => element.scrollWidth <= element.clientWidth"
+    )
