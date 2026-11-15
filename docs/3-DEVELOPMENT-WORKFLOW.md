@@ -154,12 +154,15 @@ Payments (including refunds and accruals), migrations and their database
 guards, and customer notifications require explicit human approval on the
 latest PR commit, in addition to green CI. Follow
 [the required review rule](../AGENTS.md#mandatory-review-for-sensitive-changes).
-To enforce this in GitHub, put the designated reviewers with write access
-in `.github/CODEOWNERS` for those paths and for the review policy itself.
-In Settings → Branches, protect `main`: require a pull request, Code Owners
-approval, dismissal of stale approvals and the Lint and Test status check.
-A repository admin must configure these settings. Follow the project rule
-even when GitHub does not yet enforce it.
+[`.github/CODEOWNERS`](../.github/CODEOWNERS) assigns `@knails21` to
+the sensitive paths and the review policy. A repository admin must protect
+`main` in Settings → Branches: require a pull request, Code Owners approval,
+dismissal of stale approvals, and the `lint-and-test (3.13)` status check.
+Apply the rule to administrators as well. GitHub uses the CODEOWNERS file
+from the PR base branch; adding it to a PR does not enable protection by
+itself. Open sensitive PRs under a different account if `@knails21` is
+the reviewer. Follow the project rule even when GitHub does not yet enforce
+it or the sensitive code is in a shared file not covered by a path rule.
 
 ## Development on Dev Server
 
