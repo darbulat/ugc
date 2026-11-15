@@ -34,11 +34,11 @@
     <p>{{ states.get(row.state, row.state) }} · {% if row.telegram %}@{{ row.telegram }} · {% endif %}{{ answers.location or 'Город не указан' }} · Активных заказов {{ row.orders }}</p>
     {% if row.registered_by_admin %}<p>Добавлен администратором</p>{% endif %}
     {% if answers %}
-    <p>Instagram {% if row.instagram_verified_at %}подтверждён{% else %}ожидает подтверждения{% endif %}{% if answers.settlement %} · {{ answers.settlement }}{% endif %}{% if answers.rate %} · Ставка {{ answers.rate }}{% endif %}{% if answers.weekly_capacity %} · Авторов в неделю {{ answers.weekly_capacity }}{% endif %}</p>
+    <p>Instagram {% if row.instagram_verified_at %}подтверждён{% else %}ожидает подтверждения{% endif %}{% if answers.work_format %} · {{ answers.work_format }}{% endif %}{% if answers.settlement %} · {{ answers.settlement }}{% endif %}{% if answers.rate %} · Ставка {{ answers.rate }}{% endif %}{% if answers.weekly_capacity %} · Авторов в неделю {{ answers.weekly_capacity }}{% endif %}</p>
     <details>
       <summary>Анкета</summary>
       <dl>
-        {% for key, field in fields.items() %}<dt>{{ field[0] }}</dt><dd>{{ answers.get(key, '—') }}</dd>{% endfor %}
+        {% for key, field in fields.items() if key in answers %}<dt>{{ field[0] }}</dt><dd>{{ answers[key] }}</dd>{% endfor %}
       </dl>
     </details>
     {% endif %}

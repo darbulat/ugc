@@ -45,6 +45,7 @@ from ugc_bot.admin.auth import (
     admin_login_redirect,
     safe_admin_return_to,
 )
+from ugc_bot.admin.business_metrics import repeat_order_ids
 from ugc_bot.admin.complaints import (
     COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
@@ -2359,9 +2360,9 @@ class OrderAdmin(ModelView, model=OrderModel):
             stmt = stmt.where(OrderModel.advertiser_id == advertiser_id)
         group = request.query_params.get("group", "work")
         filters = self.quick_filters(request)
-        if (group == UNPAID_GROUP or "inactive" in filters) and not hasattr(
-            request.state, "worklist_now"
-        ):
+        if (
+            group in (UNPAID_GROUP, "repeat") or "inactive" in filters
+        ) and not hasattr(request.state, "worklist_now"):
             request.state.worklist_now = datetime.now(timezone.utc)
         if group == UNPAID_GROUP:
             stmt = stmt.where(
@@ -2370,6 +2371,15 @@ class OrderAdmin(ModelView, model=OrderModel):
                     request.state.worklist_now, self.unpaid_age_hours
                 ),
             )
+        elif group == "repeat":
+            stmt = stmt.where(
+                OrderModel.order_id.in_(
+                    repeat_order_ids(request.state.worklist_now)
+                )
+            )
+            status = request.query_params.get("status", "")
+            if status in ORDER_STATUS_LABELS:
+                stmt = stmt.where(OrderModel.status == status)
         else:
             stmt = stmt.where(
                 *worklist_conditions(

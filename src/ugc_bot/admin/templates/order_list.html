@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'removed', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'removed', 'repeat', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
 {% set quick_filters = model_view.quick_filters(request) %}
 {% set advertiser_id = model_view.customer_filter(request) %}
@@ -17,7 +17,7 @@
 <section class="col-12 order-worklist">
   <div class="card">
     <div class="card-header d-flex flex-wrap align-items-center gap-2">
-      <h2 class="card-title me-auto">{{ 'Заказы заказчика' if advertiser_id else 'Заказы' }}</h2>
+      <h2 class="card-title me-auto">{{ 'Повторные заявки' if group == 'repeat' else 'Заказы заказчика' if advertiser_id else 'Заказы' }}</h2>
       {% if model_view.can_export %}
         {% for export_type in model_view.export_types %}
         <a class="btn btn-sm btn-outline-secondary"
@@ -41,7 +41,7 @@
         </div>
       {% endif %}
       <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('removed', 'Удалённые'), ('all', 'Все')] %}
+        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('removed', 'Удалённые'), ('repeat', 'Повторные'), ('all', 'Все')] %}
         <a class="nav-link{% if group == key %} active{% endif %}"
            {% if group == key %}aria-current="page"{% endif %}
            href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'status', 'sortBy', 'sort'] if key == 'unpaid' else ['page', 'company', 'companyPage', 'status']).include_query_params(group=key) }}">
@@ -59,6 +59,9 @@
       {% if group == 'unpaid' %}
         <p class="text-muted mb-3">Новые заявки, ожидающие оплаты от {{ model_view.unpaid_age_hours }} ч.</p>
         {% if not model_view.unpaid_reminders_enabled %}<p class="text-muted mb-3">Автонапоминания выключены.</p>{% endif %}
+      {% endif %}
+      {% if group == 'repeat' %}
+        <p class="text-muted mb-3">Заказы, созданные после первой оплаты заказчика. <a href="{{ request.url_for('admin_dashboard').include_query_params(period='all') }}">Дашборд</a></p>
       {% endif %}
       <form method="get" class="d-flex flex-wrap align-items-end gap-2">
         <input type="hidden" name="group" value="{{ group }}">
@@ -78,13 +81,13 @@
                  placeholder="География, заказчик, бренд, оффер или ID"
                  value="{{ request.query_params.get('search', '') }}">
         </div>
-        {% if group in ('work', 'all') %}
+        {% if group in ('work', 'all', 'repeat') %}
         <div>
           <label class="form-label" for="order-status">Статус</label>
           <select class="form-select" id="order-status" name="status">
             <option value="">Любой</option>
             {% for value, label in model_view.worklist_status_labels.items() %}
-              {% if group == 'all' or value != 'closed' %}
+              {% if group != 'work' or value != 'closed' %}
               <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
               {% endif %}
             {% endfor %}

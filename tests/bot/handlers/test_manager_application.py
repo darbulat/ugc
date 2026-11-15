@@ -11,7 +11,7 @@ from ugc_bot.bot.telegram.handlers.manager_application import (
     manager_application_answer,
     open_manager_application,
 )
-from ugc_bot.domain.manager_application import FIELDS
+from ugc_bot.domain.manager_application import application_fields
 
 
 @pytest.mark.asyncio
@@ -58,7 +58,7 @@ async def test_manager_phone_must_belong_to_telegram_sender(config):
     roles = SimpleNamespace(
         get_user=AsyncMock(return_value=SimpleNamespace(user_id=uid))
     )
-    answers = dict.fromkeys(FIELDS, "Ответ")
+    answers = dict.fromkeys(application_fields({}), "Ответ")
     service = SimpleNamespace(
         answer=AsyncMock(),
         open=AsyncMock(
@@ -68,6 +68,18 @@ async def test_manager_phone_must_belong_to_telegram_sender(config):
             }
         ),
     )
+    foreign_contact = message.contact
+    message.contact = None
+    for manual_phone in ("не номер", "+78005550123"):
+        message.text = manual_phone
+        await manager_application_answer(message, state, roles, config, service)
+        service.answer.assert_not_awaited()
+        assert await state.get_data() == {"field": "phone"}
+        text, keyboard = message.answers[-1]
+        assert "анкету менеджера" in text
+        assert keyboard.keyboard[0][0].request_contact
+
+    message.contact = foreign_contact
     await manager_application_answer(message, state, roles, config, service)
     service.answer.assert_not_awaited()
     message.contact.user_id = 100
@@ -127,6 +139,22 @@ async def test_manager_edits_submits_and_verifies_application(config):
     message.text = "900–1500"
     await manager_application_answer(message, state, roles, config, service)
     assert row["answers"]["rate"] == "900–1500"
+    assert (await state.get_data())["field"] == "work_format"
+    assert [
+        buttons[0].text for buttons in message.answers[-1][1].inline_keyboard
+    ] == [
+        "Фрилансер",
+        "Агентство",
+        "В команде бренда",
+        "Другое",
+    ]
+    await tap("work_format:3")
+    assert (await state.get_data())["field"] == "work_format_details"
+    message.text = "Продюсирую проекты с авторами"
+    await manager_application_answer(message, state, roles, config, service)
+    assert (
+        row["answers"]["work_format_details"] == "Продюсирую проекты с авторами"
+    )
     assert (await state.get_data())["field"] == "weekly_capacity"
     assert [
         buttons[0].text for buttons in message.answers[-1][1].inline_keyboard
@@ -157,32 +185,38 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("settlement:0")
     assert row["answers"]["settlement"] == "ИП"
 
-    await tap("field:coverage")
-    assert message.answers[-1][1].inline_keyboard[0][0].text == "Пропустить"
-    await tap("coverage:0")
-    assert row["answers"]["coverage"] == "Не указано"
-    await tap("field:coverage")
-    message.text = "Казань, гастрономия"
-    await manager_application_answer(message, state, roles, config, service)
-    assert row["answers"]["coverage"] == "Казань, гастрономия"
-
+    await tap("field:work_format")
+    await tap("work_format:1")
     await tap("field:case")
+    assert "какие проекты ведёт ваша команда" in message.answers[-1]
     service.answer.side_effect = ValueError("too long")
     message.text = "x" * 501
     await manager_application_answer(message, state, roles, config, service)
     assert "Проверьте формат" in message.answers[-1]
     row["answers"].update(
-        {field: "Ответ" for field in FIELDS if field not in row["answers"]}
+        {
+            field: "Ответ"
+            for field in application_fields(row["answers"])
+            if field not in row["answers"]
+        }
     )
     # An old review message can still be submitted after the release.
-    del row["answers"]["weekly_capacity"]
+    row["answers"]["coverage"] = "Казань, гастрономия"
+    del row["answers"]["work_format"]
     service.answer.side_effect = answer
     await tap("submit")
-    assert (await state.get_data())["field"] == "weekly_capacity"
+    assert (await state.get_data())["field"] == "work_format"
     service.submit.assert_not_awaited()
     assert row["answers"]["coverage"] == "Казань, гастрономия"
-    await tap("weekly_capacity:0")
-    assert "Авторов в неделю · 0" in message.answers[-1][0]
+    del row["answers"]["reliability"]
+    await tap("work_format:0")
+    assert (await state.get_data())["field"] == "reliability"
+    assert "блогер отказался от участия" in message.answers[-1]
+    message.text = "Сразу предупрежу команду и согласую замену"
+    await manager_application_answer(message, state, roles, config, service)
+    assert "Авторов в неделю · 31–100" in message.answers[-1][0]
+    assert "Действия при срыве · Сразу предупрежу" in message.answers[-1][0]
+    assert "Казань, гастрономия" not in message.answers[-1][0]
     service.submit.side_effect = submit
     await tap("next")
     assert "Проверьте заявку" in message.answers[-1][0]

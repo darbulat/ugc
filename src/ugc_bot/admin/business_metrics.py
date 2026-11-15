@@ -284,24 +284,7 @@ def _activation_counts(first_event_at, as_of: datetime):
     )
 
 
-async def cohort_metrics(
-    session: AsyncSession, as_of: datetime
-) -> CohortMetrics:
-    activity = _creator_order_activity()
-    first_order = (
-        select(activity.c.creator, func.min(activity.c.at).label("first_at"))
-        .where(activity.c.at < as_of)
-        .group_by(activity.c.creator)
-        .subquery()
-    )
-    creator_counts = await session.execute(
-        select(*_activation_counts(first_order.c.first_at, as_of))
-        .select_from(BloggerProfileModel)
-        .join(UserModel, UserModel.user_id == BloggerProfileModel.user_id)
-        .outerjoin(first_order, first_order.c.creator == UserModel.user_id)
-    )
-    creator_eligible, creator_converted = creator_counts.one_or_none() or (0, 0)
-
+def _paid_history(as_of: datetime):
     paid_at = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
     # A single payment per order makes the rank an order rank.
     payment_order = (paid_at, OrderModel.order_id)
@@ -329,10 +312,11 @@ async def cohort_metrics(
         )
         .subquery()
     )
-    paid_history = (
-        select(paid_orders).where(paid_orders.c.sequence == 1).subquery()
-    )
-    ordered_again = (
+    return select(paid_orders).where(paid_orders.c.sequence == 1).subquery()
+
+
+def _repeat_order_ids(paid_history, as_of: datetime):
+    return (
         select(OrderModel.order_id)
         .where(
             OrderModel.advertiser_id == paid_history.c.advertiser_id,
@@ -343,8 +327,33 @@ async def cohort_metrics(
             *_customer_application_conditions(),
         )
         .correlate(paid_history)
-        .exists()
     )
+
+
+def repeat_order_ids(as_of: datetime):
+    return _repeat_order_ids(_paid_history(as_of), as_of)
+
+
+async def cohort_metrics(
+    session: AsyncSession, as_of: datetime
+) -> CohortMetrics:
+    activity = _creator_order_activity()
+    first_order = (
+        select(activity.c.creator, func.min(activity.c.at).label("first_at"))
+        .where(activity.c.at < as_of)
+        .group_by(activity.c.creator)
+        .subquery()
+    )
+    creator_counts = await session.execute(
+        select(*_activation_counts(first_order.c.first_at, as_of))
+        .select_from(BloggerProfileModel)
+        .join(UserModel, UserModel.user_id == BloggerProfileModel.user_id)
+        .outerjoin(first_order, first_order.c.creator == UserModel.user_id)
+    )
+    creator_eligible, creator_converted = creator_counts.one_or_none() or (0, 0)
+
+    paid_history = _paid_history(as_of)
+    ordered_again = _repeat_order_ids(paid_history, as_of).exists()
     repeat_duration = timedelta(days=90)
     repeat_eligible = paid_history.c.first_at <= as_of - repeat_duration
     customer_counts = await session.execute(

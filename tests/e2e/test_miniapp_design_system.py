@@ -24,6 +24,7 @@ class MiniAppNetwork:
         self.failure = False
         self.blogger_registered = False
         self.manager = False
+        self.manager_app_enabled = False
         self.order: dict = {}
         self.symbol = {"ru": "₽", "en": "$", "kk": "₸"}[locale]
 
@@ -53,6 +54,8 @@ class MiniAppNetwork:
                     "content_usage_options": [],
                     "docs_offer_url": "https://example.test/offer",
                     "docs_privacy_url": "https://example.test/privacy",
+                    "bot_username": "synthetic_test_bot",
+                    "manager_application_enabled": self.manager_app_enabled,
                 }
             elif path == "/register/advertiser":
                 if self.failure:
@@ -163,6 +166,38 @@ def screenshot(page: Page, name: str) -> None:
             full_page=True,
             animations="disabled",
         )
+
+
+def test_manager_application_opens_bot_without_opening_advertiser_form(
+    page: Page,
+) -> None:
+    network = MiniAppNetwork()
+    network.manager_app_enabled = True
+    errors = open_app(page, network)
+    link = page.get_by_role("link", name="Подать заявку менеджера")
+    expect(link).to_be_visible()
+    expect(page.locator("#btn-manager-role")).to_be_hidden()
+    url = "https://t.me/synthetic_test_bot?start=manager"
+    expect(link).to_have_attribute("href", url)
+    link.click()
+    assert ["telegram-link", url] in page.evaluate("window.__host.calls")
+    expect(page.locator("#screen-register-advertiser")).to_be_hidden()
+    assert not any(
+        path.startswith("/register/") for path, _ in network.requests
+    )
+
+    page.locator('[data-role="advertiser"]').click()
+    expect(page.locator("#screen-register-advertiser")).to_be_visible()
+    expect(page.locator("#adv-brand")).to_be_visible()
+    expect(page.locator("#adv-site")).to_be_visible()
+
+    network.manager = True
+    page.reload()
+    expect(page.locator("#btn-manager-role")).to_be_visible()
+    expect(link).to_be_hidden()
+    page.locator("#btn-manager-role").click()
+    expect(page.locator("#screen-manager-orders")).to_be_visible()
+    assert not errors
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
