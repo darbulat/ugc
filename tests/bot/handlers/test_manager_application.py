@@ -35,7 +35,9 @@ async def test_manager_application_uses_private_telegram_profile(config):
     await open_manager_application(message, state, roles, config, service)
     assert roles.set_user.call_args.kwargs["telegram_username"] == "candidate"
     service.open.assert_awaited_once_with(uid)
-    assert "600 ₽ менеджеру" in message.answers[-1][0]
+    intro = message.answers[-1][0]
+    assert "ожидаемую ставку" in intro
+    assert all(amount not in intro for amount in ("600", "1200", "1 200"))
     assert "продолжить" in message.answers[-1][1].inline_keyboard[0][0].text
 
 
@@ -117,6 +119,26 @@ async def test_manager_edits_submits_and_verifies_application(config):
         )
 
     await tap("next")
+    assert (await state.get_data())["field"] == "rate"
+    assert message.answers[-1][1].inline_keyboard[0][0].text == "Обсудим"
+    await tap("rate:0")
+    assert row["answers"]["rate"] == "Обсудим"
+    await tap("field:rate")
+    message.text = "900–1500"
+    await manager_application_answer(message, state, roles, config, service)
+    assert row["answers"]["rate"] == "900–1500"
+    assert (await state.get_data())["field"] == "weekly_capacity"
+    assert [
+        buttons[0].text for buttons in message.answers[-1][1].inline_keyboard
+    ] == [
+        "0",
+        "1–10",
+        "11–30",
+        "31–100",
+        "101+",
+    ]
+    await tap("weekly_capacity:3")
+    assert row["answers"]["weekly_capacity"] == "31–100"
     assert (await state.get_data())["field"] == "location"
     message.text = "Россия, Казань"
     await manager_application_answer(message, state, roles, config, service)
@@ -127,7 +149,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("field:settlement")
     message.text = "ИП"
     await manager_application_answer(message, state, roles, config, service)
-    assert "Выберите вариант" in message.answers[-1]
+    assert "Выберите один из вариантов" in message.answers[-1]
     await tap("settlement:99")
     assert "settlement" not in row["answers"]
     await tap("settlement:1")
@@ -135,17 +157,32 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("settlement:0")
     assert row["answers"]["settlement"] == "ИП"
 
+    await tap("field:coverage")
+    assert message.answers[-1][1].inline_keyboard[0][0].text == "Пропустить"
+    await tap("coverage:0")
+    assert row["answers"]["coverage"] == "Не указано"
+    await tap("field:coverage")
+    message.text = "Казань, гастрономия"
+    await manager_application_answer(message, state, roles, config, service)
+    assert row["answers"]["coverage"] == "Казань, гастрономия"
+
     await tap("field:case")
     service.answer.side_effect = ValueError("too long")
     message.text = "x" * 501
     await manager_application_answer(message, state, roles, config, service)
     assert "Проверьте формат" in message.answers[-1]
-    service.submit.side_effect = ValueError("Заполните пропущенные поля.")
-    await tap("submit")
-    assert message.answers[-1] == "Заполните пропущенные поля."
     row["answers"].update(
         {field: "Ответ" for field in FIELDS if field not in row["answers"]}
     )
+    # An old review message can still be submitted after the release.
+    del row["answers"]["weekly_capacity"]
+    service.answer.side_effect = answer
+    await tap("submit")
+    assert (await state.get_data())["field"] == "weekly_capacity"
+    service.submit.assert_not_awaited()
+    assert row["answers"]["coverage"] == "Казань, гастрономия"
+    await tap("weekly_capacity:0")
+    assert "Авторов в неделю · 0" in message.answers[-1][0]
     service.submit.side_effect = submit
     await tap("next")
     assert "Проверьте заявку" in message.answers[-1][0]
@@ -155,6 +192,9 @@ async def test_manager_edits_submits_and_verifies_application(config):
         message.answers[-1][1].inline_keyboard[0][0].text
         == "Подтвердить Instagram"
     )
+    del row["answers"]["weekly_capacity"]
+    await tap("submit")
+    service.submit.assert_awaited_once()
     await tap("next")
     assert "Заявка на рассмотрении." in message.answers[-1][0]
     await tap("instagram")
@@ -197,3 +237,6 @@ async def test_manager_application_does_not_apply_stale_or_foreign_answers(
     await manager_application_answer(message, state, roles, config, service)
     assert not await state.get_data()
     service.open.assert_not_awaited()
+    await state.set_data({"field": "location"})
+    await manager_application_answer(message, state, roles, config, service)
+    assert message.answers[-1] == "Введите ответ на вопрос текстом."

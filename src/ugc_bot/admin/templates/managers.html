@@ -34,7 +34,7 @@
     <p>{{ states.get(row.state, row.state) }} · {% if row.telegram %}@{{ row.telegram }} · {% endif %}{{ answers.location or 'Город не указан' }} · Активных заказов {{ row.orders }}</p>
     {% if row.registered_by_admin %}<p>Добавлен администратором</p>{% endif %}
     {% if answers %}
-    <p>Instagram {% if row.instagram_verified_at %}подтверждён{% else %}ожидает подтверждения{% endif %} · {{ answers.settlement }} · {{ answers.rate }}</p>
+    <p>Instagram {% if row.instagram_verified_at %}подтверждён{% else %}ожидает подтверждения{% endif %}{% if answers.settlement %} · {{ answers.settlement }}{% endif %}{% if answers.rate %} · Ставка {{ answers.rate }}{% endif %}{% if answers.weekly_capacity %} · Авторов в неделю {{ answers.weekly_capacity }}{% endif %}</p>
     <details>
       <summary>Анкета</summary>
       <dl>

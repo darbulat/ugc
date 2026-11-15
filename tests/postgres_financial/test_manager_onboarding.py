@@ -61,9 +61,12 @@ async def test_application_verification_review_and_directory(intake_env):
         coverage="Казань",
         settlement="ИП",
         rate="600–800",
+        weekly_capacity="11–30",
         reliability="Предупрежу заранее.",
     )
     assert answers.keys() == FIELDS.keys()
+    with pytest.raises(ValueError, match="предложенных"):
+        await service.answer(user_id, "weekly_capacity", "50")
     for field, value in answers.items():
         await service.answer(user_id, field, value)
     await service.submit(user_id)
@@ -89,6 +92,7 @@ async def test_application_verification_review_and_directory(intake_env):
         assert "test_manager" in worklist_manager_suggestions(db)
         rows = _directory(db, "Казань", "available", 0)
         assert [r["user_id"] for r in rows] == [user_id]
+        assert rows[0]["answers"]["weekly_capacity"] == "11–30"
     assert await service.approved(user_id)
 
 
