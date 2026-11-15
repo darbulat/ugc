@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -18,6 +19,7 @@ from ugc_bot.application.services.financial_event_router import (
 )
 from ugc_bot.domain.entities import Order, OutboxEvent
 from ugc_bot.domain.enums import OrderStatus, OutboxEventStatus
+from ugc_bot.domain.manager_application import MANAGER_NOTICE_EVENTS
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
@@ -44,6 +46,9 @@ class OutboxPublisher:
     financial_delivery: "OutboxPublisher | None" = None
     financial_router: FinancialEventRouter | None = None
     dispatch_control: Any = None
+    manager_notifier: (
+        Callable[[OutboxEvent, object], Awaitable[None]] | None
+    ) = None
 
     async def publish_order_activation(
         self, order: Order, session: object | None = None
@@ -213,7 +218,14 @@ class OutboxPublisher:
             await self.outbox_repo.mark_as_processing(
                 event.event_id, session=session
             )
-            if self.financial_router is not None:
+            if (
+                event.event_type in MANAGER_NOTICE_EVENTS
+                and self.manager_notifier
+            ):
+                if session is None:
+                    raise ValueError("manager_delivery_requires_database")
+                await self.manager_notifier(event, session)
+            elif self.financial_router is not None:
                 await self.financial_router.route(event, session=session)
             elif event.event_type == "order.activated":
                 if kafka_publisher is None:

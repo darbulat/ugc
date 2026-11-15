@@ -2,8 +2,46 @@
 
 import re
 from collections.abc import Mapping
+from datetime import datetime
 
 from ugc_bot.domain.creator_invites import instagram_handle
+
+MANAGER_REVIEWERS = ("kamilbakhteev", "usemycontent")
+MANAGER_PROGRAM_URL = "https://usemycontent.ru/partner"
+MANAGER_SUBMITTED = "manager.application.submitted"
+MANAGER_APPROVED = "manager.application.approved"
+MANAGER_NOTICE_EVENTS = frozenset({MANAGER_SUBMITTED, MANAGER_APPROVED})
+MANAGER_STATES = {
+    "submitted": "На проверке",
+    "clarify": "Нужно уточнение",
+    "approved": "Одобрен",
+    "declined": "Отклонён",
+    "existing": "Уже назначался",
+    "busy": "Ведёт заказ",
+    "available": "Свободен",
+}
+MANAGER_FIELD_LABELS = {
+    "name": "Имя",
+    "rate": "Ставка за блогера",
+    "work_format": "Формат работы",
+    "work_format_details": "Подробнее о формате",
+    "weekly_capacity": "Блогеров в неделю",
+    "location": "Город",
+    "location_region": "Регион",
+    "location_country": "Страна",
+    "phone": "Телефон",
+    "instagram": "Instagram",
+    "case": "Опыт работы с блогерами",
+    "settlement": "Способ расчёта",
+    "shortfall_plan": "Если нужно найти ещё 5 блогеров",
+    "reliability": "Если блогер откажется",
+    "coverage": "Ниши и площадки",
+}
+
+
+def application_version(submitted_at: datetime | None) -> int:
+    return round(submitted_at.timestamp() * 1_000_000) if submitted_at else 0
+
 
 INTRO = (
     "UMC подбирает блогеров и передаёт вам заказ с брифом и откликами. "

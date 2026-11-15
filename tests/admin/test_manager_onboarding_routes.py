@@ -86,11 +86,25 @@ def test_review_actions_require_admin_and_csrf(monkeypatch):
     )
     assert response.headers["cache-control"] == "no-store"
     assert response.json() == {
-        "message": "Изменение сохранено.",
+        "message": "Менеджер принят. Уведомление поставлено в очередь.",
         "has_more": True,
     }
     assert directory.call_args.args[1:] == ("@name", "submitted", 30)
     assert client.get(url).json()["message"] is None
+
+    response = client.post(
+        url,
+        data=decision | {"version": "41", "from_detail": "1"},
+        headers=valid,
+    )
+    assert response.headers["location"] == f"{url}/{uid}"
+    assert review.call_args.kwargs == {"version": 41}
+    assert (
+        client.post(
+            url, data=decision | {"version": "invalid"}, headers=valid
+        ).status_code
+        == 422
+    )
 
     review.side_effect = ValueError("Кандидату нужно подтвердить Instagram.")
     assert client.post(url, data=decision, headers=valid).status_code == 303

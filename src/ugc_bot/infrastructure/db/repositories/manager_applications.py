@@ -3,18 +3,107 @@
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.manager_application import (
+    MANAGER_APPROVED,
+    MANAGER_REVIEWERS,
+    MANAGER_SUBMITTED,
     application_fields,
+    application_version,
     missing_application_fields,
     validate_application_answer,
 )
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
+from ugc_bot.infrastructure.db.models import (
+    AuditLogModel,
+    OutboxEventModel,
+    UserModel,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
+
+
+def _enqueue_notice(db, user_id, event_type, at, payload):
+    db.add(
+        OutboxEventModel(
+            event_id=uuid4(),
+            aggregate_id=str(user_id),
+            aggregate_type="manager_application",
+            event_type=event_type,
+            created_at=at,
+            payload=payload,
+        )
+    )
+
+
+def record_manager_review(db, user_id, state, source, at, actor_id=None):
+    values = {"state": state, "source": source}
+    if actor_id:
+        values["actor_id"] = str(actor_id)
+    db.add(
+        AuditLogModel(
+            entity_type="manager_application",
+            entity_id=user_id,
+            action="update",
+            new_values=values,
+            changed_at=at,
+        )
+    )
+    if state == "approved":
+        _enqueue_notice(db, user_id, MANAGER_APPROVED, at, {})
+
+
+def review_manager_application(
+    db, user_id, command, note, *, version=None, actor_id=None
+):
+    candidate = (
+        db.execute(
+            select(APPLICATIONS)
+            .where(APPLICATIONS.c.user_id == user_id)
+            .with_for_update()
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if candidate is None or candidate["state"] != "submitted":
+        raise ValueError("Заявка уже обработана.")
+    if version is not None and version != application_version(
+        candidate["submitted_at"]
+    ):
+        raise ValueError("Анкета обновилась. Откройте её заново.")
+    if command == "approved" and not candidate["instagram_verified_at"]:
+        raise ValueError("Кандидату нужно подтвердить Instagram.")
+    if command == "clarify" and not note:
+        raise ValueError("Напишите, что нужно уточнить.")
+    now = datetime.now(timezone.utc)
+    db.execute(
+        update(APPLICATIONS)
+        .where(APPLICATIONS.c.user_id == user_id)
+        .values(
+            state=command,
+            reviewed_at=now,
+            updated_at=now,
+            decision_note=note or None,
+        )
+    )
+    record_manager_review(db, user_id, command, command, now, actor_id)
+
+
+def manager_application_query(user_id):
+    return (
+        select(
+            APPLICATIONS,
+            UserModel.telegram,
+            UserModel.telegram_id,
+            UserModel.username,
+        )
+        .join(UserModel, UserModel.user_id == APPLICATIONS.c.user_id)
+        .where(APPLICATIONS.c.user_id == user_id)
+    )
 
 
 class ManagerApplications:
@@ -107,6 +196,17 @@ class ManagerApplications:
                     submitted_at=now,
                     decision_note=None,
                 )
+                for reviewer in MANAGER_REVIEWERS:
+                    _enqueue_notice(
+                        db,
+                        user_id,
+                        MANAGER_SUBMITTED,
+                        now,
+                        {
+                            "reviewer": reviewer,
+                            "submission": application_version(now),
+                        },
+                    )
             result = await db.execute(
                 update(APPLICATIONS)
                 .where(APPLICATIONS.c.user_id == user_id)
@@ -114,6 +214,36 @@ class ManagerApplications:
                 .returning(*APPLICATIONS.c)
             )
             return result.mappings().one()
+
+    async def review_card(self, user_id):
+        async with self.transactions.transaction() as session:
+            result = await _session(session).execute(
+                manager_application_query(user_id).where(
+                    APPLICATIONS.c.state != "draft"
+                )
+            )
+            return result.mappings().one_or_none()
+
+    async def approve_in_telegram(self, user_id: UUID, actor_id: UUID, version):
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            authorized = await db.scalar(
+                select(UserModel.user_id).where(
+                    UserModel.user_id == actor_id,
+                    UserModel.admin.is_(True),
+                    UserModel.status == "active",
+                )
+            )
+            if not authorized:
+                raise ValueError("Действие доступно администраторам.")
+            await db.run_sync(
+                review_manager_application,
+                user_id,
+                "approved",
+                "",
+                version=version,
+                actor_id=actor_id,
+            )
 
     @staticmethod
     def _editable(row):

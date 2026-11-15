@@ -3183,7 +3183,9 @@
         else managerLink.removeAttribute('href');
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
-        if (me.has_advertiser_profile && !me.has_blogger_profile) {
+        if (me.is_manager && new URLSearchParams(location.search).get('view') === 'manager') {
+          loadManagerOrders(0);
+        } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
           updateBloggerDashboardState(me);
@@ -3274,7 +3276,9 @@
         applyLocale();
         fillBirthDateSelects();
         updateCurrencyLabels(me.currency_symbol);
-        if (!me.country && window.__miniapp_platform !== 'max' && !new URLSearchParams(location.search).has('assignment') && !new URLSearchParams(location.search).has('assignment_id') && new URLSearchParams(location.search).get('view') !== 'partner') {
+        var params = new URLSearchParams(location.search);
+        var view = params.get('view');
+        if (!me.country && window.__miniapp_platform !== 'max' && !params.has('assignment') && !params.has('assignment_id') && view !== 'partner' && !(view === 'manager' && me.is_manager)) {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {
