@@ -1,5 +1,5 @@
 {% set details = model_view.worklist_details(order_rows) %}
-{% set closure_reasons = model_view.closure_reasons(order_rows) if group == 'repeat' else {} %}
+{% set closure_reasons = model_view.closure_reasons(order_rows) %}
 {% set reminders = model_view.unpaid_reminder_statuses(order_rows) if group == 'unpaid' else {} %}
 <div class="table-responsive" tabindex="0" role="region" aria-label="Таблица заказов">
   <table class="table card-table table-vcenter order-worklist-table">
@@ -36,7 +36,7 @@
         <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
         <td>
           <span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>
-          {% if group == 'repeat' and row.status == 'closed' %}
+          {% if row.status == 'closed' and (group == 'repeat' or row.order_id in closure_reasons) %}
             <small class="order-row-note">{{ closure_reasons.get(row.order_id) or 'Причина закрытия не записана.' }}</small>
           {% endif %}
           {% if not info.archived %}
@@ -111,10 +111,24 @@
               {% set confirm_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=operation) %}
               <form method="post" action="{{ confirm_url.replace(query=request.url.query) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if operation == 'close' %}
+                <button type="button" class="btn btn-sm btn-outline-primary" data-order-close>Закрыть</button>
+                <dialog class="order-close-dialog" aria-labelledby="order-close-title-{{ row.order_id }}">
+                  <h3 id="order-close-title-{{ row.order_id }}">Закрыть заказ</h3>
+                  <label class="form-label" for="order-close-reason-{{ row.order_id }}">Причина закрытия</label>
+                  <textarea id="order-close-reason-{{ row.order_id }}" name="closure_reason" class="form-control" rows="3"
+                            maxlength="{{ model_view.closure_reason_limit }}" required autofocus></textarea>
+                  <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary">Закрыть заказ</button>
+                    <button type="button" class="btn btn-outline-secondary" data-order-close-cancel>Отмена</button>
+                  </div>
+                </dialog>
+                {% else %}
                 <button type="button" class="btn btn-sm btn-outline-primary"
                         data-admin-confirm="Заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }}). {{ label }}?{% if operation == 'hide' %} Запись сохранится.{% endif %}">
                   {{ label }}
                 </button>
+                {% endif %}
               </form>
             {% endif %}
             {% if not info.archived %}

@@ -1,5 +1,18 @@
 const editor = document.querySelector("#order-edit-form");
 
+const closureField = document.getElementById("order-closure-field");
+if (closureField) {
+  const status = editor.elements.namedItem("status");
+  const reason = editor.elements.namedItem("closure_reason");
+  const updateClosureField = () => {
+    const closing = status.value === "closed";
+    closureField.hidden = !closing;
+    reason.required = closing;
+  };
+  status.addEventListener("change", updateClosureField);
+  updateClosureField();
+}
+
 for (const counter of editor.querySelectorAll("[data-character-limit]")) {
   const field = document.getElementById(counter.dataset.field);
   const limit = Number(counter.dataset.characterLimit);
