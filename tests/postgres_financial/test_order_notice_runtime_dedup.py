@@ -55,7 +55,12 @@ async def test_paid_order_notifies_once_and_activates_only_after_capture(
     config = env["config"].model_copy(
         update={
             "admin": env["config"].admin.model_copy(
-                update={"admin_base_url": "https://admin.example.test"}
+                update={
+                    "admin_base_url": "https://admin.example.test",
+                    "business_order_telegram_recipients": frozenset(
+                        {env["admin"].telegram_id}
+                    ),
+                }
             )
         }
     )
@@ -144,6 +149,7 @@ async def test_paid_order_notifies_once_and_activates_only_after_capture(
     cards = [call.kwargs for call in messenger.send_text.await_args_list]
     created = next(card for card in cards if "Новый заказ" in card["text"])
     paid_card = next(card for card in cards if "Заказ оплачен" in card["text"])
+    assert "✅ Оплачен" in created["text"]
     assert (
         created["chat_id"] == paid_card["chat_id"] == env["admin"].telegram_id
     )
@@ -194,21 +200,20 @@ async def test_postgres_notice_leases_recover_without_resending_unknown(
     repo = SqlAlchemyOrderNoticeRepository()
     start = datetime.now(timezone.utc)
     async with env["transactions"].transaction() as session:
-        first = await repo.claim(start, ("123",), "", session=session)
+        first = await repo.claim(start, ("123",), session=session)
         assert first is not None
     async with env["transactions"].transaction() as session:
         assert (
             await repo.claim(
                 start + timedelta(minutes=2, seconds=1),
                 ("123",),
-                "",
                 session=session,
             )
             is None
         )
     async with env["transactions"].transaction() as session:
         second = await repo.claim(
-            start + timedelta(minutes=3), ("123",), "", session=session
+            start + timedelta(minutes=3), ("123",), session=session
         )
         assert second is not None and second.attempt == 2
         assert second.job_id == first.job_id
@@ -221,7 +226,7 @@ async def test_postgres_notice_leases_recover_without_resending_unknown(
     async with env["transactions"].transaction() as session:
         assert (
             await repo.claim(
-                start + timedelta(minutes=6), ("123",), "", session=session
+                start + timedelta(minutes=6), ("123",), session=session
             )
             is None
         )

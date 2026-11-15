@@ -26,7 +26,6 @@ class OrderNoticeRepository(Protocol):
         self,
         now: datetime,
         admin_recipients: tuple[str, ...],
-        support_recipient: str,
         *,
         session: object,
     ) -> OrderNoticeJob | None: ...

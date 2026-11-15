@@ -1,6 +1,7 @@
 """Tests for admin notification service."""
 
 from datetime import datetime, timezone
+from functools import partial
 from uuid import UUID, uuid4
 
 import pytest
@@ -8,9 +9,12 @@ import pytest
 from tests.helpers.fakes import FakeMessengerClient
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
-    notify_admins_about_order_created,
-    notify_admins_about_order_paid,
-    notify_support_chat_about_new_order,
+)
+from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_order_created as send_created_card,
+)
+from ugc_bot.application.services.admin_notification_service import (
+    notify_admins_about_order_paid as send_paid_card,
 )
 from ugc_bot.application.services.content_moderation_service import (
     ContentModerationService,
@@ -33,6 +37,14 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.memory_repositories import (
     InMemoryCountryRepository,
     InMemoryUserRepository,
+)
+
+_RECIPIENTS = frozenset({"111", "123", "222", "555", "777", "12345"})
+notify_admins_about_order_created = partial(
+    send_created_card, recipient_ids=_RECIPIENTS
+)
+notify_admins_about_order_paid = partial(
+    send_paid_card, recipient_ids=_RECIPIENTS
 )
 
 
@@ -453,7 +465,7 @@ async def test_notify_admins_about_order_paid_includes_all_fields() -> None:
     assert "UGC-видео для бренда" in text
     assert reply_markup is not None
     rows = reply_markup.rows if reply_markup else []
-    activate_btn = rows[0][0]
+    activate_btn = rows[-1][0]
     assert activate_btn.text == "Активировать"
 
 
@@ -761,8 +773,8 @@ async def test_order_notification_shows_advertiser_contacts() -> None:
     )
 
     text = messenger_client.sent_text[0]["text"]
-    assert "<b>Телефон:</b> +79001234567" in text
-    assert "<b>Telegram:</b> @brand_tg" in text
+    assert "<b>Телефон</b> · +79001234567" in text
+    assert '<a href="https://t.me/brand_tg">@brand_tg</a>' in text
 
 
 @pytest.mark.asyncio
@@ -835,9 +847,7 @@ async def test_notify_admins_about_order_created_open_in_admin_button() -> None:
 
 
 @pytest.mark.asyncio
-async def test_notify_admins_about_order_created_no_admin_url_no_keyboard() -> (
-    None
-):
+async def test_created_card_has_product_button_without_admin_url() -> None:
     """No 'Открыть в админке' when admin_base_url is empty."""
     user_repo = InMemoryUserRepository()
     admin = User(
@@ -865,7 +875,9 @@ async def test_notify_admins_about_order_created_no_admin_url_no_keyboard() -> (
     )
 
     reply_markup = messenger_client.sent_text[0]["keyboard"]
-    assert reply_markup is None
+    assert [btn.url for row in reply_markup.rows for btn in row] == [
+        order.product_link
+    ]
 
 
 @pytest.mark.asyncio
@@ -931,7 +943,8 @@ async def test_created_photo_caption_truncates_long_description_safely() -> (
     visible = unescape(re.sub(r"<[^>]+>", "", caption))
     assert len(visible.encode("utf-16-le")) // 2 <= 1024
     assert "…" in caption
-    assert "<b>Ссылка на продукт:</b>" in caption
+    assert order.product_link not in caption
+    assert "<blockquote expandable>" in caption
     assert messenger.sent_photos[0]["keyboard"] is not None
     assert order.offer_text == "😀<&" * 1000
 
@@ -970,8 +983,12 @@ async def test_created_photo_with_oversized_other_fields_keeps_warning() -> (
         moderation,
     )
     caption = messenger.sent_photos[0]["caption"]
-    assert len(caption.encode("utf-16-le")) // 2 <= 1024
-    assert str(order.order_id) in caption
+    import re
+    from html import unescape
+
+    visible = unescape(re.sub(r"<[^>]+>", "", caption))
+    assert len(visible.encode("utf-16-le")) // 2 <= 1024
+    assert "Бюджет на автора" in visible
     assert "запрещённый контент" in caption
 
 
@@ -1100,7 +1117,7 @@ async def test_notify_admins_about_order_paid_ugc_plus_placement() -> None:
     assert "UGC + размещение" in text
 
 
-# --- Tests for notify_support_chat_about_new_order ---
+# --- Advertiser fixtures ---
 
 
 def _make_advertiser_user(
@@ -1125,226 +1142,6 @@ def _make_advertiser_profile(user_id: UUID) -> AdvertiserProfile:
         phone="+79001234567",
         brand="TestBrand",
     )
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_skips_empty_chat_id() -> None:
-    """When support_chat_id is empty, return without sending."""
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user()
-    order = _make_order(advertiser_id=user.user_id)
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=messenger_client,
-        support_chat_id="",
-    )
-
-    assert len(messenger_client.sent_text) == 0
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_skips_when_chat_is_already_admin() -> None:
-    """Do not send a second order alert to a chat that gets admin alerts."""
-    user_repo = InMemoryUserRepository()
-    admin = User(
-        user_id=uuid4(),
-        telegram_id="243341756",
-        messenger_type=MessengerType.TELEGRAM,
-        username="Камиль",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-        admin=True,
-    )
-    await user_repo.save(admin)
-    user_service = UserRoleService(user_repo=user_repo)
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user()
-    order = _make_order(advertiser_id=user.user_id)
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=messenger_client,
-        support_chat_id="243341756",
-        user_role_service=user_service,
-    )
-
-    assert len(messenger_client.sent_text) == 0
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_sends_order_details() -> None:
-    """When support_chat_id set, send order details with phone and telegram."""
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user()
-    profile = _make_advertiser_profile(user.user_id)
-    order = _make_order(
-        advertiser_id=user.user_id,
-        offer_text="Make a review video",
-    )
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=profile,
-        messenger_client=messenger_client,
-        support_chat_id="-1001234567890",
-    )
-
-    assert len(messenger_client.sent_text) == 1
-    msg = messenger_client.sent_text[0]
-    assert msg["chat_id"] == "-1001234567890"
-    text = msg["text"]
-    assert "Новый заказ" in text
-    assert "+79001234567" in text
-    assert "@advertiser_tg" in text
-    assert "Make a review video" in text
-    assert msg["parse_mode"] == "HTML"
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_includes_admin_link() -> None:
-    """When admin_base_url set, message includes admin link button."""
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user()
-    profile = _make_advertiser_profile(user.user_id)
-    order = _make_order(advertiser_id=user.user_id)
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=profile,
-        messenger_client=messenger_client,
-        support_chat_id="-100123",
-        admin_base_url="https://bot.usemycontent.ru/admin",
-    )
-
-    assert len(messenger_client.sent_text) == 1
-    msg = messenger_client.sent_text[0]
-    keyboard = msg["keyboard"]
-    assert keyboard is not None
-    rows = keyboard.rows
-    assert len(rows) == 1
-    btn = rows[0][0]
-    assert btn.text == "Открыть в админке"
-    assert (
-        btn.url
-        == f"https://bot.usemycontent.ru/admin/order-model/edit/{order.order_id}"
-    )
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_no_profile_shows_dash() -> None:
-    """When advertiser_profile is None, phone shows dash."""
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user(telegram=None)
-    order = _make_order(advertiser_id=user.user_id)
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=messenger_client,
-        support_chat_id="-100123",
-    )
-
-    assert len(messenger_client.sent_text) == 1
-    text = messenger_client.sent_text[0]["text"]
-    assert "<b>Телефон:</b> —" in text
-    assert (
-        '<b>Telegram:</b> <a href="tg://user?id=999">tg://user?id=999</a>'
-        in text
-    )
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_handles_send_failure() -> None:
-    """When send fails, log warning but do not raise."""
-
-    class FailingClient:
-        async def send_text(self, **kwargs: object) -> None:
-            raise RuntimeError("Network error")
-
-    client = FailingClient()
-    user = _make_advertiser_user()
-    order = _make_order(advertiser_id=user.user_id)
-
-    # Should not raise
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=client,
-        support_chat_id="-100123",
-    )
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_resolves_currency_from_order() -> None:
-    """Currency symbol resolved from order's currency via country_repo."""
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user()
-    order = _make_order(advertiser_id=user.user_id, currency="USD")
-
-    country_repo = InMemoryCountryRepository()
-    from decimal import Decimal
-
-    country_repo.countries["US"] = Country(
-        code="US",
-        name_native="United States",
-        currency_code="USD",
-        currency_symbol="$",
-        tax_rate=Decimal("0"),
-        enabled=True,
-    )
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=messenger_client,
-        support_chat_id="-100123",
-        currency_symbol="₽",  # default (wrong) symbol — should be overridden
-        country_repo=country_repo,
-    )
-
-    assert len(messenger_client.sent_text) == 1
-    text = messenger_client.sent_text[0]["text"]
-    assert "1000.0 $" in text
-    assert "₽" not in text
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_non_digit_telegram_id_shows_dash() -> None:
-    """When telegram is None and telegram_id is not a digit, shows dash."""
-    messenger_client = FakeMessengerClient()
-    user = User(
-        user_id=uuid4(),
-        telegram_id="non_digit",
-        messenger_type=MessengerType.TELEGRAM,
-        username="advertiser",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-        telegram=None,
-    )
-    order = _make_order(advertiser_id=user.user_id)
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=messenger_client,
-        support_chat_id="-100123",
-    )
-
-    text = messenger_client.sent_text[0]["text"]
-    assert "<b>Telegram:</b> —" in text
 
 
 @pytest.mark.asyncio
@@ -1389,31 +1186,8 @@ async def test_notify_admins_about_order_created_resolves_currency() -> None:
     )
 
     text = messenger_client.sent_text[0]["text"]
-    assert "1000.0 $" in text
+    assert "1 000 $" in text
     assert "₽" not in text
-
-
-@pytest.mark.asyncio
-async def test_notify_support_chat_unknown_currency_uses_default() -> None:
-    """When country not found for currency, default symbol is used."""
-    messenger_client = FakeMessengerClient()
-    user = _make_advertiser_user()
-    order = _make_order(advertiser_id=user.user_id, currency="XYZ")
-
-    country_repo = InMemoryCountryRepository()  # empty, no XYZ country
-
-    await notify_support_chat_about_new_order(
-        order=order,
-        advertiser_user=user,
-        advertiser_profile=None,
-        messenger_client=messenger_client,
-        support_chat_id="-100123",
-        currency_symbol="₽",
-        country_repo=country_repo,
-    )
-
-    text = messenger_client.sent_text[0]["text"]
-    assert "₽" in text
 
 
 @pytest.mark.asyncio
@@ -1488,37 +1262,6 @@ async def test_order_event_deduplicates_admin_chat_recipients() -> None:
 
 
 @pytest.mark.asyncio
-async def test_support_order_link_matches_admin_edit_and_contains_state() -> (
-    None
-):
-    user = User(
-        user_id=uuid4(),
-        telegram_id="123",
-        username="client",
-        messenger_type=MessengerType.TELEGRAM,
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    messenger = FakeMessengerClient()
-    order = _make_order(advertiser_id=user.user_id)
-    await notify_support_chat_about_new_order(
-        order,
-        user,
-        None,
-        messenger,
-        "456",
-        admin_base_url="https://example.com/admin/",
-    )
-    sent = messenger.sent_text[0]
-    assert (
-        sent["keyboard"].rows[0][0].url
-        == f"https://example.com/admin/order-model/edit/{order.order_id}"
-    )
-    assert "pending_moderation" in sent["text"]
-
-
-@pytest.mark.asyncio
 async def test_paid_card_has_saved_quote_and_no_repeated_activation():
     from dataclasses import replace
 
@@ -1543,20 +1286,19 @@ async def test_paid_card_has_saved_quote_and_no_repeated_activation():
         ContentModerationService(),
         order_details={
             "contact_reference": "@client",
-            "format": "Reels",
             "selection_base_minor": 500000,
             "accompaniment_minor": 100000,
             "total_minor": 600000,
-            "accompaniment_count": 10,
+            "accompaniment_count": 2,
+            "position_count": 10,
         },
     )
     sent = messenger.sent_text[0]
     assert "@client" in sent["text"]
-    assert "Reels" in sent["text"]
-    assert "5000.00" in sent["text"]
-    assert "1000.00" in sent["text"]
-    assert "6000.00" in sent["text"]
-    assert "active" in sent["text"]
+    assert "нужен для 2 из 10" in sent["text"]
+    assert "5 000 ₽" in sent["text"]
+    assert "1 000 ₽" in sent["text"]
+    assert "6 000 ₽" in sent["text"]
     assert not any(
         button.callback_data for row in sent["keyboard"].rows for button in row
     )
@@ -1598,5 +1340,117 @@ async def test_long_text_order_card_fits_telegram(event):
     sent = messenger.sent_text[0]
     visible = unescape(re.sub(r"<[^>]+>", "", sent["text"]))
     assert len(visible.encode("utf-16-le")) // 2 <= 4096
-    assert str(order.order_id) in visible
+    assert str(order.order_id) not in visible
     assert sent["keyboard"].rows[0][0].url.endswith(str(order.order_id))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("paid", "comped", "expected"),
+    [
+        (False, False, "🟠 Ожидает оплаты"),
+        (False, True, "Без оплаты по согласованию"),
+        (True, False, "✅ Оплачен"),
+    ],
+)
+async def test_business_card_has_current_payment_and_brief(
+    paid, comped, expected
+):
+    from dataclasses import replace
+
+    repo = InMemoryUserRepository()
+    advertiser = replace(_make_advertiser_user(), telegram=None)
+    await repo.save(advertiser)
+    await repo.save(
+        replace(
+            _make_advertiser_user(),
+            user_id=uuid4(),
+            telegram_id="111",
+            admin=True,
+        )
+    )
+    order = replace(
+        _make_order(
+            advertiser_id=advertiser.user_id,
+            offer_text="Первый <пункт>\r\n\r\n  Второй & третий",
+        ),
+        status=OrderStatus.NEW,
+        complimentary=comped,
+        geography="любом",
+        price=1250.5,
+        product_link="https://example.com/" + "long" * 300,
+        brief_link="https://example.com/brief?a=1&b=2",
+    )
+    messenger = FakeMessengerClient()
+
+    await notify_admins_about_order_created(
+        order,
+        messenger,
+        UserRoleService(user_repo=repo),
+        ContentModerationService(),
+        order_details={
+            "contact_reference": "telegram:999",
+            "accompaniment_count": 0,
+            "selection_due_at": "2026-11-22T16:17:55+00:00",
+            "total_minor": 500000,
+        },
+        payment_confirmed=paid,
+        eligible_count=0,
+    )
+
+    card = messenger.sent_text[0]
+    assert expected in card["text"].splitlines()[1]
+    assert "1 250,5 ₽" in card["text"] and "5 000 ₽" in card["text"]
+    assert "Бартер</b> · нет" in card["text"]
+    assert "Менеджер</b> · не нужен" in card["text"]
+    assert "География</b> · Любой город" in card["text"]
+    assert "Потенциально подходят</b> · 0" in card["text"]
+    assert "22.11.2026, 19:17 МСК" in card["text"]
+    assert '<a href="tg://user?id=999">Открыть профиль</a>' in card["text"]
+    assert "telegram:999" not in card["text"]
+    assert "Первый &lt;пункт&gt;\n\nВторой &amp; третий" in card["text"]
+    assert order.product_link not in card["text"]
+    assert card["disable_preview"] is True
+    assert [(btn.text, btn.url) for btn in card["keyboard"].rows[0]] == [
+        ("Продукт", order.product_link),
+        ("ТЗ", order.brief_link),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_business_card_skips_other_admins_and_invalid_links():
+    from dataclasses import replace
+
+    repo = InMemoryUserRepository()
+    for target, status in (
+        ("111", UserStatus.ACTIVE),
+        ("222", UserStatus.ACTIVE),
+        ("333", UserStatus.BLOCKED),
+        ("-100123", UserStatus.ACTIVE),
+    ):
+        await repo.save(
+            replace(
+                _make_advertiser_user(),
+                user_id=uuid4(),
+                telegram_id=target,
+                status=status,
+                admin=True,
+            )
+        )
+    messenger = FakeMessengerClient()
+    order = replace(
+        _make_order(),
+        product_link="javascript:alert(1)",
+        brief_link="https://user@example.com",
+    )
+    await send_created_card(
+        order,
+        messenger,
+        UserRoleService(user_repo=repo),
+        ContentModerationService(),
+        recipient_ids=frozenset({"111", "333", "-100123"}),
+    )
+
+    assert [card["chat_id"] for card in messenger.sent_text] == ["111"]
+    assert messenger.sent_text[0]["keyboard"] is None
+    assert "javascript:" not in messenger.sent_text[0]["text"]

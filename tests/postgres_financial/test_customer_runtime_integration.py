@@ -109,9 +109,6 @@ async def test_saved_notice_details_and_followup_never_reprice_issued_quote(
         )
     assert saved["contact_reference"] == request.contact_reference
     assert saved["selection_due_at"] == result.selection_due_at.isoformat()
-    due_display = result.selection_due_at.astimezone(timezone.utc).strftime(
-        "%d.%m.%Y %H:%M:%S UTC"
-    )
     assert saved["format"] == "with_manager"
     assert saved["selection_base_minor"] == 500000
     assert saved["accompaniment_count"] == 2
@@ -159,17 +156,17 @@ async def test_saved_notice_details_and_followup_never_reprice_issued_quote(
     messages = [
         call.kwargs["text"] for call in messenger.send_text.await_args_list
     ]
-    target = [message for message in messages if "7400.00" in message]
+    target = [message for message in messages if "7 400 ₽" in message]
     assert target
     target_addresses = [
         call.kwargs["chat_id"]
         for call in messenger.send_text.await_args_list
-        if "7400.00" in call.kwargs["text"]
+        if "7 400 ₽" in call.kwargs["text"]
     ]
     assert len(target_addresses) == len(set(target_addresses))
     assert request.contact_reference in target[0]
-    assert f"Срок подбора:</b> {due_display}" in target[0]
-    assert "5000.00" in target[0] and "2400.00" in target[0]
+    assert "Срок подбора</b>" in target[0] and "МСК" in target[0]
+    assert "5 000 ₽" in target[0] and "2 400 ₽" in target[0]
 
 
 @pytest.mark.asyncio

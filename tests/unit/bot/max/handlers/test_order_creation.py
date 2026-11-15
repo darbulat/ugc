@@ -1073,70 +1073,36 @@ async def test_geography_barter_coop_sets_price_to_zero():
 
 
 @pytest.mark.asyncio
-async def test_geography_notifies_support_chat_when_configured():
-    """Order creation notifies support chat
-    when support_chat_id is configured."""
+@pytest.mark.parametrize("durable", [False, True])
+async def test_geography_sends_business_alert_only_without_durable_queue(
+    durable,
+):
     user = _user()
-    user_id = user.user_id
     deps = _deps(user)
-    deps["config"].referral.referral_support_chat_id = "  -100123456789  "
+    deps["config"].admin.business_order_telegram_recipients = frozenset({"123"})
+    deps["config"].referral.referral_support_chat_id = "-100123456789"
     deps["state_store"].get_state = AsyncMock(return_value=_STATE_GEOGRAPHY)
     deps["state_store"].get_data = AsyncMock(
-        return_value=_full_order_state_data(user_id)
+        return_value=_full_order_state_data(user.user_id)
     )
-    order_mock = MagicMock()
-    deps["order_service"].create_order = AsyncMock(return_value=order_mock)
-    deps["user_role_service"].get_user_by_id = AsyncMock(return_value=user)
+    deps["order_service"].order_notices = object() if durable else None
+    deps["order_service"].create_order = AsyncMock(return_value=MagicMock())
 
-    with (
-        patch(
-            "ugc_bot.bot.max.handlers.order_creation.notify_admins_about_order_created",
-            new_callable=AsyncMock,
-        ) as mock_admin,
-        patch(
-            "ugc_bot.bot.max.handlers.order_creation.notify_support_chat_about_new_order",
-            new_callable=AsyncMock,
-        ) as mock_support,
-    ):
+    with patch(
+        "ugc_bot.bot.max.handlers.order_creation.notify_admins_about_order_created",
+        new_callable=AsyncMock,
+    ) as notify:
         await router.route_message(_incoming_msg("Moscow"), deps)
 
-    # Both notifications go via Telegram client, not Max client
-    mock_admin.assert_called_once()
-    assert (
-        mock_admin.call_args.kwargs["messenger_client"]
-        is deps["telegram_messenger_client"]
-    )
-    mock_support.assert_called_once()
-    assert (
-        mock_support.call_args.kwargs["messenger_client"]
-        is deps["telegram_messenger_client"]
-    )
-
-
-@pytest.mark.asyncio
-async def test_geography_skips_support_chat_when_not_configured():
-    """Order creation skips support chat when support_chat_id is empty.
-
-    notify_admins_about_order_created always calls get_user_by_id once.
-    When support_chat_id is empty, notify_support_chat is skipped, so
-    get_user_by_id is called exactly once (by admin notify only).
-    """
-    user = _user()
-    user_id = user.user_id
-    deps = _deps(user)
-    deps["config"].referral.referral_support_chat_id = ""
-    deps["state_store"].get_state = AsyncMock(return_value=_STATE_GEOGRAPHY)
-    deps["state_store"].get_data = AsyncMock(
-        return_value=_full_order_state_data(user_id)
-    )
-    order_mock = MagicMock()
-    deps["order_service"].create_order = AsyncMock(return_value=order_mock)
-
-    await router.route_message(_incoming_msg("Moscow"), deps)
-
-    # get_user_by_id is called once by notify_admins,
-    # but NOT again for support chat
-    assert deps["user_role_service"].get_user_by_id.call_count == 1
+    if durable:
+        notify.assert_not_awaited()
+    else:
+        notify.assert_awaited_once()
+        assert notify.call_args.kwargs["recipient_ids"] == {"123"}
+        assert (
+            notify.call_args.kwargs["messenger_client"]
+            is deps["telegram_messenger_client"]
+        )
 
 
 @pytest.mark.asyncio

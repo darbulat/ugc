@@ -8,10 +8,10 @@ from uuid import uuid4
 import pytest
 
 from ugc_bot.application.messenger.dto import Keyboard, KeyboardKind
-from ugc_bot.application.services.admin_notification_service import (
-    _format_order_type_for_moderation,
-)
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.business_order_card import (
+    render_business_order_card,
+)
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
     _build_dispatch_criteria,
@@ -61,7 +61,18 @@ async def test_stories_label_reaches_offer_order_and_contact(locale, label):
     translations = await texts.get_many(["order_type_stories"], locale)
     assert _format_order_type(value, translations) == label
     assert _format_ugc_type(value, translations) == label
-    assert _format_order_type_for_moderation(value) == "Сторис"
+    text = render_business_order_card(
+        value,
+        advertiser=None,
+        profile=None,
+        symbol="₽",
+        details=None,
+        payment_confirmed=True,
+        paid_event=True,
+        eligible_count=None,
+        flagged=False,
+    )
+    assert "<b>Формат</b> · Сторис" in text
 
 
 def test_stories_placement_filter_requires_account_publishing():

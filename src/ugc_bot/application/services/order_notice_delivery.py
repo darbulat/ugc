@@ -21,7 +21,6 @@ class OrderNoticeDelivery:
     transactions: TransactionManager
     send: Callable[[OrderNoticeJob], Awaitable[None]]
     admin_recipients: Callable[[], Awaitable[tuple[str, ...]]]
-    support_recipient: str = ""
     prepares_before_send: bool = False
 
     async def run_once(self) -> bool:
@@ -30,7 +29,6 @@ class OrderNoticeDelivery:
             job = await self.repository.claim(
                 datetime.now(timezone.utc),
                 addresses,
-                self.support_recipient,
                 session=session,
             )
         if job is None:

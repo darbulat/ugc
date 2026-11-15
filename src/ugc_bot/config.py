@@ -54,6 +54,7 @@ _FLAT_KEYS = {
         "ADMIN_SECRET",
         "ADMIN_SITE_NAME",
         "ADMIN_BASE_URL",
+        "BUSINESS_ORDER_TELEGRAM_RECIPIENTS",
         "ADMIN_DASHBOARD_TIMEZONE",
         "ADMIN_DELAY_ACTIVE_DAYS",
         "ADMIN_NO_RESPONSES_HOURS",
@@ -294,6 +295,21 @@ class AdminConfig(BaseSettings):
     admin_base_url: str = Field(
         default="", alias="ADMIN_BASE_URL"
     )  # e.g. https://admin.example.com/admin
+    business_order_telegram_recipients: frozenset[str] = Field(
+        default_factory=frozenset, alias="BUSINESS_ORDER_TELEGRAM_RECIPIENTS"
+    )
+
+    @field_validator("business_order_telegram_recipients")
+    @classmethod
+    def validate_business_order_telegram_recipients(
+        cls, ids: frozenset[str]
+    ) -> frozenset[str]:
+        if any(not re.fullmatch(r"[1-9][0-9]{0,15}", value) for value in ids):
+            raise ValueError(
+                "Business order recipients must be private Telegram user IDs"
+            )
+        return ids
+
     admin_dashboard_timezone: str = Field(
         default="Europe/Moscow", alias="ADMIN_DASHBOARD_TIMEZONE"
     )

@@ -73,6 +73,9 @@ async def intake_env(financial_pg_engine):
         external_id=str(uuid4().int % 10**12 + 1),
         admin=True,
     )
+    config.admin.business_order_telegram_recipients = frozenset(
+        {admin.telegram_id}
+    )
     clock = Clock()
     policy = "intake-" + uuid4().hex
     with Session(financial_pg_engine) as db, db.begin():

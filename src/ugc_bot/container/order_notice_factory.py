@@ -1,15 +1,18 @@
 """Wire durable order card delivery to existing repositories and Telegram."""
 
+import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any
-from uuid import NAMESPACE_URL, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from ugc_bot.application.messenger.ports import MessengerClient
 from ugc_bot.application.notice_delivery_ports import DeliveryFailure
 from ugc_bot.application.order_notice_ports import OrderNoticeJob
-from ugc_bot.application.ports import TransactionManager
+from ugc_bot.application.ports import PaymentRepository, TransactionManager
 from ugc_bot.application.services.admin_notification_service import (
+    business_order_admins,
     notify_admins_about_order_created,
     notify_admins_about_order_paid,
 )
@@ -22,10 +25,12 @@ from ugc_bot.application.services.order_notice_delivery import (
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.domain.enums import MessengerType, PaymentStatus, UserStatus
 from ugc_bot.infrastructure.db.repositories.order_notices import (
     SqlAlchemyOrderNoticeRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class _RecipientRoles(UserRoleService):
@@ -131,6 +136,31 @@ async def _order_currency_symbol(
     return order.currency
 
 
+async def _current_payment_status(
+    job: OrderNoticeJob, payment_repo: PaymentRepository
+) -> bool | None:
+    if job.event_kind != "created":
+        return None
+    payment = await payment_repo.get_by_order(job.order_id)
+    return payment is not None and payment.status == PaymentStatus.PAID
+
+
+async def _try_count_eligible(
+    order_id: UUID, loader: Callable[[UUID], Awaitable[int]] | None
+) -> int | None:
+    if loader is None:
+        return None
+    try:
+        async with asyncio.timeout(2):
+            return await loader(order_id)
+    except Exception as exc:
+        logger.info(
+            "Business order creator count unavailable",
+            extra={"error_type": type(exc).__name__},
+        )
+        return None
+
+
 def build_order_notice_delivery(
     config: AppConfig,
     transactions: TransactionManager,
@@ -139,28 +169,21 @@ def build_order_notice_delivery(
     *,
     details_loader: Callable[[Order], Awaitable[Mapping[str, Any] | None]]
     | None = None,
+    eligible_count_loader: Callable[[UUID], Awaitable[int]] | None = None,
 ) -> OrderNoticeDelivery:
     roles = UserRoleService(user_repo=repos["user_repo"])
     repository = SqlAlchemyOrderNoticeRepository()
 
+    recipient_ids = config.admin.business_order_telegram_recipients
+
     async def recipients() -> tuple[str, ...]:
+        admins = await business_order_admins(roles, recipient_ids)
         return tuple(
-            user.telegram_id.strip()
-            for user in await roles.list_admins(
-                messenger_type=MessengerType.TELEGRAM
-            )
-            if user.status == UserStatus.ACTIVE
-            and user.telegram_id
-            and user.telegram_id.strip()
+            user.telegram_id.strip() for user in admins if user.telegram_id
         )
 
     async def prepare_and_send(job: OrderNoticeJob, tracked: Any) -> None:
-        # A revoked admin must not receive a queued private paid brief.
-        if job.recipient not in await recipients() and not (
-            job.event_kind == "created"
-            and job.recipient
-            == config.referral.referral_support_chat_id.strip()
-        ):
+        if job.recipient not in recipient_ids:
             raise DeliveryFailure(
                 "order_notice_recipient_ineligible", uncertain=False
             )
@@ -172,6 +195,19 @@ def build_order_notice_delivery(
         )
         currency_symbol = await _order_currency_symbol(order, config, repos)
         details = await details_loader(order) if details_loader else None
+        payment_confirmed = await _current_payment_status(
+            job, repos["payment_repo"]
+        )
+
+        eligible_count = await _try_count_eligible(
+            order.order_id, eligible_count_loader
+        )
+
+        # Recheck access after preparation. Jobs may predate the allowlist.
+        if job.recipient not in await recipients():
+            raise DeliveryFailure(
+                "order_notice_recipient_ineligible", uncertain=False
+            )
         notify = (
             notify_admins_about_order_paid
             if job.event_kind == "paid"
@@ -187,6 +223,9 @@ def build_order_notice_delivery(
                 currency_symbol=currency_symbol,
                 advertiser_profile=profile,
                 order_details=details,
+                recipient_ids=recipient_ids,
+                payment_confirmed=payment_confirmed,
+                eligible_count=eligible_count,
                 raise_on_error=True,
             )
         except Exception as exc:
@@ -212,6 +251,5 @@ def build_order_notice_delivery(
         transactions,
         send,
         recipients,
-        config.referral.referral_support_chat_id,
         prepares_before_send=True,
     )
