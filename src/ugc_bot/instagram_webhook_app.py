@@ -251,13 +251,17 @@ async def handle_webhook(
             payload_bytes, x_hub_signature_256, manager_secret
         )
     )
-    if config.db.database_url.startswith("postgresql"):
+    transactions = container.transaction_manager
+    if (
+        config.db.database_url.startswith("postgresql")
+        and transactions is not None
+    ):
         manager_verifier = ManagerApplications(
-            container.transaction_manager,
+            transactions,
             container.build_instagram_api_client(),
             deliver_verification_notices=partial(
                 ManagerApplicationDelivery(config).deliver_verification_notices,
-                container.transaction_manager,
+                transactions,
             ),
         )
     try:
