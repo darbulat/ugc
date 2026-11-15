@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Скопировать для GPT</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--tg-theme-bg-color, #fff);
+      color: var(--tg-theme-text-color, #18212a);
+      font: 16px/1.5 system-ui, sans-serif;
+    }
+    main { max-width: 42rem; margin: auto; padding: 1.25rem; }
+    h1 { margin: 0 0 .5rem; font-size: 1.45rem; line-height: 1.2; }
+    p { margin: .5rem 0; }
+    textarea {
+      width: 100%;
+      height: clamp(12rem, 53vh, 30rem);
+      resize: vertical;
+      margin: .75rem 0;
+      padding: .85rem;
+      border: 1px solid var(--tg-theme-hint-color, #8b939c);
+      border-radius: .75rem;
+      background: var(--tg-theme-secondary-bg-color, #f6f7f9);
+      color: inherit;
+      font: inherit;
+    }
+    button {
+      width: 100%;
+      min-height: 3rem;
+      border: 0;
+      border-radius: .75rem;
+      background: var(--tg-theme-button-color, #126aba);
+      color: var(--tg-theme-button-text-color, #fff);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    #status { min-height: 1.5rem; }
+  </style>
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+  <script src="order-gpt-copy.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Первое сообщение заказчику</h1>
+    <p id="hint">Проверьте, не осталось ли личных данных в описании.</p>
+    <textarea id="prompt" readonly aria-label="Задание для GPT" aria-describedby="hint" hidden></textarea>
+    <button id="copy" type="button" disabled>Скопировать для GPT</button>
+    <p id="status" role="status">Загружаем заявку…</p>
+  </main>
+</body>
+</html>

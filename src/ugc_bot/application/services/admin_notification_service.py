@@ -220,6 +220,7 @@ async def _notify_about_business_order(
     moderation: ContentModerationService,
     *,
     admin_base_url: str,
+    webhook_base_url: str,
     symbol: str,
     country_repo: CountryRepository | None,
     profile: AdvertiserProfile | None,
@@ -266,6 +267,16 @@ async def _notify_about_business_order(
     ]
     if resources:
         buttons.append(resources)
+    base = order_card_url(webhook_base_url)
+    if base and urlsplit(base).scheme == "https":
+        buttons.append(
+            [
+                Button(
+                    text="Скопировать для GPT",
+                    web_app_url=f"{base.rstrip('/')}/miniapp/order-gpt-copy.html?order={order.order_id}",
+                )
+            ]
+        )
     if paid_event and order.status == OrderStatus.PENDING_MODERATION:
         buttons.append(
             [
@@ -326,6 +337,7 @@ async def notify_admins_about_order_created(
     raise_on_error: bool = False,
     *,
     recipient_ids: frozenset[str],
+    webhook_base_url: str = "",
     payment_confirmed: bool | None = None,
     eligible_count: int | None = None,
 ) -> None:
@@ -336,6 +348,7 @@ async def notify_admins_about_order_created(
         user_role_service,
         content_moderation,
         admin_base_url=admin_base_url,
+        webhook_base_url=webhook_base_url,
         symbol=currency_symbol,
         country_repo=country_repo,
         profile=advertiser_profile,
@@ -360,6 +373,7 @@ async def notify_admins_about_order_paid(
     raise_on_error: bool = False,
     *,
     recipient_ids: frozenset[str],
+    webhook_base_url: str = "",
     payment_confirmed: bool | None = None,
     eligible_count: int | None = None,
 ) -> None:
@@ -370,6 +384,7 @@ async def notify_admins_about_order_paid(
         user_role_service,
         content_moderation,
         admin_base_url=admin_base_url,
+        webhook_base_url=webhook_base_url,
         symbol=currency_symbol,
         country_repo=None,
         profile=advertiser_profile,

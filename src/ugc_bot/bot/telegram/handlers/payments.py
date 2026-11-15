@@ -634,6 +634,7 @@ async def successful_payment_handler(
             user_role_service=user_role_service,
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
+            webhook_base_url=config.webhook.webhook_base_url,
             currency_symbol=symbol,
             recipient_ids=config.admin.business_order_telegram_recipients,
         )

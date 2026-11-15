@@ -1645,6 +1645,7 @@ async def handle_geography(
             user_role_service=user_role_service,
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
+            webhook_base_url=config.webhook.webhook_base_url,
             currency_symbol=config.market.currency_symbol,
             country_repo=country_repo,
             advertiser_profile=await profile_service.get_advertiser_profile(

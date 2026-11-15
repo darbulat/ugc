@@ -163,10 +163,8 @@ def _client_lines(
     return client
 
 
-def _terms_lines(
-    order: Order, symbol: str, eligible_count: int | None
-) -> list[str]:
-    geography = (order.geography or "").strip()
+def business_order_geography(value: str | None) -> str:
+    geography = (value or "").strip()
     spec = parse_geography(geography)
     if (
         not geography
@@ -174,13 +172,23 @@ def _terms_lines(
         or geography.lower()
         in {"любом", "любой город", "в любом городе", "без ограничений"}
     ):
-        geography = "Любой город"
+        return "Любой город"
+    return geography
+
+
+def business_order_type(order: Order) -> str:
+    return _ORDER_TYPES[order.order_type]
+
+
+def _terms_lines(
+    order: Order, symbol: str, eligible_count: int | None
+) -> list[str]:
     terms = [
-        _line("Формат", _ORDER_TYPES[order.order_type]),
+        _line("Формат", business_order_type(order)),
         _line("Бюджет на автора", _money(Decimal(str(order.price)), symbol)),
         _line("Бартер", (order.barter_description or "").strip() or "нет"),
         _line("Креаторов нужно", str(order.bloggers_needed)),
-        _line("География", geography, 65),
+        _line("География", business_order_geography(order.geography), 65),
     ]
     if eligible_count is not None:
         terms.append(_line("Потенциально подходят", str(eligible_count)))
