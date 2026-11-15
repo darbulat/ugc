@@ -9,6 +9,7 @@ from ugc_bot.application.paid_selection_ports import (
     SelectionInterest,
 )
 from ugc_bot.application.ports import TransactionManager
+from ugc_bot.domain.enums import MessengerType
 
 
 @dataclass
@@ -19,7 +20,12 @@ class PaidSelectionInterestService:
     enabled: bool = False
 
     async def respond(
-        self, order_id: UUID, creator_id: UUID, *, invite_id: UUID | None = None
+        self,
+        order_id: UUID,
+        creator_id: UUID,
+        *,
+        invite_id: UUID | None = None,
+        channel: MessengerType | None = None,
     ) -> SelectionInterest | None:
         # Route legacy orders before attempting any new financial writes.
         attempt = 0
@@ -41,7 +47,8 @@ class PaidSelectionInterestService:
                         locked,
                         self.clock.now,
                         session=session,
-                        **({"invite_id": invite_id} if invite_id else {}),
+                        invite_id=invite_id,
+                        channel=channel,
                     )
             except ValueError as exc:
                 if (

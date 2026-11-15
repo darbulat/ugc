@@ -1,5 +1,7 @@
 """Creator counts match the directory filters on the migrated database."""
 
+from asyncio import gather
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -26,6 +28,12 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     UserModel,
+)
+from ugc_bot.infrastructure.db.repositories.interactions import (
+    SqlAlchemyOfferDispatchRepository,
+)
+from ugc_bot.infrastructure.db.repositories.profiles import (
+    SqlAlchemyBloggerProfileRepository,
 )
 
 
@@ -131,6 +139,18 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     accepted=accepted,
                     in_offer=in_offer,
                     created_at=now - timedelta(days=days),
+                    telegram_sent_at=now - timedelta(days=days)
+                    if (oid, uid) == (order, both)
+                    else None,
+                    max_sent_at=now - timedelta(days=days)
+                    if uid in (both, max_only)
+                    else None,
+                    response_channel="max"
+                    if (oid, uid) in ((order, both), (order, pending))
+                    else None,
+                    response_at=now - timedelta(days=days)
+                    if (oid, uid) in ((order, both), (order, pending))
+                    else None,
                 )
                 for oid, uid, accepted, in_offer, days in (
                     (order, both, True, True, 2),
@@ -163,12 +183,21 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
         )
 
     engine = create_async_engine(financial_pg_engine.url)
+    sessions = async_sessionmaker(engine)
+    profile_repo = SqlAlchemyBloggerProfileRepository(sessions)
+    dispatch_repo = SqlAlchemyOfferDispatchRepository(sessions)
     service = AdminDashboardService(
-        async_sessionmaker(engine),
+        sessions,
         "Europe/Moscow",
         DelayThresholds(7, 24, 48, 7),
     )
     try:
+        await profile_repo.record_registration_channel(
+            max_only, MessengerType.MAX, now - timedelta(days=1), session=None
+        )
+        await profile_repo.record_registration_channel(
+            max_only, MessengerType.TELEGRAM, now, session=None
+        )
         counts = await service.get_creator_base("30d")
         assert counts == {
             "profiles": 5,
@@ -191,6 +220,11 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             "accepted": 1,
             "worked": 2,
             "responded": 2,
+            "offered_via_max": 1,
+            "max_only_offer": 1,
+            "max_only_reached": 0,
+            "responded_via_max": 2,
+            "registered_via_max": 1,
         }
         for segment, count in counts.items():
             listing = await service.list_creators(
@@ -198,7 +232,55 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             )
             assert listing["total"] == count, segment
         assert (await service.get_creator_base("7d"))["offered"] == 3
-        assert (await service.get_creator_base("90d"))["accepted"] == 2
+        counts_90d = await service.get_creator_base("90d")
+        assert counts_90d["accepted"] == 2
+        assert counts_90d["offered_via_max"] == 2
+        assert counts_90d["max_only_reached"] == 1
         assert (await service.get_creator_base("all"))["worked"] == 3
+
+        await profile_repo.record_registration_channel(
+            tg_only, MessengerType.MAX, None, session=None
+        )
+        counts_before_consent = await service.get_creator_base("30d")
+        assert counts_before_consent["registered_via_max"] == 1
+        no_consent = await profile_repo.get_by_user_id(tg_only)
+        assert no_consent is not None
+        await profile_repo.save(
+            replace(no_consent, confirmed=True, agreement_confirmed_at=now)
+        )
+        counts_after_consent = await service.get_creator_base("30d")
+        assert counts_after_consent["registered_via_max"] == 2
+
+        await gather(
+            dispatch_repo.record_sent(
+                order, tg_only, channel=MessengerType.TELEGRAM
+            ),
+            dispatch_repo.record_sent(
+                order, tg_only, channel=MessengerType.MAX
+            ),
+        )
+        await dispatch_repo.record_response(
+            order, tg_only, True, True, channel=MessengerType.MAX
+        )
+        saved = {
+            row.blogger_id: row
+            for row in await dispatch_repo.list_responses_by_order(order)
+        }[tg_only]
+        assert saved.max_sent_at and saved.telegram_sent_at
+        assert saved.response_at and saved.response_channel == MessengerType.MAX
+        await dispatch_repo.record_sent(
+            order, tg_only, channel=MessengerType.MAX
+        )
+        await dispatch_repo.record_response(
+            order, tg_only, True, True, channel=MessengerType.TELEGRAM
+        )
+        repeated = {
+            row.blogger_id: row
+            for row in await dispatch_repo.list_responses_by_order(order)
+        }[tg_only]
+        assert repeated.max_sent_at == saved.max_sent_at
+        assert repeated.response_channel == saved.response_channel
+        assert repeated.response_at == saved.response_at
+        assert repeated.in_offer
     finally:
         await engine.dispose()

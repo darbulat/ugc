@@ -126,6 +126,7 @@ class SqlAlchemyPaidSelectionRepository:
         *,
         session,
         invite_id=None,
+        channel=None,
     ):
         db = _session(session)
         await SqlAlchemyFinancialItemRepository().lock_order(
@@ -443,7 +444,13 @@ class SqlAlchemyPaidSelectionRepository:
             manual["manager_id"] if manual is not None else manager
         )
         await self._record_dispatch(
-            order_id, creator_id, accepted, dispatch_manager, at, session=db
+            order_id,
+            creator_id,
+            accepted,
+            dispatch_manager,
+            at,
+            session=db,
+            channel=channel,
         )
         if manager is not None and manual is None:
             await db.execute(
@@ -458,7 +465,7 @@ class SqlAlchemyPaidSelectionRepository:
 
     @staticmethod
     async def _record_dispatch(
-        order_id, creator_id, accepted, manager, at, *, session
+        order_id, creator_id, accepted, manager, at, *, session, channel
     ):
         db = session
         dispatch = (
@@ -476,6 +483,10 @@ class SqlAlchemyPaidSelectionRepository:
         dispatch_values = dict(
             accepted=True, in_offer=accepted, manager_id=manager, updated_at=at
         )
+        if channel is not None:
+            dispatch_values.update(
+                response_channel=channel.value, response_at=at
+            )
         if dispatch is None:
             await db.execute(
                 insert(OfferDispatchModel).values(

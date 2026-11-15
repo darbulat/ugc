@@ -8,7 +8,9 @@ from decimal import Decimal
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import String, and_, bindparam, cast, func, select, update
+from sqlalchemy import String, and_, bindparam, case, cast, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.ports import (
@@ -16,7 +18,12 @@ from ugc_bot.application.ports import (
     OfferDispatchRepository,
 )
 from ugc_bot.domain.entities import Interaction, OfferDispatch
-from ugc_bot.domain.enums import InteractionStatus, OrderStatus, RejectionReason
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    MessengerType,
+    OrderStatus,
+    RejectionReason,
+)
 from ugc_bot.infrastructure.db.models import (
     InteractionModel,
     OfferDispatchModel,
@@ -41,17 +48,31 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
-        """Record that an offer was sent to a blogger for an order."""
-        async with _resolve_session(
-            self.session_factory, session
-        ) as db_session:
-            model = OfferDispatchModel(
-                order_id=order_id,
-                blogger_id=blogger_id,
-                in_offer=False,
+        """Save the first successful send on this channel for the offer."""
+        async with _resolve_session(self.session_factory, session) as db:
+            table = OfferDispatchModel.__table__
+            insert = (
+                sqlite_insert
+                if db.get_bind().dialect.name == "sqlite"
+                else pg_insert
             )
-            await db_session.merge(model)
+            stmt = insert(OfferDispatchModel).values(
+                order_id=order_id, blogger_id=blogger_id, in_offer=False
+            )
+            key = (table.c.order_id, table.c.blogger_id)
+            if channel is None:
+                stmt = stmt.on_conflict_do_nothing(index_elements=key)
+            else:
+                column = table.c[f"{channel.value}_sent_at"]
+                sent_at = datetime.now(timezone.utc)
+                stmt = stmt.values({column.key: sent_at}).on_conflict_do_update(
+                    index_elements=key,
+                    set_={column.key: func.coalesce(column, sent_at)},
+                )
+            await db.execute(stmt)
 
     async def record_response(
         self,
@@ -63,12 +84,27 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         manager_id: UUID | None = None,
         rejection_reason: str | None = None,
         desired_price: Decimal | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
             now = datetime.now(timezone.utc)
+            first_response = OfferDispatchModel.accepted.is_(None)
+            attribution = {}
+            if channel is not None:
+                attribution = {
+                    "response_channel": case(
+                        (first_response, channel.value),
+                        else_=OfferDispatchModel.response_channel,
+                    ),
+                    "response_at": case(
+                        (first_response, now),
+                        else_=OfferDispatchModel.response_at,
+                    ),
+                }
             await db_session.execute(
                 update(OfferDispatchModel)
                 .where(
@@ -82,6 +118,7 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                     manager_id=manager_id,
                     rejection_reason=rejection_reason,
                     desired_price=desired_price,
+                    **attribution,
                 )
             )
 
@@ -660,6 +697,12 @@ def _to_offer_dispatch_entity(model: OfferDispatchModel) -> OfferDispatch:
         if model.rejection_reason
         else None,
         desired_price=model.desired_price,
+        telegram_sent_at=model.telegram_sent_at,
+        max_sent_at=model.max_sent_at,
+        response_channel=MessengerType(model.response_channel)
+        if model.response_channel
+        else None,
+        response_at=model.response_at,
     )
 
 

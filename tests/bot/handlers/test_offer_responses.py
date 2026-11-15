@@ -3285,7 +3285,7 @@ async def test_handle_offer_response_order_creation_error(
     class _FailingOfferResponseService:
         """Fake response service that always raises OrderCreationError."""
 
-        async def respond_and_finalize(self, order_id, blogger_id):
+        async def respond_and_finalize(self, order_id, blogger_id, *, channel):
             raise OrderCreationError("Order is closed")
 
     message = FakeMessage(user=FakeUser(880))

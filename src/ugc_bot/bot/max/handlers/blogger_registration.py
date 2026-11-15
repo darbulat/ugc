@@ -82,7 +82,12 @@ from ugc_bot.bot.telegram.validators import (
     validate_topics,
 )
 from ugc_bot.config import AppConfig
-from ugc_bot.domain.enums import AudienceGender, BloggerGender, WorkFormat
+from ugc_bot.domain.enums import (
+    AudienceGender,
+    BloggerGender,
+    MessengerType,
+    WorkFormat,
+)
 
 router = MaxRouter()
 logger = logging.getLogger(__name__)
@@ -518,6 +523,7 @@ async def handle_instagram(incoming: IncomingMessage, deps: dict) -> None:
             link_max_chat_id=incoming.chat_id,
             link_username=incoming.user.username or "",
             link_phone=data.get("phone"),
+            channel=MessengerType.MAX,
         )
         instruction_template = await bot_texts_service.get(
             "msg_instagram_verify_instruction", locale

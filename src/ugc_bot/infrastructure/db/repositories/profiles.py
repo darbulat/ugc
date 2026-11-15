@@ -8,7 +8,7 @@ from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -20,7 +20,7 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile
-from ugc_bot.domain.enums import BloggerGender, WorkFormat
+from ugc_bot.domain.enums import BloggerGender, MessengerType, WorkFormat
 from ugc_bot.domain.social import CreatorIdentityConflict
 from ugc_bot.infrastructure.db.identity_history_models import (
     IDENTITY_OBSERVATIONS,
@@ -82,6 +82,27 @@ class SqlAlchemyBloggerProfileRepository(
                         )
                         .exists()
                     )
+                )
+            )
+
+    async def record_registration_channel(
+        self,
+        user_id: UUID,
+        channel: MessengerType,
+        completed_at: datetime | None,
+        *,
+        session: object | None,
+    ) -> None:
+        async with _resolve_session(self.session_factory, session) as db:
+            await db.execute(
+                update(BloggerProfileModel)
+                .where(
+                    BloggerProfileModel.user_id == user_id,
+                    BloggerProfileModel.registration_channel.is_(None),
+                )
+                .values(
+                    registration_channel=channel.value,
+                    registration_completed_at=completed_at,
                 )
             )
 
@@ -244,6 +265,25 @@ class SqlAlchemyBloggerProfileRepository(
                     profile.confirmed and profile.instagram_user_id
                 ):
                     await db_session.flush()
+                if (
+                    profile.confirmed
+                    and profile.agreement_confirmed_at is not None
+                ):
+                    await db_session.execute(
+                        update(BloggerProfileModel)
+                        .where(
+                            BloggerProfileModel.user_id == profile.user_id,
+                            BloggerProfileModel.registration_channel.is_not(
+                                None
+                            ),
+                            BloggerProfileModel.registration_completed_at.is_(
+                                None
+                            ),
+                        )
+                        .values(
+                            registration_completed_at=profile.agreement_confirmed_at
+                        )
+                    )
             except IntegrityError as exc:
                 constraint = getattr(
                     getattr(exc.orig, "diag", None), "constraint_name", None

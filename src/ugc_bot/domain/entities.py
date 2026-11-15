@@ -267,6 +267,10 @@ class OfferDispatch:
     ugc_video_url: Optional[str] = None
     rejection_reason: Optional[RejectionReason] = None
     desired_price: Optional[Decimal] = None
+    telegram_sent_at: datetime | None = None
+    max_sent_at: datetime | None = None
+    response_channel: MessengerType | None = None
+    response_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -310,6 +314,7 @@ class InstagramVerificationCode:
     link_max_chat_id: str | None = None
     link_username: str | None = None
     link_phone: str | None = None
+    request_channel: MessengerType | None = None
 
 
 @dataclass(frozen=True)

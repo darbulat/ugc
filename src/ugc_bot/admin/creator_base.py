@@ -82,9 +82,17 @@ CREATOR_ACTIVITY_LABELS = {
     "worked": "Работали",
     "responded": "Все отклики",
 }
+MAX_ACTIVITY_LABELS = {
+    "offered_via_max": "Получили предложение в MAX",
+    "max_only_offer": "Получили хотя бы один оффер только в MAX",
+    "max_only_reached": "Получали предложения только в MAX за период",
+    "responded_via_max": "Откликнулись в MAX",
+    "registered_via_max": "Завершили регистрацию через MAX",
+}
 CREATOR_BASE_LABELS = {
     **{key: label for _, items in CREATOR_BASE_CARDS for key, label in items},
     **CREATOR_ACTIVITY_LABELS,
+    **MAX_ACTIVITY_LABELS,
     "telegram_available": "Telegram · доступен",
     "telegram_unavailable": "Telegram · бот недоступен",
     "telegram_unknown": "Telegram · нет данных о доступности",
@@ -204,7 +212,26 @@ def _activity_conditions(
         dispatch.accepted.is_not(None), in_window(response_at)
     )
     activity = _creator_order_activity()
+    max_offers = offers.where(in_window(dispatch.max_sent_at))
+    telegram_offers = offers.where(in_window(dispatch.telegram_sent_at))
+    user_id = UserModel.user_id
     return {
+        "offered_via_max": user_id.in_(max_offers),
+        "max_only_offer": user_id.in_(
+            max_offers.where(dispatch.telegram_sent_at.is_(None))
+        ),
+        "max_only_reached": user_id.in_(max_offers)
+        & user_id.not_in(telegram_offers),
+        "responded_via_max": user_id.in_(
+            offers.where(
+                dispatch.response_channel == MessengerType.MAX,
+                in_window(dispatch.response_at),
+            )
+        ),
+        "registered_via_max": (
+            (BloggerProfileModel.registration_channel == MessengerType.MAX)
+            & in_window(BloggerProfileModel.registration_completed_at)
+        ),
         "offered": UserModel.user_id.in_(
             offers.where(in_window(dispatch.created_at))
         ),
@@ -225,7 +252,7 @@ def creator_base_filter(
 ) -> ColumnElement[bool]:
     conditions = (
         _activity_conditions(period, timezone)
-        if segment in CREATOR_ACTIVITY_LABELS
+        if segment in CREATOR_ACTIVITY_LABELS or segment in MAX_ACTIVITY_LABELS
         else _profile_conditions()
     )
     return and_(UserModel.status != UserStatus.DELETED, conditions[segment])

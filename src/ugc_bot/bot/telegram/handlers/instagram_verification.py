@@ -31,6 +31,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     resolve_messenger_dependencies,
 )
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
@@ -113,7 +114,7 @@ async def start_verification(
         return
 
     verification = await instagram_verification_service.generate_code(
-        user.user_id
+        user.user_id, channel=MessengerType.TELEGRAM
     )
     await state_store.clear()
 
@@ -202,7 +203,7 @@ async def start_verification_from_profile_callback(
         )
         return
     verification = await instagram_verification_service.generate_code(
-        user.user_id
+        user.user_id, channel=MessengerType.TELEGRAM
     )
     state_store = AiogramStateStore(state)
     await state_store.clear()

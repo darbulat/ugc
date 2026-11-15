@@ -14,6 +14,7 @@ from ugc_bot.application.ports import (
     InstagramVerificationRepository,
 )
 from ugc_bot.domain.entities import InstagramStats, InstagramVerificationCode
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import (
     InstagramStatsModel,
     InstagramVerificationCodeModel,
@@ -224,6 +225,9 @@ def _to_verification_entity(
         link_max_chat_id=model.link_max_chat_id,
         link_username=model.link_username,
         link_phone=model.link_phone,
+        request_channel=MessengerType(model.request_channel)
+        if model.request_channel
+        else None,
     )
 
 
@@ -242,6 +246,9 @@ def _to_verification_model(
         link_max_chat_id=code.link_max_chat_id,
         link_username=code.link_username,
         link_phone=code.link_phone,
+        request_channel=code.request_channel.value
+        if code.request_channel
+        else None,
     )
 
 
