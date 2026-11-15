@@ -110,6 +110,16 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     page.get_by_text("Как считаем участие").click()
     assert page.get_by_text("Начали платное сотрудничество").is_visible()
 
+    cohorts.get_by_role("link").filter(has_text="плативших").click()
+    assert page.get_by_role("heading", name="Повторные заявки").is_visible()
+    group = page.get_by_role("navigation", name="Группы заказов")
+    assert (
+        group.get_by_role("link", name="Повторные", exact=True).get_attribute(
+            "aria-current"
+        )
+        == "page"
+    )
+
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
