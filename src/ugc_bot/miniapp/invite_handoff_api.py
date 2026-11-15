@@ -5,8 +5,22 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ugc_bot.miniapp.native_caller_errors import NoStoreSelectionRoute
+from ugc_bot.miniapp.native_caller_errors import (
+    SHARED_CODES,
+    _NativeCallerRoute,
+)
 from ugc_bot.miniapp.principal import SignedMiniAppRequest
+
+
+class NoStoreHandoffRoute(_NativeCallerRoute):
+    prefix = "invite_handoff"
+    http_pairs = {}
+    codes = SHARED_CODES | {
+        "invite_handoff_unavailable": 503,
+        "invite_order_unavailable": 404,
+        "creator_invite_contact_unavailable": 404,
+        "invite_client_telegram_required": 422,
+    }
 
 
 class HandoffRequest(SignedMiniAppRequest):
@@ -16,13 +30,13 @@ class HandoffRequest(SignedMiniAppRequest):
 
 def create_invite_handoff_router(resolve):
     router = APIRouter(
-        prefix="/financial/orders", route_class=NoStoreSelectionRoute
+        prefix="/financial/orders", route_class=NoStoreHandoffRoute
     )
 
     @router.post("/{order_id}/invite-handoff")
     async def handoff(order_id: UUID, request: Request, body: HandoffRequest):
         if body.platform != "telegram":
-            raise HTTPException(404)
+            raise HTTPException(404, "invite_order_unavailable")
         service = request.app.state.dispatcher.get("creator_invite_service")
         if service is None:
             raise HTTPException(503, "invite_handoff_unavailable")
@@ -30,7 +44,9 @@ def create_invite_handoff_router(resolve):
             request, body.init_data, platform=body.platform
         )
         try:
-            if body.action in ("open", "ack") and body.invitation:
+            if body.action in ("open", "ack"):
+                if body.invitation is None:
+                    raise HTTPException(422, "invite_handoff_request_invalid")
                 if (
                     await service.reported_contact(principal, body.invitation)
                     != order_id

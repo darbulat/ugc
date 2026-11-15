@@ -155,6 +155,7 @@ class CreatorInviteService:
                         PaymentModel.payment_id,
                         INVITES.c.reported_at,
                         INVITES.c.consented_at,
+                        OrderModel.status.label("order_status"),
                     )
                     .select_from(INVITES)
                     .join(OrderModel, OrderModel.order_id == INVITES.c.order_id)
@@ -186,7 +187,11 @@ class CreatorInviteService:
             )
             if present == identity:
                 return item.order_id
-            if present is not None or item.consented_at is not None:
+            if (
+                present is not None
+                or item.consented_at is not None
+                or item.order_status != "active"
+            ):
                 raise ValueError("creator_invite_contact_unavailable")
             await require_forward_clear(item.paid_item_id, session=db)
             await db.execute(

@@ -154,9 +154,12 @@ async def accept_creator_invite(
         return
     await callback.answer("Участие подтверждено.", show_alert=True)
     if isinstance(message, Message):
-        await send_creator_contact(
-            message, creator_invite_service, identity, user.user_id
-        )
+        try:
+            await send_creator_contact(
+                message, creator_invite_service, identity, user.user_id
+            )
+        except (TelegramAPIError, TimeoutError):
+            logger.warning("Creator contact message was not confirmed")
     bot = callback.bot
     if bot is not None:
         if isinstance(message, Message):
