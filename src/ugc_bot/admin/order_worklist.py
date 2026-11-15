@@ -63,6 +63,8 @@ ORDER_STATUS_LABELS = {
     OrderStatus.ACTIVE: "Активный",
     OrderStatus.CLOSED: "Закрытый",
 }
+ORDER_CLOSURE_REASON_LIMIT = 500
+ORDER_CLOSED_MESSAGE = "Заказ закрыт."
 _CLOSURE_REASON_LABELS = {
     "customer_cancelled_unpaid_order": "Заказчик отменил заявку до оплаты.",
     "owner_requested_close_orders_before_november_2026": (
@@ -734,8 +736,42 @@ def _save_manager_change(
     )
 
 
+def close_order_with_reason(
+    session: Session, order: OrderModel, reason: object
+) -> None:
+    reason = reason.strip() if isinstance(reason, str) else ""
+    if not reason:
+        raise ValueError("Укажите причину закрытия.")
+    if len(reason) > ORDER_CLOSURE_REASON_LIMIT:
+        raise ValueError(
+            f"Причина закрытия должна быть не длиннее "
+            f"{ORDER_CLOSURE_REASON_LIMIT} символов."
+        )
+
+    now = datetime.now(timezone.utc)
+    previous_status = order.status.value
+    order.status = OrderStatus.CLOSED
+    order.dispatch_stopped = True
+    order.completed_at = now
+    order.updated_at = now
+    session.add(
+        AuditLogModel(
+            entity_type="order",
+            entity_id=order.order_id,
+            action=AuditAction.UPDATE,
+            old_values={"status": previous_status},
+            new_values={"status": OrderStatus.CLOSED.value, "reason": reason},
+            changed_at=now,
+        )
+    )
+
+
 def change_order_worklist(
-    session: Session, order_id: UUID, operation: str
+    session: Session,
+    order_id: UUID,
+    operation: str,
+    *,
+    closure_reason: object = None,
 ) -> str:
     if (
         operation == "delete-test"
@@ -770,18 +806,8 @@ def change_order_worklist(
     ):
         return "Закрыть здесь можно только активный заказ без оплаты."
 
-    now = datetime.now(timezone.utc)
-    order.status = OrderStatus.CLOSED
-    order.dispatch_stopped = True
-    order.completed_at = now
-    order.updated_at = now
-    session.add(
-        AuditLogModel(
-            entity_type="order",
-            entity_id=order_id,
-            action=AuditAction.UPDATE,
-            old_values={"status": OrderStatus.ACTIVE.value},
-            new_values={"status": OrderStatus.CLOSED.value},
-        )
-    )
-    return "Заказ закрыт."
+    try:
+        close_order_with_reason(session, order, closure_reason)
+    except ValueError as error:
+        return str(error)
+    return ORDER_CLOSED_MESSAGE

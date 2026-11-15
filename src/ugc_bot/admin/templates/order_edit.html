@@ -58,6 +58,7 @@
         {% if order_actions.archived %}<span class="order-editor__status">Удалён из списка</span>{% endif %}
         {% if obj.complimentary %}<span class="order-editor__status">Запущен без оплаты</span>{% endif %}
         <h1>{{ obj.offer_text|default('Заказ', true)|truncate(120) }}</h1>
+        {% if saved_closure_reason %}<p class="text-muted">{{ saved_closure_reason }}</p>{% endif %}
         <span class="text-muted">{{ obj.geography or 'География не задана' }}</span>
       </div>
       <button type="submit" form="order-edit-form" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить изменения</button>
@@ -94,6 +95,14 @@
         {% for name in order_sections[key] %}{{ order_field(form[name]) }}{% endfor %}
       </div>
       {% if key == 'terms' %}
+      {% if obj.status != 'closed' %}
+        <div class="mt-3" id="order-closure-field">
+          <label class="form-label" for="order-closure-reason">Причина закрытия</label>
+          <textarea id="order-closure-reason" name="closure_reason" class="form-control" rows="3"
+                    maxlength="{{ model_view.closure_reason_limit }}" aria-describedby="order-closure-hint">{{ closure_reason_value|default('') }}</textarea>
+          <small class="form-hint" id="order-closure-hint">Заполните при выборе статуса «Закрытый».</small>
+        </div>
+      {% endif %}
 {% if order_quote_details %}
 <details class="order-editor__quote">
   <summary>Сохранённые условия заказа · {{ order_quote_details.total_display }} {{ order_quote_details.currency }}</summary>
