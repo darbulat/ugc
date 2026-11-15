@@ -452,6 +452,7 @@ class Container:
             messenger_client,
             self.build_repos(),
             details_loader=details.for_order,
+            eligible_count_loader=self.build_offer_dispatch_service().count_eligible_bloggers,
         )
 
     def build_bot_services(self) -> "BotServices":

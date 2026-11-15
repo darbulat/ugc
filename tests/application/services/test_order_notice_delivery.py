@@ -16,11 +16,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 async def test_order_notice_uses_order_currency(
     kind, currency, symbol, expected
 ):
+    from dataclasses import replace
     from datetime import datetime, timezone
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
     from tests.helpers.fakes import FakeMessengerClient
+    from ugc_bot.application.notice_delivery_ports import DeliveryFailure
     from ugc_bot.application.order_notice_ports import OrderNoticeJob
     from ugc_bot.config import AppConfig
     from ugc_bot.container.order_notice_factory import (
@@ -64,11 +66,16 @@ async def test_order_notice_uses_order_currency(
             "order_repo",
             "advertiser_repo",
             "country_repo",
+            "payment_repo",
         )
     }
-    repos["user_repo"].list_admins.return_value = [admin]
+    repos["user_repo"].list_admins.return_value = [
+        admin,
+        replace(admin, user_id=uuid4(), telegram_id="456"),
+    ]
     repos["user_repo"].get_by_id.return_value = None
     repos["order_repo"].get_by_id.return_value = order
+    repos["payment_repo"].get_by_order.return_value = None
     repos["advertiser_repo"].get_by_user_id.return_value = None
     repos["country_repo"].get_by_currency_code.return_value = (
         SimpleNamespace(currency_symbol=symbol) if symbol else None
@@ -81,15 +88,38 @@ async def test_order_notice_uses_order_currency(
 
     messenger = FakeMessengerClient()
     config = AppConfig.model_validate(
-        {"BOT_TOKEN": "synthetic", "KAFKA_ENABLED": False}
+        {
+            "BOT_TOKEN": "synthetic",
+            "KAFKA_ENABLED": False,
+            "BUSINESS_ORDER_TELEGRAM_RECIPIENTS": ["123"],
+            "REFERRAL_SUPPORT_CHAT_ID": "-100123",
+        }
     )
+    eligibility = AsyncMock(return_value=37)
     worker = build_order_notice_delivery(
-        config, Transactions(), messenger, repos
+        config,
+        Transactions(),
+        messenger,
+        repos,
+        eligible_count_loader=eligibility,
     )
+    assert await worker.admin_recipients() == ("123",)
+    for excluded in ("456", "-100123"):
+        with pytest.raises(DeliveryFailure) as failure:
+            await worker.send(
+                OrderNoticeJob(uuid4(), order.order_id, kind, excluded, 1)
+            )
+        assert failure.value.code == "order_notice_recipient_ineligible"
+    repos["order_repo"].get_by_id.assert_not_awaited()
     worker.repository.begin = AsyncMock(return_value=True)
     await worker.send(OrderNoticeJob(uuid4(), order.order_id, kind, "123", 1))
     assert len(messenger.sent_text) == 1
-    assert f"<b>Бюджет:</b> 123 {expected}" in messenger.sent_text[0]["text"]
+    eligibility.assert_awaited_once_with(order.order_id)
+    assert "Потенциально подходят</b> · 37" in messenger.sent_text[0]["text"]
+    assert (
+        f"<b>Бюджет на автора</b> · 123 {expected}"
+        in messenger.sent_text[0]["text"]
+    )
 
 
 @pytest.mark.asyncio
@@ -127,7 +157,7 @@ async def test_order_notice_queue_keeps_one_card_per_recipient_event():
     async def recipients():
         return ("123", "123")
 
-    worker = OrderNoticeDelivery(repo, tm, send, recipients, "123")
+    worker = OrderNoticeDelivery(repo, tm, send, recipients)
     for _ in range(4):
         await worker.run_once()
     assert sorted((kind, address) for _, kind, address in sent) == [
@@ -208,13 +238,20 @@ async def test_order_card_preparation_retry_and_send_uncertainty(
     from ugc_bot.container import order_notice_factory
 
     config = AppConfig.model_validate(
-        {"BOT_TOKEN": "synthetic", "KAFKA_ENABLED": False}
+        {
+            "BOT_TOKEN": "synthetic",
+            "KAFKA_ENABLED": False,
+            "BUSINESS_ORDER_TELEGRAM_RECIPIENTS": ["123"],
+        }
     )
-    order = SimpleNamespace(advertiser_id=uuid4(), currency="RUB")
+    order = SimpleNamespace(
+        order_id=uuid4(), advertiser_id=uuid4(), currency="RUB"
+    )
     repos = {
         "user_repo": AsyncMock(),
         "order_repo": AsyncMock(),
         "advertiser_repo": AsyncMock(),
+        "payment_repo": AsyncMock(),
     }
     repos["order_repo"].get_by_id.return_value = order
     repos["advertiser_repo"].get_by_user_id.return_value = None
@@ -361,14 +398,13 @@ async def test_expired_preparation_retries_but_expired_send_is_unknown():
     async with factory.begin() as session:
         await repo.enqueue(uuid4(), "paid", session=session)
     async with factory.begin() as session:
-        first = await repo.claim(start, ("123",), "", session=session)
+        first = await repo.claim(start, ("123",), session=session)
         assert first is not None
     async with factory.begin() as session:
         assert (
             await repo.claim(
                 start + timedelta(minutes=2, seconds=1),
                 ("123",),
-                "",
                 session=session,
             )
             is None
@@ -381,7 +417,7 @@ async def test_expired_preparation_retries_but_expired_send_is_unknown():
         assert row["state"] == "pending"
     async with factory.begin() as session:
         second = await repo.claim(
-            start + timedelta(minutes=3), ("123",), "", session=session
+            start + timedelta(minutes=3), ("123",), session=session
         )
         assert second is not None and second.attempt == 2
         assert not await repo.begin(
@@ -393,7 +429,7 @@ async def test_expired_preparation_retries_but_expired_send_is_unknown():
     async with factory.begin() as session:
         assert (
             await repo.claim(
-                start + timedelta(minutes=6), ("123",), "", session=session
+                start + timedelta(minutes=6), ("123",), session=session
             )
             is None
         )
@@ -420,15 +456,20 @@ async def test_telegram_rate_limit_is_known_rejection_with_provider_delay(
     from ugc_bot.container import order_notice_factory
 
     config = AppConfig.model_validate(
-        {"BOT_TOKEN": "synthetic", "KAFKA_ENABLED": False}
+        {
+            "BOT_TOKEN": "synthetic",
+            "KAFKA_ENABLED": False,
+            "BUSINESS_ORDER_TELEGRAM_RECIPIENTS": ["123"],
+        }
     )
     repos = {
         "user_repo": AsyncMock(),
         "order_repo": AsyncMock(),
         "advertiser_repo": AsyncMock(),
+        "payment_repo": AsyncMock(),
     }
     repos["order_repo"].get_by_id.return_value = SimpleNamespace(
-        advertiser_id=uuid4(), currency="RUB"
+        order_id=uuid4(), advertiser_id=uuid4(), currency="RUB"
     )
     messenger = AsyncMock()
     messenger.send_text.side_effect = TelegramRetryAfter(
@@ -535,3 +576,108 @@ async def test_order_rate_limit_reschedules_durably_with_provider_delay():
                 )
     assert attempts == [1, 2, 3]
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_durable_photo_card_continues_without_count_and_checks_access():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import SendPhoto
+
+    from ugc_bot.application.notice_delivery_ports import DeliveryFailure
+    from ugc_bot.application.order_notice_ports import OrderNoticeJob
+    from ugc_bot.config import AppConfig
+    from ugc_bot.container.order_notice_factory import (
+        build_order_notice_delivery,
+    )
+    from ugc_bot.domain.entities import Order
+    from ugc_bot.domain.enums import OrderStatus, OrderType, UserStatus
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "synthetic",
+            "BUSINESS_ORDER_TELEGRAM_RECIPIENTS": ["123"],
+        }
+    )
+    order = Order(
+        order_id=uuid4(),
+        advertiser_id=uuid4(),
+        order_type=OrderType.UGC_ONLY,
+        product_link="https://example.org",
+        offer_text="Фото и бриф",
+        barter_description=None,
+        price=123,
+        bloggers_needed=1,
+        status=OrderStatus.NEW,
+        created_at=datetime.now(timezone.utc),
+        product_photo_file_id="synthetic-photo",
+    )
+    admin = SimpleNamespace(telegram_id="123", status=UserStatus.ACTIVE)
+    repos = {
+        "user_repo": AsyncMock(),
+        "order_repo": AsyncMock(),
+        "advertiser_repo": AsyncMock(),
+        "payment_repo": AsyncMock(),
+    }
+    repos["user_repo"].list_admins.return_value = [admin]
+    repos["user_repo"].get_by_id.return_value = None
+    repos["order_repo"].get_by_id.return_value = order
+    repos["advertiser_repo"].get_by_user_id.return_value = None
+    repos["payment_repo"].get_by_order.return_value = None
+
+    class Transactions:
+        @asynccontextmanager
+        async def transaction(self):
+            yield object()
+
+    messenger = AsyncMock()
+    eligible_count = AsyncMock(side_effect=TimeoutError)
+    worker = build_order_notice_delivery(
+        config,
+        Transactions(),
+        messenger,
+        repos,
+        eligible_count_loader=eligible_count,
+    )
+    worker.repository.begin = AsyncMock(return_value=True)
+    job = OrderNoticeJob(uuid4(), order.order_id, "created", "123", 1)
+    await worker.send(job)
+    caption = messenger.send_photo.await_args.kwargs["caption"]
+    assert "Новый заказ от бизнеса" in caption
+    assert "Потенциально подходят" not in caption
+    worker.repository.begin.assert_awaited_once()
+    messenger.send_text.assert_not_awaited()
+
+    messenger.send_photo.reset_mock()
+    repos["user_repo"].list_admins.return_value = []
+    with pytest.raises(DeliveryFailure) as failure:
+        await worker.send(job)
+    assert failure.value.code == "order_notice_recipient_ineligible"
+    messenger.send_photo.assert_not_awaited()
+
+    repos["user_repo"].list_admins.return_value = [admin]
+    repos["order_repo"].get_by_id.return_value = None
+    with pytest.raises(DeliveryFailure) as failure:
+        await worker.send(job)
+    assert failure.value.code == "order_notice_order_missing"
+    messenger.send_photo.assert_not_awaited()
+
+    repos["order_repo"].get_by_id.return_value = order
+    worker.repository.begin.return_value = False
+    with pytest.raises(DeliveryFailure) as failure:
+        await worker.send(job)
+    assert failure.value.code == "order_notice_lease_lost"
+    messenger.send_photo.assert_not_awaited()
+
+    worker.repository.begin.return_value = True
+    messenger.send_photo.side_effect = TelegramBadRequest(
+        method=SendPhoto(chat_id=123, photo="synthetic-photo"),
+        message="rejected",
+    )
+    with pytest.raises(DeliveryFailure) as failure:
+        await worker.send(job)
+    assert failure.value.code == "telegram_order_notice_rejected"
+    assert not failure.value.uncertain

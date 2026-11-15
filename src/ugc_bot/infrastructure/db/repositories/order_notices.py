@@ -42,7 +42,6 @@ class SqlAlchemyOrderNoticeRepository:
         self,
         now: datetime,
         admin_recipients: tuple[str, ...],
-        support_recipient: str,
         *,
         session: object,
     ) -> OrderNoticeJob | None:
@@ -86,8 +85,6 @@ class SqlAlchemyOrderNoticeRepository:
             addresses = {
                 value.strip() for value in admin_recipients if value.strip()
             }
-            if event["event_kind"] == "created" and support_recipient.strip():
-                addresses.add(support_recipient.strip())
             if not addresses:
                 continue
             for address in sorted(addresses):

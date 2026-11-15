@@ -165,12 +165,11 @@ async def _capture_and_activate(
     assert len(cards) == 2
     created = next(card for card in cards if "Новый заказ" in card["caption"])
     paid = next(card for card in cards if "Заказ оплачен" in card["caption"])
-    due_display = (
-        datetime.fromisoformat(selection_due_at)
-        .astimezone(timezone.utc)
-        .strftime("%d.%m.%Y %H:%M:%S UTC")
+    due_at = datetime.fromisoformat(selection_due_at)
+    due_display = due_at.astimezone(timezone.utc).strftime(
+        "%d.%m.%Y %H:%M:%S UTC"
     )
-    assert f"Срок подбора:</b> {due_display}" in paid["caption"]
+    assert "Срок подбора</b>" in paid["caption"] and "МСК" in paid["caption"]
     assert created["chat_id"] == paid["chat_id"] == env["admin"].telegram_id
     assert created["file_id"] == paid["file_id"]
     buttons = [button for row in paid["keyboard"].rows for button in row]

@@ -26,7 +26,6 @@ from ugc_bot.application.geography import get_cities_list_for_miniapp
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_complaint,
     notify_admins_about_order_created,
-    notify_support_chat_about_new_order,
 )
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
@@ -1467,24 +1466,8 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
                 currency_symbol=config.market.currency_symbol,
                 country_repo=country_repo,
                 advertiser_profile=advertiser,
+                recipient_ids=config.admin.business_order_telegram_recipients,
             )
-            support_chat_id = config.referral.referral_support_chat_id
-            if support_chat_id.strip():
-                advertiser_user = await user_role_service.get_user_by_id(
-                    user_id
-                )
-                if advertiser_user:
-                    await notify_support_chat_about_new_order(
-                        order=order,
-                        advertiser_user=advertiser_user,
-                        advertiser_profile=advertiser,
-                        messenger_client=messenger_client,
-                        support_chat_id=support_chat_id,
-                        admin_base_url=config.admin.admin_base_url,
-                        currency_symbol=config.market.currency_symbol,
-                        country_repo=country_repo,
-                        user_role_service=user_role_service,
-                    )
         except Exception as exc:
             logger.error(
                 "Failed to send notifications for miniapp order",

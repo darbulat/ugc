@@ -635,6 +635,7 @@ async def successful_payment_handler(
             content_moderation=content_moderation_service,
             admin_base_url=config.admin.admin_base_url,
             currency_symbol=symbol,
+            recipient_ids=config.admin.business_order_telegram_recipients,
         )
 
     msg_success = await bot_texts_service.get(

@@ -16,7 +16,6 @@ from ugc_bot.application.messenger.ports import (
 from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.admin_notification_service import (
     notify_admins_about_order_created,
-    notify_support_chat_about_new_order,
 )
 from ugc_bot.application.services.advertiser_registration_service import (
     AdvertiserRegistrationService,
@@ -1639,37 +1638,20 @@ async def handle_geography(
         product_photo_file_id=product_photo_file_id,
     )
 
-    await notify_admins_about_order_created(
-        order=order,
-        messenger_client=messenger_client,
-        user_role_service=user_role_service,
-        content_moderation=content_moderation_service,
-        admin_base_url=config.admin.admin_base_url,
-        currency_symbol=config.market.currency_symbol,
-        country_repo=country_repo,
-        advertiser_profile=await profile_service.get_advertiser_profile(
-            user_id
-        ),
-    )
-
-    support_chat_id = config.referral.referral_support_chat_id
-    if support_chat_id.strip():
-        advertiser_user = await user_role_service.get_user_by_id(user_id)
-        advertiser_profile = await profile_service.get_advertiser_profile(
-            user_id
+    if getattr(order_service, "order_notices", None) is None:
+        await notify_admins_about_order_created(
+            order=order,
+            messenger_client=messenger_client,
+            user_role_service=user_role_service,
+            content_moderation=content_moderation_service,
+            admin_base_url=config.admin.admin_base_url,
+            currency_symbol=config.market.currency_symbol,
+            country_repo=country_repo,
+            advertiser_profile=await profile_service.get_advertiser_profile(
+                user_id
+            ),
+            recipient_ids=config.admin.business_order_telegram_recipients,
         )
-        if advertiser_user:
-            await notify_support_chat_about_new_order(
-                order=order,
-                advertiser_user=advertiser_user,
-                advertiser_profile=advertiser_profile,
-                messenger_client=messenger_client,
-                support_chat_id=support_chat_id,
-                admin_base_url=config.admin.admin_base_url,
-                currency_symbol=config.market.currency_symbol,
-                country_repo=country_repo,
-                user_role_service=user_role_service,
-            )
 
     await state_store.clear()
     msg_order_created = await bot_texts_service.get(

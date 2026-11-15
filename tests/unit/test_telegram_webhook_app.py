@@ -785,7 +785,9 @@ def test_miniapp_api_instagram_verification_start_no_blogger_404(
     assert response.status_code == 404
 
 
-def test_miniapp_api_create_order_success(client: TestClient) -> None:
+def test_miniapp_api_create_order_success(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """POST /miniapp/api/orders with valid data returns 200."""
     init_data = _make_valid_init_data("test_token", 88888)
     user_id = uuid4()
@@ -823,6 +825,11 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     mock_urs.get_user = AsyncMock(return_value=user)
     mock_urs.get_user_by_id = AsyncMock(return_value=user)
     mock_urs.list_admins = AsyncMock(return_value=[user])
+    monkeypatch.setattr(
+        app.state.config.admin,
+        "business_order_telegram_recipients",
+        frozenset({"88888"}),
+    )
     mock_ps = MagicMock()
     mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
     mock_order_svc = MagicMock()
@@ -859,15 +866,15 @@ def test_miniapp_api_create_order_success(client: TestClient) -> None:
     assert "payment_link" in data
     assert mock_messenger.send_text.await_count == 1
     assert (
-        f"<b>Телефон:</b> {advertiser.phone}"
+        f"<b>Телефон</b> · {advertiser.phone}"
         in mock_messenger.send_text.await_args.kwargs["text"]
     )
 
 
-def test_miniapp_api_create_order_support_chat_notified(
+def test_miniapp_api_create_order_excludes_referral_support_chat(
     client: TestClient,
 ) -> None:
-    """Support chat notification is sent when referral_support_chat_id set."""
+    """Referral payout routing never receives a business order card."""
     init_data = _make_valid_init_data("test_token", 88889)
     user_id = uuid4()
     order_id = uuid4()
@@ -907,6 +914,7 @@ def test_miniapp_api_create_order_support_chat_notified(
     mock_ps = MagicMock()
     mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
     mock_order_svc = MagicMock()
+    mock_order_svc.order_notices = None
     mock_order_svc.create_order = AsyncMock(return_value=order)
     mock_messenger = MagicMock()
     mock_messenger.send_text = AsyncMock(return_value=None)
@@ -938,10 +946,12 @@ def test_miniapp_api_create_order_support_chat_notified(
         app.state.config.referral.referral_support_chat_id = old_chat_id
     assert response.status_code == 200
     assert response.json().get("ok") is True
+    mock_messenger.send_text.assert_not_awaited()
 
 
 def test_miniapp_api_create_order_notification_error_logged(
     client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Notification exception is caught and logged; order still returns 200."""
     init_data = _make_valid_init_data("test_token", 88890)
@@ -981,6 +991,7 @@ def test_miniapp_api_create_order_notification_error_logged(
     mock_ps = MagicMock()
     mock_ps.get_advertiser_profile = AsyncMock(return_value=advertiser)
     mock_order_svc = MagicMock()
+    mock_order_svc.order_notices = None
     mock_order_svc.create_order = AsyncMock(return_value=order)
     mock_messenger = MagicMock()
     mock_messenger.send_text = AsyncMock(
@@ -991,6 +1002,11 @@ def test_miniapp_api_create_order_notification_error_logged(
         return_value=False
     )
     mock_urs.list_admins = AsyncMock(side_effect=RuntimeError("db error"))
+    monkeypatch.setattr(
+        app.state.config.admin,
+        "business_order_telegram_recipients",
+        frozenset({"88890"}),
+    )
     dispatcher = app.state.dispatcher
     dispatcher["user_role_service"] = mock_urs
     dispatcher["profile_service"] = mock_ps
@@ -1010,6 +1026,7 @@ def test_miniapp_api_create_order_notification_error_logged(
     )
     assert response.status_code == 200
     assert response.json().get("ok") is True
+    mock_urs.list_admins.assert_awaited_once()
 
 
 def test_miniapp_api_cities_returns_list(client: TestClient) -> None:
