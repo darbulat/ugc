@@ -119,6 +119,13 @@ def test_factory_freezes_receipt_data_and_starts_with_creation_paused():
     assert receipt["items"][0]["amount"] == {"value": "5.00", "currency": "RUB"}
 
 
+def test_direct_checkout_requires_merchant_credentials():
+    config = AppConfig.model_validate(
+        {"BOT_TOKEN": "synthetic", "TELEGRAM_PAYMENT_ACCOUNT_ID": "native"}
+    )
+    assert build_browser_checkout(config, object(), {}) is None
+
+
 @pytest.mark.asyncio
 async def test_scheduler_retries_errors_and_starts_with_issuance_paused(
     monkeypatch,

@@ -32,6 +32,7 @@ URL = "https://yookassa.ru/my/i/synthetic/a"
         "rejected",
         "invalid_payload",
         "invalid_id",
+        "invalid_returned_id",
         "foreign_invoice",
         "invalid_expiry",
         "invalid_invoice_state",
@@ -105,7 +106,7 @@ async def test_yookassa_invoice_contract(monkeypatch, case):
         return httpx.Response(
             200,
             json={
-                "id": INVOICE,
+                "id": PAYMENT if case == "invalid_returned_id" else INVOICE,
                 "metadata": {} if case == "foreign_invoice" else metadata,
                 "status": status,
                 "payment_details": {"id": PAYMENT},

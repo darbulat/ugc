@@ -202,6 +202,25 @@ async def test_paid_legacy_projection_cannot_issue_browser_invoice(
 
 
 @pytest.mark.asyncio
+async def test_missing_or_closed_order_cannot_issue_invoice(checkout_env):
+    env = checkout_env
+    gateway = AsyncMock()
+    checkout = service(env, gateway)
+    missing = uuid4()
+    assert await checkout.view(missing) is None
+    with pytest.raises(LookupError, match="order_not_found"):
+        await checkout.create(missing, "buyer@example.com")
+    oid = env["order"].order_id
+    async with env["transactions"].transaction() as session:
+        order = await session.get(OrderModel, oid)
+        order.status = OrderStatus.CLOSED
+    assert await checkout.view(oid) is None
+    with pytest.raises(OrderCreationError, match="order_not_payable"):
+        await checkout.create(oid, "buyer@example.com")
+    gateway.observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_retry_reuses_request_and_releases_on_cancellation(
     checkout_env,
 ):
