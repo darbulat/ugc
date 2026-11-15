@@ -93,6 +93,7 @@ from ugc_bot.miniapp.correction_api import create_correction_router
 from ugc_bot.miniapp.debt_recovery_api import create_debt_recovery_router
 from ugc_bot.miniapp.financial_principal import resolve_financial_principal
 from ugc_bot.miniapp.financial_review_api import create_financial_review_router
+from ugc_bot.miniapp.invite_handoff_api import create_invite_handoff_router
 from ugc_bot.miniapp.manager_directory_api import (
     create_manager_directory_router,
 )
@@ -1904,6 +1905,7 @@ async def set_country(request: Request, body: SetCountryRequest) -> dict:
 
 
 register_manager_invites(router, _ensure_recent_user_and_get_id)
+router.include_router(create_invite_handoff_router(resolve_financial_principal))
 
 
 @router.post("/manager/orders", response_model=ManagerOrdersResponse)

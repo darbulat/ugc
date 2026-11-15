@@ -61,6 +61,15 @@ def install_final_guard(metadata, connection, **kw):
                 "0127_public_policy_scope"
             )
             connection.exec_driver_sql(public_scope._authority_sql(public=True))
+            from ugc_bot.infrastructure.db.invite_handoff_schema import (
+                TABLES as HANDOFF_TABLES,
+            )
+            from ugc_bot.infrastructure.db.invite_handoff_schema import (
+                install_invite_handoff_guards,
+            )
+
+            if {table.name for table in HANDOFF_TABLES} <= names:
+                install_invite_handoff_guards(connection.exec_driver_sql)
 
 
 sa.event.listen(Base.metadata, "after_create", install_final_guard)

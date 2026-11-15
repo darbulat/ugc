@@ -40,6 +40,7 @@ from ugc_bot.infrastructure.db.correction_models import TABLE_MAP
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
 )
+from ugc_bot.infrastructure.db.invite_handoff_models import STAFF_DELIVERIES
 from ugc_bot.infrastructure.db.repositories.financial_capture import intent_id
 from ugc_bot.infrastructure.db.repositories.financial_items import (
     SqlAlchemyFinancialItemRepository,
@@ -49,6 +50,9 @@ from ugc_bot.infrastructure.db.repositories.financial_ledger import (
     SqlAlchemyFinancialLedgerRepository,
     _canonical,
     payload_hash,
+)
+from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+    handoff_installed,
 )
 from ugc_bot.infrastructure.db.repositories.selection_delivery_funding import (
     SqlAlchemySelectionFundingRepository,
@@ -416,9 +420,7 @@ class SqlAlchemyCorrectionRepository:
         items = sorted(items, key=lambda row: row["ordinal"])
         ids = {i["paid_item_id"] for i in items}
         assignments = await self._item_rows(db, "item_assignments", ids)
-        deliveries = await self._item_rows(
-            db, "paid_selection_accepted_deliveries", ids
-        )
+        deliveries = await self._contact_deliveries(db, ids)
         grounds = await self._item_rows(db, "financial_obligations", ids)
         users = {*fields["prospective_user_ids"], order["advertiser_id"]}
         wallets = {ground["recipient_id"] for ground in grounds}
@@ -585,6 +587,15 @@ class SqlAlchemyCorrectionRepository:
         ):
             return "correction_creator_manager_ground_unsupported"
         return None
+
+    async def _contact_deliveries(self, db, ids):
+        native = await self._item_rows(
+            db, "paid_selection_accepted_deliveries", ids
+        )
+        if not ids or not await handoff_installed(db):
+            return native
+        staff = await self._item_rows(db, STAFF_DELIVERIES.name, ids)
+        return [*native, *staff]
 
     @staticmethod
     async def _item_rows(db, name, ids):

@@ -142,8 +142,10 @@ async def test_per_item_schedule_requires_delivery_and_exact_policy_dates(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("source", ["telegram", "staff"])
 async def test_service_moves_delivered_position_at_seven_and_21_days(
     intake_env,
+    source,
 ):
     from tests.helpers.corrections import assess_original
     from ugc_bot.application.services.financial_ledger_service import (
@@ -184,17 +186,66 @@ async def test_service_moves_delivered_position_at_seven_and_21_days(
     env["policy"] = version
     facts = await captured_order(env)
     await assess_original(env, facts)
-    delivered = (await deliver_original_positions(env, facts, count=1))[0]
-    with Session(env["pg"]) as db:
-        delivery_at = (
-            db.execute(
-                select(
-                    Base.metadata.tables["paid_selection_accepted_deliveries"]
-                ).filter_by(paid_item_id=delivered)
-            )
-            .mappings()
-            .one()["accepted_at"]
+    if source == "staff":
+        from ugc_bot.application.native_principal_ports import (
+            AuthenticatedMessengerPrincipal,
         )
+        from ugc_bot.container.creator_invite_factory import (
+            build_creator_invites,
+        )
+        from ugc_bot.infrastructure.db.models import OrderModel
+        from ugc_bot.infrastructure.db.repositories.creator_invites import (
+            create_invite,
+        )
+
+        order_id = facts["order"].order_id
+        with Session(env["pg"]) as db, db.begin():
+            db.get(OrderModel, order_id).status = "active"
+            identity = create_invite(
+                db,
+                order_id,
+                facts["order"].items[0].paid_item_id,
+                None,
+                "@selection_staff",
+                env["clock"].at,
+                telegram="@selection_staff",
+                consent_source="instagram",
+            )
+        client = AuthenticatedMessengerPrincipal(
+            env["user"].user_id,
+            "telegram",
+            env["user"].telegram_id,
+        )
+        invites = build_creator_invites(env["container"].transaction_manager)
+        invites.clock = env["clock"]
+        from ugc_bot.infrastructure.db.repositories.selection_view import (
+            SqlAlchemySelectionViewRepository,
+        )
+
+        await invites.acknowledge_staff_contact(client, identity)
+        await invites.acknowledge_staff_contact(client, identity)
+        delivery_at = env["clock"].at
+        async with env["container"].transaction_manager.transaction() as db:
+            view = await SqlAlchemySelectionViewRepository().view(
+                order_id, client.user_id, session=db, principal=client
+            )
+        assert view["positions"][0]["delivery_state"] == "staff_confirmed"
+        assert view["positions"][0]["fulfilled_at"] == delivery_at
+        assert view["positions"][0]["deliveries"] == []
+    else:
+        delivered = (await deliver_original_positions(env, facts, count=1))[0]
+        with Session(env["pg"]) as db:
+            delivery_at = (
+                db.execute(
+                    select(
+                        Base.metadata.tables[
+                            "paid_selection_accepted_deliveries"
+                        ]
+                    ).filter_by(paid_item_id=delivered)
+                )
+                .mappings()
+                .one()["accepted_at"]
+            )
     ledger = FinancialLedgerService(env["repos"]["financial_ledger_repo"])
     service = SelectionMaturityService(
         SqlAlchemySelectionMaturityRepository(), ledger, env["clock"]

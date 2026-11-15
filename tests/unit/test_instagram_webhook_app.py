@@ -157,21 +157,11 @@ async def test_notify_user_verification_missing_telegram_user(
 
 
 @pytest.mark.asyncio
-async def test_notify_user_verification_success(test_config: AppConfig) -> None:
+@pytest.mark.parametrize("recent", [False, True])
+async def test_notify_user_verification_success(
+    test_config: AppConfig, recent: bool
+) -> None:
     """Send notification when user and telegram record exist."""
-
-    class DummySession:
-        async def close(self) -> None:
-            return None
-
-    class DummyBot:
-        def __init__(self, token: str) -> None:
-            self.token = token
-            self.session = DummySession()
-            self.sent = []
-
-        async def send_message(self, chat_id: int, text: str, **kwargs) -> None:  # type: ignore[no-untyped-def]
-            self.sent.append((chat_id, text, kwargs))
 
     user_repo = InMemoryUserRepository()
     blogger_repo = InMemoryBloggerProfileRepository()
@@ -209,10 +199,40 @@ async def test_notify_user_verification_success(test_config: AppConfig) -> None:
         instagram_api_client=None,
     )
 
-    with patch("aiogram.Bot", DummyBot):
+    if recent:
+        test_config.db.database_url = "postgresql://testserver/test"
+    test_config.bot.bot_username = "test_bot"
+    invite = uuid4()
+    resume = AsyncMock(return_value=invite if recent else None)
+    sent = AsyncMock()
+
+    @asynccontextmanager
+    async def messenger():
+        yield type("Messenger", (), {"send_text": sent})()
+
+    with (
+        patch(
+            "ugc_bot.instagram_webhook_app._get_chat_id_and_messenger_factory",
+            return_value=("12345", messenger()),
+        ),
+        patch(
+            "ugc_bot.infrastructure.db.repositories.invite_handoff.recent_invitation",
+            resume,
+        ),
+    ):
         await _notify_user_verification_success(
             user.user_id, service, test_config
         )
+
+    sent.assert_awaited_once()
+    keyboard = sent.call_args.kwargs["keyboard"].rows
+    urls = [button.url for row in keyboard for button in row if button.url]
+    if recent:
+        resume.assert_awaited_once()
+        assert urls == [f"https://t.me/test_bot?start=oi_{invite.hex}"]
+    else:
+        resume.assert_not_awaited()
+        assert not urls
 
 
 @pytest.mark.asyncio

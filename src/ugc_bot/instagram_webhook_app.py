@@ -319,6 +319,40 @@ async def _notify_user_verification_success(
             "msg_instagram_confirmed",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
+        keyboard = blogger_menu_inline_keyboard(
+            texts, confirmed=confirmed, verification_started=False
+        )
+        if user.telegram_id and str(user.telegram_id) == str(chat_id):
+            from datetime import datetime, timezone
+
+            from ugc_bot.application.messenger.dto import Button
+            from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+                recent_invitation,
+            )
+
+            if config.db.database_url.startswith("postgresql"):
+                try:
+                    invite = await recent_invitation(
+                        verification_service.transaction_manager,
+                        user_id,
+                        datetime.now(timezone.utc),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not load the creator's pending invitation"
+                    )
+                else:
+                    bot_username = config.bot.bot_username.strip().lstrip("@")
+                    if invite and bot_username:
+                        keyboard.rows.insert(
+                            0,
+                            [
+                                Button(
+                                    "Вернуться к приглашению",
+                                    url=f"https://t.me/{bot_username}?start=oi_{invite.hex}",
+                                )
+                            ],
+                        )
         async with messenger_cm as messenger_client:
             msg_confirmed = locale_texts.get(
                 "msg_instagram_confirmed",
@@ -328,9 +362,7 @@ async def _notify_user_verification_success(
             await messenger_client.send_text(
                 chat_id=chat_id,
                 text=msg_confirmed,
-                keyboard=blogger_menu_inline_keyboard(
-                    texts, confirmed=confirmed, verification_started=False
-                ),
+                keyboard=keyboard,
             )
     except Exception:
         logger.warning(

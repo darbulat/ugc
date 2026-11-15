@@ -3,19 +3,23 @@
 import asyncio
 import re
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import UUID
 
 from fastapi import HTTPException, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
 
+from ugc_bot.application.services.invite_handoff_notices import dispatch_invite
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
+from ugc_bot.infrastructure.db.invite_handoff_models import VISITS
 from ugc_bot.infrastructure.db.models import OrderItemModel, UserModel
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    available_positions,
     create_invite,
-    free_positions,
+    creator_availability,
     order_for_invite,
     team,
 )
@@ -24,6 +28,7 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
 class InviteRequest(BaseModel):
     init_data: str
     item_id: UUID | None = None
+    operation: Literal["lookup", "create", "send"] | None = None
     instagram: str = Field(default="", max_length=250)
     telegram: str = Field(default="", max_length=100)
     name: str = Field(default="", max_length=80)
@@ -40,8 +45,15 @@ def manager_invite_data(engine, actor, order_id, body, bot):
             ).first()
         ):
             raise PermissionError
-        link = None
-        if body.item_id is not None:
+        link, identity = None, None
+        availability = (
+            creator_availability(db, body.instagram, body.telegram)
+            if body.operation == "lookup"
+            else None
+        )
+        if body.operation in {"create", "send"} or (
+            body.operation is None and body.item_id is not None
+        ):
             identity = create_invite(
                 db,
                 order_id,
@@ -53,10 +65,11 @@ def manager_invite_data(engine, actor, order_id, body, bot):
                 actor_id=actor,
                 consent_source=body.consent_source,
                 creator_name=body.name.strip(),
+                direct=body.operation == "send",
             )
             link = f"https://t.me/{bot}?start=oi_{identity.hex}"
         positions = db.execute(
-            free_positions(order_id)
+            available_positions(order_id, datetime.now(timezone.utc))
             .with_only_columns(
                 OrderItemModel.paid_item_id,
                 OrderItemModel.ordinal,
@@ -72,6 +85,9 @@ def manager_invite_data(engine, actor, order_id, body, bot):
                     INVITES.c.reported_at,
                     INVITES.c.consented_at,
                     INVITES.c.expires_at,
+                    exists()
+                    .where(VISITS.c.invite_id == INVITES.c.id)
+                    .label("opened"),
                     OrderItemModel.ordinal,
                 )
                 .join(
@@ -94,6 +110,8 @@ def manager_invite_data(engine, actor, order_id, body, bot):
                 for row in positions
             ],
             "link": link,
+            "availability": availability,
+            "identity": identity if body.operation == "send" else None,
             "invites": [dict(row) for row in invites],
         }
 
@@ -120,8 +138,11 @@ def register_manager_invites(router, authenticate):
         if body.consent_source not in {"", "instagram", "telegram", "other"}:
             raise HTTPException(422, "Укажите источник согласия.")
         container = request.app.state.dispatcher["container"]
+        service = request.app.state.dispatcher.get("creator_invite_service")
+        if body.operation == "send" and service is None:
+            raise HTTPException(503, "Отправка в бот сейчас недоступна.")
         try:
-            return await asyncio.to_thread(
+            result = await asyncio.to_thread(
                 manager_invite_data,
                 container.get_admin_engine(),
                 actor,
@@ -129,6 +150,15 @@ def register_manager_invites(router, authenticate):
                 body,
                 bot,
             )
+            if body.operation == "send" and (
+                identity := result.pop("identity")
+            ):
+                result["notice_state"] = await dispatch_invite(
+                    config, service, identity
+                )
+                if result["notice_state"] == "sent":
+                    result["link"] = None
+            return result
         except PermissionError as exc:
             raise HTTPException(403, "Заказ недоступен.") from exc
         except ValueError as exc:

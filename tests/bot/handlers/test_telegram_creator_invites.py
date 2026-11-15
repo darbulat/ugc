@@ -34,13 +34,16 @@ async def test_invite_link_shows_current_order_and_consent_state():
         "geography": "Казань",
         "instagram": "creator",
     }
-    service = SimpleNamespace(preview=AsyncMock(return_value=row))
+    service = SimpleNamespace(
+        open_invite=AsyncMock(return_value=row),
+        creator_contact=AsyncMock(return_value=None),
+    )
 
     await show_invite(message, roles, service, "invalid")
     assert "Приглашение недоступно" in message.answers[-1]
-    service.preview.assert_not_awaited()
+    service.open_invite.assert_not_awaited()
     await show_invite(message, roles, service, payload)
-    service.preview.assert_awaited_once_with(identity, "creator")
+    service.open_invite.assert_awaited_once_with(identity, "creator")
     text, markup = message.answers[-1]
     assert all(
         piece in text
@@ -57,7 +60,7 @@ async def test_invite_link_shows_current_order_and_consent_state():
     assert "Заказ закрыт" in message.answers[-1]
     row["consented_at"] = object()
     await show_invite(message, roles, service, payload)
-    assert "уже подтвердили участие" in message.answers[-1]
+    assert "уже подтвердили участие" in message.answers[-2]
 
 
 @pytest.mark.asyncio

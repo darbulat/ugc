@@ -276,7 +276,5 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
             r"https://t.me/example_test_bot[?]start=oi_[a-f0-9]{32}", page.text
         )
         assert "Ждём подтверждения" in page.text
-        assert "№1 · Ссылка уже создана" in page.text
-        assert page.text.index(">№2</option>") < page.text.index(
-            ">№1 · Ссылка уже создана</option>"
-        )
+        assert "Первая свободная · №2" in page.text
+        assert ">№1</option>" not in page.text

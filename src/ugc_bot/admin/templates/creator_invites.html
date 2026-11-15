@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Добавить креатора{% endblock %}
 {% block content %}
+<style>
+  .invite-form-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin-bottom: 16px; }
+  .invite-form-fields label { display: grid; gap: 6px; }
+  .invite-position, .invite-profile-result { grid-column: 1 / -1; }
+  .invite-position { max-width: 22rem; display: grid; gap: 6px; }
+  .invite-profile-result strong { display: inline-block; margin: 6px 10px; }
+  @media (max-width: 650px) { .invite-form-fields { grid-template-columns: minmax(0, 1fr); } }
+</style>
 <div class="section">
   <div class="admin-actions">
     <a class="admin-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">← К заказу</a>
@@ -9,6 +17,7 @@
   {% if preview %}
     <p>Тестовый заказ без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Открыть итоги в Telegram</a>.</p>
   {% endif %}
+  {% if status %}<p role="status">{{ status }}</p>{% endif %}
   {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
   {% if link %}
     <section class="card section">
@@ -38,25 +47,36 @@
   <section class="card section">
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
-      <label for="invite-item">{{ "Тестовая позиция" if preview else "Свободная оплаченная позиция" }}</label>
-      <select name="item_id" id="invite-item" class="form-select mb-3">
-        {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}{% if item.pending_invites %} · Ссылка уже создана{% endif %}</option>{% endfor %}
-      </select>
-      <label for="invite-instagram">Ник или ссылка на Instagram</label>
-      <input id="invite-instagram" class="form-control mb-3" name="instagram" value="{{ instagram }}" maxlength="250" placeholder="@username" required>
-      <label for="invite-telegram">Telegram креатора</label>
-      <input id="invite-telegram" class="form-control mb-3" name="telegram" value="{{ telegram }}" maxlength="100" placeholder="@username">
-      <button type="submit" class="admin-button" name="operation" value="preview">Проверить в базе</button>
-      {% if known %}<p role="status">{{ known }}</p>{% endif %}
-      <label for="invite-name">Имя креатора для карточки</label>
-      <input id="invite-name" class="form-control mb-3" name="creator_name" value="{{ creator_name }}" maxlength="80">
-      <label for="invite-manager">Кто ведёт креатора</label>
-      <select id="invite-manager" name="manager_id" class="form-select mb-3">
-        <option value="">Администратор</option>
-        {% for manager in managers %}<option value="{{ manager.user_id }}"{% if manager.user_id == manager_id %} selected{% endif %}>{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
-      </select>
-      <p>Подтверждённый профиль из базы определится по Instagram. Внешний креатор зарегистрируется по ссылке. Контакт станет доступен заказчику после согласия креатора.</p>
-      <details class="mb-3">
+      <div class="invite-form-fields">
+        <div class="invite-position">
+          <label for="invite-item">{{ "Тестовая позиция" if preview else "Позиция в заказе" }}</label>
+          <select name="item_id" id="invite-item" class="form-select">
+            <option value=""{% if not item_id %} selected{% endif %}>Первая свободная · №{{ items[0].ordinal }}</option>
+            {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}</option>{% endfor %}
+          </select>
+        </div>
+        <label>Ник или ссылка на Instagram
+          <input id="invite-instagram" class="form-control" name="instagram" value="{{ instagram }}" maxlength="250" placeholder="@username" required>
+        </label>
+        <label>Telegram креатора
+          <input id="invite-telegram" class="form-control" name="telegram" value="{{ telegram }}" maxlength="100" placeholder="@username">
+        </label>
+        <div class="invite-profile-result">
+          <button type="submit" class="admin-button" name="operation" value="preview">Проверить в базе</button>
+          {% if known %}<strong role="status">{{ known }}</strong>{% endif %}
+        </div>
+        <label>Имя креатора для карточки
+          <input class="form-control" name="creator_name" value="{{ creator_name }}" maxlength="80">
+        </label>
+        <label>Кто ведёт креатора
+          <select class="form-select" name="manager_id">
+            <option value="">Администратор</option>
+            {% for manager in managers %}<option value="{{ manager.user_id }}"{% if manager.user_id == manager_id %} selected{% endif %}>{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      {% if availability == "ready" %}<p>Бот предложит креатору подтвердить участие. Когда контакт станет доступен, заказчик получит сообщение.</p>{% endif %}
+      <details class="mb-3"{% if consent_source %} open{% endif %}>
         <summary>Креатор уже согласился в личной переписке</summary>
         <label><input type="checkbox" name="record_consent" value="1"{% if consent_source %} checked{% endif %}>
           Креатор согласился участвовать в этом заказе и разрешил показать указанные контакты заказчику.
@@ -68,9 +88,18 @@
           <option value="telegram"{% if consent_source == "telegram" %} selected{% endif %}>Telegram</option>
           <option value="other"{% if consent_source == "other" %} selected{% endif %}>Другая переписка</option>
         </select>
-        <p>Контакт появится в итогах заказа. Подтверждение Instagram можно пройти позднее по той же ссылке.</p>
+        <p>Заказчик сможет открыть контакт в итогах и подтвердить его получение.</p>
       </details>
-      <button class="admin-button admin-button--primary" type="submit">Создать ссылку</button>
+      {% if availability %}
+      <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-action" value="{{ 'send' if availability == 'ready' else 'create' }}">{{ 'Отправить приглашение в бот' if availability == 'ready' else 'Создать ссылку' }}</button>
+      <script>
+        for (const field of ['invite-instagram', 'invite-telegram']) {
+          document.getElementById(field).addEventListener('input', function () {
+            document.getElementById('invite-action').disabled = true;
+          });
+        }
+      </script>
+      {% endif %}
     </form>
   </section>
   {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
@@ -80,7 +109,17 @@
     <h2>Приглашения</h2>
     <ul>
       {% for invite in invites %}
-      <li>№{{ invite.ordinal }} · @{{ invite.instagram }}{% if invite.telegram %} · Telegram @{{ invite.telegram }}{% endif %}{% if invite.reported_at %} · Согласие в переписке{% endif %} · {{ 'Из базы' if invite.target_id else 'Внешний креатор' }} · {% if invite.consented_at or invite.consent_source == preview_consent %}Участие подтверждено{% elif invite.expires_at <= now %}Срок истёк{% else %}Ждём подтверждения · <input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}</li>
+      <li>
+        <strong>№{{ invite.ordinal }} · @{{ invite.instagram }}</strong>
+        {% if invite.reported_at %} · Согласие в переписке{% endif %}
+        {% if invite.consented_at or invite.consent_source == preview_consent %} · Участие подтверждено
+        {% elif invite.expires_at <= now %} · Срок истёк
+        {% else %}
+          · {{ 'Открыто в боте' if invite.opened else 'Ждём подтверждения' }}
+          {% if invite.notice_state == "sent" %} · Отправлено в Telegram
+          {% else %}<input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}
+        {% endif %}
+      </li>
       {% endfor %}
     </ul>
   </section>

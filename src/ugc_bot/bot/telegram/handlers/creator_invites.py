@@ -56,7 +56,9 @@ async def show_invite(message, user_role_service, service, payload):
     )
     try:
         identity = invite_id(payload)
-        row = await service.preview(identity, user.user_id if user else None)
+        row = await service.open_invite(
+            identity, user.user_id if user else None
+        )
     except ValueError:
         await message.answer(
             "Приглашение недоступно. Попросите менеджера проверить ссылку.",
@@ -70,6 +72,8 @@ async def show_invite(message, user_role_service, service, payload):
         await message.answer(
             "Вы уже подтвердили участие в этом заказе.", parse_mode=None
         )
+        if user is not None:
+            await send_creator_contact(message, service, identity, user.user_id)
         return
     if str(row["status"]) != "active":
         await message.answer("Заказ закрыт. Отклик больше не принимается.")
@@ -106,6 +110,18 @@ ERRORS = {
 }
 
 
+async def send_creator_contact(message, service, identity, user_id):
+    contact = await service.creator_contact(identity, user_id)
+    if contact is None:
+        await message.answer(
+            "Если нужно обсудить детали, напишите тому, кто пригласил вас.",
+            parse_mode=None,
+        )
+        return
+    role, handle = contact
+    await message.answer(f"{role} · {handle}", parse_mode=None)
+
+
 @router.callback_query(lambda c: bool(c.data and c.data.startswith(PREFIX)))
 async def accept_creator_invite(
     callback: CallbackQuery, user_role_service, creator_invite_service=None
@@ -137,8 +153,20 @@ async def accept_creator_invite(
         )
         return
     await callback.answer("Участие подтверждено.", show_alert=True)
+    if isinstance(message, Message):
+        await send_creator_contact(
+            message, creator_invite_service, identity, user.user_id
+        )
     bot = callback.bot
     if bot is not None:
+        if isinstance(message, Message):
+            from ugc_bot.application.services.invite_handoff_notices import (
+                deliver_invite_notice,
+            )
+
+            await deliver_invite_notice(
+                creator_invite_service, bot, identity, "customer"
+            )
         notice = await creator_invite_service.claim_manager_notice(identity)
         if notice is not None:
             address, order_id, ordinal = notice
@@ -196,7 +224,11 @@ async def _preview_card(event, roles, service, order_id):
                 InlineKeyboardButton(
                     text="Обновить", callback_data=f"ip:{order_id.hex}"
                 )
-            ]
+            ],
+            [
+                InlineKeyboardButton(text=label, callback_data=action)
+                for label, action in sharing_buttons(order_id)
+            ],
         ]
     )
     return "\n\n".join(lines), markup
@@ -252,6 +284,108 @@ async def refresh_preview_card(
         if "message is not modified" not in str(exc).lower():
             raise
     await callback.answer()
+
+
+@router.message(
+    CommandStart(deep_link=True, magic=F.args.regexp(r"^ir_[0-9a-f]{32}$"))
+)
+async def open_invite_order(
+    message: Message,
+    command: CommandObject,
+    user_role_service,
+    creator_invite_service=None,
+    order_summary_service=None,
+):
+    if message.from_user is None or message.chat.id != message.from_user.id:
+        return
+    order = UUID(hex=(command.args or "")[3:])
+    try:
+        text, markup = await _preview_card(
+            message, user_role_service, creator_invite_service, order
+        )
+    except (ValueError, PermissionError):
+        from ugc_bot.bot.telegram.handlers.order_summary import summary_button
+
+        if order_summary_service is None or creator_invite_service is None:
+            return
+        external_id = str(message.from_user.id)
+        user = await user_role_service.get_user(
+            external_id=external_id, messenger_type=MessengerType.TELEGRAM
+        )
+        if user is None:
+            return
+        principal = AuthenticatedMessengerPrincipal(
+            user.user_id, "telegram", external_id
+        )
+        try:
+            await order_summary_service.view(principal, order)
+        except (ValueError, PermissionError):
+            await message.answer("Заказ недоступен.")
+            return
+        button = summary_button(order)
+        markup = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=button.text, callback_data=button.callback_data
+                    )
+                ]
+            ]
+        )
+        text = f"Заказ {public_order_number(order)}"
+    await message.answer(text, reply_markup=markup, parse_mode=None)
+
+
+@router.callback_query(F.data.regexp(r"^ic:[0-9a-f]{32}:[01]$"))
+async def change_invite_sharing(
+    callback: CallbackQuery,
+    user_role_service,
+    creator_invite_service=None,
+):
+    message = callback.message
+    if (
+        not isinstance(message, Message)
+        or message.chat.id != callback.from_user.id
+    ):
+        await callback.answer()
+        return
+    user = await user_role_service.get_user(
+        external_id=str(callback.from_user.id),
+        messenger_type=MessengerType.TELEGRAM,
+    )
+    if user is None or creator_invite_service is None:
+        await callback.answer("Заказ недоступен.", show_alert=True)
+        return
+    _, order, action = (callback.data or "").split(":")
+    principal = AuthenticatedMessengerPrincipal(
+        user.user_id, "telegram", str(callback.from_user.id)
+    )
+    try:
+        await creator_invite_service.client_sharing(
+            principal, UUID(hex=order), action == "1"
+        )
+    except PermissionError:
+        await callback.answer("Заказ недоступен.", show_alert=True)
+        return
+    except ValueError:
+        await callback.answer(
+            "Укажите @username в Telegram и снова откройте бота.",
+            show_alert=True,
+        )
+        return
+    await callback.answer(
+        "Креаторам после подтверждения доступен ваш Telegram."
+        if action == "1"
+        else "Ваш Telegram скрыт.",
+        show_alert=True,
+    )
+
+
+def sharing_buttons(order):
+    return [
+        ("Разрешить мой Telegram", f"ic:{order.hex}:1"),
+        ("Скрыть мой Telegram", f"ic:{order.hex}:0"),
+    ]
 
 
 class CardContactTransport:
