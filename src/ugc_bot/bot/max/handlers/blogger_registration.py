@@ -29,6 +29,8 @@ from ugc_bot.application.services.user_role_service import (
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.blogger_registration import (
     _get_location_from_incoming,
+    resume_creator_registration,
+    show_creator_agreements,
 )
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     _format_verification_instruction,
@@ -47,6 +49,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_BARTER_Y,
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
+    CALLBACK_BLOGGER_RESUME,
     CALLBACK_BLOGGER_RETRY_INSTAGRAM,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
@@ -54,7 +57,6 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_ROLE_CREATOR,
     blogger_after_registration_inline_keyboard,
     blogger_verification_sent_inline_keyboard,
-    confirm_agreement_inline_keyboard,
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
     flow_inline_keyboard,
@@ -63,7 +65,6 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     flow_keyboard_remove,
 )
 from ugc_bot.bot.telegram.handlers.utils import (
-    format_agreements_message,
     handle_role_choice,
     parse_user_id_from_state,
 )
@@ -300,30 +301,13 @@ async def _save_blogger_and_show_agreements(
             return
         raise
 
-    agree_keys = [
-        "btn_confirm_agreement",
-        "msg_agreements_intro_creator",
-        "msg_agreements_intro_default",
-        "msg_label_offer",
-        "msg_label_privacy",
-        "msg_label_consent",
-        "msg_confirm_docs_fallback",
-    ]
-    agree_texts = await bot_texts_service.get_many(agree_keys, locale)
-    agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
-    agreements_text = format_agreements_message(
-        config,
-        intro=agreements_intro,
-        texts=agree_texts,
-        country_code=data.get("user_country"),
-    )
-    await messenger_client.send_text(
+    await show_creator_agreements(
         chat_id=incoming.chat_id,
-        text=agreements_text,
-        parse_mode="HTML",
-        keyboard=confirm_agreement_inline_keyboard(
-            CALLBACK_BLOGGER_AGREE, agree_texts
-        ),
+        messenger_client=messenger_client,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        locale=locale,
+        country_code=data.get("user_country"),
     )
     await state_store.set_state(STATE_BLOG_AGREEMENTS)
 
@@ -1169,6 +1153,26 @@ async def handle_work_format_callback(
         config,
         work_format,
         locale,
+    )
+
+
+@router.callback(lambda c: c.data == CALLBACK_BLOGGER_RESUME)
+async def resume_registration_callback(
+    incoming: IncomingCallback, deps: dict
+) -> None:
+    messenger_client, state_store, bot_texts_service, locale = _get_services(
+        deps
+    )
+    await resume_creator_registration(
+        incoming,
+        state_store,
+        messenger_client,
+        deps["profile_service"],
+        deps["user_role_service"],
+        bot_texts_service,
+        deps["config"],
+        locale,
+        STATE_BLOG_AGREEMENTS,
     )
 
 

@@ -52,6 +52,7 @@ from ugc_bot.bot.telegram.handlers.blogger_registration import (
     handle_topics,
     handle_work_format,
     handle_work_format_callback,
+    resume_registration_callback,
     start_registration_button,
     start_registration_inline,
 )
@@ -66,6 +67,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
     CALLBACK_BLOGGER_REGION_PREFIX,
+    CALLBACK_BLOGGER_RESUME,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
@@ -2681,7 +2683,7 @@ async def test_agreements_callback_confirms_and_shows_success(
         user_repo, external_id="56", username="agree_cb"
     )
     await create_test_blogger_profile(
-        blogger_repo, user.user_id, confirmed=False
+        blogger_repo, user.user_id, confirmed=False, agreement_confirmed_at=None
     )
     reg_service = BloggerRegistrationService(
         user_repo=user_repo, blogger_repo=blogger_repo
@@ -2689,8 +2691,21 @@ async def test_agreements_callback_confirms_and_shows_success(
     client = FakeMessengerClient()
     adapter = TelegramEventAdapter()
     state = FakeFSMContext()
-    await state.set_state(BloggerRegistrationStates.agreements.state)
-    await state.update_data(user_id=user.user_id)
+    assert await state.get_state() is None
+    await resume_registration_callback(
+        FakeCallback(
+            data=CALLBACK_BLOGGER_RESUME, user=FakeUser(56, "agree_cb", "User")
+        ),
+        state,
+        profile_service=build_profile_service(user_repo, blogger_repo),
+        user_role_service=UserRoleService(user_repo),
+        config=config,
+        bot_texts_service=bot_texts_service,
+        messenger_client=client,
+        event_adapter=adapter,
+    )
+    assert await state.get_state() == BloggerRegistrationStates.agreements.state
+    assert (await state.get_data())["user_id"] == str(user.user_id)
     callback = FakeCallback(
         data=CALLBACK_BLOGGER_AGREE,
         user=FakeUser(56, "agree_cb", "User"),

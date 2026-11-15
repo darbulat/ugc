@@ -1,5 +1,6 @@
 """Tests for Max blogger registration handlers."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
@@ -40,6 +41,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_BARTER_Y,
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
+    CALLBACK_BLOGGER_RESUME,
     CALLBACK_BLOGGER_RETRY_INSTAGRAM,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
@@ -1013,6 +1015,27 @@ async def test_handle_agreements_happy_path():
     ].confirm_blogger_agreement.assert_called_once()
     deps["state_store"].clear.assert_called()
     deps["messenger_client"].send_text.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_resume_draft_reopens_agreement_after_state_expired():
+    user = _user()
+    deps = _deps(user)
+    deps["profile_service"].get_blogger_profile.return_value = SimpleNamespace(
+        agreement_confirmed_at=None
+    )
+    await router.route_callback(_incoming_cb(CALLBACK_BLOGGER_RESUME), deps)
+    store = deps["state_store"]
+    store.update_data.assert_awaited_once_with(user_id=str(user.user_id))
+    store.set_state.assert_awaited_once_with(STATE_BLOG_AGREEMENTS)
+    sent = deps["messenger_client"].send_text.call_args.kwargs
+    assert sent["keyboard"].rows[0][0].callback_data == CALLBACK_BLOGGER_AGREE
+    deps[
+        "blogger_registration_service"
+    ].save_blogger_before_agreement.assert_not_called()
+    deps[
+        "blogger_registration_service"
+    ].confirm_blogger_agreement.assert_not_called()
 
 
 # ---- CALLBACK_BLOGGER_RETRY_INSTAGRAM callback ----

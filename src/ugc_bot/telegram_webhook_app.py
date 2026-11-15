@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
+from aiogram.enums import ChatMemberStatus, ChatType
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -25,6 +26,10 @@ from ugc_bot.checkout_runtime import (
     stop_checkout_runtime,
 )
 from ugc_bot.config import load_config
+from ugc_bot.domain.enums import MessengerType
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    record_bot_unavailable,
+)
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
 )
@@ -267,6 +272,30 @@ async def _persist_checkout_payment(update, dispatcher):
         ) from exc
 
 
+async def _persist_block_event(update: Update, dispatcher: Dispatcher) -> bool:
+    membership = update.my_chat_member
+    if (
+        membership is not None
+        and membership.chat.type == ChatType.PRIVATE
+        and membership.old_chat_member.status != ChatMemberStatus.KICKED
+        and membership.new_chat_member.status == ChatMemberStatus.KICKED
+    ):
+        try:
+            await record_bot_unavailable(
+                dispatcher["transaction_manager"],
+                platform=MessengerType.TELEGRAM,
+                external_id=str(membership.chat.id),
+                occurred_at=membership.date,
+            )
+        except Exception as exc:
+            logger.error("Telegram blocking event was not saved")
+            raise HTTPException(
+                status_code=503, detail="blocking_event_not_saved"
+            ) from exc
+        return True
+    return False
+
+
 @app.post("/webhook/telegram")
 async def handle_webhook(
     request: Request,
@@ -306,6 +335,9 @@ async def handle_webhook(
         raise HTTPException(status_code=503, detail="Server not ready")
 
     if await _persist_checkout_payment(update, dispatcher):
+        return {"status": "ok"}
+
+    if await _persist_block_event(update, dispatcher):
         return {"status": "ok"}
 
     if await intercept_reserved_link(
