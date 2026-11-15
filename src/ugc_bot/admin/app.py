@@ -79,6 +79,7 @@ from ugc_bot.admin.order_worklist import (
     MANAGER_ASSIGNMENT_GROUPS,
     ORDER_CLOSED_MESSAGE,
     ORDER_CLOSURE_REASON_LIMIT,
+    ORDER_CLOSURE_SAVED_MESSAGE,
     ORDER_STATUS_LABELS,
     TEST_REVIEW_GROUP,
     UNPAID_GROUP,
@@ -87,6 +88,7 @@ from ugc_bot.admin.order_worklist import (
     assign_worklist_manager,
     change_order_worklist,
     close_order_with_reason,
+    order_missing_required_reason,
     record_closed_order_reason,
     search_orders,
     worklist_closure_reasons,
@@ -1180,6 +1182,10 @@ async def _render_order_detail_page(
     order = await dashboard_service.get_order_card(order_id)
     if order is None:
         raise HTTPException(status_code=404, detail="Заказ не найден")
+    messages = request.session.get("order_closure_result", {})
+    closure_result = messages.pop(str(order_id), None)
+    if not messages:
+        request.session.pop("order_closure_result", None)
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -1187,9 +1193,7 @@ async def _render_order_detail_page(
             "order": order,
             "status_labels": ORDER_STATUS_LABELS,
             "closure_reason_limit": ORDER_CLOSURE_REASON_LIMIT,
-            "closure_reason_message": request.session.pop(
-                "order_closure_reason_message", ""
-            ),
+            "closure_result": closure_result,
             "delay_reason_labels": _DELAY_REASON_LABELS,
         },
     )
@@ -2402,6 +2406,14 @@ class OrderAdmin(ModelView, model=OrderModel):
             status = request.query_params.get("status", "")
             if status in ORDER_STATUS_LABELS:
                 stmt = stmt.where(OrderModel.status == status)
+        elif group == "missing-reason":
+            engine = self.session_maker.kw["bind"]
+            stmt = stmt.where(
+                *worklist_conditions("closed", "", admin_list=True),
+                order_missing_required_reason(
+                    postgresql=engine.dialect.name == "postgresql"
+                ),
+            )
         else:
             stmt = stmt.where(
                 *worklist_conditions(
@@ -3866,9 +3878,13 @@ def _register_order_closure_action(
             with Session(engine) as session, session.begin():
                 return record_closed_order_reason(session, order_id, reason)
 
-        request.session[
-            "order_closure_reason_message"
-        ] = await asyncio.to_thread(save)
+        message = await asyncio.to_thread(save)
+        request.session["order_closure_result"] = {
+            str(order_id): {
+                "message": message,
+                "saved": message == ORDER_CLOSURE_SAVED_MESSAGE,
+            }
+        }
         target = request.url_for("admin_order_detail", order_id=order_id)
         target = target.include_query_params(
             return_to=_order_return_url(request)

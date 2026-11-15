@@ -66,6 +66,7 @@ ORDER_STATUS_LABELS = {
     OrderStatus.CLOSED: "Закрытый",
 }
 ORDER_CLOSURE_REASON_LIMIT = 500
+ORDER_CLOSURE_SAVED_MESSAGE = "Причина закрытия сохранена."
 ORDER_CLOSED_MESSAGE = "Заказ закрыт."
 _CLOSURE_REASON_LABELS = {
     "customer_cancelled_unpaid_order": "Заказчик отменил заявку до оплаты.",
@@ -474,6 +475,12 @@ def order_requires_closure_reason(*, postgresql: bool) -> ColumnElement[bool]:
         captured_position,
         picked_order_count() > 0,
     )
+
+
+def order_missing_required_reason(*, postgresql: bool) -> ColumnElement[bool]:
+    return func.nullif(func.trim(order_closure_reason()), "").is_(
+        None
+    ) & order_requires_closure_reason(postgresql=postgresql)
 
 
 def worklist_row_details(
@@ -914,7 +921,7 @@ def record_closed_order_reason(
                 new_values={"reason": reason},
             )
         )
-    return "Причина закрытия сохранена."
+    return ORDER_CLOSURE_SAVED_MESSAGE
 
 
 def close_order_with_reason(

@@ -25,3 +25,17 @@ document.querySelectorAll("[data-order-close]").forEach((button) => {
   button.addEventListener("click", () => dialog.showModal());
   dialog.querySelector("[data-order-close-cancel]").addEventListener("click", () => dialog.close());
 });
+
+
+const orderFilterMenu = document.querySelector(".order-worklist-more");
+if (orderFilterMenu) {
+  document.addEventListener("click", (event) => {
+    if (!orderFilterMenu.contains(event.target)) orderFilterMenu.open = false;
+  });
+  orderFilterMenu.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && orderFilterMenu.open) {
+      orderFilterMenu.open = false;
+      orderFilterMenu.querySelector("summary").focus();
+    }
+  });
+}

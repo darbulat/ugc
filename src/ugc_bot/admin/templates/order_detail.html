@@ -87,11 +87,22 @@
       {% endif %}
     </section>
 
-    {% if order.can_edit_closure_reason or order.closure_reason or closure_reason_message %}
+    {% if order.can_edit_closure_reason or order.closure_reason or closure_result %}
     <section class="card order-detail__section" id="order-closure" aria-labelledby="order-closure-heading">
       <h2 id="order-closure-heading">Закрытие заказа</h2>
-      {% if closure_reason_message %}<p role="status">{{ closure_reason_message }}</p>{% endif %}
+      {% if closure_result %}
+      <div class="order-detail__closure-result order-detail__closure-result--{{ 'saved' if closure_result.saved else 'error' }}"
+           role="{{ 'status' if closure_result.saved else 'alert' }}">
+        <strong>{% if closure_result.saved %}<span aria-hidden="true">✓ </span>{% endif %}{{ closure_result.message }}</strong>
+        {% if closure_result.saved %}<a href="{{ back_url }}">{{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Вернуться к списку' }}</a>{% endif %}
+      </div>
+      {% endif %}
+      {% if order.closure_reason %}
+      <p class="order-detail__closure-text">{{ order.closure_reason }}</p>
+      {% endif %}
       {% if order.can_edit_closure_reason %}
+      <details class="order-detail__closure-editor"{% if not order.closure_reason or (closure_result and not closure_result.saved) %} open{% endif %}>
+        <summary>{{ 'Изменить причину' if order.closure_reason else 'Указать причину' }}</summary>
       <form class="order-detail__closure" method="post"
             action="{{ request.url_for('save_order_closure_reason', order_id=order.order_id).include_query_params(return_to=back_url) }}">
         <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
@@ -101,8 +112,7 @@
         <small class="muted" id="order-closure-hint">Укажите, почему закрыли заказ и какие сложности возникли.</small>
         <button type="submit" class="admin-button admin-button--primary">Сохранить причину</button>
       </form>
-      {% elif order.closure_reason %}
-      <p class="order-detail__closure-text">{{ order.closure_reason }}</p>
+      </details>
       {% endif %}
     </section>
     {% endif %}

@@ -171,3 +171,37 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+#order-closure { scroll-margin-top: 1rem; }
+
+.order-detail__closure-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem 1rem;
+  margin-bottom: .8rem;
+  padding: .7rem .85rem;
+  border: 1px solid;
+  border-radius: .45rem;
+}
+
+.order-detail__closure-result--saved {
+  color: #17663a;
+  background: #e8f6ed;
+  border-color: #a3d0b4;
+}
+
+.order-detail__closure-result--saved a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.order-detail__closure-result--error {
+  color: #942e2e;
+  background: #fff0ef;
+  border-color: #e3adaa;
+}
+
+.order-detail__closure-editor > summary { color: #2059a8; }
+
+.order-detail__closure-editor[open] > .order-detail__closure { margin-top: .6rem; }

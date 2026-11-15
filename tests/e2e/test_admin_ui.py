@@ -343,6 +343,20 @@ def test_order_worklist_search_hide_and_restore(
     )
     _login(page, admin_server)
     page.goto(f"{admin_server}/admin/order-model/list")
+    group_nav = page.get_by_role("navigation", name="Группы заказов")
+    menu = group_nav.locator(".order-worklist-more")
+    summary = menu.locator("summary")
+    expect(group_nav.locator(":scope > :last-child")).to_have_text("Все")
+    expect(menu.get_by_role("link", name="Скрытые")).to_be_hidden()
+    summary.click()
+    expect(menu.get_by_role("link", name="Скрытые")).to_be_visible()
+    summary.press("Escape")
+    expect(menu.get_by_role("link", name="Скрытые")).to_be_hidden()
+
+    def open_group(label):
+        summary.click()
+        menu.get_by_role("link", name=label, exact=True).click()
+
     partial_brand = brand.removeprefix("Work")
     page.get_by_label("Поиск", exact=True).fill(f"Петрова {partial_brand}")
     page.locator(".order-worklist").get_by_role("button", name="Найти").click()
@@ -440,7 +454,7 @@ def test_order_worklist_search_hide_and_restore(
     expect(page.get_by_label("Поиск", exact=True)).to_have_value("черновика")
     expect(page.get_by_text("Заказы не найдены")).to_be_visible()
 
-    page.get_by_role("link", name="Скрытые").click()
+    open_group("Скрытые")
     expect(page.get_by_label("Поиск", exact=True)).to_have_value("черновика")
     restore = row.get_by_role("button", name="Вернуть в список")
     page.once("dialog", lambda dialog: dialog.dismiss())
@@ -492,7 +506,7 @@ def test_order_worklist_search_hide_and_restore(
     page.once("dialog", confirm)
     marker.click()
     expect(row).to_have_count(0)
-    page.get_by_role("link", name="Тестовые", exact=True).click()
+    open_group("Тестовые")
     expect(row).to_be_visible()
     row.get_by_role("link", name="Открыть", exact=True).click()
     delete = page.get_by_role("button", name="Удалить заказ", exact=True)
@@ -533,7 +547,7 @@ def test_order_worklist_search_hide_and_restore(
     page.get_by_role("link", name="Назад к списку").click()
     page.once("dialog", confirm)
     managed_row.get_by_role("button", name="Это тест", exact=True).click()
-    page.get_by_role("link", name="Тестовые", exact=True).click()
+    open_group("Тестовые")
     expect(managed_row).to_contain_text(
         "Нельзя удалить: есть рассылка или отклики"
     )
@@ -552,7 +566,7 @@ def test_order_worklist_search_hide_and_restore(
         "Заказ удалён из списка."
     )
     expect(managed_row).to_have_count(0)
-    page.get_by_role("link", name="Удалённые", exact=True).click()
+    open_group("Удалённые")
     expect(managed_row).to_contain_text("Активный")
     page.once("dialog", confirm)
     managed_row.get_by_role("button", name="Вернуть заказ в список").click()
@@ -560,7 +574,7 @@ def test_order_worklist_search_hide_and_restore(
         "Заказ возвращён из удалённых."
     )
     expect(managed_row).to_have_count(0)
-    page.get_by_role("link", name="Тестовые", exact=True).click()
+    open_group("Тестовые")
     expect(managed_row).to_be_visible()
 
     # A separate unmanaged order keeps the existing deletion scenario intact.
@@ -745,14 +759,21 @@ def test_manual_order_closure_requires_and_displays_reason(
     expect(row.get_by_text("Клиент перенёс запуск", exact=True)).to_be_visible()
     expect(page).to_have_url(f"{listing}?group=closed&search={quick_id}")
     row.get_by_role("link", name="Открыть", exact=True).click()
-    note = page.get_by_label("Причина закрытия")
+    closure = page.locator("#order-closure")
+    note = closure.get_by_label("Причина закрытия")
+    saved_reason = closure.locator(".order-detail__closure-text")
+    expect(saved_reason).to_have_text("Клиент перенёс запуск")
+    expect(note).to_be_hidden()
+    closure.get_by_text("Изменить причину", exact=True).click()
     expect(note).to_have_value("Клиент перенёс запуск")
     note.fill("Задержка из-за согласования брифа")
     page.get_by_role("button", name="Сохранить причину").click()
-    expect(page.get_by_role("status")).to_contain_text(
+    expect(closure.get_by_role("status")).to_contain_text(
         "Причина закрытия сохранена."
     )
-    page.get_by_role("link", name="Назад к списку").click()
+    expect(saved_reason).to_have_text("Задержка из-за согласования брифа")
+    expect(note).to_be_hidden()
+    closure.get_by_role("link", name="Вернуться к списку").click()
     expect(
         row.get_by_text("Задержка из-за согласования брифа", exact=True)
     ).to_be_visible()
