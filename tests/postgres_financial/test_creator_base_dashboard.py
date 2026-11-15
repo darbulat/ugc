@@ -14,6 +14,7 @@ from ugc_bot.admin.dashboard_service import (
 from ugc_bot.domain.enums import (
     AudienceGender,
     AuditAction,
+    InteractionStatus,
     MessengerType,
     OrderStatus,
     UserStatus,
@@ -21,6 +22,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import (
     AuditLogModel,
     BloggerProfileModel,
+    InteractionModel,
     OfferDispatchModel,
     OrderModel,
     UserModel,
@@ -112,7 +114,9 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     offer_text="Заказ",
                     price=150,
                     bloggers_needed=2,
-                    status=OrderStatus.ACTIVE,
+                    status=OrderStatus.ACTIVE
+                    if oid == order
+                    else OrderStatus.CLOSED,
                     created_at=now - timedelta(days=120),
                 )
                 for oid in (order, duplicate_order)
@@ -134,8 +138,26 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     (order, tg_only, None, False, 2),
                     (order, pending, False, False, 2),
                     (order, max_only, True, False, 40),
-                    (order, older, True, True, 100),
+                    (duplicate_order, older, True, True, 100),
+                    (duplicate_order, max_only, True, True, 100),
                     (order, deleted, True, True, 1),
+                )
+            ],
+        )
+        db.execute(
+            insert(InteractionModel),
+            [
+                dict(
+                    order_id=duplicate_order,
+                    blogger_id=uid,
+                    advertiser_id=advertiser,
+                    status=status,
+                    created_at=now - timedelta(days=100),
+                    updated_at=now - timedelta(days=100),
+                )
+                for uid, status in (
+                    (older, InteractionStatus.PENDING),
+                    (max_only, InteractionStatus.OK),
                 )
             ],
         )
@@ -177,6 +199,6 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             assert listing["total"] == count, segment
         assert (await service.get_creator_base("7d"))["offered"] == 3
         assert (await service.get_creator_base("90d"))["accepted"] == 2
-        assert (await service.get_creator_base("all"))["worked"] == 2
+        assert (await service.get_creator_base("all"))["worked"] == 3
     finally:
         await engine.dispose()

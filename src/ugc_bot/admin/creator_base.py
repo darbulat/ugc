@@ -147,26 +147,26 @@ def _availability(platform, linked) -> dict[str, ColumnElement[bool]]:
 def _current_work():
     dispatch = OfferDispatchModel
     work = CollaborationModel
-    closed = (
+    interactions = (
         select(InteractionModel.interaction_id)
         .where(
             InteractionModel.order_id == dispatch.order_id,
             InteractionModel.blogger_id == dispatch.blogger_id,
-            InteractionModel.status.in_(
-                (
-                    InteractionStatus.OK,
-                    InteractionStatus.NO_DEAL,
-                    InteractionStatus.DELETED,
-                )
-            ),
+            InteractionModel.advertiser_id == OrderModel.advertiser_id,
         )
-        .correlate(dispatch)
-        .exists()
+        .correlate(dispatch, OrderModel)
     )
+    open_interaction = interactions.where(
+        InteractionModel.status.in_(
+            (InteractionStatus.PENDING, InteractionStatus.ISSUE)
+        )
+    ).exists()
     legacy = _legacy_creator_picks().where(
-        OrderModel.status == OrderStatus.ACTIVE,
         dispatch.accepted.is_(True),
-        ~closed,
+        or_(
+            open_interaction,
+            (OrderModel.status == OrderStatus.ACTIVE) & ~interactions.exists(),
+        ),
     )
     paid = (
         select(work.creator_id.label("creator"))

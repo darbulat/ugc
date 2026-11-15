@@ -670,16 +670,32 @@ def test_creator_base_opens_filtered_directory(
     page.goto(f"{admin_server}/admin/dashboard?period=7d")
     section = page.get_by_role("region", name="Состояние базы")
     expect(section).to_be_visible()
+
+    def check_counts(links):
+        for link in links.all():
+            count = link.locator(".metric__value").inner_text()
+            formatted = r"\s*".join(count)
+            link.click()
+            expect(page.locator(".people-count")).to_have_text(
+                re.compile(rf"^Найдено {formatted}$")
+            )
+            page.go_back(wait_until="domcontentloaded")
+
+    overview = section.locator(".dashboard-metrics").first.locator(
+        ".creator-base-metric"
+    )
+    expect(overview).to_have_count(16)
+    check_counts(overview)
+    activity = section.locator(".creator-base-work .creator-base-metric")
+    expect(activity).to_have_count(4)
+    for period in ("7 дней", "30 дней", "90 дней", "Всё время"):
+        option = section.get_by_role("link", name=period, exact=True)
+        option.click()
+        expect(option).to_have_attribute("aria-current", "page")
+        check_counts(activity)
+
     section.get_by_role("link", name="90 дней").click()
-    expect(section.get_by_role("link", name="90 дней")).to_have_attribute(
-        "aria-current", "page"
-    )
-    offered = section.get_by_role(
-        "link", name=re.compile("Получили предложение")
-    )
-    count = offered.locator(".metric__value").inner_text()
-    offered.click()
-    expect(page.locator(".people-count")).to_contain_text(f"Найдено {count}")
+    section.get_by_role("link", name=re.compile("Получили предложение")).click()
     expect(
         page.get_by_role("link", name="Получили предложение · 90 дней")
     ).to_be_visible()
@@ -687,3 +703,5 @@ def test_creator_base_opens_filtered_directory(
     page.locator(".people-filters").get_by_role("button", name="Найти").click()
     expect(page.locator('input[name="work_period"]')).to_have_value("90d")
     expect(page.locator(".people-count")).to_contain_text("Найдено 0")
+    page.get_by_role("link", name="Сбросить").click()
+    expect(page.locator('input[name="base_segment"]')).to_have_count(0)
