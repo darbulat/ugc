@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import AdminDashboardService
+from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.infrastructure.redis_cache import (
     serialize_admin_payload,
 )
@@ -488,6 +489,18 @@ def test_admin_creates_browser_invoice_with_csrf_and_reads_paid_status(
     )
     assert response.status_code == 303
     checkout.create.assert_awaited_once_with(order_id, "buyer@example.com")
+    checkout.create.side_effect = OrderCreationError("telegram_payment_pending")
+    response = client.post(
+        url, data={"csrf_token": token, "receipt_email": "buyer@example.com"}
+    )
+    assert "Сверьте результат предыдущей оплаты в Telegram" in response.text
+    checkout.create.side_effect = LookupError("missing order")
+    response = client.post(url, data={"csrf_token": token})
+    assert response.status_code == 404
+    client.app.state.browser_checkout = None
+    assert client.post(url, data={"csrf_token": token}).status_code == 503
+    assert client.get(url).json() is None
+    client.app.state.browser_checkout = checkout
     checkout.view.return_value = {"state": "paid", "url": None}
     assert client.get(url).json() == {"state": "paid", "url": None}
     paid = client.get(f"/admin/orders/{order_id}")
