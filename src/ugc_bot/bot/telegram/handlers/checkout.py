@@ -8,6 +8,7 @@ from ugc_bot.bot.telegram.handlers.order_controls import (
     payment_help_button,
     payment_help_keyboard,
 )
+from ugc_bot.bot.texts.defaults.customer import customer_text
 from ugc_bot.domain.checkout import CheckoutActor
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.telegram.invoice_links import (
@@ -100,6 +101,12 @@ async def send_checkout_if_v1(
         return True
     if result.get("capture_state") == "confirmed":
         await messenger.send_text(chat_id=incoming.chat_id, text=copy[3])
+    elif result.get("authorization_id"):
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=customer_text(locale, "payment_pending"),
+            keyboard=help_keyboard,
+        )
     elif result.get("can_open") and result.get("invoice_state") == "ready":
         await messenger.send_text(
             chat_id=incoming.chat_id,

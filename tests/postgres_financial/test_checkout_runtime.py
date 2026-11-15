@@ -253,6 +253,14 @@ async def test_admin_review_is_versioned_manual_and_cannot_release_receipt(
         assert await env["checkout_repo"].accept_receipt(
             receipt, session=session
         )
+    assert snapshot["authorization_id"] == authorization["authorization_id"]
+    assert snapshot["can_open"] is False
+    assert snapshot["invoice_url"] is None
+    replay = await env["checkout"].request_invoice(
+        env["order"].order_id, env["actor"], "issue"
+    )
+    assert replay["can_open"] is False
+    assert replay["invoice_url"] is None
     admin = CheckoutActor(
         env["admin"].user_id, "telegram", env["admin"].telegram_id
     )
@@ -309,6 +317,10 @@ async def test_admin_review_releases_only_expected_authorization_and_immutable(
 
     proof = await review()
     assert proof["source"] == "manual_admin_review"
+    reopened = await env["checkout"].status(env["order"].order_id, env["actor"])
+    assert reopened["authorization_id"] is None
+    assert reopened["can_open"] is True
+    assert reopened["invoice_url"] == "https://t.me/$synthetic_actual_link"
     assert await review() == proof
     with pytest.raises(ValueError, match="idempotency_payload_conflict"):
         await review("Changed manual reconciliation justification")
