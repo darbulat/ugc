@@ -132,7 +132,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     service = SimpleNamespace(
         open=AsyncMock(return_value=row),
         answer=AsyncMock(side_effect=answer),
-        instagram_challenge=AsyncMock(return_value="MGR-123456"),
+        instagram_challenge=AsyncMock(return_value="UMCM-ABCDEF123456"),
     )
     roles = SimpleNamespace(
         get_user=AsyncMock(return_value=SimpleNamespace(user_id="candidate"))
@@ -159,6 +159,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("next")
     assert (await state.get_data())["field"] == "rate"
     assert isinstance(message.answers[-1], str)
+    assert message.answers[-1].startswith("<b>Сколько вы хотите получать")
     assert "бриф, подбор и отклики" in message.answers[-1]
     await tap("rate:0")
     assert "rate" not in row["answers"]
@@ -239,6 +240,10 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("work_format:1")
     await tap("field:case")
     assert "какие проекты ведёт ваша команда" in message.answers[-1]
+    assert (
+        "<i>(Одно короткое предложение, от 20 символов.)</i>"
+        in (message.answers[-1])
+    )
     service.answer.side_effect = ValueError(
         f"Напишите от {MIN_WRITTEN_LENGTH} символов."
     )
@@ -261,34 +266,59 @@ async def test_manager_edits_submits_and_verifies_application(config):
     assert (await state.get_data())["field"] == "shortfall_plan"
     assert row["state"] == "draft"
     assert row["answers"]["coverage"] == "Казань, гастрономия"
-    assert "30 блогеров" in message.answers[-1]
-    assert "25" in message.answers[-1]
+    assert "<blockquote>Вы взяли заказ на 30 блогеров." in message.answers[-1]
+    assert "UMC подобрала 25." in message.answers[-1]
+    assert "<i>(От 20 символов." in message.answers[-1]
     message.text = (
         "Уточню у команды сроки и подберу авторов через местные сообщества."
     )
     await manager_application_answer(message, state, roles, config, service)
-    assert "Заявка на рассмотрении." in message.answers[-2][0]
-    assert [row[0].text for row in message.answers[-2][1].inline_keyboard] == [
-        "Подтвердить Instagram"
-    ]
-    assert "MGR-123456" in message.answers[-1]
+    code = "UMCM-ABCDEF123456"
+    assert len(message.answers) >= 2
+    code_text, code_keyboard = message.answers[-2]
+    assert code_text == f"<code>{code}</code>"
+    assert code_keyboard.inline_keyboard[0][0].copy_text.text == code
+    instruction, instruction_keyboard = message.answers[-1]
+    assert "<b>Заявка на рассмотрении.</b>" in instruction
+    assert "<i>Код действует 15 минут с момента выдачи.</i>" in instruction
+    assert code not in instruction
+    direct, status = (row[0] for row in instruction_keyboard.inline_keyboard)
+    assert (
+        direct.url
+        == f"https://ig.me/m/{config.instagram.admin_instagram_username}"
+    )
+    assert status.callback_data == "mgr:status"
     assert not await state.get_data()
     await tap("submit")
     service.instagram_challenge.assert_awaited_once_with("candidate")
-    await tap("next")
+    await state.set_data({"field": "other"})
+    await tap("status")
+    assert await state.get_data() == {"field": "other"}
     assert "Заявка на рассмотрении." in message.answers[-1][0]
+    assert "Instagram ожидает подтверждения." in message.answers[-1][0]
+    retry_button = message.answers[-1][1].inline_keyboard[0][0]
+    assert retry_button.callback_data == "mgr:instagram"
+    service.instagram_challenge.assert_awaited_once_with("candidate")
     await tap("instagram")
-    assert "MGR-123456" in message.answers[-1]
-    assert "/manager" in message.answers[-1]
+    assert message.answers[-2][0] == f"<code>{code}</code>"
+    assert (
+        message.answers[-1][1].inline_keyboard[1][0].callback_data
+        == "mgr:status"
+    )
     row["instagram_verified_at"] = object()
-    service.instagram_challenge.return_value = None
+    await tap("status")
+    assert "Instagram подтверждён" in message.answers[-1][0]
     await tap("instagram")
-    assert "Instagram подтверждён" in message.answers[-1]
-    row.update(state="clarify", decision_note="Уточните загрузку")
+    assert "Instagram подтверждён" in message.answers[-1][0]
+    assert service.instagram_challenge.await_count == 2
+    row.update(state="clarify", decision_note="Уточните <загрузку> & сроки")
     await tap("open")
-    assert "Уточните загрузку" in message.answers[-1][0]
+    assert (
+        "<blockquote>Уточните &lt;загрузку&gt; &amp; сроки</blockquote>"
+        in (message.answers[-1][0])
+    )
     row["state"] = "approved"
-    await tap("open")
+    await tap("status")
     assert "/app" in message.answers[-1]
 
 

@@ -36,11 +36,13 @@ def test_recipient_details_round_trip_and_wrong_context_fails():
             ValueError, match="payout_requisites_authentication_failed"
         ):
             crypto.open(stored, user, ref)
+    ciphertext = stored["ciphertext"]
+    tampered_ciphertext = ciphertext[:-1] + bytes([ciphertext[-1] ^ 1])
     with pytest.raises(
         ValueError, match="payout_requisites_authentication_failed"
     ):
         crypto.open(
-            stored | {"ciphertext": stored["ciphertext"][:-1] + b"x"},
+            stored | {"ciphertext": tampered_ciphertext},
             owner,
             identity,
         )
