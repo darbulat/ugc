@@ -12,7 +12,7 @@ from aiogram.types import (
 )
 
 from ugc_bot.domain.enums import MessengerType
-from ugc_bot.domain.manager_application import FIELDS, INTRO, SETTLEMENT
+from ugc_bot.domain.manager_application import FIELD_CHOICES, FIELDS, INTRO
 
 router = Router()
 PREFIX = "mgr:"
@@ -20,23 +20,23 @@ CONSENT = (
     "Отправляя заявку, вы соглашаетесь на обработку анкеты для отбора "
     "и готовы фиксировать сроки, результаты и согласованные расходы в UMC."
 )
-LABELS = dict(
-    zip(
-        FIELDS,
-        (
-            "Имя",
-            "Страна и город",
-            "Телефон",
-            "Instagram",
-            "Кейс",
-            "Ниши и загрузка",
-            "Расчёт",
-            "Ставка",
-            "Действия при срыве",
-        ),
-        strict=True,
-    )
-)
+LABELS = {
+    "name": "Имя",
+    "rate": "Ожидаемая ставка",
+    "weekly_capacity": "Авторов в неделю",
+    "location": "Страна и город",
+    "phone": "Телефон",
+    "instagram": "Instagram",
+    "case": "Кейс",
+    "coverage": "Ниши и детали",
+    "settlement": "Расчёт",
+    "reliability": "Действия при срыве",
+}
+BUTTON_CHOICES = {
+    **FIELD_CHOICES,
+    "rate": ("Обсудим",),
+    "coverage": ("Пропустить",),
+}
 
 
 class ManagerForm(StatesGroup):
@@ -139,11 +139,11 @@ async def ask(message, state, row, field=None, config=None):
                 resize_keyboard=True,
                 one_time_keyboard=True,
             )
-        elif field == "settlement":
+        elif field in BUTTON_CHOICES:
             markup = keyboard(
                 [
-                    [button(label, f"settlement:{i}")]
-                    for i, label in enumerate(SETTLEMENT)
+                    [button(label, f"{field}:{i}")]
+                    for i, label in enumerate(BUTTON_CHOICES[field])
                 ]
             )
         await message.answer(
@@ -161,9 +161,9 @@ async def ask(message, state, row, field=None, config=None):
                 )
             ]
         )
-    lines = [f"{label} · {answers[key]}" for key, label in LABELS.items()]
+    lines = [f"{LABELS[field]} · {answers[field]}" for field in FIELDS]
     await message.answer(
-        "\n\n".join(["Проверьте заявку", *lines, CONSENT]),
+        "\n\n".join(["Проверьте заявку", "\n".join(lines), CONSENT]),
         reply_markup=keyboard(rows),
         parse_mode=None,
     )
@@ -199,6 +199,7 @@ async def _action(  # noqa: C901
     action, message, state, service, row, config
 ):
     user_id = row["user_id"]
+    field, separator, index = action.partition(":")
     if action == "open":
         await state.clear()
         await show(message, row)
@@ -208,24 +209,24 @@ async def _action(  # noqa: C901
         await message.answer(
             "Что изменить?",
             reply_markup=keyboard(
-                [
-                    [button(label, "field:" + field)]
-                    for field, label in LABELS.items()
-                ]
+                [[button(LABELS[field], "field:" + field)] for field in FIELDS]
             ),
         )
     elif action.startswith("field:") and action[6:] in FIELDS:
         await ask(message, state, row, field=action[6:], config=config)
-    elif action.startswith("settlement:"):
-        if (await state.get_data()).get("field") != "settlement":
+    elif separator and field in BUTTON_CHOICES:
+        if (await state.get_data()).get("field") != field:
             return
-        option = action.removeprefix("settlement:")
-        if option not in {str(i) for i in range(len(SETTLEMENT))}:
+        options = BUTTON_CHOICES[field]
+        if index not in {str(i) for i in range(len(options))}:
             return
-        value = SETTLEMENT[int(option)]
-        await service.answer(user_id, "settlement", value)
+        value = "Не указано" if field == "coverage" else options[int(index)]
+        await service.answer(user_id, field, value)
         await ask(message, state, await service.open(user_id), config=config)
     elif action == "submit":
+        if FIELDS.keys() - row["answers"].keys():
+            await ask(message, state, row, config=config)
+            return
         await service.submit(user_id)
         await state.clear()
         await show(message, await service.open(user_id))
@@ -267,8 +268,11 @@ async def manager_application_answer(
             await message.answer(FIELDS["phone"][0])
             return
         value = contact.phone_number
-    elif field == "settlement" or not message.text:
-        await message.answer("Выберите вариант или введите ответ на вопрос.")
+    elif field in FIELD_CHOICES:
+        await message.answer("Выберите один из вариантов кнопкой.")
+        return
+    elif not message.text:
+        await message.answer("Введите ответ на вопрос текстом.")
         return
     else:
         value = message.text

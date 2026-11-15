@@ -8,7 +8,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.creator_invites import instagram_handle
-from ugc_bot.domain.manager_application import FIELDS, SETTLEMENT
+from ugc_bot.domain.manager_application import FIELD_CHOICES, FIELDS
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
@@ -63,8 +63,8 @@ class ManagerApplications:
             raise ValueError("Проверьте длину ответа.")
         if field == "instagram":
             value = instagram_handle(value)
-        if field == "settlement" and value not in SETTLEMENT:
-            raise ValueError("Выберите способ расчёта.")
+        if field in FIELD_CHOICES and value not in FIELD_CHOICES[field]:
+            raise ValueError("Выберите один из предложенных вариантов.")
         if field == "phone" and not re.fullmatch(r"\+?[0-9]{7,15}", value):
             raise ValueError("Поделитесь своим номером через кнопку.")
         async with self.transactions.transaction() as session:
