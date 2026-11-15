@@ -63,6 +63,12 @@ ORDER_STATUS_LABELS = {
     OrderStatus.ACTIVE: "Активный",
     OrderStatus.CLOSED: "Закрытый",
 }
+_CLOSURE_REASON_LABELS = {
+    "customer_cancelled_unpaid_order": "Заказчик отменил заявку до оплаты.",
+    "owner_requested_close_orders_before_november_2026": (
+        "По запросу владельца закрыли заявки, созданные до 01.11.2026."
+    ),
+}
 _VISIBILITY_ENTITY = "order_worklist_visibility"
 _TEST_ORDER_ENTITY = "order_test_marker"
 _ARCHIVE_ENTITY = "order_worklist_archive"
@@ -301,6 +307,50 @@ def search_orders(term: str):
     except ValueError:
         return condition
     return or_(OrderModel.order_id == order_id, condition)
+
+
+def worklist_closure_reasons(
+    session: Session, order_ids: list[UUID]
+) -> dict[UUID, str]:
+    """Read the reason attached to the current closing transition."""
+    if not order_ids:
+        return {}
+    status = AuditLogModel.new_values["status"].as_string()
+    previous = AuditLogModel.old_values["status"].as_string()
+    reason = (
+        _latest_worklist_event(OrderModel.order_id, "order")
+        .with_only_columns(
+            case(
+                (
+                    status == OrderStatus.CLOSED.value,
+                    AuditLogModel.new_values["reason"],
+                )
+            )
+        )
+        .where(
+            AuditLogModel.action == AuditAction.UPDATE,
+            status.is_not(None),
+            status.is_distinct_from(previous),
+            or_(
+                OrderModel.completed_at.is_(None),
+                AuditLogModel.changed_at >= OrderModel.completed_at,
+            ),
+        )
+        .correlate(OrderModel)
+        .scalar_subquery()
+    )
+    rows = session.execute(
+        select(OrderModel.order_id, reason).where(
+            OrderModel.order_id.in_(order_ids),
+            OrderModel.status == OrderStatus.CLOSED,
+        )
+    )
+    reasons = {}
+    for order_id, value in rows:
+        if isinstance(value, str) and value.strip():
+            value = value.strip()
+            reasons[order_id] = _CLOSURE_REASON_LABELS.get(value, value)
+    return reasons
 
 
 def worklist_row_details(

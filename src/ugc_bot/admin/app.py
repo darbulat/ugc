@@ -84,6 +84,7 @@ from ugc_bot.admin.order_worklist import (
     assign_worklist_manager,
     change_order_worklist,
     search_orders,
+    worklist_closure_reasons,
     worklist_conditions,
     worklist_manager_suggestions,
     worklist_row_details,
@@ -2564,6 +2565,20 @@ class OrderAdmin(ModelView, model=OrderModel):
                     session,
                     [row.order_id for row in rows],
                     self.delay_thresholds,
+                )
+
+        return await asyncio.to_thread(load)
+
+    async def closure_reasons(self, rows: Sequence[OrderModel]):
+        def load():
+            with self.session_maker() as session:
+                return worklist_closure_reasons(
+                    session,
+                    [
+                        row.order_id
+                        for row in rows
+                        if row.status == OrderStatus.CLOSED
+                    ],
                 )
 
         return await asyncio.to_thread(load)
