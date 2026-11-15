@@ -10,7 +10,17 @@ from typing import TYPE_CHECKING, Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import String, and_, case, distinct, func, or_, select
+from sqlalchemy import (
+    SQLColumnExpression,
+    String,
+    and_,
+    case,
+    distinct,
+    func,
+    null,
+    or_,
+    select,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
@@ -90,6 +100,7 @@ from ugc_bot.infrastructure.db.repositories.ratings import (
 from ugc_bot.infrastructure.db.repositories.social import (
     SqlAlchemySocialAccountRepository,
 )
+from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 if TYPE_CHECKING:
     from ugc_bot.application.services.offer_dispatch_service import (
@@ -675,6 +686,7 @@ class AdminDashboardService:
                 offset=(page - 1) * per_page,
                 sort_by=sort,
                 order_asc=order == "asc",
+                platform=platform,
             )
             if items:
                 creator_ids = [UUID(item["user_id"]) for item in items]
@@ -1623,8 +1635,9 @@ class AdminDashboardService:
         offset: int = 0,
         sort_by: str = "created_at",
         order_asc: bool = False,
+        platform: SocialPlatform | None = None,
     ) -> list[dict]:
-        """List creators with response and complaint counts."""
+        """List creators with platform audience and activity counts."""
         responses = (
             select(
                 OfferDispatchModel.blogger_id.label("user_id"),
@@ -1658,9 +1671,28 @@ class AdminDashboardService:
             .outerjoin(responses, responses.c.user_id == UserModel.user_id)
             .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
         )
+        follower_column = BloggerProfileModel.instagram_followers_count
+        if platform is not None:
+            observed_at = BloggerProfileModel.instagram_stats_fetched_at
+            metrics_source: SQLColumnExpression[str | None] = null()
+            if platform != SocialPlatform.INSTAGRAM:
+                audience = aliased(SocialAccountModel)
+                query = query.join(
+                    audience,
+                    and_(
+                        audience.user_id == UserModel.user_id,
+                        audience.platform == platform,
+                    ),
+                )
+                follower_column = audience.followers_count
+                observed_at = audience.metrics_fetched_at
+                metrics_source = audience.metrics_source
+            query = query.add_columns(
+                follower_column, observed_at, metrics_source
+            )
         query = query.where(*filters)
         order_column = self._creators_sort_column(
-            sort_by, responses, complaints
+            sort_by, responses, complaints, follower_column
         )
         if order_column is not None:
             direction = order_column.asc() if order_asc else order_column.desc()
@@ -1681,24 +1713,32 @@ class AdminDashboardService:
                 followers_count,
                 resp_count,
                 compl_count,
-            ) = row
-            items.append(
-                {
-                    "user_id": str(user.user_id),
-                    "username": user.username,
-                    "telegram": user.telegram,
-                    "instagram": instagram_url,
-                    "city": city or "",
-                    "created_at": user.created_at,
-                    "responses": int(resp_count),
-                    "complaints": int(compl_count),
-                    "status": self._user_status_label(user.status),
-                    "instagram_followers_count": followers_count,
+            ) = row[:6]
+            item = {
+                "user_id": str(user.user_id),
+                "username": user.username,
+                "telegram": user.telegram,
+                "instagram": instagram_url,
+                "city": city or "",
+                "created_at": user.created_at,
+                "responses": int(resp_count),
+                "complaints": int(compl_count),
+                "status": self._user_status_label(user.status),
+                "instagram_followers_count": followers_count,
+            }
+            if platform is not None:
+                number, observed, source = row[6:]
+                item["audience"] = {
+                    "followers": number,
+                    "observed_at": observed,
+                    "self_reported": source == SELF_REPORTED_FOLLOWERS,
                 }
-            )
+            items.append(item)
         return items
 
-    def _creators_sort_column(self, sort_by: str, responses, complaints):
+    def _creators_sort_column(
+        self, sort_by: str, responses, complaints, followers
+    ):
         """Return sort column for creators list or None for default."""
         if sort_by == "user_id":
             return UserModel.user_id
@@ -1709,7 +1749,7 @@ class AdminDashboardService:
         if sort_by == "created_at":
             return UserModel.created_at
         if sort_by == "followers":
-            return BloggerProfileModel.instagram_followers_count
+            return followers
         if sort_by == "responses":
             return func.coalesce(responses.c.responses, 0)
         if sort_by == "complaints":

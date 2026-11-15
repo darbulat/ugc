@@ -32,6 +32,7 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
         ("Unrelated", UserStatus.BOT_BLOCKED, 5000, 5000),
     )
     now = datetime.now(timezone.utc)
+    recorded = datetime(2026, 11, 14, 12, tzinfo=timezone.utc)
     with Session(financial_pg_engine) as db, db.begin():
         for name, status, _, _ in entries:
             db.add(
@@ -51,6 +52,9 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
                     user_id=uid,
                     instagram_url=f"https://instagram.com/{handle}",
                     instagram_followers_count=instagram,
+                    instagram_stats_fetched_at=recorded
+                    if instagram is not None
+                    else None,
                     city="Test City",
                     topics={},
                     audience_gender=AudienceGender.ALL,
@@ -73,7 +77,9 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
                         metrics_source=SELF_REPORTED_FOLLOWERS
                         if youtube is not None
                         else None,
-                        metrics_fetched_at=now if youtube is not None else None,
+                        metrics_fetched_at=recorded
+                        if youtube is not None
+                        else None,
                         created_at=now,
                         updated_at=now,
                     )
@@ -84,6 +90,7 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
         "ADMIN_USERNAME": "test_admin",
         "ADMIN_PASSWORD": "test-admin-password",
         "ADMIN_SECRET": "test-admin-session-secret",
+        "ADMIN_DASHBOARD_TIMEZONE": "Europe/Moscow",
         "DATABASE_URL": financial_pg_engine.url.render_as_string(
             hide_password=False
         ),
@@ -97,22 +104,30 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
 
     with TestClient(create_admin_app()) as client:
 
-        def matches(expected, **params):
+        def matches(expected, *, total=None, **params):
             response = client.get(
                 "/admin/users/creators",
                 params={"q": "Creator", "status": "bot_blocked", **params},
             )
             assert response.status_code == 200
-            assert f"Найдено {len(expected)}</span>" in response.text
+            assert (
+                f"Найдено {len(expected) if total is None else total}</span>"
+                in response.text
+            )
             assert {
                 name for name, *_ in entries if f">{name}</a>" in response.text
             } == expected
 
-        matches(
+            return response.text
+
+        reported = matches(
             {"Creator Reported"},
             platform="youtube",
             platform_followers_min=1250,
         )
+        assert "Подписчики · YouTube" in reported
+        assert "1 250" in reported and "Со слов креатора" in reported
+        assert "14.11.2026, 15:00" in reported
         matches(set(), platform="youtube", platform_followers_min=1251)
         matches(
             {"Creator Reported", "Creator Zero"},
@@ -141,3 +156,27 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
             },
             platform_followers_unknown="true",
         )
+
+        # The YouTube order is the reverse of the Instagram order. Check that
+        # PostgreSQL applies it before pagination and leaves unknowns last.
+        filters = {"platform": "youtube", "sort": "followers", "per_page": 1}
+        for page, name in enumerate(
+            ("Creator Reported", "Creator Zero", "Creator Unknown"), 1
+        ):
+            matches({name}, total=3, page=page, order="desc", **filters)
+        matches({"Creator Zero"}, total=3, order="asc", **filters)
+        unknown = matches(
+            {"Creator Unknown"}, total=3, order="asc", page=3, **filters
+        )
+        assert "Не указано" in unknown and "Со слов креатора" not in unknown
+
+        instagram = matches(
+            {"Creator Zero"},
+            platform="instagram",
+            sort="followers",
+            order="desc",
+            per_page=1,
+            total=4,
+        )
+        assert "14.11.2026, 15:00" in instagram
+        assert "Со слов креатора" not in instagram
