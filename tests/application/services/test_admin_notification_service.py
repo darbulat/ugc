@@ -1454,3 +1454,46 @@ async def test_business_card_skips_other_admins_and_invalid_links():
     assert [card["chat_id"] for card in messenger.sent_text] == ["111"]
     assert messenger.sent_text[0]["keyboard"] is None
     assert "javascript:" not in messenger.sent_text[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_closed_unpaid_card_with_full_accompaniment_and_no_brief():
+    from dataclasses import replace
+
+    repo = InMemoryUserRepository()
+    advertiser = replace(
+        _make_advertiser_user(),
+        telegram_id="not-a-telegram-id",
+        telegram="bad/name",
+    )
+    await repo.save(advertiser)
+    await repo.save(
+        replace(
+            _make_advertiser_user(),
+            user_id=uuid4(),
+            telegram_id="111",
+            admin=True,
+        )
+    )
+    order = replace(
+        _make_order(advertiser_id=advertiser.user_id, offer_text=" \n"),
+        status=OrderStatus.CLOSED,
+        product_link="https://example.com:bad-port/product",
+    )
+    messenger = FakeMessengerClient()
+
+    await notify_admins_about_order_created(
+        order,
+        messenger,
+        UserRoleService(user_repo=repo),
+        ContentModerationService(),
+        payment_confirmed=False,
+        order_details={"accompaniment_count": 10, "position_count": 10},
+    )
+
+    card = messenger.sent_text[0]
+    assert "Оплата не получена" in card["text"]
+    assert "Менеджер</b> · нужен для всех креаторов" in card["text"]
+    assert "<blockquote" not in card["text"]
+    assert "Открыть профиль" not in card["text"]
+    assert card["keyboard"] is None

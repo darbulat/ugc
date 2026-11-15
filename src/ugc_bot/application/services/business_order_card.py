@@ -62,8 +62,6 @@ def _clip(value: str, limit: int) -> str:
     encoded = value.encode("utf-16-le")
     if len(encoded) <= 2 * limit:
         return value
-    if limit <= 1:
-        return "…"[:limit]
     return (
         encoded[: 2 * (limit - 1)].decode("utf-16-le", "ignore").rstrip() + "…"
     )
