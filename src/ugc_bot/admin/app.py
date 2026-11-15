@@ -778,7 +778,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v10:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v11:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -1232,7 +1232,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v10:{period_key}"
+        f"dashboard_api:v11:{period_key}"
         if cache and not include_timings
         else None
     )

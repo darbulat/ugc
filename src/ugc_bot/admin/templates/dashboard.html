@@ -336,18 +336,20 @@
       </article>
       <article class="card">
         <h3>Повторные заказы</h3>
+        {% for key, label in [('customers_who_ordered_again', 'Создали второй заказ'), ('repeat_customers', 'Оплатили второй заказ')] %}
         <div class="metric">
-          <span class="metric__label">Оплатили два заказа или больше</span>
+          <span class="metric__label">{{ label }}</span>
           <span class="metric__values">
-            <strong class="metric__value">{{ cohorts.repeat_customers }}</strong>
+            <strong class="metric__value">{{ cohorts[key] }}</strong>
             <span class="metric__delta">из {{ cohorts.paying_customers }} плативших</span>
           </span>
         </div>
+        {% endfor %}
         <div class="metric">
           <span class="metric__label">Оплатили второй за 90 дней</span>
           {{ cohort_rate(cohorts.customer_repeat_90d) }}
         </div>
-        <p class="muted">Для доли учитываются заказчики, чья первая оплата была 90 дней назад или раньше.</p>
+        <p class="muted">Создание второго заказа считаем после первой оплаты. Для доли за 90 дней берём заказчиков с полным сроком наблюдения.</p>
       </article>
     </div>
   </section>

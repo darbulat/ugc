@@ -107,6 +107,19 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
                 created_at=old,
                 complimentary=True,
             ),
+            dict(
+                order_id=uuid4(),
+                advertiser_id=single,
+                created_at=created_at[single] + timedelta(days=15),
+                complimentary=False,
+                status=OrderStatus.NEW,
+            ),
+            dict(
+                order_id=uuid4(),
+                advertiser_id=cutoff,
+                created_at=old + timedelta(days=35),
+                complimentary=True,
+            ),
         ]
         payments = []
         markers = []
@@ -127,8 +140,10 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
             (single, 51, 100, PaymentStatus.PAID, False),
             (prepaid, -1, 100, PaymentStatus.PAID, False),
             (prepaid, 3, 100, PaymentStatus.PAID, False),
+            (cutoff, 29, 100, PaymentStatus.PENDING, False),
             (cutoff, 30, 100, PaymentStatus.PAID, False),
-            (no_profile, 4, 100, PaymentStatus.PAID, False),
+            (cutoff, 31, 100, PaymentStatus.PAID, True),
+            (no_profile, -1, 100, PaymentStatus.PAID, False),
         )
         for customer, offset, amount, status, is_test in scenarios:
             order = uuid4()
@@ -165,14 +180,14 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
         db.execute(
             insert(OrderModel),
             [
-                dict(
-                    **order,
-                    product_link="https://example.test",
-                    offer_text="Synthetic order",
-                    price=100,
-                    bloggers_needed=1,
-                    status=OrderStatus.CLOSED,
-                )
+                {
+                    "product_link": "https://example.test",
+                    "offer_text": "Synthetic order",
+                    "price": 100,
+                    "bloggers_needed": 1,
+                    "status": OrderStatus.CLOSED,
+                }
+                | order
                 for order in orders
             ],
         )
@@ -192,7 +207,7 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
                     (launch, fast, 20, True),
                     (launch, late, 31, True),
                     (markers[0]["entity_id"], late, 1, True),
-                    (orders[2]["order_id"], late, 5, False),
+                    (orders[4]["order_id"], late, 5, False),
                     (launch, deadline, 30, True),
                     (launch, new_creator, 1, True),
                 )
@@ -211,6 +226,7 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
         "creator_activation": {"eligible": 4, "converted": 1, "percent": 25},
         "customer_activation": {"eligible": 6, "converted": 2, "percent": 33.3},
         "customer_repeat_90d": {"eligible": 5, "converted": 2, "percent": 40},
+        "customers_who_ordered_again": 4,
         "repeat_customers": 4,
         "paying_customers": 7,
     }
