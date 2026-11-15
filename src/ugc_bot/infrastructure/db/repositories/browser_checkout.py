@@ -9,7 +9,7 @@ from sqlalchemy import exists, insert, select, update
 
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.domain.browser_checkout import BrowserInvoice, browser_invoice_url
-from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     ACTIVE_STATES,
 )
@@ -21,7 +21,8 @@ from ugc_bot.infrastructure.db.checkout_models import (
     INBOX,
     REVIEWS,
 )
-from ugc_bot.infrastructure.db.models import OrderModel
+from ugc_bot.infrastructure.db.models import OrderModel, PaymentModel
+from ugc_bot.infrastructure.db.repositories.financial_capture import PROVIDER
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
@@ -120,6 +121,7 @@ class SqlBrowserCheckout:
         total, currency = await self.capture.issue(
             order_id, owner, self.telegram_account, session=db
         )
+        await self._require_unpaid_quote(db, order_id, total, currency)
         attempt_id = uuid4()
         amount = {"value": f"{total:.2f}", "currency": currency}
         metadata = {"order_id": str(order_id), "attempt_id": str(attempt_id)}
@@ -160,6 +162,25 @@ class SqlBrowserCheckout:
                 next_check_at=now,
             )
         )
+
+    @staticmethod
+    async def _require_unpaid_quote(db, order_id, total, currency):
+        payment = await db.scalar(
+            select(PaymentModel)
+            .where(PaymentModel.order_id == order_id)
+            .with_for_update()
+        )
+        if (
+            payment is None
+            or payment.status != PaymentStatus.PENDING
+            or payment.captured_minor is not None
+            or payment.paid_at is not None
+            or payment.provider != PROVIDER
+            or payment.external_id != f"intent:{order_id}"
+            or payment.currency != currency
+            or Decimal(str(payment.amount)) != total
+        ):
+            raise OrderCreationError("browser_payment_quote_not_unpaid")
 
     async def claim(self, order_id, *, session):
         db = _session(session)

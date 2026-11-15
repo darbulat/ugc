@@ -27,11 +27,15 @@ from ugc_bot.infrastructure.db.models import (
     OutboxEventModel,
     PaymentModel,
 )
+from ugc_bot.infrastructure.db.order_notice_models import ORDER_NOTICE_EVENTS
 from ugc_bot.infrastructure.db.repositories.browser_checkout import (
     SqlBrowserCheckout,
 )
 from ugc_bot.infrastructure.db.repositories.entitlements import (
     SqlAlchemyClientEntitlementRepository,
+)
+from ugc_bot.infrastructure.db.repositories.order_notices import (
+    SqlAlchemyOrderNoticeRepository,
 )
 
 SHOP = "123"
@@ -47,7 +51,7 @@ def service(env, gateway):
             env["config"].bot.telegram_payment_account_id,
             SHOP,
             True,
-            None,
+            SqlAlchemyOrderNoticeRepository(),
         ),
         env["transactions"],
         gateway,
@@ -122,6 +126,13 @@ async def test_browser_capture_blocks_existing_telegram_invoice(
         "capture_state"
     ] == "confirmed"
     async with env["transactions"].transaction() as session:
+        paid_events = await session.execute(
+            select(ORDER_NOTICE_EVENTS.c.order_id).where(
+                ORDER_NOTICE_EVENTS.c.order_id == oid,
+                ORDER_NOTICE_EVENTS.c.event_kind == "paid",
+            )
+        )
+        assert paid_events.scalars().all() == [oid]
         payment = await session.scalar(
             select(PaymentModel).where(PaymentModel.order_id == oid)
         )
@@ -162,6 +173,30 @@ async def test_existing_telegram_authorization_blocks_browser_creation(
     checkout = service(env, gateway)
     assert (await checkout.view(oid))["state"] == "telegram_pending"
     with pytest.raises(OrderCreationError, match="telegram_payment_pending"):
+        await checkout.create(oid, "buyer@example.com")
+    gateway.observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_paid_legacy_projection_cannot_issue_browser_invoice(
+    checkout_env,
+):
+    env = checkout_env
+    oid, actor = env["order"].order_id, env["actor"]
+    await env["checkout"].request_invoice(oid, actor, "native")
+    async with env["transactions"].transaction() as session:
+        await session.execute(
+            update(PaymentModel)
+            .where(PaymentModel.order_id == oid)
+            .values(
+                status=PaymentStatus.PAID, paid_at=datetime.now(timezone.utc)
+            )
+        )
+    gateway = AsyncMock()
+    checkout = service(env, gateway)
+    with pytest.raises(
+        OrderCreationError, match="browser_payment_quote_not_unpaid"
+    ):
         await checkout.create(oid, "buyer@example.com")
     gateway.observe.assert_not_awaited()
 

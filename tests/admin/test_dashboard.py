@@ -13,6 +13,7 @@ from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import AdminDashboardService
 from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.container import Container
 from ugc_bot.infrastructure.redis_cache import (
     serialize_admin_payload,
 )
@@ -456,6 +457,15 @@ def test_admin_creates_browser_invoice_with_csrf_and_reads_paid_status(
     from uuid import uuid4
 
     order_id = uuid4()
+    checkout = SimpleNamespace(
+        can_create=True,
+        view=AsyncMock(return_value={"state": "available"}),
+        create=AsyncMock(),
+    )
+    monkeypatch.setenv("YOOKASSA_BROWSER_SHOP_ID", "123")
+    monkeypatch.setattr(
+        Container, "build_browser_checkout", lambda self: checkout
+    )
     client = _build_admin_client(
         monkeypatch,
         dashboard_payload={},
@@ -464,12 +474,7 @@ def test_admin_creates_browser_invoice_with_csrf_and_reads_paid_status(
         orders=[],
         order_card={"order_id": str(order_id), "status_label": "new"},
     )
-    checkout = SimpleNamespace(
-        can_create=True,
-        view=AsyncMock(return_value={"state": "available"}),
-        create=AsyncMock(),
-    )
-    client.app.state.browser_checkout = checkout
+    assert client.app.state.browser_checkout is checkout
     url = f"/admin/orders/{order_id}/browser-payment"
     form = client.get(f"/admin/orders/{order_id}")
     assert "Создать ссылку на оплату" in form.text

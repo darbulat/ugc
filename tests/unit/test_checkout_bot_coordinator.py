@@ -23,6 +23,7 @@ from ugc_bot.domain.enums import MessengerType
         "rejected",
         "confirmed",
         "pending",
+        "browser",
         "unknown",
     ],
 )
@@ -56,6 +57,7 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         "authorization_id": uuid4() if case == "pending" else None,
         "can_open": case == "pending",
         "invoice_url": "https://t.me/$synthetic_invoice",
+        "reason": "browser_payment_active" if case == "browser" else None,
     }
     if case == "rejected":
         repo.prepare.side_effect = ValueError("not payable")
@@ -79,9 +81,13 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         messenger.send_text.assert_awaited_once()
     else:
         messenger.send_text.assert_not_awaited()
-    if case == "pending":
+    if case in {"pending", "browser"}:
         message = messenger.send_text.await_args.kwargs
-        assert "previous payment attempt" in message["text"]
+        expected = {
+            "pending": "previous payment attempt",
+            "browser": "browser invoice is open",
+        }
+        assert expected[case] in message["text"]
         [[button]] = message["keyboard"].rows
         assert button.callback_data == f"{PAYMENT_SUPPORT_PREFIX}{order_id}"
         assert button.url is None
