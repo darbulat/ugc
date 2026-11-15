@@ -96,6 +96,15 @@ def test_manager_action_follows_lookup_and_defaults_to_next_position(page):
     assert "item_id" not in network.requests[-1][1]
     expect(page.get_by_label("Ссылка для креатора")).to_be_hidden()
 
+    form.locator("[name=telegram]").fill("@known_creator")
+    form.get_by_role("button", name="Проверить в базе").click()
+    form.locator("[name=consent_source]").select_option("telegram")
+    form.get_by_role(
+        "button", name="Сохранить контакт и получить ссылку"
+    ).click()
+    expect(page.get_by_text("Контакт сохранён.", exact=False)).to_be_visible()
+    assert network.requests[-1][1]["operation"] == "create"
+    form.locator("[name=consent_source]").select_option("")
     form.locator("[name=instagram]").fill("@external")
     form.get_by_role("button", name="Проверить в базе").click()
     form.get_by_role("button", name="Создать ссылку").click()

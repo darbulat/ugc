@@ -75,7 +75,7 @@
           </select>
         </label>
       </div>
-      {% if availability == "ready" %}<p>Бот предложит креатору подтвердить участие. Когда контакт станет доступен, заказчик получит сообщение.</p>{% endif %}
+      {% if availability == "ready" %}<p>При отправке в бот креатор подтвердит участие, затем заказчик получит сообщение о контакте.</p>{% endif %}
       <details class="mb-3"{% if consent_source %} open{% endif %}>
         <summary>Креатор уже согласился в личной переписке</summary>
         <label><input type="checkbox" name="record_consent" value="1"{% if consent_source %} checked{% endif %}>
@@ -88,11 +88,19 @@
           <option value="telegram"{% if consent_source == "telegram" %} selected{% endif %}>Telegram</option>
           <option value="other"{% if consent_source == "other" %} selected{% endif %}>Другая переписка</option>
         </select>
-        <p>Заказчик сможет открыть контакт в итогах и подтвердить его получение.</p>
+        <p>Контакт появится в итогах заказа. Ссылка позволит креатору вернуться позже. Бот не отправит сообщений при сохранении.</p>
       </details>
       {% if availability %}
-      <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-action" value="{{ 'send' if availability == 'ready' else 'create' }}">{{ 'Отправить приглашение в бот' if availability == 'ready' else 'Создать ссылку' }}</button>
+      <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-action" value="{{ 'send' if availability == 'ready' and not consent_source else 'create' }}">{{ 'Сохранить контакт и получить ссылку' if consent_source else ('Отправить приглашение в бот' if availability == 'ready' else 'Создать ссылку') }}</button>
       <script>
+        const consent = document.querySelector('[name=record_consent]');
+        const action = document.getElementById('invite-action');
+        consent.addEventListener('change', function () {
+          const canSend = {{ (availability == 'ready') | tojson }};
+          action.value = canSend && !consent.checked ? 'send' : 'create';
+          action.textContent = consent.checked ? 'Сохранить контакт и получить ссылку' :
+            action.value === 'send' ? 'Отправить приглашение в бот' : 'Создать ссылку';
+        });
         for (const field of ['invite-instagram', 'invite-telegram']) {
           document.getElementById(field).addEventListener('input', function () {
             document.getElementById('invite-action').disabled = true;

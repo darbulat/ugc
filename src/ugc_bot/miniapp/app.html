@@ -2471,6 +2471,14 @@
         showScreen('screen-manager-order-detail');
       }
 
+      function managerInviteAction(form) {
+        const button = form.querySelector('[type=submit]');
+        const manual = Boolean(form.elements.consent_source.value);
+        button.value = form.dataset.availability === 'ready' && !manual ? 'send' : 'create';
+        button.textContent = manual ? 'Сохранить контакт и получить ссылку' :
+          button.value === 'send' ? 'Отправить приглашение в бот' : 'Создать ссылку';
+      }
+
       async function managerInvite(fields) {
         const orderId = window._mgrCurrentOrderId;
         const identity = window._me && window._me.user_id;
@@ -2485,13 +2493,15 @@
         try {
           const data = await api('/manager/orders/' + orderId + '/creator-invites', fields);
           if (window._mgrCurrentOrderId !== orderId || (window._me && window._me.user_id) !== identity) return;
+          const previousPosition = form.elements.item_id.value;
           form.elements.item_id.replaceChildren();
           data.positions.forEach(function (item) {
             form.elements.item_id.add(new Option('№' + item.ordinal, item.id));
           });
           if (data.positions.length) {
             form.elements.item_id.add(new Option('Первая свободная · №' + data.positions[0].ordinal, ''), 0);
-            form.elements.item_id.value = '';
+            form.elements.item_id.value = fields.operation === 'lookup' &&
+              data.positions.some(item => item.id === previousPosition) ? previousPosition : '';
           }
           if (data.availability) {
             const names = {
@@ -2502,8 +2512,8 @@
               unavailable: 'Профиль из базы · отправка в бот недоступна'
             };
             document.getElementById('mgr-invite-profile').textContent = names[data.availability] || '';
-            button.value = data.availability === 'ready' ? 'send' : 'create';
-            button.textContent = button.value === 'send' ? 'Отправить приглашение в бот' : 'Создать ссылку';
+            form.dataset.availability = data.availability;
+            managerInviteAction(form);
             button.hidden = false;
           }
           history.replaceChildren();
@@ -2530,6 +2540,7 @@
             link.select();
             status.textContent = data.notice_state === 'unknown'
               ? 'Telegram не подтвердил отправку. Ссылку можно скопировать.'
+              : fields.consent_source ? 'Контакт сохранён. Ссылка действует до 30 дней.'
               : 'Скопируйте ссылку. Она действует до 30 дней.';
           } else if (!data.positions.length) {
             status.textContent = 'Свободных оплаченных позиций нет.';
@@ -2568,6 +2579,9 @@
           document.getElementById('mgr-invite-link').hidden = true;
           document.getElementById('mgr-copy-invite').hidden = true;
         }
+      });
+      document.getElementById('mgr-invite-form').elements.consent_source.addEventListener('change', function (event) {
+        managerInviteAction(event.currentTarget.form);
       });
       document.getElementById('mgr-invite-form').addEventListener('submit', function (event) {
         event.preventDefault();

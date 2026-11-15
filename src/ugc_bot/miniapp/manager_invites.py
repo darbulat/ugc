@@ -137,6 +137,8 @@ def register_manager_invites(router, authenticate):
             raise HTTPException(503, "Приглашения пока недоступны.")
         if body.consent_source not in {"", "instagram", "telegram", "other"}:
             raise HTTPException(422, "Укажите источник согласия.")
+        if body.operation == "send" and body.consent_source:
+            body = body.model_copy(update={"operation": "create"})
         container = request.app.state.dispatcher["container"]
         service = request.app.state.dispatcher.get("creator_invite_service")
         if body.operation == "send" and service is None:

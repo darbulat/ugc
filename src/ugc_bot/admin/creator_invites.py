@@ -230,6 +230,7 @@ def register_creator_invites(  # noqa: C901
                         "other",
                     }:
                         raise ValueError("Укажите источник согласия.")
+                    operation = "create" if operation == "send" else operation
 
             except ValueError as exc:
                 raise HTTPException(
