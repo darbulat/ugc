@@ -1,9 +1,12 @@
-"""Exercise creator filters through the admin route against recorded counts."""
+"""Exercise the social summary and creator filters against recorded counts."""
 
+import re
 from datetime import datetime, timezone
+from html import unescape
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -20,19 +23,18 @@ from ugc_bot.infrastructure.db.models import BloggerProfileModel, UserModel
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
-def test_creator_filters_distinguish_unknown_zero_and_missing_link(
-    financial_pg_engine, monkeypatch
-):
+@pytest.fixture(scope="module")
+def creator_audience_entries(financial_pg_engine):
     entries = (
         ("Creator Reported", UserStatus.BOT_BLOCKED, 1250, 80),
         ("Creator Zero", UserStatus.BOT_BLOCKED, 0, 2000),
         ("Creator Unknown", UserStatus.BOT_BLOCKED, None, None),
-        ("Creator No Link", UserStatus.BOT_BLOCKED, None, None),
+        ("Creator No Link", UserStatus.BOT_BLOCKED, None, -1),
         ("Creator Active", UserStatus.ACTIVE, 5000, 5000),
         ("Unrelated", UserStatus.BOT_BLOCKED, 5000, 5000),
     )
-    now = datetime.now(timezone.utc)
     recorded = datetime(2026, 11, 14, 12, tzinfo=timezone.utc)
+    registered = datetime(2024, 1, 1, tzinfo=timezone.utc)
     with Session(financial_pg_engine) as db, db.begin():
         for name, status, _, _ in entries:
             db.add(
@@ -40,6 +42,7 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
                     username=name,
                     messenger_type=MessengerType.TELEGRAM,
                     status=status,
+                    created_at=registered,
                 )
             )
         users = {user.username: user for user in db.new}
@@ -80,11 +83,46 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
                         metrics_fetched_at=recorded
                         if youtube is not None
                         else None,
-                        created_at=now,
-                        updated_at=now,
+                        created_at=registered,
+                        updated_at=registered,
                     )
                 )
+        advertiser = UserModel(
+            username="No Creator Profile",
+            messenger_type=MessengerType.TELEGRAM,
+            status=UserStatus.ACTIVE,
+        )
+        db.add(advertiser)
+        db.flush()
+        for user_id, platform, url in (
+            (advertiser.user_id, "youtube", "https://youtube.com/@non_creator"),
+            (users["Creator No Link"].user_id, "youtube", "   "),
+            (
+                users["Creator Reported"].user_id,
+                "instagram",
+                "https://instagram.com/creator_0",
+            ),
+            (users["Creator Active"].user_id, "dzen", "https://dzen.ru/active"),
+        ):
+            db.add(
+                SocialAccountModel(
+                    account_id=uuid4(),
+                    user_id=user_id,
+                    platform=platform,
+                    url=url,
+                    handle="test",
+                    work_format=WorkFormat.UGC_ONLY,
+                    created_at=registered,
+                    updated_at=registered,
+                )
+            )
+    return entries
 
+
+@pytest.fixture
+def creator_audience_app(
+    financial_pg_engine, creator_audience_entries, monkeypatch
+):
     env = {
         "BOT_TOKEN": "test-token",
         "ADMIN_USERNAME": "test_admin",
@@ -102,7 +140,15 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(AdminAuth, "authenticate", AsyncMock(return_value=True))
 
-    with TestClient(create_admin_app()) as client:
+    return create_admin_app()
+
+
+def test_creator_filters_distinguish_unknown_zero_and_missing_link(
+    creator_audience_app, creator_audience_entries
+):
+    entries = creator_audience_entries
+
+    with TestClient(creator_audience_app) as client:
 
         def matches(expected, *, total=None, **params):
             response = client.get(
@@ -180,3 +226,50 @@ def test_creator_filters_distinguish_unknown_zero_and_missing_link(
         )
         assert "14.11.2026, 15:00" in instagram
         assert "Со слов креатора" not in instagram
+
+
+def test_dashboard_social_counts_link_to_matching_creators(
+    creator_audience_app, creator_audience_entries
+):
+    with TestClient(creator_audience_app) as client:
+        response = client.get("/admin/dashboard?period=today")
+        assert response.status_code == 200
+        assert "Соцсети креаторов" in response.text
+
+        all_names = {name for name, *_ in creator_audience_entries}
+        cases = (
+            ("YouTube", "есть ссылка", all_names - {"Creator No Link"}),
+            (
+                "YouTube",
+                "подписчики указаны",
+                all_names - {"Creator No Link", "Creator Unknown"},
+            ),
+            ("YouTube", "подписчики не указаны", {"Creator Unknown"}),
+            ("Instagram", "есть ссылка", all_names),
+            (
+                "Instagram",
+                "подписчики указаны",
+                all_names - {"Creator No Link", "Creator Unknown"},
+            ),
+            (
+                "Instagram",
+                "подписчики не указаны",
+                {"Creator No Link", "Creator Unknown"},
+            ),
+            ("Дзен", "есть ссылка", {"Creator Active"}),
+            ("TikTok", "есть ссылка", set()),
+        )
+        for label, metric, expected in cases:
+            link_name = f"{label}, {metric}: {len(expected)}"
+            link = re.search(
+                rf'<a href="([^"]+)" aria-label="{re.escape(link_name)}">'
+                rf"{len(expected)}</a>",
+                response.text,
+            )
+            assert link is not None, link_name
+            directory = client.get(unescape(link[1]))
+            assert directory.status_code == 200
+            assert f"Найдено {len(expected)}</span>" in directory.text
+            assert {
+                name for name in all_names if f">{name}</a>" in directory.text
+            } == expected

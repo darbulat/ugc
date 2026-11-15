@@ -92,7 +92,11 @@ from ugc_bot.admin.order_worklist import (
     worklist_manager_suggestions,
     worklist_row_details,
 )
-from ugc_bot.admin.people import instagram_link, telegram_handle
+from ugc_bot.admin.people import (
+    CREATOR_PLATFORM_LABELS,
+    instagram_link,
+    telegram_handle,
+)
 from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
@@ -124,7 +128,7 @@ from ugc_bot.domain.enums import (
     RaterRole,
     UserStatus,
 )
-from ugc_bot.domain.social import SOCIAL_PLATFORM_LABELS, SocialPlatform
+from ugc_bot.domain.social import SocialPlatform
 from ugc_bot.infrastructure.db.checkout_models import AUTHORIZATIONS, INBOX
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -783,7 +787,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v11:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v12:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -968,7 +972,7 @@ async def _render_creators_page(
         platform_followers_min,
         platform_followers_unknown,
     )
-    cache_key = f"creator-directory:v6:{cache_params!r}" if cache else None
+    cache_key = f"creator-directory:v7:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
@@ -1025,10 +1029,7 @@ async def _render_creators_page(
             "platform": platform,
             "platform_followers_min": platform_followers_min,
             "platform_followers_unknown": platform_followers_unknown,
-            "platform_labels": {
-                **SOCIAL_PLATFORM_LABELS,
-                SocialPlatform.OTHER: "Другая площадка",
-            },
+            "platform_labels": CREATOR_PLATFORM_LABELS,
         },
     )
 
@@ -1251,7 +1252,7 @@ async def _api_dashboard_json(
         timings.lower() in ("1", "true", "yes") if timings else False
     )
     cache_key = (
-        f"dashboard_api:v11:{period_key}"
+        f"dashboard_api:v12:{period_key}"
         if cache and not include_timings
         else None
     )
