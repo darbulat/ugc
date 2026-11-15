@@ -661,6 +661,7 @@ def test_dashboard_social_summary_links_and_layout(
 
 
 @pytest.mark.e2e
+@pytest.mark.timeout(30)
 def test_creator_base_opens_filtered_directory(
     admin_server, page, people_records
 ):
