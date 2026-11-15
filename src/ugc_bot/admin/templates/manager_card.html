@@ -43,7 +43,7 @@
       {% for key in ('case', 'shortfall_plan', 'reliability', 'coverage') if answers.get(key) %}
         <section class="card manager-card-section" data-manager-answer="{{ key }}">
           <h2>{{ labels[key] }}</h2>
-          <p class="manager-answer">{{ answers[key] }}</p>
+          <p class="manager-answer">{{ answers[key] | urlize(target='_blank', rel='noopener noreferrer') }}</p>
         </section>
       {% endfor %}
     </div>
@@ -52,26 +52,30 @@
       <p class="manager-check{% if row.instagram_verified_at %} manager-check--verified{% endif %}">
         {{ 'Instagram подтверждён' if row.instagram_verified_at else ('Instagram ожидает подтверждения' if answers.instagram else 'Instagram не указан') }}
       </p>
-      {% if row.decision_note %}
-        <p class="manager-answer">{{ row.decision_note }}</p>
-      {% endif %}
-      {% if row.state == 'submitted' %}
+      {% if row.state in ('submitted', 'clarify') %}
         <form method="post" action="/admin/managers" class="manager-review-form">
           <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
           <input type="hidden" name="identity" value="{{ row.user_id }}">
           <input type="hidden" name="version" value="{{ version }}">
           <input type="hidden" name="from_detail" value="1">
-          <label>Комментарий кандидату
-            <textarea name="note" maxlength="300" rows="3"></textarea>
+          <label>Внутренняя заметка
+            <textarea name="note" maxlength="300" rows="3">{{ row.decision_note or '' }}</textarea>
           </label>
+          <button class="admin-button" name="command" value="note">Сохранить заметку</button>
           <button class="admin-button admin-button--primary" name="command" value="approved"{% if not row.instagram_verified_at %} disabled{% endif %}>Принять менеджера</button>
           <div class="admin-actions">
             <button class="admin-button" name="command" value="clarify">Уточнить</button>
             <button class="admin-button" name="command" value="declined">Отклонить</button>
           </div>
         </form>
-      {% elif row.reviewed_at %}
-        <p class="manager-muted">Рассмотрена {{ row.reviewed_at | admin_date }}</p>
+      {% else %}
+        {% if row.decision_note %}
+          <h3>Внутренняя заметка</h3>
+          <p class="manager-answer">{{ row.decision_note }}</p>
+        {% endif %}
+        {% if row.reviewed_at %}
+          <p class="manager-muted">Рассмотрена {{ row.reviewed_at | admin_date }}</p>
+        {% endif %}
       {% endif %}
     </aside>
   </div>

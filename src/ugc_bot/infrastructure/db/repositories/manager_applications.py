@@ -10,6 +10,9 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
+    MANAGER_INSTAGRAM_VERIFIED,
+    MANAGER_READY_FOR_REVIEW,
+    MANAGER_REVIEWABLE_STATES,
     MANAGER_REVIEWERS,
     MANAGER_SUBMITTED,
     application_fields,
@@ -69,7 +72,7 @@ def review_manager_application(
         .mappings()
         .one_or_none()
     )
-    if candidate is None or candidate["state"] != "submitted":
+    if candidate is None or candidate["state"] not in MANAGER_REVIEWABLE_STATES:
         raise ValueError("Заявка уже обработана.")
     if version is not None and version != application_version(
         candidate["submitted_at"]
@@ -77,20 +80,26 @@ def review_manager_application(
         raise ValueError("Анкета обновилась. Откройте её заново.")
     if command == "approved" and not candidate["instagram_verified_at"]:
         raise ValueError("Кандидату нужно подтвердить Instagram.")
-    if command == "clarify" and not note:
-        raise ValueError("Напишите, что нужно уточнить.")
+    if command == "clarify" and not (note or candidate["decision_note"]):
+        raise ValueError("Напишите во внутренней заметке, что нужно уточнить.")
     now = datetime.now(timezone.utc)
+    if command == "note":
+        state = candidate["state"]
+        values = dict(updated_at=now, decision_note=note or None)
+    else:
+        state = command
+        values = dict(
+            state=state,
+            reviewed_at=now,
+            updated_at=now,
+            decision_note=note or candidate["decision_note"],
+        )
     db.execute(
         update(APPLICATIONS)
         .where(APPLICATIONS.c.user_id == user_id)
-        .values(
-            state=command,
-            reviewed_at=now,
-            updated_at=now,
-            decision_note=note or None,
-        )
+        .values(**values)
     )
-    record_manager_review(db, user_id, command, command, now, actor_id)
+    record_manager_review(db, user_id, state, command, now, actor_id)
 
 
 def manager_application_query(user_id):
@@ -194,7 +203,6 @@ class ManagerApplications:
                 values.update(
                     state="submitted",
                     submitted_at=now,
-                    decision_note=None,
                 )
                 for reviewer in MANAGER_REVIEWERS:
                     _enqueue_notice(
@@ -316,18 +324,40 @@ class ManagerApplications:
             ):
                 return False
             current = await self._row(db, row.user_id, lock=True)
-            if current["challenge"] != code or current[
-                "challenge_until"
-            ] <= datetime.now(timezone.utc):
+            verified_at = datetime.now(timezone.utc)
+            if (
+                current["challenge"] != code
+                or current["challenge_until"] <= verified_at
+            ):
                 return False
             await db.execute(
                 update(APPLICATIONS)
                 .where(APPLICATIONS.c.user_id == row.user_id)
                 .values(
                     instagram_user_id=sender,
-                    instagram_verified_at=datetime.now(timezone.utc),
+                    instagram_verified_at=verified_at,
                     challenge=None,
                     challenge_until=None,
                 )
             )
+            if current["state"] in {*MANAGER_REVIEWABLE_STATES, "draft"}:
+                _enqueue_notice(
+                    db,
+                    row.user_id,
+                    MANAGER_INSTAGRAM_VERIFIED,
+                    verified_at,
+                    {"verification": application_version(verified_at)},
+                )
+            if current["state"] in MANAGER_REVIEWABLE_STATES:
+                _enqueue_notice(
+                    db,
+                    row.user_id,
+                    MANAGER_READY_FOR_REVIEW,
+                    verified_at,
+                    {
+                        "submission": application_version(
+                            current["submitted_at"]
+                        )
+                    },
+                )
             return True
