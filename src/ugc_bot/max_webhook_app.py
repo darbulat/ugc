@@ -7,6 +7,7 @@ Usage: uvicorn ugc_bot.max_webhook_app:app --host 0.0.0.0 --port 8003
 import hmac
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 import aiohttp
@@ -44,6 +45,10 @@ from ugc_bot.bot.max.middleware import resolve_locale
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.config import load_config
 from ugc_bot.container import Container
+from ugc_bot.domain.enums import MessengerType
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    record_bot_unavailable,
+)
 from ugc_bot.infrastructure.messenger.max.adapter import MaxEventAdapter
 from ugc_bot.infrastructure.messenger.max.client import (
     MAX_API_BASE_URL,
@@ -129,7 +134,15 @@ async def _lifespan(app: FastAPI):
 
     # Register webhook with Max API
     webhook_url = config.max_bot.webhook_url
-    subscription_body: dict = {"url": webhook_url}
+    subscription_body: dict = {
+        "url": webhook_url,
+        "update_types": [
+            "message_created",
+            "message_callback",
+            "bot_started",
+            "bot_stopped",
+        ],
+    }
     if config.max_bot.webhook_secret:
         subscription_body["secret"] = config.max_bot.webhook_secret
     async with http_session.post(
@@ -181,6 +194,29 @@ async def metrics() -> Response:
     return Response(content=body, media_type=CONTENT_TYPE_LATEST)
 
 
+async def _record_bot_stopped(data: dict, bot_services: dict) -> JSONResponse:
+    user = data.get("user")
+    user_id = user.get("user_id") if isinstance(user, dict) else None
+    timestamp = data.get("timestamp")
+    if type(user_id) is not int or type(timestamp) is not int:
+        return JSONResponse({"ok": False}, status_code=400)
+    try:
+        occurred_at = datetime.fromtimestamp(timestamp / 1000, timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return JSONResponse({"ok": False}, status_code=400)
+    try:
+        await record_bot_unavailable(
+            bot_services["transaction_manager"],
+            platform=MessengerType.MAX,
+            external_id=str(user_id),
+            occurred_at=occurred_at,
+        )
+    except Exception:
+        logger.error("MAX bot stop event was not saved")
+        return JSONResponse({"ok": False}, status_code=503)
+    return JSONResponse({"ok": True})
+
+
 @app.post("/webhook/max")
 async def handle_max_webhook(request: Request) -> JSONResponse:
     state = request.app.state
@@ -202,6 +238,9 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
         )
 
     update_type = data.get("update_type")
+    if update_type == "bot_stopped":
+        return await _record_bot_stopped(data, state.bot_services)
+
     event_adapter: MaxEventAdapter = state.event_adapter
 
     deps: dict = {

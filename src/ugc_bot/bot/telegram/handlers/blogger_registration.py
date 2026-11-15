@@ -29,6 +29,10 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.creator_registration import (
+    resume_creator_registration,
+    show_creator_agreements,
+)
 from ugc_bot.bot.telegram.filters import TextEqualsKey
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_AGE_0_17,
@@ -45,13 +49,13 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_BLOGGER_GENDER_F,
     CALLBACK_BLOGGER_GENDER_M,
     CALLBACK_BLOGGER_REGION_PREFIX,
+    CALLBACK_BLOGGER_RESUME,
     CALLBACK_BLOGGER_WORK_ADS,
     CALLBACK_BLOGGER_WORK_UGC,
     CALLBACK_CREATOR_CREATE,
     CALLBACK_ROLE_CREATOR,
     blogger_after_registration_inline_keyboard,
     build_support_telegram_url,
-    confirm_agreement_inline_keyboard,
     creator_filled_profile_inline_keyboard,
     creator_start_keyboard,
     flow_inline_keyboard,
@@ -60,7 +64,6 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     flow_keyboard_remove,
 )
 from ugc_bot.bot.telegram.handlers.utils import (
-    format_agreements_message,
     get_user_and_ensure_allowed,
     get_user_and_ensure_allowed_callback,
     handle_role_choice,
@@ -161,6 +164,36 @@ class BloggerRegistrationStates(StatesGroup):
     barter = State()
     work_format = State()
     agreements = State()
+
+
+@router.callback_query(lambda c: c.data == CALLBACK_BLOGGER_RESUME)
+async def resume_registration_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    user_role_service: UserRoleService,
+    bot_texts_service: BotTextsService,
+    config: AppConfig,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    agreement_state = BloggerRegistrationStates.agreements.state
+    assert agreement_state is not None
+    await resume_creator_registration(
+        event_adapter.from_callback(callback),
+        AiogramStateStore(state),
+        messenger_client,
+        profile_service,
+        user_role_service,
+        bot_texts_service,
+        config,
+        user_locale,
+        agreement_state,
+    )
 
 
 BLOGGER_FLOW_TYPE = "blogger_registration"
@@ -1743,30 +1776,13 @@ async def handle_work_format_callback(
             return
         raise
 
-    agree_keys = [
-        "btn_confirm_agreement",
-        "msg_agreements_intro_creator",
-        "msg_agreements_intro_default",
-        "msg_label_offer",
-        "msg_label_privacy",
-        "msg_label_consent",
-        "msg_confirm_docs_fallback",
-    ]
-    agree_texts = await bot_texts_service.get_many(agree_keys, user_locale)
-    agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
-    agreements_text = format_agreements_message(
-        config,
-        intro=agreements_intro,
-        texts=agree_texts,
-        country_code=data.get("user_country"),
-    )
-    await messenger_client.send_text(
+    await show_creator_agreements(
         chat_id=incoming.chat_id,
-        text=agreements_text,
-        parse_mode="HTML",
-        keyboard=confirm_agreement_inline_keyboard(
-            CALLBACK_BLOGGER_AGREE, agree_texts
-        ),
+        messenger_client=messenger_client,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        locale=locale,
+        country_code=data.get("user_country"),
     )
     await state_store.set_state(BloggerRegistrationStates.agreements.state)
 
@@ -1869,30 +1885,13 @@ async def handle_work_format(
             )
             return
         raise
-    agree_keys = [
-        "btn_confirm_agreement",
-        "msg_agreements_intro_creator",
-        "msg_agreements_intro_default",
-        "msg_label_offer",
-        "msg_label_privacy",
-        "msg_label_consent",
-        "msg_confirm_docs_fallback",
-    ]
-    agree_texts = await bot_texts_service.get_many(agree_keys, locale)
-    agreements_intro = agree_texts.get("msg_agreements_intro_creator", "")
-    agreements_text = format_agreements_message(
-        config,
-        intro=agreements_intro,
-        texts=agree_texts,
-        country_code=data.get("user_country"),
-    )
-    await messenger_client.send_text(
+    await show_creator_agreements(
         chat_id=incoming.chat_id,
-        text=agreements_text,
-        parse_mode="HTML",
-        keyboard=confirm_agreement_inline_keyboard(
-            CALLBACK_BLOGGER_AGREE, agree_texts
-        ),
+        messenger_client=messenger_client,
+        bot_texts_service=bot_texts_service,
+        config=config,
+        locale=locale,
+        country_code=data.get("user_country"),
     )
     await state_store.set_state(BloggerRegistrationStates.agreements.state)
 
