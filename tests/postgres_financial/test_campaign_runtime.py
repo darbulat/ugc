@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import update
 
 from tests.helpers.financial_environment import isolated_financial_database
 from tests.postgres_financial.test_campaign_foundation import (
@@ -26,6 +27,7 @@ from ugc_bot.application.notice_delivery_ports import (
 )
 from ugc_bot.domain.campaign_moderation import ReviewCampaign, SubmitCampaign
 from ugc_bot.domain.campaign_review import SaveCampaignDraft
+from ugc_bot.infrastructure.db.models import UserReferralBindingModel
 
 
 @pytest_asyncio.fixture
@@ -242,6 +244,25 @@ async def test_optout_before_start_skips_without_provider_call(campaign_env):
             session=db,
         )
     assert report["delivery"] == {"skipped": 1}
+
+
+@pytest.mark.asyncio
+async def test_creator_reassigned_after_approval_cannot_receive_old_campaign(
+    campaign_env,
+):
+    env = campaign_env
+    services, transport, _ = await approved(env)
+    async with env["container"].transaction_manager.transaction() as db:
+        await db.execute(
+            update(UserReferralBindingModel)
+            .where(
+                UserReferralBindingModel.referred_user_id
+                == env["users"]["creator"].user_id
+            )
+            .values(referrer_user_id=env["users"]["foreign"].user_id)
+        )
+    assert await services["campaign_delivery_service"].run_once() == 0
+    assert not transport.calls
 
 
 @pytest.mark.asyncio

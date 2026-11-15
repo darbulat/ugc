@@ -117,6 +117,17 @@ async def test_signed_host_routes_persist_own_draft_and_truthful_preview(
         ).status_code == 422
         assert (
             await client.post(
+                path + "/preview",
+                json={
+                    **signed,
+                    "campaign_id": saved["campaign_id"],
+                    "revision_digest": saved["revision_digest"],
+                    "recipient_ids": [str(foreign.user_id)],
+                },
+            )
+        ).status_code == 422
+        assert (
+            await client.post(
                 path + "/list",
                 json={
                     **signed,
