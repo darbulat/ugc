@@ -105,7 +105,7 @@ def review_message(config, row, *, full=False, ready=False):
 
 
 def instagram_verified_message(state):
-    text = "<b>Instagram подтверждён</b>\n\n"
+    text = "<b>Instagram подтверждён ✅</b>\n\n"
     if state == "draft":
         return (
             text + "Продолжите анкету с того места, где остановились.",
@@ -120,6 +120,16 @@ def instagram_verified_message(state):
                     ]
                 ],
             ),
+        )
+    if state == "approved":
+        return (
+            text + "Анкета одобрена. Кабинет менеджера доступен через /app.",
+            None,
+        )
+    if state == "declined":
+        return (
+            text + "Анкета отклонена. Текущий статус доступен в /manager.",
+            None,
         )
     return (
         text
