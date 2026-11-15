@@ -1100,6 +1100,9 @@ async def test_get_order_card_returns_detail(service) -> None:
         5,
         5,
         True,
+        False,  # Candidate for test review
+        None,  # Closure reason
+        False,  # Closure reason can be edited
         False,
         None,
         None,
@@ -1115,6 +1118,9 @@ async def test_get_order_card_returns_detail(service) -> None:
     assert card["order_id"] == str(order_id)
     assert card["advertiser"] == "Brand Inc"
     assert card["description"] == "Test"
+    assert card["test_candidate"] is False
+    assert card["closure_reason"] == ""
+    assert card["can_edit_closure_reason"] is False
     assert card["order_type"] == "ugc_only"
     assert card["bloggers_needed"] == 10
     assert card["picked_count"] == 5
@@ -1147,7 +1153,23 @@ async def test_get_order_card_includes_eligible_creators_count_for_new_order(
         bloggers_needed=5,
         status=OrderStatus.NEW,
     )
-    row = (order, None, 0, 0, "Brand", 0, 0, True, False, None, None, None)
+    row = (
+        order,
+        None,
+        0,
+        0,
+        "Brand",
+        0,
+        0,
+        True,
+        False,
+        None,
+        False,
+        False,
+        None,
+        None,
+        None,
+    )
     mock_dispatch = AsyncMock()
     mock_dispatch.count_eligible_bloggers = AsyncMock(return_value=42)
     svc = AdminDashboardService(
@@ -1176,7 +1198,23 @@ async def test_get_order_card_eligible_creators_count_none_when_dispatch_raises(
         bloggers_needed=5,
         status=OrderStatus.PENDING_MODERATION,
     )
-    row = (order, None, 0, 0, "Brand", 0, 0, True, False, None, None, None)
+    row = (
+        order,
+        None,
+        0,
+        0,
+        "Brand",
+        0,
+        0,
+        True,
+        False,
+        None,
+        False,
+        False,
+        None,
+        None,
+        None,
+    )
     mock_dispatch = AsyncMock()
     mock_dispatch.count_eligible_bloggers = AsyncMock(
         side_effect=RuntimeError("db error")
@@ -1413,6 +1451,9 @@ async def test_progress_ratio_capped_at_one(service) -> None:
         10,
         10,
         False,
+        False,  # Candidate for test review
+        None,  # Closure reason
+        False,  # Closure reason can be edited
         False,
         None,
         None,
@@ -1570,6 +1611,9 @@ async def test_progress_ratio_zero_when_needed_zero(service) -> None:
         5,
         5,
         False,
+        False,  # Candidate for test review
+        None,  # Closure reason
+        False,  # Closure reason can be edited
         False,
         None,
         None,
