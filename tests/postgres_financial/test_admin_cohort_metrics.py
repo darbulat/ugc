@@ -4,10 +4,10 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from ugc_bot.admin.business_metrics import cohort_metrics
+from ugc_bot.admin.business_metrics import cohort_metrics, repeat_order_ids
 from ugc_bot.domain.enums import (
     AudienceGender,
     AuditAction,
@@ -99,7 +99,7 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
             ],
         )
 
-        launch = uuid4()
+        launch, archived_followup = uuid4(), uuid4()
         orders = [
             dict(
                 order_id=launch,
@@ -108,7 +108,7 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
                 complimentary=True,
             ),
             dict(
-                order_id=uuid4(),
+                order_id=archived_followup,
                 advertiser_id=single,
                 created_at=created_at[single] + timedelta(days=15),
                 complimentary=False,
@@ -192,7 +192,18 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
             ],
         )
         db.execute(insert(PaymentModel), payments)
-        db.execute(insert(AuditLogModel), markers)
+        db.execute(
+            insert(AuditLogModel),
+            markers
+            + [
+                dict(
+                    entity_type="order_worklist_archive",
+                    entity_id=archived_followup,
+                    action=AuditAction.UPDATE,
+                    new_values={"archived": True},
+                )
+            ],
+        )
         db.execute(
             insert(OfferDispatchModel),
             [
@@ -219,6 +230,26 @@ async def test_cohorts_count_first_events_and_distinct_repeat_customers(
         factory = async_sessionmaker(engine)
         async with factory() as session:
             metrics = await cohort_metrics(session, as_of)
+            repeat_orders = await session.execute(
+                select(
+                    OrderModel.order_id,
+                    OrderModel.advertiser_id,
+                    OrderModel.status,
+                ).where(OrderModel.order_id.in_(repeat_order_ids(as_of)))
+            )
+            rows = repeat_orders.all()
+            assert len(rows) == 5
+            assert {row.advertiser_id for row in rows} == {
+                repeat,
+                slow,
+                single,
+                prepaid,
+            }
+            assert {row.status for row in rows} == {
+                OrderStatus.NEW,
+                OrderStatus.CLOSED,
+            }
+            assert archived_followup in {row.order_id for row in rows}
     finally:
         await engine.dispose()
 

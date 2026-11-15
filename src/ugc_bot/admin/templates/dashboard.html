@@ -339,10 +339,17 @@
         {% for key, label in [('customers_who_ordered_again', 'Создали второй заказ'), ('repeat_customers', 'Оплатили второй заказ')] %}
         <div class="metric">
           <span class="metric__label">{{ label }}</span>
+          {% if key == 'customers_who_ordered_again' %}
+          <a class="metric__values" href="{{ request.url_for('admin:list', identity='order-model').include_query_params(group='repeat') }}">
+            <strong class="metric__value">{{ cohorts[key] }}</strong>
+            <span class="metric__delta">из {{ cohorts.paying_customers }} плативших</span>
+          </a>
+          {% else %}
           <span class="metric__values">
             <strong class="metric__value">{{ cohorts[key] }}</strong>
             <span class="metric__delta">из {{ cohorts.paying_customers }} плативших</span>
           </span>
+          {% endif %}
         </div>
         {% endfor %}
         <div class="metric">
