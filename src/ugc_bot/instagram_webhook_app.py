@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 from contextlib import asynccontextmanager
+from functools import partial
 from typing import Any
 from uuid import UUID
 
@@ -28,6 +29,7 @@ from ugc_bot.infrastructure.db.repositories.manager_applications import (
     ManagerApplications,
 )
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.manager_application_delivery import ManagerApplicationDelivery
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -253,6 +255,10 @@ async def handle_webhook(
         manager_verifier = ManagerApplications(
             container.transaction_manager,
             container.build_instagram_api_client(),
+            deliver_verification_notices=partial(
+                ManagerApplicationDelivery(config).deliver_verification_notices,
+                container.transaction_manager,
+            ),
         )
     try:
         await _process_webhook_events(

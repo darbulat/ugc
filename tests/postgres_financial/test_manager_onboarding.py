@@ -63,8 +63,9 @@ __all__ = ["financial_pg_engine", "intake_env"]
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("temporary_candidate_failure", [False, True])
 async def test_application_verification_review_and_directory(
-    intake_env, monkeypatch
+    intake_env, monkeypatch, temporary_candidate_failure
 ):
     env = intake_env
     user_id = env["admin"].user_id
@@ -75,7 +76,16 @@ async def test_application_verification_review_and_directory(
         ),
         get_direct_message=AsyncMock(),
     )
-    service = ManagerApplications(transactions, graph)
+    delivery = ManagerApplicationDelivery(env["config"])
+
+    async def send_verification_notices(event_ids):
+        await delivery.deliver_verification_notices(transactions, event_ids)
+
+    service = ManagerApplications(
+        transactions,
+        graph,
+        deliver_verification_notices=send_verification_notices,
+    )
     reviewer_ids = [uuid4(), uuid4()]
     addresses = [980031, 980032]
     with Session(env["pg"]) as db, db.begin():
@@ -97,10 +107,17 @@ async def test_application_verification_review_and_directory(
     env["config"].webhook.webhook_base_url = "https://bot.example.test"
     sent: list[SendMessage] = []
     delayed_reviewer = {addresses[0]}
+    delayed_confirmation = temporary_candidate_failure
 
     async def collect(_session, bot, method, timeout=None):
         assert bot.token == "123456:synthetic-review-check"
         assert isinstance(method, SendMessage)
+        nonlocal delayed_confirmation
+        if delayed_confirmation and method.text.startswith(
+            "<b>Instagram подтверждён"
+        ):
+            delayed_confirmation = False
+            raise OSError("Synthetic temporary candidate delivery failure")
         if method.chat_id in delayed_reviewer:
             delayed_reviewer.remove(method.chat_id)
             raise OSError("Synthetic temporary Telegram outage")
@@ -112,7 +129,7 @@ async def test_application_verification_review_and_directory(
         repos["outbox_repo"],
         repos["order_repo"],
         transactions,
-        manager_notifier=ManagerApplicationDelivery(env["config"]),
+        manager_notifier=delivery,
     )
     kafka = SimpleNamespace(publish=AsyncMock())
     assert (await service.open(user_id))["state"] == "draft"
@@ -324,12 +341,10 @@ async def test_application_verification_review_and_directory(
             manager_signature_verified=False,
         )
     creator_verifier.verify_code_by_instagram_sender.assert_not_awaited()
-    await publisher.process_pending_events(kafka)
-    (confirmation,) = [
-        m for m in sent if m.text.startswith("<b>Instagram подтверждён")
+    immediate_confirmations = [
+        m for m in sent if m.text.startswith("<b>Instagram подтверждён ✅")
     ]
-    assert confirmation.chat_id == int(env["admin"].telegram_id)
-    assert "Анкета передана команде" in confirmation.text
+    assert len(immediate_confirmations) == int(not temporary_candidate_failure)
     (ready,) = [m for m in sent if "готова к проверке" in m.text]
     assert ready.chat_id == addresses[0]
     approve_from_notice = ready.reply_markup.inline_keyboard[0][0]
@@ -378,6 +393,16 @@ async def test_application_verification_review_and_directory(
     await publisher.process_pending_events(kafka)
     await publisher.process_pending_events(kafka)
     kafka.publish.assert_not_called()
+    (confirmation,) = [
+        m for m in sent if m.text.startswith("<b>Instagram подтверждён ✅")
+    ]
+    assert confirmation.chat_id == int(env["admin"].telegram_id)
+    expected = (
+        "Анкета одобрена"
+        if temporary_candidate_failure
+        else "Анкета передана команде"
+    )
+    assert expected in confirmation.text
     alerts = [message for message in sent if "Новая заявка" in message.text]
     assert sorted(message.chat_id for message in alerts) == sorted(
         addresses * 2

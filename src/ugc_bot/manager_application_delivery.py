@@ -1,10 +1,14 @@
 """Deliver manager application events from the existing transactional outbox."""
 
+import asyncio
+import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from aiogram import Bot
 from sqlalchemy import func, select
 
+from ugc_bot.application.ports import TransactionManager
 from ugc_bot.bot.telegram.manager_review_messages import (
     instagram_verified_message,
     manager_welcome,
@@ -12,6 +16,7 @@ from ugc_bot.bot.telegram.manager_review_messages import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import OutboxEvent
+from ugc_bot.domain.enums import OutboxEventStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
     MANAGER_DUTY_REVIEWER,
@@ -22,19 +27,63 @@ from ugc_bot.domain.manager_application import (
     MANAGER_SUBMITTED,
     application_version,
 )
-from ugc_bot.infrastructure.db.models import UserModel
+from ugc_bot.infrastructure.db.models import OutboxEventModel, UserModel
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     manager_application_query,
+)
+from ugc_bot.infrastructure.db.repositories.outbox import (
+    _to_outbox_event_entity,
 )
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class ManagerApplicationDelivery:
     def __init__(self, config: AppConfig):
         self.config = config
+
+    async def deliver_verification_notices(
+        self, transactions: TransactionManager, event_ids: list[UUID]
+    ) -> None:
+        """Try sending after commit; the normal worker handles pending rows."""
+
+        async def send_one(event_id: UUID) -> None:
+            try:
+                async with transactions.transaction() as session:
+                    db = _session(session)
+                    row = await db.scalar(
+                        select(OutboxEventModel)
+                        .where(
+                            OutboxEventModel.event_id == event_id,
+                            OutboxEventModel.status
+                            == OutboxEventStatus.PENDING,
+                            OutboxEventModel.event_type.in_(
+                                (
+                                    MANAGER_INSTAGRAM_VERIFIED,
+                                    MANAGER_READY_FOR_REVIEW,
+                                )
+                            ),
+                        )
+                        .with_for_update(skip_locked=True)
+                    )
+                    if row is None:
+                        return
+                    # The worker skips this row while it is locked.
+                    async with asyncio.timeout(3):
+                        await self(_to_outbox_event_entity(row), session)
+                    row.status = OutboxEventStatus.PUBLISHED
+                    row.processed_at = datetime.now(timezone.utc)
+            except Exception as exc:
+                logger.warning(
+                    "Manager verification notice will retry in worker (%s)",
+                    type(exc).__name__,
+                )
+
+        await asyncio.gather(*(send_one(event_id) for event_id in event_ids))
 
     async def __call__(self, event: OutboxEvent, session: object) -> None:
         db = _session(session)
@@ -91,12 +140,9 @@ class ManagerApplicationDelivery:
                 )
                 message = review_message(self.config, candidate)
         elif event.event_type == MANAGER_INSTAGRAM_VERIFIED:
-            if (
-                candidate["state"] not in {*MANAGER_REVIEWABLE_STATES, "draft"}
-                or not candidate["instagram_verified_at"]
-                or event.payload["verification"]
-                != application_version(candidate["instagram_verified_at"])
-            ):
+            if not candidate["instagram_verified_at"] or event.payload[
+                "verification"
+            ] != application_version(candidate["instagram_verified_at"]):
                 return None
             chat_id = candidate["telegram_id"]
             message = instagram_verified_message(candidate["state"])

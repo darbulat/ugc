@@ -2,6 +2,7 @@
 
 import re
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
@@ -32,10 +33,11 @@ from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 INSTAGRAM_CHALLENGE_TTL = timedelta(minutes=15)
 
 
-def _enqueue_notice(db, user_id, event_type, at, payload):
+def _enqueue_notice(db, user_id, event_type, at, payload) -> UUID:
+    event_id = uuid4()
     db.add(
         OutboxEventModel(
-            event_id=uuid4(),
+            event_id=event_id,
             aggregate_id=str(user_id),
             aggregate_type="manager_application",
             event_type=event_type,
@@ -43,6 +45,7 @@ def _enqueue_notice(db, user_id, event_type, at, payload):
             payload=payload,
         )
     )
+    return event_id
 
 
 def record_manager_review(db, user_id, state, source, at, actor_id=None):
@@ -118,9 +121,17 @@ def manager_application_query(user_id):
 
 
 class ManagerApplications:
-    def __init__(self, transactions, instagram_api):
+    def __init__(
+        self,
+        transactions,
+        instagram_api,
+        *,
+        deliver_verification_notices: Callable[[list[UUID]], Awaitable[None]]
+        | None = None,
+    ):
         self.transactions = transactions
         self.instagram_api = instagram_api
+        self.deliver_verification_notices = deliver_verification_notices
 
     async def approved(self, user_id):
         async with self.transactions.transaction() as session:
@@ -316,31 +327,9 @@ class ManagerApplications:
             ).one_or_none()
         if row is None:
             return False
-        if direct_message is None:
-            profile = await self.instagram_api.get_profile_by_id(sender)
-            if (
-                profile is None
-                or not profile.username
-                or profile.username.casefold() != row.instagram
-            ):
-                return False
-        else:
-            message_id, inbox = direct_message
-            message = await self.instagram_api.get_direct_message(message_id)
-            # Graph returns message creation times at second precision.
-            issued_at = (row.challenge_until - INSTAGRAM_CHALLENGE_TTL).replace(
-                microsecond=0
-            )
-            if (
-                message is None
-                or message.sender_id != sender
-                or message.sender_username.casefold() != row.instagram
-                or inbox
-                not in {name.casefold() for name in message.recipient_usernames}
-                or message.text.strip() != code
-                or not issued_at <= message.created_at < row.challenge_until
-            ):
-                return False
+        if not await self._instagram_matches(sender, code, row, direct_message):
+            return False
+        notices: list[UUID] = []
         async with self.transactions.transaction() as session:
             db = _session(session)
             await db.execute(
@@ -375,23 +364,53 @@ class ManagerApplications:
                 )
             )
             if current["state"] in {*MANAGER_REVIEWABLE_STATES, "draft"}:
-                _enqueue_notice(
-                    db,
-                    row.user_id,
-                    MANAGER_INSTAGRAM_VERIFIED,
-                    verified_at,
-                    {"verification": application_version(verified_at)},
+                notices.append(
+                    _enqueue_notice(
+                        db,
+                        row.user_id,
+                        MANAGER_INSTAGRAM_VERIFIED,
+                        verified_at,
+                        {"verification": application_version(verified_at)},
+                    )
                 )
             if current["state"] in MANAGER_REVIEWABLE_STATES:
-                _enqueue_notice(
-                    db,
-                    row.user_id,
-                    MANAGER_READY_FOR_REVIEW,
-                    verified_at,
-                    {
-                        "submission": application_version(
-                            current["submitted_at"]
-                        )
-                    },
+                notices.append(
+                    _enqueue_notice(
+                        db,
+                        row.user_id,
+                        MANAGER_READY_FOR_REVIEW,
+                        verified_at,
+                        {
+                            "submission": application_version(
+                                current["submitted_at"]
+                            )
+                        },
+                    )
                 )
-            return True
+        if notices and self.deliver_verification_notices is not None:
+            await self.deliver_verification_notices(notices)
+        return True
+
+    async def _instagram_matches(self, sender, code, row, direct_message):
+        if direct_message is None:
+            profile = await self.instagram_api.get_profile_by_id(sender)
+            return bool(
+                profile
+                and profile.username
+                and profile.username.casefold() == row.instagram
+            )
+        message_id, inbox = direct_message
+        message = await self.instagram_api.get_direct_message(message_id)
+        # Graph returns message creation times at second precision.
+        issued_at = (row.challenge_until - INSTAGRAM_CHALLENGE_TTL).replace(
+            microsecond=0
+        )
+        return bool(
+            message
+            and message.sender_id == sender
+            and message.sender_username.casefold() == row.instagram
+            and inbox
+            in {name.casefold() for name in message.recipient_usernames}
+            and message.text.strip() == code
+            and issued_at <= message.created_at < row.challenge_until
+        )
