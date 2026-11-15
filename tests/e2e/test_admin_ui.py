@@ -97,7 +97,8 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     cohorts = page.get_by_role("region", name="Активация и повторные заказы")
     assert cohorts.get_by_text("Первый заказ за 30 дней").is_visible()
     assert cohorts.get_by_text("Первая оплата за 30 дней").is_visible()
-    assert cohorts.get_by_text("Оплатили два заказа или больше").is_visible()
+    assert cohorts.get_by_text("Создали второй заказ").is_visible()
+    assert cohorts.get_by_text("Оплатили второй заказ").is_visible()
     assert cohorts.get_by_text("Оплатили второй за 90 дней").is_visible()
 
     page.get_by_role("navigation", name="Период аналитики").get_by_role(

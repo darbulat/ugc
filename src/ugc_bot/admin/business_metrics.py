@@ -257,6 +257,7 @@ class CohortMetrics(TypedDict):
     creator_activation: CohortRate
     customer_activation: CohortRate
     customer_repeat_90d: CohortRate
+    customers_who_ordered_again: int
     repeat_customers: int
     paying_customers: int
 
@@ -302,16 +303,18 @@ async def cohort_metrics(
     creator_eligible, creator_converted = creator_counts.one_or_none() or (0, 0)
 
     paid_at = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
-    # Each order has one PaymentModel, so this ranks distinct paid orders.
+    # A single payment per order makes the rank an order rank.
+    payment_order = (paid_at, OrderModel.order_id)
     paid_orders = (
         select(
             OrderModel.advertiser_id,
-            paid_at.label("paid_at"),
+            OrderModel.order_id,
+            paid_at.label("first_at"),
+            func.lead(paid_at)
+            .over(partition_by=OrderModel.advertiser_id, order_by=payment_order)
+            .label("second_at"),
             func.row_number()
-            .over(
-                partition_by=OrderModel.advertiser_id,
-                order_by=(paid_at, OrderModel.order_id),
-            )
+            .over(partition_by=OrderModel.advertiser_id, order_by=payment_order)
             .label("sequence"),
         )
         .select_from(PaymentModel)
@@ -327,16 +330,20 @@ async def cohort_metrics(
         .subquery()
     )
     paid_history = (
-        select(
-            paid_orders.c.advertiser_id,
-            func.min(paid_orders.c.paid_at).label("first_at"),
-            func.min(paid_orders.c.paid_at)
-            .filter(paid_orders.c.sequence == 2)
-            .label("second_at"),
+        select(paid_orders).where(paid_orders.c.sequence == 1).subquery()
+    )
+    ordered_again = (
+        select(OrderModel.order_id)
+        .where(
+            OrderModel.advertiser_id == paid_history.c.advertiser_id,
+            # A manually recorded prepayment can precede its own order.
+            OrderModel.order_id != paid_history.c.order_id,
+            OrderModel.created_at > paid_history.c.first_at,
+            OrderModel.created_at < as_of,
+            *_customer_application_conditions(),
         )
-        .where(paid_orders.c.sequence <= 2)
-        .group_by(paid_orders.c.advertiser_id)
-        .subquery()
+        .correlate(paid_history)
+        .exists()
     )
     repeat_duration = timedelta(days=90)
     repeat_eligible = paid_history.c.first_at <= as_of - repeat_duration
@@ -349,6 +356,7 @@ async def cohort_metrics(
                 paid_history.c.second_at
                 < paid_history.c.first_at + repeat_duration,
             ),
+            func.count().filter(ordered_again),
             func.count(paid_history.c.second_at),
             func.count(paid_history.c.first_at),
         )
@@ -360,16 +368,31 @@ async def cohort_metrics(
             full=True,
         )
     )
-    eligible, converted, repeat_base, repeat_90d, repeat_total, payers = (
-        customer_counts.one_or_none() or (0, 0, 0, 0, 0, 0)
-    )
+    (
+        eligible,
+        converted,
+        repeat_base,
+        repeat_90d,
+        ordered_again_total,
+        repeat_total,
+        payers,
+    ) = customer_counts.one_or_none() or (0, 0, 0, 0, 0, 0, 0)
     return {
         "creator_activation": _cohort_rate(creator_eligible, creator_converted),
         "customer_activation": _cohort_rate(eligible, converted),
         "customer_repeat_90d": _cohort_rate(repeat_base, repeat_90d),
+        "customers_who_ordered_again": ordered_again_total,
         "repeat_customers": repeat_total,
         "paying_customers": payers,
     }
+
+
+def _customer_application_conditions():
+    return (
+        *business_order_conditions(),
+        OrderModel.complimentary.is_(False),
+        ~_legacy_admin_launch(_admin_requester_handle(), _first_dispatch_at()),
+    )
 
 
 async def order_conversion(
@@ -392,9 +415,7 @@ async def order_conversion(
         func.count(OrderModel.order_id),
         func.count(case((paid, 1))),
     ).where(
-        *business_order_conditions(),
-        OrderModel.complimentary.is_(False),
-        ~_legacy_admin_launch(_admin_requester_handle(), _first_dispatch_at()),
+        *_customer_application_conditions(),
         OrderModel.created_at >= start,
         OrderModel.created_at < end,
     )
