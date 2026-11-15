@@ -4,26 +4,35 @@ from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.methods import SendMessage
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
+from starlette.middleware.sessions import SessionMiddleware
 
 from tests.postgres_financial.test_telegram_order_summary import (
     financial_pg_engine,
     intake_env,
     paid_order,
 )
-from ugc_bot.admin.managers import _directory, _review
+from ugc_bot.admin.app import _build_templates, _require_action_token
+from ugc_bot.admin.managers import _directory, _review, register_managers
 from ugc_bot.admin.order_worklist import worklist_manager_suggestions
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
+from ugc_bot.bot.telegram.handlers.manager_application import (
+    review_manager_in_telegram,
+)
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
 from ugc_bot.container.creator_invite_factory import build_creator_invites
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_NOTICE_EVENTS,
     MANAGER_REVIEWERS,
@@ -81,10 +90,14 @@ async def test_application_verification_review_and_directory(
     env["config"].bot.bot_token = "123456:synthetic-review-check"
     env["config"].webhook.webhook_base_url = "https://bot.example.test"
     sent: list[SendMessage] = []
+    delayed_reviewer = {addresses[0]}
 
     async def collect(_session, bot, method, timeout=None):
         assert bot.token == "123456:synthetic-review-check"
         assert isinstance(method, SendMessage)
+        if method.chat_id in delayed_reviewer:
+            delayed_reviewer.remove(method.chat_id)
+            raise OSError("Synthetic temporary Telegram outage")
         sent.append(method)
 
     monkeypatch.setattr(AiohttpSession, "make_request", collect)
@@ -142,14 +155,98 @@ async def test_application_verification_review_and_directory(
     assert submitted["submitted_at"] is not None
     version = application_version(submitted["submitted_at"])
     await publisher.process_pending_events(kafka)
+    assert [message.chat_id for message in sent] == [addresses[1]]
+    await publisher.process_pending_events(kafka)
     assert sorted(message.chat_id for message in sent) == addresses
     for message in sent:
         assert "Новая заявка менеджера" in message.text
         buttons = message.reply_markup.inline_keyboard
         assert buttons[0][0].url.endswith(f"/admin/managers/{user_id}")
         assert buttons[1][0].callback_data == f"mreview:v:{user_id.hex}"
-    with pytest.raises(ValueError, match="Instagram"):
-        await service.approve_in_telegram(user_id, reviewer_ids[0], version)
+    app = FastAPI()
+    app.add_middleware(SessionMiddleware, secret_key="synthetic-manager-review")
+    auth = SimpleNamespace(authenticate=AsyncMock(return_value=False))
+    register_managers(
+        app,
+        auth,
+        env["pg"],
+        _build_templates(app, ZoneInfo("Europe/Moscow")),
+        _require_action_token,
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://testserver"
+    ) as web:
+        url = f"/admin/managers/{user_id}"
+        unauthenticated = await web.get(url)
+        assert unauthenticated.status_code in {302, 303, 307}
+        assert unauthenticated.headers["location"].startswith("/admin/login")
+        auth.authenticate.return_value = True
+        assert (await web.get(f"/admin/managers/{uuid4()}")).status_code == 404
+        queue = await web.get("/admin/managers", params={"status": "submitted"})
+        assert queue.status_code == 200 and url in queue.text
+        card = await web.get(url)
+        assert (
+            card.status_code == 200
+            and card.headers["cache-control"] == "no-store"
+        )
+        assert (
+            "Контакты и география" in card.text
+            and "Условия работы" in card.text
+        )
+        assert "600–800 ₽" in card.text and "Россия" in card.text
+        assert answers["shortfall_plan"] in card.text
+        assert 'value="approved" disabled' in card.text
+        assert 'name="csrf_token"' in card.text
+
+    reviewer = SimpleNamespace(
+        user_id=reviewer_ids[0], admin=True, status=UserStatus.ACTIVE
+    )
+    users = SimpleNamespace(get_user=AsyncMock(return_value=reviewer))
+    messenger = SimpleNamespace(send_text=AsyncMock())
+
+    async def click_review(data, *, chat_type="private", chat_id=addresses[0]):
+        callback = SimpleNamespace(
+            message=SimpleNamespace(
+                chat=SimpleNamespace(id=chat_id, type=chat_type)
+            ),
+            from_user=SimpleNamespace(id=addresses[0]),
+            data=data,
+            answer=AsyncMock(),
+        )
+        await review_manager_in_telegram(
+            callback, users, env["config"], messenger, service
+        )
+        return callback.answer
+
+    open_button = f"mreview:v:{user_id.hex}"
+    response = await click_review(open_button, chat_type="group")
+    response.assert_awaited_once_with()
+    users.get_user.assert_not_awaited()
+    reviewer.admin = False
+    response = await click_review(open_button)
+    assert "администраторам" in response.call_args.args[0]
+    assert response.call_args.kwargs["show_alert"]
+    messenger.send_text.assert_not_awaited()
+    reviewer.admin = True
+    response = await click_review("mreview:v:bad-id")
+    assert "недействительна" in response.call_args.args[0]
+    response = await click_review(f"mreview:v:{uuid4().hex}")
+    assert "не найдена" in response.call_args.args[0]
+    messenger.send_text.assert_not_awaited()
+
+    await click_review(open_button)
+    displayed = messenger.send_text.call_args.kwargs
+    assert displayed["chat_id"] == str(addresses[0])
+    assert "<b>Город</b> · Казань" in displayed["text"]
+    assert f"<blockquote>{answers['case']}</blockquote>" in displayed["text"]
+    assert all(
+        button.callback_data is None
+        or not button.callback_data.startswith("mreview:a:")
+        for row in displayed["keyboard"].rows
+        for button in row
+    )
+    response = await click_review(f"mreview:a:{user_id.hex}:{version}")
+    assert "Instagram" in response.call_args.args[0]
     with pytest.raises(ValueError, match="уже на рассмотрении"):
         await service.answer(
             user_id, "shortfall_plan", answers["shortfall_plan"]
@@ -177,9 +274,16 @@ async def test_application_verification_review_and_directory(
             env["user"].user_id,
             application_version(submitted["submitted_at"]),
         )
-    await service.approve_in_telegram(
-        user_id, reviewer_ids[0], application_version(submitted["submitted_at"])
-    )
+    await click_review(open_button)
+    approval = messenger.send_text.call_args.kwargs["keyboard"].rows[0][0]
+    assert approval.text == "Принять менеджера"
+    assert len(approval.callback_data.encode()) <= 64
+    response = await click_review(approval.callback_data)
+    response.assert_awaited_once_with("Менеджер принят.")
+    assert "Одобрен" in messenger.send_text.call_args.kwargs["text"]
+    response = await click_review(approval.callback_data)
+    assert response.call_args.kwargs["show_alert"]
+    assert "уже обработана" in response.call_args.args[0]
     with Session(env["pg"]) as db, db.begin():
         manager = db.get(UserModel, user_id)
         manager.telegram = "test_manager"
