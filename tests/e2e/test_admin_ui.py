@@ -744,6 +744,18 @@ def test_manual_order_closure_requires_and_displays_reason(
     expect(row.get_by_text("Закрытый", exact=True)).to_be_visible()
     expect(row.get_by_text("Клиент перенёс запуск", exact=True)).to_be_visible()
     expect(page).to_have_url(f"{listing}?group=closed&search={quick_id}")
+    row.get_by_role("link", name="Открыть", exact=True).click()
+    note = page.get_by_label("Причина закрытия")
+    expect(note).to_have_value("Клиент перенёс запуск")
+    note.fill("Задержка из-за согласования брифа")
+    page.get_by_role("button", name="Сохранить причину").click()
+    expect(page.get_by_role("status")).to_contain_text(
+        "Причина закрытия сохранена."
+    )
+    page.get_by_role("link", name="Назад к списку").click()
+    expect(
+        row.get_by_text("Задержка из-за согласования брифа", exact=True)
+    ).to_be_visible()
 
     page.goto(f"{admin_server}/admin/order-model/edit/{editor_id}")
     reason = page.get_by_label("Причина закрытия")

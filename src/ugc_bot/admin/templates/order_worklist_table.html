@@ -38,6 +38,9 @@
           <span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>
           {% if row.status == 'closed' and (group == 'repeat' or row.order_id in closure_reasons) %}
             <small class="order-row-note">{{ closure_reasons.get(row.order_id) or 'Причина закрытия не записана.' }}</small>
+            {% if row.order_id not in closure_reasons and info.requires_closure_reason %}
+              <a class="order-row-note" href="{{ detail_url }}#order-closure">Указать причину</a>
+            {% endif %}
           {% endif %}
           {% if not info.archived %}
           {% for reason in info.attention_reasons %}
@@ -76,6 +79,7 @@
         </td>
         <td>
           {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Тестовый</small>{% endif %}
+          {% if info.test_candidate %}<small class="badge bg-yellow-lt mb-1">Проверить на тест</small>{% endif %}
           <a class="order-clamp fw-semibold" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a>
         </td>
         <td>
@@ -132,6 +136,12 @@
               </form>
             {% endif %}
             {% if not info.archived %}
+              {% if info.test_candidate %}
+              <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='confirm-real').replace(query=request.url.query) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-sm btn-outline-secondary">Реальный заказ</button>
+              </form>
+              {% endif %}
               <form method="post" action="{{ request.url_for('update_order_worklist', order_id=row.order_id, operation='unmark-test' if info.is_test else 'mark-test').replace(query=request.url.query) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 {% if info.is_test %}

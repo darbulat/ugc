@@ -19,6 +19,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.orm import InstrumentedAttribute, Session
+from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.admin.complaints import OPEN_COMPLAINT_STATUSES
 from ugc_bot.admin.order_summary import (
@@ -37,6 +38,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.infrastructure.db.checkout_models import CHECKOUTS, INBOX
+from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CONTROLS
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
@@ -73,6 +75,21 @@ _CLOSURE_REASON_LABELS = {
 }
 _VISIBILITY_ENTITY = "order_worklist_visibility"
 _TEST_ORDER_ENTITY = "order_test_marker"
+_CLOSURE_REASON_ENTITY = "order_closure_reason"
+_TEST_ACCOUNT_NAMES = (
+    "булат",
+    "эмилий",
+    "камиль",
+    "kamil_kahan",
+    "usemycontent",
+    "oneday_support",
+)
+_TEST_ACCOUNT_ALIASES = frozenset(
+    variant
+    for name in _TEST_ACCOUNT_NAMES
+    for variant in (name, name.title(), name.upper())
+)
+TEST_REVIEW_GROUP = "check-test"
 _ARCHIVE_ENTITY = "order_worklist_archive"
 UNPAID_GROUP = "unpaid"
 MANAGER_ASSIGNMENT_GROUPS = ("work", UNPAID_GROUP, "all", "test")
@@ -116,18 +133,35 @@ def _can_close():
     )
 
 
-def _is_test_order():
+def _order_test_marker():
     return (
-        select(AuditLogModel.new_values["test"].as_boolean())
-        .where(
-            AuditLogModel.entity_type == _TEST_ORDER_ENTITY,
-            AuditLogModel.entity_id == OrderModel.order_id,
-        )
-        .order_by(AuditLogModel.changed_at.desc(), AuditLogModel.id.desc())
-        .limit(1)
+        _latest_worklist_event(OrderModel.order_id, _TEST_ORDER_ENTITY)
+        .with_only_columns(AuditLogModel.new_values["test"].as_boolean())
         .correlate(OrderModel)
         .scalar_subquery()
-        .is_(True)
+    )
+
+
+def _is_test_order():
+    return _order_test_marker().is_(True)
+
+
+def order_test_candidate():
+    # Match whole account names to avoid flagging similar names and brands.
+    account = UserModel.__table__.alias("test_candidate_account")
+    profile = AdvertiserProfileModel.__table__.alias("test_candidate_profile")
+    aliases = [
+        func.lower(func.ltrim(func.trim(field), "@")).in_(_TEST_ACCOUNT_ALIASES)
+        for field in (account.c.username, account.c.telegram, profile.c.brand)
+    ]
+    return _order_test_marker().is_(None) & (
+        select(account.c.user_id)
+        .select_from(
+            account.outerjoin(profile, profile.c.user_id == account.c.user_id)
+        )
+        .where(account.c.user_id == OrderModel.advertiser_id, or_(*aliases))
+        .correlate(OrderModel)
+        .exists()
     )
 
 
@@ -195,8 +229,8 @@ def order_archived():
     )
 
 
-def aging_unpaid_condition(now: datetime, hours: int):
-    paid = (
+def _has_order_payment():
+    return (
         select(PaymentModel.payment_id)
         .where(
             PaymentModel.order_id == OrderModel.order_id,
@@ -209,11 +243,15 @@ def aging_unpaid_condition(now: datetime, hours: int):
         .correlate(OrderModel)
         .exists()
     )
+
+
+def aging_unpaid_condition(now: datetime, hours: int):
     return (
         (OrderModel.status == OrderStatus.NEW)
         & (OrderModel.created_at <= now - timedelta(hours=hours))
-        & ~paid
+        & ~_has_order_payment()
         & ~_is_test_order()
+        & ~order_test_candidate()
     )
 
 
@@ -234,6 +272,13 @@ def worklist_conditions(group: str, status: str, *, admin_list: bool = False):
     hidden = _can_hide() & order_visibility().is_(False)
     if group == "hidden":
         return [hidden, *scope]
+
+    if group == TEST_REVIEW_GROUP:
+        return [
+            OrderModel.status != OrderStatus.DELETED,
+            order_test_candidate(),
+            *scope,
+        ]
 
     if group == "test":
         return [
@@ -311,48 +356,124 @@ def search_orders(term: str):
     return or_(OrderModel.order_id == order_id, condition)
 
 
-def worklist_closure_reasons(
-    session: Session, order_ids: list[UUID]
-) -> dict[UUID, str]:
-    """Read the reason attached to the current closing transition."""
-    if not order_ids:
-        return {}
+def order_closure_reason():
+    """Find the latest reason or status transition for the current closure."""
     status = AuditLogModel.new_values["status"].as_string()
     previous = AuditLogModel.old_values["status"].as_string()
-    reason = (
-        _latest_worklist_event(OrderModel.order_id, "order")
-        .with_only_columns(
+    supplemental = AuditLogModel.entity_type == _CLOSURE_REASON_ENTITY
+    return (
+        select(
             case(
                 (
-                    status == OrderStatus.CLOSED.value,
-                    AuditLogModel.new_values["reason"],
+                    or_(supplemental, status == OrderStatus.CLOSED.value),
+                    AuditLogModel.new_values["reason"].as_string(),
                 )
             )
         )
         .where(
+            AuditLogModel.entity_id == OrderModel.order_id,
             AuditLogModel.action == AuditAction.UPDATE,
-            status.is_not(None),
-            status.is_distinct_from(previous),
+            or_(
+                supplemental,
+                and_(
+                    AuditLogModel.entity_type == "order",
+                    status.is_not(None),
+                    status.is_distinct_from(previous),
+                ),
+            ),
             or_(
                 OrderModel.completed_at.is_(None),
                 AuditLogModel.changed_at >= OrderModel.completed_at,
             ),
         )
+        .order_by(AuditLogModel.changed_at.desc(), AuditLogModel.id.desc())
+        .limit(1)
         .correlate(OrderModel)
         .scalar_subquery()
     )
+
+
+def format_order_closure_reason(value: str | None) -> str:
+    reason = value.strip() if isinstance(value, str) else ""
+    return _CLOSURE_REASON_LABELS.get(reason, reason)
+
+
+def worklist_closure_reasons(
+    session: Session, order_ids: list[UUID]
+) -> dict[UUID, str]:
+    if not order_ids:
+        return {}
     rows = session.execute(
-        select(OrderModel.order_id, reason).where(
+        select(OrderModel.order_id, order_closure_reason()).where(
             OrderModel.order_id.in_(order_ids),
             OrderModel.status == OrderStatus.CLOSED,
         )
     )
-    reasons = {}
-    for order_id, value in rows:
-        if isinstance(value, str) and value.strip():
-            value = value.strip()
-            reasons[order_id] = _CLOSURE_REASON_LABELS.get(value, value)
-    return reasons
+    return {
+        order_id: reason
+        for order_id, value in rows
+        if (reason := format_order_closure_reason(value))
+    }
+
+
+def order_requires_closure_reason(*, postgresql: bool) -> ColumnElement[bool]:
+    previously_active = (
+        select(AuditLogModel.id)
+        .where(
+            AuditLogModel.entity_id == OrderModel.order_id,
+            AuditLogModel.entity_type == "order",
+            or_(
+                AuditLogModel.old_values["status"].as_string()
+                == OrderStatus.ACTIVE.value,
+                AuditLogModel.new_values["status"].as_string()
+                == OrderStatus.ACTIVE.value,
+            ),
+        )
+        .correlate(OrderModel)
+        .exists()
+    )
+    launched = [
+        OrderModel.status == OrderStatus.ACTIVE,
+        OrderModel.complimentary.is_(True),
+        _order_has(OfferDispatchModel.__table__),
+        _order_has(CONTROLS),
+        previously_active,
+    ]
+    if postgresql:
+        launched.append(
+            select(OutboxEventModel.event_id)
+            .where(
+                OutboxEventModel.aggregate_id
+                == cast(OrderModel.order_id, String),
+                OutboxEventModel.event_type == "order.activated",
+            )
+            .correlate(OrderModel)
+            .exists()
+        )
+        launched.append(
+            select(INVITES.c.order_id)
+            .where(
+                INVITES.c.order_id == OrderModel.order_id,
+                INVITES.c.reported_at.is_not(None),
+            )
+            .correlate(OrderModel)
+            .exists()
+        )
+    captured_position = (
+        select(OrderItemModel.order_id)
+        .where(
+            OrderItemModel.order_id == OrderModel.order_id,
+            OrderItemModel.captured_at.is_not(None),
+        )
+        .correlate(OrderModel)
+        .exists()
+    )
+    return or_(
+        *launched,
+        _has_order_payment(),
+        captured_position,
+        picked_order_count() > 0,
+    )
 
 
 def worklist_row_details(
@@ -388,6 +509,10 @@ def worklist_row_details(
             _can_close().label("can_close"),
             _can_hide().label("can_hide"),
             _is_test_order().label("is_test"),
+            order_test_candidate().label("test_candidate"),
+            order_requires_closure_reason(
+                postgresql=session.get_bind().dialect.name == "postgresql"
+            ).label("requires_closure_reason"),
             order_deletion_blocker(
                 postgresql=session.get_bind().dialect.name == "postgresql"
             ).label("deletion_blocker"),
@@ -418,17 +543,23 @@ def worklist_row_details(
     }
 
 
-def _mark_test_order(session: Session, order_id: UUID, marked: bool) -> str:
+def _mark_test_order(
+    session: Session,
+    order_id: UUID,
+    marked: bool,
+    *,
+    confirming_real: bool = False,
+) -> str:
     was_marked = session.scalar(
-        select(_is_test_order()).where(OrderModel.order_id == order_id)
+        select(_order_test_marker()).where(OrderModel.order_id == order_id)
     )
-    if was_marked != marked:
+    if (was_marked if confirming_real else bool(was_marked)) != marked:
         session.add(
             AuditLogModel(
                 entity_type=_TEST_ORDER_ENTITY,
                 entity_id=order_id,
                 action=AuditAction.UPDATE,
-                old_values={"test": was_marked},
+                old_values={"test": bool(was_marked)},
                 new_values={"test": marked},
             )
         )
@@ -736,17 +867,62 @@ def _save_manager_change(
     )
 
 
-def close_order_with_reason(
-    session: Session, order: OrderModel, reason: object
-) -> None:
-    reason = reason.strip() if isinstance(reason, str) else ""
-    if not reason:
+def _validate_closure_reason(value: object, *, required: bool) -> str:
+    reason = value.strip() if isinstance(value, str) else ""
+    if required and not reason:
         raise ValueError("Укажите причину закрытия.")
     if len(reason) > ORDER_CLOSURE_REASON_LIMIT:
         raise ValueError(
             f"Причина закрытия должна быть не длиннее "
             f"{ORDER_CLOSURE_REASON_LIMIT} символов."
         )
+    return reason
+
+
+def _closure_reason_required_for(session: Session, order_id: UUID):
+    return session.scalar(
+        select(
+            order_requires_closure_reason(
+                postgresql=session.get_bind().dialect.name == "postgresql"
+            )
+        ).where(OrderModel.order_id == order_id)
+    )
+
+
+def record_closed_order_reason(
+    session: Session, order_id: UUID, value: object
+) -> str:
+    order = session.get(OrderModel, order_id, with_for_update=True)
+    if order is None or order.status != OrderStatus.CLOSED:
+        return "Причину можно сохранить только для закрытого заказа."
+    if not _closure_reason_required_for(session, order_id):
+        return "К заказу не привязаны оплата, запуск или подбор."
+    try:
+        reason = _validate_closure_reason(value, required=True)
+    except ValueError as error:
+        return str(error)
+    old_reason = session.scalar(
+        select(order_closure_reason()).where(OrderModel.order_id == order_id)
+    )
+    if reason != format_order_closure_reason(old_reason):
+        session.add(
+            AuditLogModel(
+                entity_type=_CLOSURE_REASON_ENTITY,
+                entity_id=order_id,
+                action=AuditAction.UPDATE,
+                old_values={"reason": old_reason},
+                new_values={"reason": reason},
+            )
+        )
+    return "Причина закрытия сохранена."
+
+
+def close_order_with_reason(
+    session: Session, order: OrderModel, value: object
+) -> None:
+    reason = _validate_closure_reason(value, required=False)
+    if not reason and _closure_reason_required_for(session, order.order_id):
+        raise ValueError("Укажите причину закрытия.")
 
     now = datetime.now(timezone.utc)
     previous_status = order.status.value
@@ -754,16 +930,32 @@ def close_order_with_reason(
     order.dispatch_stopped = True
     order.completed_at = now
     order.updated_at = now
+    new_values = {"status": OrderStatus.CLOSED.value}
+    if reason:
+        new_values["reason"] = reason
     session.add(
         AuditLogModel(
             entity_type="order",
             entity_id=order.order_id,
             action=AuditAction.UPDATE,
             old_values={"status": previous_status},
-            new_values={"status": OrderStatus.CLOSED.value, "reason": reason},
+            new_values=new_values,
             changed_at=now,
         )
     )
+
+
+def _review_test_order(session: Session, order_id: UUID, operation: str) -> str:
+    if operation == "confirm-real":
+        if session.scalar(
+            select(order_test_candidate()).where(
+                OrderModel.order_id == order_id
+            )
+        ):
+            _mark_test_order(session, order_id, False, confirming_real=True)
+            return "Заказ отмечен как реальный."
+        return "Заказ уже проверен или отсутствует в списке на проверку."
+    return _mark_test_order(session, order_id, operation == "mark-test")
 
 
 def change_order_worklist(
@@ -785,8 +977,8 @@ def change_order_worklist(
     order = session.get(OrderModel, order_id, with_for_update=True)
     if order is None or order.status == OrderStatus.DELETED:
         return "Заказ не найден."
-    if operation in {"mark-test", "unmark-test"}:
-        return _mark_test_order(session, order_id, operation == "mark-test")
+    if operation in {"mark-test", "unmark-test", "confirm-real"}:
+        return _review_test_order(session, order_id, operation)
     if operation == "delete-test":
         return _delete_test_order(session, order)
     if operation in {"hide", "restore"}:

@@ -11,6 +11,7 @@ from sqlalchemy import func, insert, select
 from sqlalchemy.orm import Session
 
 from ugc_bot import unpaid_reminder_scheduler as scheduler
+from ugc_bot.admin.order_worklist import change_order_worklist
 from ugc_bot.application.notice_delivery_ports import DeliveryFailure
 from ugc_bot.config import load_config
 from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
@@ -237,6 +238,66 @@ async def test_unpaid_reminders_use_test_accounts_without_duplicate_attempts(
             ids["ambiguous"][0]: "unknown",
         }
     await factory.kw["bind"].dispose()
+
+
+@pytest.mark.asyncio
+async def test_order_reminders_wait_for_test_review(financial_pg_engine):
+    with Session(financial_pg_engine) as session, session.begin():
+        user = UserModel(
+            user_id=uuid4(),
+            username="Камиль",
+            telegram_id="12100",
+            messenger_type="telegram",
+            status="active",
+            role_chosen_at=AT,
+        )
+        session.add(user)
+        session.flush()
+        session.add(
+            AdvertiserProfileModel(user_id=user.user_id, contact="fixture")
+        )
+        order_id, user_id = uuid4(), user.user_id
+        session.add(
+            OrderModel(
+                order_id=order_id,
+                advertiser_id=user_id,
+                status=OrderStatus.NEW,
+                offer_text="Synthetic review",
+                product_link="https://example.invalid",
+                price=1000,
+                bloggers_needed=1,
+                created_at=AT - timedelta(hours=30),
+            )
+        )
+    factory = create_session_factory(
+        financial_pg_engine.url.render_as_string(hide_password=False)
+    )
+    try:
+        async with factory() as session:
+            assert (
+                await repo.list_candidates(
+                    session, AT, START, frozenset(), user_id=user_id
+                )
+                == []
+            )
+        with Session(financial_pg_engine) as session, session.begin():
+            change_order_worklist(session, order_id, "confirm-real")
+        async with factory() as session:
+            rows = await repo.list_candidates(
+                session, AT, START, frozenset(), user_id=user_id
+            )
+            assert [row[0].order_id for row in rows] == [order_id]
+        with Session(financial_pg_engine) as session, session.begin():
+            change_order_worklist(session, order_id, "mark-test")
+        async with factory() as session:
+            assert (
+                await repo.list_candidates(
+                    session, AT, START, frozenset(), user_id=user_id
+                )
+                == []
+            )
+    finally:
+        await factory.kw["bind"].dispose()
 
 
 @pytest.mark.asyncio

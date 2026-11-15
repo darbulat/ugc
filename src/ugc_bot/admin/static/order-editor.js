@@ -7,7 +7,7 @@ if (closureField) {
   const updateClosureField = () => {
     const closing = status.value === "closed";
     closureField.hidden = !closing;
-    reason.required = closing;
+    reason.required = closing && closureField.dataset.reasonRequired === "1";
   };
   status.addEventListener("change", updateClosureField);
   updateClosureField();

@@ -80,12 +80,14 @@ from ugc_bot.admin.order_worklist import (
     ORDER_CLOSED_MESSAGE,
     ORDER_CLOSURE_REASON_LIMIT,
     ORDER_STATUS_LABELS,
+    TEST_REVIEW_GROUP,
     UNPAID_GROUP,
     ManagerChange,
     aging_unpaid_condition,
     assign_worklist_manager,
     change_order_worklist,
     close_order_with_reason,
+    record_closed_order_reason,
     search_orders,
     worklist_closure_reasons,
     worklist_conditions,
@@ -1184,6 +1186,10 @@ async def _render_order_detail_page(
         {
             "order": order,
             "status_labels": ORDER_STATUS_LABELS,
+            "closure_reason_limit": ORDER_CLOSURE_REASON_LIMIT,
+            "closure_reason_message": request.session.pop(
+                "order_closure_reason_message", ""
+            ),
             "delay_reason_labels": _DELAY_REASON_LABELS,
         },
     )
@@ -3827,7 +3833,8 @@ def _closed_order_list_url(
     previous_group = QueryParams(URL(previous_url).query).get("group", "")
     group = (
         previous_group
-        if previous_group in {"repeat", "removed", "test", "all"}
+        if previous_group
+        in {"repeat", "removed", "test", TEST_REVIEW_GROUP, "all"}
         else "closed"
     )
     if order_actions:
@@ -3840,6 +3847,35 @@ def _closed_order_list_url(
             group=group, search=str(order_id)
         )
     )
+
+
+def _register_order_closure_action(
+    app: FastAPI, auth: AdminAuth, engine: Engine
+) -> None:
+    @app.post(
+        "/admin/orders/{order_id}/closure-reason",
+        dependencies=[Depends(_make_require_admin(auth))],
+    )
+    async def save_order_closure_reason(
+        request: Request, order_id: UUID
+    ) -> Response:
+        await _require_action_token(request)
+        reason = (await request.form()).get("closure_reason")
+
+        def save() -> str:
+            with Session(engine) as session, session.begin():
+                return record_closed_order_reason(session, order_id, reason)
+
+        request.session[
+            "order_closure_reason_message"
+        ] = await asyncio.to_thread(save)
+        target = request.url_for("admin_order_detail", order_id=order_id)
+        target = target.include_query_params(
+            return_to=_order_return_url(request)
+        )
+        return RedirectResponse(
+            target.replace(fragment="order-closure"), status_code=303
+        )
 
 
 def _register_order_worklist_action(
@@ -3860,6 +3896,7 @@ def _register_order_worklist_action(
             "resume",
             "mark-test",
             "unmark-test",
+            "confirm-real",
             "delete-test",
             "archive-order",
             "restore-archived",
@@ -3888,6 +3925,7 @@ def _register_order_worklist_action(
             "restore-archived",
             "mark-test",
             "unmark-test",
+            "confirm-real",
             "hide",
             "restore",
             "close",
@@ -4017,6 +4055,7 @@ def create_admin_app() -> FastAPI:
     )
     _register_order_worklist_manager_action(app, auth, engine, config)
     _register_order_worklist_action(app, auth, engine, admin_cache)
+    _register_order_closure_action(app, auth, engine)
     _register_complaint_action(app, auth, engine, admin_cache)
 
     admin = EnumAwareAdmin(
