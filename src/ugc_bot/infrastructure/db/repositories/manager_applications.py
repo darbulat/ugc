@@ -8,7 +8,11 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.creator_invites import instagram_handle
-from ugc_bot.domain.manager_application import FIELD_CHOICES, FIELDS
+from ugc_bot.domain.manager_application import (
+    FIELD_CHOICES,
+    FIELDS,
+    application_fields,
+)
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
@@ -71,9 +75,14 @@ class ManagerApplications:
             db = _session(session)
             row = await self._row(db, user_id, lock=True)
             self._editable(row)
-            values = dict(
-                answers={**row["answers"], field: value}, updated_at=now
-            )
+            if field != "coverage" and field not in application_fields(
+                row["answers"]
+            ):
+                raise ValueError("Этот вопрос больше не относится к анкете.")
+            answers = {**row["answers"], field: value}
+            if field == "work_format" and value != "Другое":
+                answers.pop("work_format_details", None)
+            values = dict(answers=answers, updated_at=now)
             if field == "instagram" and value != row["instagram"]:
                 proof = await db.scalar(
                     select(SocialAccountModel.external_id).where(
@@ -111,7 +120,10 @@ class ManagerApplications:
             if row["state"] == "submitted":
                 return
             self._editable(row)
-            if not set(FIELDS) <= row["answers"].keys():
+            if (
+                not set(application_fields(row["answers"]))
+                <= row["answers"].keys()
+            ):
                 raise ValueError("Заполните пропущенные ответы.")
             await db.execute(
                 update(APPLICATIONS)

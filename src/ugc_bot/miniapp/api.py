@@ -175,6 +175,7 @@ class ConfigResponse(BaseModel):
         dict[str, str]
     ]  # [{"value": "...", "label": "..."}]
     bot_username: str = ""
+    manager_application_enabled: bool = False
     docs_offer_url: str = ""
     docs_privacy_url: str = ""
     docs_consent_url: str = ""
@@ -908,6 +909,10 @@ async def config(request: Request, body: InitDataBody) -> ConfigResponse:
         allowed_blogger_counts=counts,
         content_usage_options=options,
         bot_username=bot_username,
+        manager_application_enabled=(
+            body.platform == "telegram"
+            and dispatcher.get("manager_applications") is not None
+        ),
         docs_offer_url=docs_offer_url,
         docs_privacy_url=docs_privacy_url,
         docs_consent_url=docs_consent_url,
