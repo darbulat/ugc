@@ -1,6 +1,7 @@
 """Read-only operational metrics from existing order and creator history."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import TypedDict
 
 from sqlalchemy import (
     and_,
@@ -22,6 +23,7 @@ from ugc_bot.infrastructure.db.collaboration_models import (
     CollaborationModel,
 )
 from ugc_bot.infrastructure.db.models import (
+    AdvertiserProfileModel,
     AuditLogModel,
     BloggerProfileModel,
     ItemAssignmentModel,
@@ -64,9 +66,7 @@ async def count_picked_creators(session: AsyncSession) -> int:
     return int(result.scalar() or 0)
 
 
-async def creator_metrics(
-    session: AsyncSession, start: datetime, end: datetime
-) -> dict[str, int]:
+def _creator_order_activity():
     # Legacy offer dates use the latest edit time and are approximate.
     legacy = (
         _legacy_creator_picks()
@@ -97,7 +97,13 @@ async def creator_metrics(
             *business_order_conditions(),
         )
     )
-    activity = union_all(legacy, paid).subquery()
+    return union_all(legacy, paid).subquery()
+
+
+async def creator_metrics(
+    session: AsyncSession, start: datetime, end: datetime
+) -> dict[str, int]:
+    activity = _creator_order_activity()
     in_period = and_(activity.c.at >= start, activity.c.at < end)
     by_creator = (
         select(
@@ -234,6 +240,138 @@ async def admin_launches(
     return [(row.account, row.orders) for row in result.all()]
 
 
+def _valid_order_payment_date(paid_at):
+    # Manual entries can record a prepayment linked to the order.
+    return or_(
+        paid_at >= OrderModel.created_at, PaymentModel.provider == "manual"
+    )
+
+
+class CohortRate(TypedDict):
+    eligible: int
+    converted: int
+    percent: float | None
+
+
+class CohortMetrics(TypedDict):
+    creator_activation: CohortRate
+    customer_activation: CohortRate
+    customer_repeat_90d: CohortRate
+    repeat_customers: int
+    paying_customers: int
+
+
+def _cohort_rate(eligible: int, converted: int) -> CohortRate:
+    return {
+        "eligible": eligible,
+        "converted": converted,
+        "percent": round(100 * converted / eligible, 1) if eligible else None,
+    }
+
+
+def _activation_counts(first_event_at, as_of: datetime):
+    registered_at = UserModel.created_at
+    duration = timedelta(days=30)
+    eligible = registered_at <= as_of - duration
+    return (
+        func.count().filter(eligible),
+        func.count().filter(
+            eligible,
+            first_event_at >= registered_at,
+            first_event_at < registered_at + duration,
+        ),
+    )
+
+
+async def cohort_metrics(
+    session: AsyncSession, as_of: datetime
+) -> CohortMetrics:
+    activity = _creator_order_activity()
+    first_order = (
+        select(activity.c.creator, func.min(activity.c.at).label("first_at"))
+        .where(activity.c.at < as_of)
+        .group_by(activity.c.creator)
+        .subquery()
+    )
+    creator_counts = await session.execute(
+        select(*_activation_counts(first_order.c.first_at, as_of))
+        .select_from(BloggerProfileModel)
+        .join(UserModel, UserModel.user_id == BloggerProfileModel.user_id)
+        .outerjoin(first_order, first_order.c.creator == UserModel.user_id)
+    )
+    creator_eligible, creator_converted = creator_counts.one_or_none() or (0, 0)
+
+    paid_at = func.coalesce(PaymentModel.paid_at, PaymentModel.created_at)
+    # Each order has one PaymentModel, so this ranks distinct paid orders.
+    paid_orders = (
+        select(
+            OrderModel.advertiser_id,
+            paid_at.label("paid_at"),
+            func.row_number()
+            .over(
+                partition_by=OrderModel.advertiser_id,
+                order_by=(paid_at, OrderModel.order_id),
+            )
+            .label("sequence"),
+        )
+        .select_from(PaymentModel)
+        .join(OrderModel, OrderModel.order_id == PaymentModel.order_id)
+        .where(
+            *business_order_conditions(),
+            OrderModel.complimentary.is_(False),
+            PaymentModel.status == PaymentStatus.PAID,
+            PaymentModel.amount > 0,
+            _valid_order_payment_date(paid_at),
+            paid_at < as_of,
+        )
+        .subquery()
+    )
+    paid_history = (
+        select(
+            paid_orders.c.advertiser_id,
+            func.min(paid_orders.c.paid_at).label("first_at"),
+            func.min(paid_orders.c.paid_at)
+            .filter(paid_orders.c.sequence == 2)
+            .label("second_at"),
+        )
+        .where(paid_orders.c.sequence <= 2)
+        .group_by(paid_orders.c.advertiser_id)
+        .subquery()
+    )
+    repeat_duration = timedelta(days=90)
+    repeat_eligible = paid_history.c.first_at <= as_of - repeat_duration
+    customer_counts = await session.execute(
+        select(
+            *_activation_counts(paid_history.c.first_at, as_of),
+            func.count().filter(repeat_eligible),
+            func.count().filter(
+                repeat_eligible,
+                paid_history.c.second_at
+                < paid_history.c.first_at + repeat_duration,
+            ),
+            func.count(paid_history.c.second_at),
+            func.count(paid_history.c.first_at),
+        )
+        .select_from(AdvertiserProfileModel)
+        .join(UserModel, UserModel.user_id == AdvertiserProfileModel.user_id)
+        .join(
+            paid_history,
+            paid_history.c.advertiser_id == UserModel.user_id,
+            full=True,
+        )
+    )
+    eligible, converted, repeat_base, repeat_90d, repeat_total, payers = (
+        customer_counts.one_or_none() or (0, 0, 0, 0, 0, 0)
+    )
+    return {
+        "creator_activation": _cohort_rate(creator_eligible, creator_converted),
+        "customer_activation": _cohort_rate(eligible, converted),
+        "customer_repeat_90d": _cohort_rate(repeat_base, repeat_90d),
+        "repeat_customers": repeat_total,
+        "paying_customers": payers,
+    }
+
+
 async def order_conversion(
     session: AsyncSession, start: datetime, end: datetime
 ) -> dict[str, int | float | None]:
@@ -244,11 +382,7 @@ async def order_conversion(
             PaymentModel.order_id == OrderModel.order_id,
             PaymentModel.status == PaymentStatus.PAID,
             paid_at >= start,
-            # Historical manual entries can record a prepayment for this order.
-            or_(
-                paid_at >= OrderModel.created_at,
-                PaymentModel.provider == "manual",
-            ),
+            _valid_order_payment_date(paid_at),
             paid_at < end,
         )
         .correlate(OrderModel)
