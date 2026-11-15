@@ -20,7 +20,7 @@
       {% if customer_url %}<a class="admin-button" href="{{ customer_url }}">{{ order.advertiser or 'Профиль заказчика' }}</a>{% endif %}
       <a class="admin-button" href="#order-detail-actions">Действия с заказом</a>
       {% if status == 'active' %}
-        <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(order_id=order.order_id) }}">Позиции на проверке</a>
+        <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(order_id=order.order_id, stage="all") }}">Очередь по позициям</a>
         {% if order.get('financial_selection') %}
         <a class="admin-button" href="{{ request.url_for('admin_creator_invites', order_id=order.order_id) }}">Добавить креатора</a>
         {% endif %}

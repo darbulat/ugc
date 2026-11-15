@@ -150,6 +150,17 @@ enable **Automatic review** for the repository. Confirm setup by checking for
 a Codex review on a pull request. To request one on an open PR, comment
 `@codex review`.
 
+Payments (including refunds and accruals), migrations and their database
+guards, and customer notifications require explicit human approval on the
+latest PR commit, in addition to green CI. Follow
+[the required review rule](../AGENTS.md#mandatory-review-for-sensitive-changes).
+To enforce this in GitHub, put the designated reviewers with write access
+in `.github/CODEOWNERS` for those paths and for the review policy itself.
+In Settings → Branches, protect `main`: require a pull request, Code Owners
+approval, dismissal of stale approvals and the Lint and Test status check.
+A repository admin must configure these settings. Follow the project rule
+even when GitHub does not yet enforce it.
+
 ## Development on Dev Server
 
 ### SSH to Dev Server

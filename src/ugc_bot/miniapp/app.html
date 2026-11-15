@@ -33,6 +33,7 @@
   <script src="/miniapp/umc-intake-store.js" defer></script>
   <script src="/miniapp/umc-selection.js" defer></script>
   <script src="/miniapp/umc-invite-handoff.js" defer></script>
+  <script src="/miniapp/umc-manager-position-queue.js" defer></script>
   <script src="/miniapp/umc-intake-progress.js" defer></script>
   <script src="/miniapp/umc-order-images.js" defer></script>
   <script src="/miniapp/umc-subscriptions.js" defer></script>
@@ -354,6 +355,18 @@
     <button type="button" class="btn" id="btn-mgr-creators-in-offer" data-umc-primary="10">В заказе</button>
     <button type="button" class="btn btn-secondary" id="btn-mgr-creators-reserve">В резерве</button>
     <button type="button" class="btn btn-secondary" id="btn-mgr-creators-expensive">Дороже</button>
+    <button type="button" class="btn btn-secondary" id="mgr-queue-toggle" aria-expanded="false" aria-controls="mgr-position-queue">Очередь по позициям</button>
+    <section id="mgr-position-queue" hidden aria-label="Очередь по позициям">
+      <div role="group" aria-label="Этап подбора">
+        <button type="button" class="btn btn-secondary" data-stage="all">Все</button>
+        <button type="button" class="btn btn-secondary" data-stage="waiting">Ждём ответа</button>
+        <button type="button" class="btn btn-secondary" data-stage="manual">Ручной подбор</button>
+        <button type="button" class="btn btn-secondary" data-stage="received">Контакт получен</button>
+      </div>
+      <button type="button" class="btn btn-secondary" id="mgr-queue-refresh">Обновить очередь</button>
+      <p id="mgr-queue-status" class="hint" role="status"></p>
+      <ul id="mgr-queue-positions"></ul>
+    </section>
     <button type="button" class="btn btn-secondary" id="mgr-invite-toggle">Добавить креатора</button>
     <section id="mgr-invite-box" hidden>
       <form id="mgr-invite-form">
@@ -2469,6 +2482,7 @@
         var titleEl = document.getElementById('mgr-order-detail-title');
         if (titleEl) titleEl.textContent = tx('mgr_order_detail_title') + ' ' + title;
         showScreen('screen-manager-order-detail');
+        document.dispatchEvent(new CustomEvent('umc:manager-order-opened', { detail: { orderId } }));
       }
 
       function managerInviteAction(form) {

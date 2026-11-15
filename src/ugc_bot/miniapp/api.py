@@ -101,6 +101,9 @@ from ugc_bot.miniapp.manager_directory_api import (
     create_manager_directory_router,
 )
 from ugc_bot.miniapp.manager_invites import register_manager_invites
+from ugc_bot.miniapp.manager_position_queue import (
+    create_manager_position_queue_router,
+)
 from ugc_bot.miniapp.manual_grant_api import create_manual_grant_router
 from ugc_bot.miniapp.messenger_linking_api import (
     create_messenger_linking_router,
@@ -1910,6 +1913,9 @@ async def set_country(request: Request, body: SetCountryRequest) -> dict:
 
 
 register_manager_invites(router, _ensure_recent_user_and_get_id)
+router.include_router(
+    create_manager_position_queue_router(resolve_financial_principal)
+)
 router.include_router(create_invite_handoff_router(resolve_financial_principal))
 
 
