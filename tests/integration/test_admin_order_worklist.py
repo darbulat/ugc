@@ -213,10 +213,10 @@ def test_repeat_order_list_displays_current_recorded_closure_reason(worklist):
     assert response.text.count("Причина закрытия не записана.") == 1
     assert "Посторонняя правка" not in response.text
     assert "Старое закрытие" not in response.text
-    assert (
-        "По запросу владельца"
-        not in client.get(LIST, params={"group": "all"}).text
-    )
+    all_orders = client.get(LIST, params={"group": "all"}).text
+    assert "По запросу владельца" in all_orders
+    assert "Закрыли по просьбе &lt;клиента&gt;" in all_orders
+    assert "Посторонняя правка" not in all_orders
 
 
 @pytest.mark.asyncio
@@ -1245,6 +1245,57 @@ def test_order_editor_rejects_new_overflow_and_preserves_legacy_text(worklist):
         assert order.barter_description == "Билеты"
 
 
+def test_order_editor_records_manual_closure_reason(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    order_id = ids["Draft example"]
+    edit = f"/admin/order-model/edit/{order_id}"
+    data = {
+        "order_type": "ugc_only",
+        "product_link": "https://example.com",
+        "offer_text": "Draft example",
+        "price": "1200",
+        "bloggers_needed": "4",
+        "status": "closed",
+        "save": "Save",
+    }
+    invalid = client.post(edit, data={**data, "closure_reason": "  "})
+    assert invalid.status_code == 400
+    assert "Укажите причину закрытия." in invalid.text
+    with Session(engine) as session:
+        order = session.get(OrderModel, order_id)
+        assert order.status == OrderStatus.NEW
+        assert order.completed_at is None
+        assert not session.scalars(
+            select(AuditLogModel).where(AuditLogModel.entity_id == order_id)
+        ).all()
+
+    reason = "Заказчик решил отложить запуск"
+    saved = client.post(edit, data={**data, "closure_reason": f" {reason} "})
+    assert saved.status_code == 200
+    assert saved.url.path == LIST
+    assert saved.url.params["group"] == "closed"
+    assert saved.url.params["search"] == str(order_id)
+    assert reason in saved.text
+    assert reason in client.get(edit).text
+
+    again = client.post(
+        edit, data={**data, "save": "Save and continue editing"}
+    )
+    assert again.status_code == 200
+    assert reason in again.text
+    with Session(engine) as session:
+        order = session.get(OrderModel, order_id)
+        assert order.status == OrderStatus.CLOSED
+        assert order.dispatch_stopped and order.completed_at
+        event = session.scalars(
+            select(AuditLogModel).where(AuditLogModel.entity_id == order_id)
+        ).one()
+        assert event.old_values == {"status": "new"}
+        assert event.new_values == {"status": "closed", "reason": reason}
+        assert event.changed_at == order.completed_at
+
+
 def test_complaint_read_search_and_close_without_measures(worklist):
     client, engine, ids = worklist
     complaint_id = uuid4()
@@ -1313,10 +1364,10 @@ def test_complaint_read_search_and_close_without_measures(worklist):
 def test_worklist_actions_preserve_records_and_protect_payments(worklist):
     client, engine, ids = worklist
 
-    def post(name, operation, token=None, **kwargs):
+    def post(name, operation, token=None, *, reason="", **kwargs):
         return client.post(
             f"/admin/order-worklist/{ids[name]}/{operation}",
-            data={"csrf_token": token or ""},
+            data={"csrf_token": token or "", "closure_reason": reason},
             **kwargs,
         )
 
@@ -1332,9 +1383,23 @@ def test_worklist_actions_preserve_records_and_protect_payments(worklist):
     csrf = token[1]
     assert post("Active example", "close").status_code == 403
     assert post("Active example", "close", "incorrect").status_code == 403
-    assert "Заказ закрыт" in post("Active example", "close", csrf).text
+    empty = post("Active example", "close", csrf, reason="  ")
+    assert "Укажите причину закрытия." in empty.text
+    overflow = post("Active example", "close", csrf, reason="я" * 501)
+    assert (
+        "Причина закрытия должна быть не длиннее 500 символов." in overflow.text
+    )
+    assert "Active example" in client.get(LIST).text
+
+    reason = "Клиент отменил запуск"
+    closed_page = post("Active example", "close", csrf, reason=f" {reason} ")
+    assert "Заказ закрыт" in closed_page.text and reason in closed_page.text
+    assert closed_page.url.path == LIST
+    assert closed_page.url.params["group"] == "closed"
+    assert closed_page.url.params["search"] == str(ids["Active example"])
     assert "Active example" not in client.get(LIST).text
-    assert "Active example" in client.get(LIST, params={"group": "closed"}).text
+    assert reason in client.get(LIST, params={"group": "closed"}).text
+    post("Active example", "close", csrf, reason="Повторный запрос")
 
     for name in ("Paid example", "Financial example"):
         assert (
@@ -1362,7 +1427,7 @@ def test_worklist_actions_preserve_records_and_protect_payments(worklist):
             )
         ).all()
         assert {entry.entity_type: entry.new_values for entry in audit} == {
-            "order": {"status": "closed"},
+            "order": {"status": "closed", "reason": reason},
             "order_worklist_visibility": {"visible": False},
         }
         assert len(audit) == 2
