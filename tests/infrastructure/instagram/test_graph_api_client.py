@@ -18,6 +18,65 @@ from ugc_bot.infrastructure.memory_repositories import (
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("outcome", ["match", "wrong_id", "403", "no_timezone"])
+async def test_direct_message_must_come_from_the_token_scoped_graph_object(
+    outcome: str, monkeypatch
+) -> None:
+    direct_id = "message/ig="
+    received_requests = []
+    api = HttpInstagramGraphApiClient(access_token="test_token")
+    real_client = httpx.AsyncClient
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        received_requests.append(request)
+        assert request.url.host == "graph.instagram.com"
+        assert request.url.raw_path.startswith(b"/v24.0/message%2Fig%3D?")
+        assert request.headers["authorization"] == "Bearer test_token"
+        assert "access_token" not in request.url.params
+        if outcome == "403":
+            return httpx.Response(403, json={"error": {"code": 190}})
+        stamp = (
+            "2026-11-15T16:18:41"
+            if outcome == "no_timezone"
+            else "2026-11-15T16:18:41+0000"
+        )
+        return httpx.Response(
+            200,
+            json={
+                "id": "different-id" if outcome == "wrong_id" else direct_id,
+                "created_time": stamp,
+                "from": {"id": "sender", "username": "candidate"},
+                "to": {
+                    "data": [{"id": "different_graph_id", "username": "inbox"}]
+                },
+                "message": "UMCM-0123456789AB",
+            },
+        )
+
+    monkeypatch.setattr(
+        httpx,
+        "AsyncClient",
+        lambda **kwargs: real_client(
+            transport=httpx.MockTransport(respond), **kwargs
+        ),
+    )
+    assert await api.get_direct_message("../../me?fields=id") is None
+    assert received_requests == []
+    proof = await api.get_direct_message(direct_id)
+    assert len(received_requests) == 1
+    if outcome == "match":
+        assert proof is not None
+        assert (
+            proof.sender_id == "sender" and proof.sender_username == "candidate"
+        )
+        assert proof.recipient_usernames == ("inbox",)
+        assert proof.text == "UMCM-0123456789AB"
+        assert proof.created_at.utcoffset().total_seconds() == 0
+    else:
+        assert proof is None
+
+
+@pytest.mark.asyncio
 async def test_get_username_by_id_success() -> None:
     """Test successful username retrieval."""
     client = HttpInstagramGraphApiClient(access_token="test_token")

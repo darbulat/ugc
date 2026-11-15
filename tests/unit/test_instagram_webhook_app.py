@@ -1976,9 +1976,20 @@ async def test_link_outcome_send_failure_keeps_event_processed(
     assert "private_reason" not in caplog.text
 
 
-@pytest.mark.parametrize("signed", [False, True])
-def test_manager_instagram_accepts_only_signed_events_with_legacy_secret(
-    signed: bool, client: TestClient
+@pytest.mark.parametrize(
+    ("signature", "message_id", "expected"),
+    [
+        ("legacy-test-secret", "test-message", "signed"),
+        ("wrong", "test-message", "direct"),
+        (None, "test-message", "direct"),
+        ("wrong", None, None),
+    ],
+)
+def test_manager_instagram_uses_graph_proof_without_a_valid_legacy_signature(
+    signature: str | None,
+    message_id: str | None,
+    expected: str | None,
+    client: TestClient,
 ) -> None:
     config = AppConfig.model_validate(
         {
@@ -1986,6 +1997,7 @@ def test_manager_instagram_accepts_only_signed_events_with_legacy_secret(
             "DATABASE_URL": "postgresql+psycopg://localhost/test",
             "INSTAGRAM_APP_SECRET": "",
             "_INSTAGRAM_APP_SECRET": "legacy-test-secret",
+            "ADMIN_INSTAGRAM_USERNAME": "verified_inbox",
         }
     )
     payload = json.dumps(
@@ -1996,29 +2008,37 @@ def test_manager_instagram_accepts_only_signed_events_with_legacy_secret(
                     "messaging": [
                         {
                             "sender": {"id": "123"},
-                            "message": {"text": "UMCM-0123456789AB"},
+                            "message": {
+                                "text": "UMCM-0123456789AB",
+                                "mid": message_id,
+                            },
                         }
                     ]
                 }
             ],
         }
     ).encode()
-    headers = {
-        "X-Hub-Signature-256": _create_signature(
-            payload, "legacy-test-secret" if signed else "wrong"
-        )
-    }
+    headers = {}
+    if signature:
+        headers["X-Hub-Signature-256"] = _create_signature(payload, signature)
     with (
         patch("ugc_bot.instagram_webhook_app.load_config", return_value=config),
         patch("ugc_bot.instagram_webhook_app.Container"),
         patch("ugc_bot.instagram_webhook_app.ManagerApplications") as service,
     ):
         verify = service.return_value.verify_instagram = AsyncMock()
+        direct = service.return_value.verify_instagram_from_direct = AsyncMock()
         response = client.post(
             "/webhook/instagram", content=payload, headers=headers
         )
     assert response.json() == {"status": "ok"}
-    if signed:
+    if expected == "signed":
         verify.assert_awaited_once_with("UMCM-0123456789AB", "123")
     else:
         verify.assert_not_awaited()
+    if expected == "direct":
+        direct.assert_awaited_once_with(
+            "UMCM-0123456789AB", "123", message_id, "verified_inbox"
+        )
+    else:
+        direct.assert_not_awaited()

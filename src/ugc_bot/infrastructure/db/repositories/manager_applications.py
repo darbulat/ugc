@@ -29,6 +29,8 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
+INSTAGRAM_CHALLENGE_TTL = timedelta(minutes=15)
+
 
 def _enqueue_notice(db, user_id, event_type, at, payload):
     db.add(
@@ -273,13 +275,25 @@ class ManagerApplications:
                 .where(APPLICATIONS.c.user_id == user_id)
                 .values(
                     challenge=code,
-                    challenge_until=now + timedelta(minutes=15),
+                    challenge_until=now + INSTAGRAM_CHALLENGE_TTL,
                 )
             )
             return code
 
-    async def verify_instagram(self, code, sender):
-        """Only a signed Meta event with a matching Graph username is proof."""
+    async def verify_instagram_from_direct(
+        self, code: str, sender: str, message_id: str, inbox_username: str
+    ) -> bool:
+        inbox = inbox_username.strip().lstrip("@").casefold()
+        if not message_id or not inbox:
+            return False
+        return await self.verify_instagram(
+            code, sender, direct_message=(message_id, inbox)
+        )
+
+    async def verify_instagram(
+        self, code, sender, *, direct_message: tuple[str, str] | None = None
+    ) -> bool:
+        """Verify a signed event or a matching Direct message."""
         if (
             not re.fullmatch(r"UMCM-[0-9A-F]{12}", code)
             or self.instagram_api is None
@@ -291,7 +305,9 @@ class ManagerApplications:
             row = (
                 await db.execute(
                     select(
-                        APPLICATIONS.c.user_id, APPLICATIONS.c.instagram
+                        APPLICATIONS.c.user_id,
+                        APPLICATIONS.c.instagram,
+                        APPLICATIONS.c.challenge_until,
                     ).where(
                         APPLICATIONS.c.challenge == code,
                         APPLICATIONS.c.challenge_until > now,
@@ -300,13 +316,31 @@ class ManagerApplications:
             ).one_or_none()
         if row is None:
             return False
-        profile = await self.instagram_api.get_profile_by_id(sender)
-        if (
-            profile is None
-            or not profile.username
-            or profile.username.casefold() != row.instagram
-        ):
-            return False
+        if direct_message is None:
+            profile = await self.instagram_api.get_profile_by_id(sender)
+            if (
+                profile is None
+                or not profile.username
+                or profile.username.casefold() != row.instagram
+            ):
+                return False
+        else:
+            message_id, inbox = direct_message
+            message = await self.instagram_api.get_direct_message(message_id)
+            # Graph returns message creation times at second precision.
+            issued_at = (row.challenge_until - INSTAGRAM_CHALLENGE_TTL).replace(
+                microsecond=0
+            )
+            if (
+                message is None
+                or message.sender_id != sender
+                or message.sender_username.casefold() != row.instagram
+                or inbox
+                not in {name.casefold() for name in message.recipient_usernames}
+                or message.text.strip() != code
+                or not issued_at <= message.created_at < row.challenge_until
+            ):
+                return False
         async with self.transactions.transaction() as session:
             db = _session(session)
             await db.execute(
