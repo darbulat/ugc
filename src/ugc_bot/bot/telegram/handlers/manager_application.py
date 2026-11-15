@@ -1,11 +1,14 @@
 """The application lives in the bot chat and resumes from the last answer."""
 
+from html import escape
 from secrets import token_hex
+from urllib.parse import quote
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
+    CopyTextButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -18,6 +21,7 @@ from ugc_bot.domain.manager_application import (
     FIELD_CHOICES,
     FIELDS,
     INTRO,
+    WRITTEN_FIELDS,
     application_fields,
     missing_application_fields,
 )
@@ -64,20 +68,21 @@ def keyboard(rows):
 
 async def show(message, row):
     status = {
-        "submitted": "Заявка на рассмотрении.",
-        "clarify": "Команда попросила уточнить заявку.",
+        "submitted": "<b>Заявка на рассмотрении.</b>",
+        "clarify": "<b>Команда попросила уточнить заявку.</b>",
         "approved": (
-            "Вы в списке менеджеров. Назначенные заказы доступны "
+            "<b>Вы в списке менеджеров.</b>\n\nНазначенные заказы доступны "
             "в разделе «Менеджер» Mini App. Откройте приложение через /app."
         ),
         "declined": (
-            "Заявка отклонена. Можно обновить ответы и подать её повторно."
+            "<b>Заявка отклонена.</b>\n\n"
+            "Можно обновить ответы и подать её повторно."
         ),
-    }.get(row["state"], INTRO)
+    }.get(row["state"], f"<b>Работа менеджера в UMC</b>\n\n{escape(INTRO)}")
     if row["decision_note"]:
-        status += "\n\n" + row["decision_note"]
+        status += f"\n\n<blockquote>{escape(row['decision_note'])}</blockquote>"
     if row["state"] == "approved":
-        await message.answer(status, parse_mode=None)
+        await message.answer(status, parse_mode="HTML")
         return
     actions = []
     if row["state"] != "submitted":
@@ -87,7 +92,11 @@ async def show(message, row):
     if row["instagram"] and not row["instagram_verified_at"]:
         actions.append([button("Подтвердить Instagram", "instagram")])
     if row["instagram_verified_at"]:
-        status += "\n\nInstagram подтверждён."
+        status += "\n\n<b>Instagram подтверждён.</b>"
+    elif row["state"] == "submitted":
+        status += "\n\nInstagram ожидает подтверждения."
+    if row["state"] == "submitted":
+        actions.append([button("Проверить статус", "status")])
     if row["state"] == "draft" and not row.get("answers"):
         actions.append(
             [
@@ -100,7 +109,7 @@ async def show(message, row):
     await message.answer(
         status,
         reply_markup=keyboard(actions) if actions else None,
-        parse_mode=None,
+        parse_mode="HTML",
     )
 
 
@@ -132,6 +141,17 @@ async def _user(roles, external_id):
     )
 
 
+def question_text(field, work_format=None):
+    heading, *paragraphs = map(escape, FIELDS[field][0].split("\n\n"))
+    if field == "case" and work_format in {"Агентство", "В команде бренда"}:
+        paragraphs[0] += " Можете добавить, какие проекты ведёт ваша команда."
+    if field == "shortfall_plan":
+        paragraphs[0] = f"<blockquote>{paragraphs[0]}</blockquote>"
+    if field in WRITTEN_FIELDS:
+        paragraphs[-1] = f"<i>{paragraphs[-1]}</i>"
+    return "\n\n".join([f"<b>{heading}</b>", *paragraphs])
+
+
 async def ask(message, state, row, field=None):
     if row["state"] in {"submitted", "approved"}:
         await state.clear()
@@ -152,20 +172,20 @@ async def ask(message, state, row, field=None):
                 for i, label in enumerate(BUTTON_CHOICES[field])
             ]
         )
-    prompt = FIELDS[field][0]
-    if field == "case" and answers.get("work_format") in {
-        "Агентство",
-        "В команде бренда",
-    }:
-        prompt += " Можете добавить, какие проекты ведёт ваша команда."
-    await message.answer(prompt, reply_markup=markup, parse_mode=None)
+    await message.answer(
+        question_text(field, answers.get("work_format")),
+        reply_markup=markup,
+        parse_mode="HTML",
+    )
 
 
 async def send_instagram_challenge(message, service, row, config):
     if row["instagram_verified_at"]:
+        await show(message, row)
         return
     target = config.instagram.admin_instagram_username.strip().lstrip("@")
     if not target:
+        await show(message, row)
         await message.answer("Проверка Instagram временно недоступна.")
         return
     code = await service.instagram_challenge(row["user_id"])
@@ -173,17 +193,52 @@ async def send_instagram_challenge(message, service, row, config):
         await show(message, await service.open(row["user_id"]))
         return
     await message.answer(
-        f"Отправьте код {code} в Direct аккаунту @{target} "
-        "с Instagram, указанного в анкете. Код действует 15 минут. "
-        "Проверьте статус в /manager.",
-        parse_mode=None,
+        f"<code>{escape(code)}</code>",
+        reply_markup=keyboard(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="Скопировать код",
+                        copy_text=CopyTextButton(text=code),
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML",
+    )
+    status = (
+        "<b>Заявка на рассмотрении.</b>\n\n"
+        if row["state"] == "submitted"
+        else ""
+    )
+    await message.answer(
+        status + "<b>Подтвердите Instagram</b>\n\n"
+        "1. Скопируйте код из сообщения выше.\n"
+        f"2. Откройте Direct <b>@{escape(target)}</b> и отправьте код "
+        "с аккаунта, указанного в анкете.\n"
+        "3. Вернитесь сюда и нажмите «Проверить статус».\n\n"
+        "<i>Код действует 15 минут с момента выдачи.</i>",
+        reply_markup=keyboard(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="Открыть Direct",
+                        url=f"https://ig.me/m/{quote(target, safe='')}",
+                    )
+                ],
+                [button("Проверить статус", "status")],
+            ]
+        ),
+        parse_mode="HTML",
     )
 
 
 async def after_answer(message, state, service, row, config):
-    await ask(message, state, row)
-    if row["state"] == "submitted":
+    if row["state"] == "submitted" and not row["instagram_verified_at"]:
+        await state.clear()
         await send_instagram_challenge(message, service, row, config)
+        return
+    await ask(message, state, row)
 
 
 async def find_city(message, state, query, blogger_registration_service):
@@ -192,7 +247,7 @@ async def find_city(message, state, query, blogger_registration_service):
     if len(query) > FIELDS["location"][1] or not any(
         char.isalpha() for char in query
     ):
-        await message.answer(FIELDS["location"][0])
+        await message.answer(question_text("location"), parse_mode="HTML")
         return
     location = (
         await blogger_registration_service.resolve_city_identity(query)
@@ -210,11 +265,12 @@ async def find_city(message, state, query, blogger_registration_service):
     await state.update_data(city_candidate=list(location))
     label = ", ".join(dict.fromkeys(part for part in location if part))
     await message.answer(
-        f"Подходит город {label}? Если нужен другой, напишите его название.",
+        f"<b>{escape(label)}</b>\n\nЭто ваш город? "
+        "Чтобы выбрать другой, напишите его название.",
         reply_markup=keyboard(
             [[button("Да, выбрать город", f"city:{lookup}")]]
         ),
-        parse_mode=None,
+        parse_mode="HTML",
     )
 
 
@@ -264,8 +320,9 @@ async def _action(  # noqa: C901
     user_id = row["user_id"]
     field, separator, index = action.partition(":")
     fields = application_fields(row["answers"])
-    if action == "open":
-        await state.clear()
+    if action in {"open", "status"}:
+        if action == "open":
+            await state.clear()
         await show(message, row)
     elif action in {"next", "submit"}:
         await ask(message, state, row)
@@ -290,10 +347,7 @@ async def _action(  # noqa: C901
         row = await service.answer(user_id, field, value)
         await after_answer(message, state, service, row, config)
     elif action == "instagram":
-        if row["instagram_verified_at"]:
-            await show(message, row)
-        else:
-            await send_instagram_challenge(message, service, row, config)
+        await send_instagram_challenge(message, service, row, config)
 
 
 def answer_text(message, field):
@@ -350,9 +404,9 @@ async def manager_application_answer(
         row = await manager_applications.answer(user.user_id, field, value)
     except ValueError as exc:
         await message.answer(
-            f"{exc}\n\n{FIELDS[field][0]}",
+            f"<i>{escape(str(exc))}</i>\n\n{question_text(field)}",
             reply_markup=PHONE_KEYBOARD if field == "phone" else None,
-            parse_mode=None,
+            parse_mode="HTML",
         )
         return
     if field == "phone":
