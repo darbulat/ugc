@@ -1306,7 +1306,9 @@ async def start_instagram_verification(
     verification_service = dispatcher["instagram_verification_service"]
     bot_texts = dispatcher["bot_texts_service"]
     config = request.app.state.config
-    verification = await verification_service.generate_code(user_id)
+    verification = await verification_service.generate_code(
+        user_id, channel=_get_messenger_type(body.platform)
+    )
     external_id = _get_external_id(
         request, body.init_data, platform=body.platform
     )

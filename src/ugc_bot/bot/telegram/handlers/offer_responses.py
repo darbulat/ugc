@@ -334,7 +334,9 @@ async def handle_cancel_price_entry(
         pause_msg=msg_skip,
     )
     if user is not None and order_id is not None:
-        await offer_dispatch_service.record_skip(order_id, user.user_id)
+        await offer_dispatch_service.record_skip(
+            order_id, user.user_id, channel=MessengerType.TELEGRAM
+        )
 
     msg_cancelled = await bot_texts_service.get(
         "msg_price_entry_cancelled", locale
@@ -440,7 +442,10 @@ async def handle_rejection_reason(
     else:
         # Non-price reason: record skip immediately
         await offer_dispatch_service.record_skip(
-            order_id, user.user_id, rejection_reason=reason
+            order_id,
+            user.user_id,
+            rejection_reason=reason,
+            channel=MessengerType.TELEGRAM,
         )
         reason_texts = await bot_texts_service.get_many(
             list(_REJECTION_REASON_BUTTONS.values()), locale
@@ -582,6 +587,7 @@ async def handle_desired_price(
         user.user_id,
         rejection_reason=RejectionReason.LOW_PRICE,
         desired_price=value,
+        channel=MessengerType.TELEGRAM,
     )
     await state.clear()
 
@@ -798,7 +804,7 @@ async def handle_offer_confirm(
 
     try:
         result = await offer_response_service.respond_and_finalize(
-            order_id, user.user_id
+            order_id, user.user_id, channel=MessengerType.TELEGRAM
         )
     except PaidSelectionResponseError as exc:
         text = await bot_texts_service.get(

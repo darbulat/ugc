@@ -639,8 +639,22 @@ class InMemoryBloggerProfileRepository(
         default_factory=InMemoryCreatorIdentityHistoryRepository
     )
 
+    registration_channels: dict[UUID, tuple[MessengerType, datetime | None]] = (
+        field(default_factory=dict)
+    )
+
     def __post_init__(self) -> None:
         self.identity_history.seed_profiles(self.profiles.values())
+
+    async def record_registration_channel(
+        self,
+        user_id: UUID,
+        channel: MessengerType,
+        completed_at: datetime | None,
+        *,
+        session: object | None,
+    ) -> None:
+        self.registration_channels.setdefault(user_id, (channel, completed_at))
 
     async def current_legacy_profile(self, user_id, *, session):
         if (
@@ -732,6 +746,17 @@ class InMemoryBloggerProfileRepository(
             self.profiles.get(profile.user_id), profile
         )
         self.profiles[profile.user_id] = profile
+        registration = self.registration_channels.get(profile.user_id)
+        if (
+            registration is not None
+            and registration[1] is None
+            and profile.confirmed
+            and profile.agreement_confirmed_at is not None
+        ):
+            self.registration_channels[profile.user_id] = (
+                registration[0],
+                profile.agreement_confirmed_at,
+            )
 
     async def list_confirmed_user_ids(
         self,
@@ -1069,6 +1094,8 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
         key = (order_id, blogger_id)
@@ -1092,6 +1119,8 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         manager_id: UUID | None = None,
         rejection_reason: str | None = None,
         desired_price: Decimal | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
         key = (order_id, blogger_id)

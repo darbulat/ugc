@@ -23,7 +23,7 @@ from ugc_bot.application.services.paid_selection_interest import (
     PaidSelectionInterestService,
 )
 from ugc_bot.domain.entities import OfferDispatch, Order
-from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -138,7 +138,11 @@ class OfferResponseService:
             )
 
     async def respond_and_finalize(
-        self, order_id: UUID, blogger_id: UUID
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        *,
+        channel: MessengerType | None = None,
     ) -> OfferResponseResult:
         """Record response (accepted/in_offer) and update order in one tx."""
 
@@ -150,17 +154,17 @@ class OfferResponseService:
         if self.paid_selection_service is not None:
             try:
                 interest = await self.paid_selection_service.respond(
-                    order_id, blogger_id
+                    order_id, blogger_id, channel=channel
                 )
             except ValueError as exc:
                 raise PaidSelectionResponseError(str(exc)) from exc
             if interest is not None:
                 return await self._paid_result(interest)
 
-        return await self._respond_legacy(order_id, blogger_id)
+        return await self._respond_legacy(order_id, blogger_id, channel=channel)
 
     async def _respond_legacy(
-        self, order_id: UUID, blogger_id: UUID
+        self, order_id: UUID, blogger_id: UUID, *, channel: MessengerType | None
     ) -> OfferResponseResult:
         assert self.transaction_manager is not None
         now = datetime.now(timezone.utc)
@@ -196,6 +200,7 @@ class OfferResponseService:
                 in_offer=within_limit,
                 session=session,
                 manager_id=manager_id,
+                channel=channel,
             )
 
             if within_limit:

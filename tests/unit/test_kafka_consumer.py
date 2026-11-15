@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, call, patch
 from uuid import UUID
 
 import pytest
@@ -1314,8 +1314,19 @@ async def test_send_offers_uses_blogger_locale_and_bot_texts_service() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_offer_to_blogger_includes_max_id_target() -> None:
-    """_send_offer_to_blogger appends max_id target when blogger has max_id."""
+@pytest.mark.parametrize(
+    ("telegram_id", "send_results", "guarded", "channels"),
+    [
+        (None, [True], False, (MessengerType.MAX,)),
+        ("2", [True, True], False, (MessengerType.TELEGRAM, MessengerType.MAX)),
+        ("2", [False, True], True, (MessengerType.MAX,)),
+        ("2", [True], True, (MessengerType.TELEGRAM,)),
+        ("2", [None], True, ()),
+    ],
+)
+async def test_send_offer_to_blogger_records_successful_channels(
+    telegram_id, send_results, guarded, channels
+) -> None:
     now = datetime.now(timezone.utc)
     advertiser = User(
         user_id=UUID("00000000-0000-0000-0000-000000001100"),
@@ -1328,6 +1339,7 @@ async def test_send_offer_to_blogger_includes_max_id_target() -> None:
     )
     blogger = User(
         user_id=UUID("00000000-0000-0000-0000-000000001101"),
+        telegram_id=telegram_id,
         max_id="max-blogger-1",
         max_chat_id="max-chat-blogger-1",
         messenger_type=MessengerType.MAX,
@@ -1349,29 +1361,35 @@ async def test_send_offer_to_blogger_includes_max_id_target() -> None:
         created_at=now,
         completed_at=None,
     )
-    max_messenger = Mock()
-    max_messenger.send_text = AsyncMock()
+    clients = {"max": Mock(), "telegram": Mock()}
     dispatch_service = Mock()
     dispatch_service.format_offer = AsyncMock(return_value="Offer text")
     dispatch_service.record_offer_dispatch = AsyncMock(return_value=Mock())
     dispatch_service.record_offer_sent = AsyncMock()
     with patch(
-        "ugc_bot.kafka_consumer._send_offer_via_client", new_callable=AsyncMock
+        "ugc_bot.kafka_consumer._send_offer_via_client",
+        new_callable=AsyncMock,
+        side_effect=send_results,
     ) as mock_send_via:
         await _send_offer_to_blogger(
             blogger,
             order,
             "ACTIVE",
-            {"max": max_messenger},
+            clients,
             dispatch_service,
             retries=1,
             retry_delay_seconds=0.0,
             dlq_producer=None,
             dlq_topic="dlq",
+            guarded=guarded,
         )
-    mock_send_via.assert_called_once()
-    call_kwargs = mock_send_via.call_args
-    assert call_kwargs[0][0] == "max-chat-blogger-1"
+    assert mock_send_via.await_count == len(send_results)
+    if MessengerType.MAX in channels:
+        assert mock_send_via.call_args.args[0] == "max-chat-blogger-1"
+    assert dispatch_service.record_offer_sent.await_args_list == [
+        call(order.order_id, blogger.user_id, channel=channel)
+        for channel in channels
+    ]
 
 
 @pytest.mark.asyncio
