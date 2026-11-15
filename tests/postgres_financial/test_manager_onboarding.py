@@ -1,6 +1,7 @@
 """Exercise Telegram verification, admin review, and private manual contacts."""
 
-from datetime import timedelta
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -26,6 +27,7 @@ from ugc_bot.admin.order_worklist import worklist_manager_suggestions
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
+from ugc_bot.application.ports import InstagramDirectMessage
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.bot.telegram.handlers.manager_application import (
     review_manager_in_telegram,
@@ -70,7 +72,8 @@ async def test_application_verification_review_and_directory(
     graph = SimpleNamespace(
         get_profile_by_id=AsyncMock(
             return_value=SimpleNamespace(username="different_profile")
-        )
+        ),
+        get_direct_message=AsyncMock(),
     )
     service = ManagerApplications(transactions, graph)
     reviewer_ids = [uuid4(), uuid4()]
@@ -278,17 +281,47 @@ async def test_application_verification_review_and_directory(
     code = await service.instagram_challenge(user_id)
     assert code == await service.instagram_challenge(user_id)
     assert not await service.verify_instagram(code, "synthetic_instagram_id")
-    graph.get_profile_by_id.return_value.username = "test_manager"
+    env["config"].instagram.admin_instagram_username = "@expected_inbox"
+    proof = InstagramDirectMessage(
+        sender_id="synthetic_instagram_id",
+        sender_username="test_manager",
+        recipient_usernames=("expected_inbox",),
+        text=code,
+        created_at=datetime.now(timezone.utc).replace(microsecond=0),
+    )
+    request = (code, proof.sender_id, "meta-message-id", "@expected_inbox")
+    assert not await service.verify_instagram_from_direct(
+        *request[:2], "", request[3]
+    )
+    assert not await service.verify_instagram_from_direct(
+        "UMCM-000000000000", *request[1:]
+    )
+    graph.get_direct_message.assert_not_awaited()
+    for bad_proof in (
+        None,
+        replace(proof, sender_id="different_sender"),
+        replace(proof, sender_username="different_handle"),
+        replace(proof, recipient_usernames=("some_other_inbox",)),
+        replace(proof, text="A different message"),
+        replace(proof, created_at=proof.created_at - timedelta(minutes=30)),
+    ):
+        graph.get_direct_message.return_value = bad_proof
+        assert not await service.verify_instagram_from_direct(*request)
+    graph.get_direct_message.return_value = proof
     webhook_event = {
         "sender": {"id": "synthetic_instagram_id"},
-        "message": {"text": code},
+        "message": {"text": code, "mid": "meta-message-id"},
     }
     creator_verifier = SimpleNamespace(
         verify_code_by_instagram_sender=AsyncMock()
     )
     for _ in range(2):
         assert await _process_single_messaging_event(
-            webhook_event, creator_verifier, env["config"], service
+            webhook_event,
+            creator_verifier,
+            env["config"],
+            service,
+            manager_signature_verified=False,
         )
     creator_verifier.verify_code_by_instagram_sender.assert_not_awaited()
     await publisher.process_pending_events(kafka)

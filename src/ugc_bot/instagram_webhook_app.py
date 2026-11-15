@@ -242,21 +242,25 @@ async def handle_webhook(
     manager_secret = config.instagram.instagram_app_secret or (
         config.instagram.instagram_legacy_app_secret.get_secret_value()
     )
-    if (
+    manager_signature_verified = bool(
         manager_secret
         and x_hub_signature_256
-        and config.db.database_url.startswith("postgresql")
         and _verify_signature(
             payload_bytes, x_hub_signature_256, manager_secret
         )
-    ):
+    )
+    if config.db.database_url.startswith("postgresql"):
         manager_verifier = ManagerApplications(
             container.transaction_manager,
             container.build_instagram_api_client(),
         )
     try:
         await _process_webhook_events(
-            payload, verification_service, config, manager_verifier
+            payload,
+            verification_service,
+            config,
+            manager_verifier,
+            manager_signature_verified=manager_signature_verified,
         )
     except Exception as exc:
         logger.exception("Error processing webhook events", exc_info=exc)
@@ -601,11 +605,38 @@ async def _dispatch_verification_result(
         )
 
 
+async def _verify_manager_message(
+    verifier, signed: bool, message_id, code: str, sender: str, inbox: str
+) -> None:
+    if verifier is None:
+        return
+    try:
+        if signed:
+            verified = await verifier.verify_instagram(code, sender)
+        elif isinstance(message_id, str) and message_id:
+            verified = await verifier.verify_instagram_from_direct(
+                code, sender, message_id, inbox
+            )
+        else:
+            verified = False
+        logger.info(
+            "Manager Instagram verification checked",
+            extra={"signature_verified": signed, "verified": verified},
+        )
+    except Exception as exc:
+        logger.warning(
+            "Manager Instagram verification unavailable (%s)",
+            type(exc).__name__,
+        )
+
+
 async def _process_single_messaging_event(
     event: dict[str, Any],
     verification_service: InstagramVerificationService,
     config: AppConfig,
     manager_verifier=None,
+    *,
+    manager_signature_verified: bool = True,
 ) -> bool:
     """Process one messaging event. Returns True if processed."""
     is_echo = event.get("is_echo", False)
@@ -628,16 +659,14 @@ async def _process_single_messaging_event(
 
     try:
         if text.startswith("UMCM-"):
-            if manager_verifier is not None:
-                try:
-                    await manager_verifier.verify_instagram(
-                        text, str(sender_id)
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Manager Instagram verification unavailable (%s)",
-                        type(exc).__name__,
-                    )
+            await _verify_manager_message(
+                manager_verifier,
+                manager_signature_verified,
+                message.get("mid"),
+                text,
+                str(sender_id),
+                config.instagram.admin_instagram_username,
+            )
             return True
         verify = verification_service.verify_code_by_instagram_sender
         result = await verify(
@@ -661,6 +690,8 @@ async def _process_webhook_events(
     verification_service: InstagramVerificationService,
     config: AppConfig,
     manager_verifier=None,
+    *,
+    manager_signature_verified: bool = True,
 ) -> None:
     """Process webhook events from Instagram.
 
@@ -716,7 +747,11 @@ async def _process_webhook_events(
 
         for event in messaging:
             await _process_single_messaging_event(
-                event, verification_service, config, manager_verifier
+                event,
+                verification_service,
+                config,
+                manager_verifier,
+                manager_signature_verified=manager_signature_verified,
             )
 
 

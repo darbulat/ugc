@@ -1,6 +1,7 @@
 """Repository ports for the application layer."""
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import (
@@ -749,8 +750,23 @@ class InstagramProfileInfo:
         self.has_profile_pic = has_profile_pic
 
 
+@dataclass(frozen=True, slots=True)
+class InstagramDirectMessage:
+    sender_id: str
+    sender_username: str
+    recipient_usernames: tuple[str, ...]
+    text: str
+    created_at: datetime
+
+
 class InstagramGraphApiClient(ABC):
     """Port for Instagram Graph API client."""
+
+    async def get_direct_message(
+        self, message_id: str
+    ) -> InstagramDirectMessage | None:
+        """Read a message from the Instagram inbox authorized by the token."""
+        return None
 
     @abstractmethod
     async def get_username_by_id(self, instagram_user_id: str) -> str | None:

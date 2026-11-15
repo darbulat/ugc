@@ -3,12 +3,16 @@
 import asyncio
 import json
 import logging
+import re
+from datetime import datetime
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 
 from ugc_bot.application.errors import InstagramUserNotFoundError
 from ugc_bot.application.ports import (
+    InstagramDirectMessage,
     InstagramGraphApiClient,
     InstagramProfileInfo,
 )
@@ -161,6 +165,49 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
             business_access_token or ""
         ).strip() or None
         self._facebook_graph_base_url = facebook_graph_base_url.rstrip("/")
+
+    async def get_direct_message(
+        self, message_id: str
+    ) -> InstagramDirectMessage | None:
+        # An unsigned event can only address a single message on the Graph host.
+        if not self.access_token or not re.fullmatch(
+            r"[A-Za-z0-9_=+/-]{1,512}", message_id
+        ):
+            return None
+        edge = quote(message_id, safe="")
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(
+                    f"{self.base_url}/{self.api_version}/{edge}",
+                    params={"fields": "id,created_time,from,to,message"},
+                    headers={"Authorization": f"Bearer {self.access_token}"},
+                )
+            response.raise_for_status()
+            data = response.json()
+            if data["id"] != message_id or not isinstance(data["message"], str):
+                return None
+            sender = data["from"]
+            created_at = datetime.fromisoformat(data["created_time"])
+            if created_at.tzinfo is None:
+                return None
+            return InstagramDirectMessage(
+                sender_id=str(sender["id"]),
+                sender_username=str(sender["username"]),
+                recipient_usernames=tuple(
+                    str(recipient["username"])
+                    for recipient in data["to"]["data"]
+                ),
+                text=data["message"],
+                created_at=created_at,
+            )
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "Instagram Direct lookup failed",
+                extra={"status_code": exc.response.status_code},
+            )
+        except (httpx.RequestError, ValueError, KeyError, TypeError):
+            logger.warning("Could not read Instagram Direct message")
+        return None
 
     async def _get_profile_username_only(
         self, instagram_user_id: str
