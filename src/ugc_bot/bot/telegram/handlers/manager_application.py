@@ -1,12 +1,13 @@
 """The application lives in the bot chat and resumes from the last answer."""
 
+import logging
 from html import escape
 from secrets import token_hex
 from urllib.parse import quote
 from uuid import UUID
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     CopyTextButton,
@@ -17,6 +18,14 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
+from ugc_bot.bot.telegram.handlers.keyboards import (
+    CALLBACK_ADV_AGREE,
+    CALLBACK_ADV_START,
+    CALLBACK_COUNTRY_PREFIX,
+    CALLBACK_CREATOR_CREATE,
+    CALLBACK_ROLE_ADVERTISER,
+    CALLBACK_ROLE_CREATOR,
+)
 from ugc_bot.bot.telegram.manager_review_messages import (
     REVIEW_PREFIX,
     review_message,
@@ -34,6 +43,7 @@ from ugc_bot.domain.manager_application import (
 )
 
 router = Router()
+logger = logging.getLogger(__name__)
 PREFIX = "mgr:"
 BUTTON_CHOICES = {
     **FIELD_CHOICES,
@@ -49,7 +59,11 @@ PHONE_KEYBOARD = ReplyKeyboardMarkup(
 
 
 class ManagerForm(StatesGroup):
+    welcome = State()
     answer = State()
+
+
+active_manager_form = StateFilter(ManagerForm.welcome, ManagerForm.answer)
 
 
 def button(text, action):
@@ -112,7 +126,6 @@ async def open_manager_application(
 ):
     if message.chat.type != "private" or manager_applications is None:
         return
-    await state.clear()
     user = await _user(user_role_service, message.from_user.id)
     if user is None or (
         message.from_user.username
@@ -124,7 +137,59 @@ async def open_manager_application(
             username=user.username if user else "",
             telegram_username=message.from_user.username,
         )
-    await show(message, await manager_applications.open(user.user_id))
+    await show_application(
+        message, state, await manager_applications.open(user.user_id)
+    )
+
+
+async def show_application(message, state, row):
+    await state.clear()
+    if row["state"] in {"draft", "clarify", "declined"}:
+        await state.set_state(ManagerForm.welcome)
+    await show(message, row)
+
+
+@router.message(active_manager_form, CommandStart(magic=~F.args))
+async def resume_manager_application(
+    message, state, user_role_service, manager_applications=None
+):
+    if message.chat.type != "private" or manager_applications is None:
+        return
+    user = await _user(user_role_service, message.from_user.id)
+    if user is None:
+        await state.clear()
+        await message.answer(
+            "Чтобы открыть анкету менеджера, отправьте /manager."
+        )
+        return
+    row = await manager_applications.open(user.user_id)
+    if await state.get_state() == ManagerForm.answer.state:
+        field = (await state.get_data()).get("field")
+        fields = application_fields(row["answers"])
+        await ask(message, state, row, field=field if field in fields else None)
+    else:
+        await show_application(message, state, row)
+
+
+@router.callback_query(
+    active_manager_form,
+    F.data.in_(
+        {
+            CALLBACK_ROLE_ADVERTISER,
+            CALLBACK_ADV_START,
+            CALLBACK_ADV_AGREE,
+            CALLBACK_ROLE_CREATOR,
+            CALLBACK_CREATOR_CREATE,
+        }
+    )
+    | F.data.startswith(CALLBACK_COUNTRY_PREFIX),
+)
+async def keep_manager_application_on_callback(callback):
+    logger.info("Ignored another onboarding button during manager onboarding")
+    await callback.answer(
+        "Открыта анкета менеджера. Чтобы сменить роль, отправьте /role.",
+        show_alert=True,
+    )
 
 
 async def _user(roles, external_id):
@@ -372,9 +437,9 @@ async def _action(  # noqa: C901
     user_id = row["user_id"]
     field, separator, index = action.partition(":")
     fields = application_fields(row["answers"])
-    if action in {"open", "status"}:
-        if action == "open":
-            await state.clear()
+    if action == "open":
+        await show_application(message, state, row)
+    elif action == "status":
         await show(message, row)
     elif action in {"next", "submit"}:
         await ask(message, state, row)

@@ -8,7 +8,7 @@ telegram_webhook_app for webhook-based deployment. The bot runs via:
 import logging
 
 from aiogram import Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.storage.memory import MemoryStorage, SimpleEventIsolation
 
 from ugc_bot.bot.telegram.handlers.admin_message_to_user import (
     router as admin_message_to_user_router,
@@ -115,7 +115,16 @@ def build_dispatcher(
 
     if storage is None:
         storage = MemoryStorage()
-    dispatcher = Dispatcher(storage=storage)
+    # Telegram can deliver a tap and a message to different webhook replicas.
+    # Hold the same per-chat lock while reading and advancing their FSM state.
+    dispatcher = Dispatcher(
+        storage=storage,
+        events_isolation=(
+            storage.create_isolation()
+            if hasattr(storage, "create_isolation")
+            else SimpleEventIsolation()
+        ),
+    )
     dispatcher["config"] = config
 
     container = Container(config)

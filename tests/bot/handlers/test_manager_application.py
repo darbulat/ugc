@@ -1,20 +1,35 @@
 """Telegram application entry, private contact sharing and submission."""
 
+import asyncio
+from itertools import count
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid4
 
 import pytest
+from aiogram import Bot, Router
+from aiogram.methods import AnswerCallbackQuery, SendMessage
+from aiogram.types import Update
 
+import ugc_bot.app as bot_app
 from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
+from ugc_bot.bot.telegram.handlers.advertiser_registration import (
+    AdvertiserRegistrationStates,
+)
 from ugc_bot.bot.telegram.handlers.manager_application import (
+    ManagerForm,
     manager_application_action,
     manager_application_answer,
     open_manager_application,
 )
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.domain.manager_application import (
     MIN_WRITTEN_LENGTH,
     missing_application_fields,
     normalize_manager_rate,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
 )
 
 
@@ -195,6 +210,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("weekly_capacity:3")
     assert row["answers"]["weekly_capacity"] == "31–100"
     assert (await state.get_data())["field"] == "location"
+    assert "Казань, Москва или Санкт-Петербург" in message.answers[-1]
     message.text = "?"
     await manager_application_answer(
         message, state, roles, config, service, geocoder
@@ -367,3 +383,194 @@ async def test_manager_application_does_not_apply_stale_or_foreign_answers(
     await state.set_data({"field": "location"})
     await manager_application_answer(message, state, roles, config, service)
     assert message.answers[-1] == "Введите ответ на вопрос текстом."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["menu", "deep_link", "command"])
+async def test_dispatcher_keeps_manager_route(
+    monkeypatch, config, bot_texts_service, entry
+):
+    candidate = {
+        "id": 777,
+        "is_bot": False,
+        "first_name": "Test",
+        "username": "candidate",
+    }
+    payload = {"date": 1792800000, "chat": {"id": 777, "type": "private"}}
+    update_ids = count(100)
+    user = SimpleNamespace(
+        user_id=uuid4(),
+        username="",
+        telegram="candidate",
+        country="RU",
+        language="ru",
+        status=UserStatus.ACTIVE,
+    )
+    roles = SimpleNamespace(
+        get_user=AsyncMock(return_value=user),
+        set_user=AsyncMock(return_value=user),
+        update_telegram=AsyncMock(),
+    )
+    profile = SimpleNamespace(
+        get_advertiser_profile=AsyncMock(return_value=None)
+    )
+    answers = {}
+    row = dict(
+        state="draft",
+        answers=answers,
+        user_id=user.user_id,
+        instagram=None,
+        instagram_verified_at=None,
+    )
+
+    async def save(_, field, value):
+        answers[field] = value
+        return row
+
+    applications = SimpleNamespace(
+        open=AsyncMock(return_value=row), answer=AsyncMock(side_effect=save)
+    )
+    services = {
+        "metrics_collector": MagicMock(),
+        "user_role_service": roles,
+        "profile_service": profile,
+        "bot_texts_service": bot_texts_service,
+        "referral_service": SimpleNamespace(parse_referral_code=lambda _: None),
+        "manager_applications": applications,
+    }
+    monkeypatch.setattr(
+        bot_app,
+        "Container",
+        lambda _: SimpleNamespace(build_bot_services=lambda: services),
+    )
+    # Use real handler order and filters without attaching the shared Routers.
+    for name, original in list(vars(bot_app).items()):
+        if name.endswith("_router") and isinstance(original, Router):
+            fresh = Router()
+            for observer, value in original.observers.items():
+                fresh.observers[observer].handlers.extend(value.handlers)
+            monkeypatch.setattr(bot_app, name, fresh)
+
+    dispatcher = bot_app.build_dispatcher(config)
+    async with Bot("123:" + "A" * 35) as bot:
+        request = AsyncMock()
+        bot.session.make_request = request
+        dispatcher["messenger_client"] = TelegramMessengerClient(bot)
+        state = dispatcher.fsm.get_context(bot=bot, chat_id=777, user_id=777)
+
+        def last_request(method):
+            return next(
+                call.args[1]
+                for call in reversed(request.await_args_list)
+                if isinstance(call.args[1], method)
+            )
+
+        async def send(text=None, *, contact=None, callback=None):
+            update_id = next(update_ids)
+            message = {**payload, "message_id": update_id, "from": candidate}
+            if text is not None:
+                message["text"] = text
+            if contact is not None:
+                message["contact"] = {
+                    "user_id": contact,
+                    "first_name": "Test",
+                    "phone_number": "+78005550123",
+                }
+            if callback is None:
+                event = {"message": message}
+            else:
+                event = {
+                    "callback_query": {
+                        "id": str(update_id),
+                        "from": candidate,
+                        "chat_instance": "test",
+                        "message": {**message, "message_id": 10},
+                        "data": callback,
+                    }
+                }
+            await dispatcher.feed_update(
+                bot, Update.model_validate({"update_id": update_id, **event})
+            )
+
+        # The same account has previously opened business onboarding.
+        await send("/start")
+        await send(callback="role:advertiser")
+        await send(callback="adv:start")
+        assert (
+            await state.get_state() == AdvertiserRegistrationStates.name.state
+        )
+        profile.get_advertiser_profile.reset_mock()
+
+        if entry == "menu":
+            await send("/start")
+            opening = asyncio.Event()
+            opened = asyncio.Event()
+
+            async def open_draft(_):
+                opening.set()
+                await opened.wait()
+                return row
+
+            applications.open.side_effect = open_draft
+            async with asyncio.TaskGroup() as updates:
+                updates.create_task(send(callback="mgr:open"))
+                await opening.wait()
+                outdated = updates.create_task(send(callback="role:advertiser"))
+                await asyncio.sleep(0)
+                opened.set()
+                assert not outdated.done()
+            applications.open.side_effect = None
+        else:
+            await send("/start manager" if entry == "deep_link" else "/manager")
+        assert await state.get_state() == ManagerForm.welcome.state
+        assert "Работа менеджера в UMC" in last_request(SendMessage).text
+        await send("/start")
+        assert await state.get_state() == ManagerForm.welcome.state
+
+        await send(callback="role:advertiser")
+        await send(callback="adv:start")
+        assert await state.get_state() == ManagerForm.welcome.state
+        assert last_request(AnswerCallbackQuery).show_alert is True
+
+        await send(callback="mgr:next")
+        await send("Тестовый менеджер")
+        assert answers == {"name": "Тестовый менеджер"}
+
+        # Reject a typed number and a different sender's contact at the
+        # manager phone prompt, then continue after the valid contact.
+        answers.update(
+            rate="900",
+            work_format="Фрилансер",
+            weekly_capacity="1–10",
+            location="Казань",
+            location_country="Россия",
+        )
+        await send(callback="mgr:next")
+        assert (await state.get_data())["field"] == "phone"
+        await send("/start")
+        await send(callback="role:advertiser")
+        await send("123")
+        await send(contact=778)
+        assert (await state.get_data())["field"] == "phone"
+        assert "phone" not in answers
+        await send(contact=777)
+        assert answers["phone"] == "+78005550123"
+        assert (await state.get_data())["field"] == "instagram"
+        assert "Instagram" in last_request(SendMessage).text
+        profile.get_advertiser_profile.assert_not_awaited()
+
+        # Deliberate switching from the role menu still works.
+        await send("/role")
+        assert await state.get_state() is None
+        markup = last_request(SendMessage).reply_markup
+        assert any(
+            button.callback_data == "mgr:open"
+            for buttons in markup.inline_keyboard
+            for button in buttons
+        )
+        await send(callback="role:advertiser")
+        await send(callback="adv:start")
+        assert (
+            await state.get_state() == AdvertiserRegistrationStates.name.state
+        )
+    await dispatcher.fsm.close()

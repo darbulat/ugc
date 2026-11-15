@@ -282,6 +282,7 @@ async def language_selected(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    manager_applications=None,
 ) -> None:
     """Handle language selection — save language, proceed to country or role."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -332,7 +333,9 @@ async def language_selected(
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,
-        keyboard=role_inline_keyboard(texts),
+        keyboard=role_inline_keyboard(
+            texts, include_manager=manager_applications is not None
+        ),
     )
 
 
@@ -445,6 +448,7 @@ async def change_role_callback(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    manager_applications=None,
 ) -> None:
     """Handle Change role inline button — show start screen again."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -472,7 +476,9 @@ async def change_role_callback(
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
         start_text=start_text,
-        role_kb=role_inline_keyboard(texts),
+        role_kb=role_inline_keyboard(
+            texts, include_manager=manager_applications is not None
+        ),
     )
 
 
@@ -486,6 +492,7 @@ async def change_role_button(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    manager_applications=None,
 ) -> None:
     """Handle /role and 'Смена роли' — show start screen again."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -512,7 +519,9 @@ async def change_role_button(
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
         start_text=start_text,
-        role_kb=role_inline_keyboard(texts),
+        role_kb=role_inline_keyboard(
+            texts, include_manager=manager_applications is not None
+        ),
     )
 
 
