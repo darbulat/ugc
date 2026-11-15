@@ -7,7 +7,6 @@ from aiogram.types import CallbackQuery, Message
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import (
-    Button,
     IncomingCallback,
     IncomingMessage,
     Keyboard,
@@ -180,11 +179,9 @@ async def start_command(
         message.from_user is None or message.chat.id != message.from_user.id
     ):
         return
-    role_kb = role_inline_keyboard(texts)
-    if manager_applications is not None:
-        role_kb.rows.append(
-            [Button("Хочу стать менеджером", callback_data="mgr:open")]
-        )
+    role_kb = role_inline_keyboard(
+        texts, include_manager=manager_applications is not None
+    )
     await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
@@ -265,15 +262,12 @@ async def country_selected(
         locale,
     )
     await AiogramStateStore(state).clear()
-    role_kb = role_inline_keyboard(texts)
-    if manager_applications is not None:
-        role_kb.rows.append(
-            [Button("Хочу стать менеджером", callback_data="mgr:open")]
-        )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,
-        keyboard=role_kb,
+        keyboard=role_inline_keyboard(
+            texts, include_manager=manager_applications is not None
+        ),
     )
 
 
