@@ -227,9 +227,6 @@ class BloggerProfileModel(Base):
     instagram_url: Mapped[str] = mapped_column(
         String, nullable=False, unique=True
     )
-    social_prompt_dismissed: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
     confirmed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )

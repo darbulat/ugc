@@ -91,6 +91,11 @@ async def test_signed_social_roundtrip_survives_container_rebuild(
             )
             assert cross_host.status_code == 200
             assert cross_host.json()["show_prompt"] is False
+            dismiss_again = await client.post(
+                "/miniapp/api/social/prompt/dismiss", json=max_body
+            )
+            assert dismiss_again.status_code == 200
+            assert dismiss_again.json() == {"dismissed": True}
             saved = await client.post(
                 "/miniapp/api/social/accounts/save",
                 json={
@@ -139,6 +144,26 @@ async def test_signed_social_roundtrip_survives_container_rebuild(
             )
             assert same_link.status_code == 200
             assert same_link.json()["account"]["followers_count"] == 1200
+            saved_from_max = await client.post(
+                "/miniapp/api/social/accounts/save",
+                json={
+                    **max_body,
+                    "network": "youtube",
+                    "url": "https://youtube.com/@creator",
+                    "reported_followers": 0,
+                },
+            )
+            assert saved_from_max.status_code == 200
+            from_telegram = await client.post(
+                "/miniapp/api/social/accounts", json=body
+            )
+            account = next(
+                a
+                for a in from_telegram.json()["accounts"]
+                if a["account_id"] == account_id
+            )
+            assert account["followers_count"] == 0
+            assert account["metrics_source"] == "creator_self_reported"
             updated = await client.post(
                 "/miniapp/api/social/accounts/save",
                 json={

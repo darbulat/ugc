@@ -1,9 +1,9 @@
 """Atomic, canonical-owner social account upserts."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from uuid import UUID
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Connection
@@ -25,7 +25,10 @@ from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 from ugc_bot.infrastructure.db.repositories.profiles import (
     _to_blogger_profile_entity,
 )
-from ugc_bot.infrastructure.db.social_models import SocialAccountModel
+from ugc_bot.infrastructure.db.social_models import (
+    SOCIAL_PROMPT_DISMISSALS,
+    SocialAccountModel,
+)
 
 
 def _entity(model: SocialAccountModel) -> SocialAccount:
@@ -142,7 +145,6 @@ class SqlAlchemySocialAccountRepository(
             user_id,
             _to_blogger_profile_entity(profile) if profile else None,
             accounts,
-            prompt_dismissed=bool(profile and profile.social_prompt_dismissed),
         )
 
     async def read_editor(
@@ -157,7 +159,15 @@ class SqlAlchemySocialAccountRepository(
             text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         )
         await self._editor_actor(db, user_id, principal, lock=False)
-        return await self._editor_facts(db, user_id, lock=False)
+        facts = await self._editor_facts(db, user_id, lock=False)
+        if facts.profile is None:
+            return facts
+        dismissed = await db.scalar(
+            select(SOCIAL_PROMPT_DISMISSALS.c.user_id).where(
+                SOCIAL_PROMPT_DISMISSALS.c.user_id == user_id
+            )
+        )
+        return replace(facts, prompt_dismissed=dismissed is not None)
 
     async def prepare_editor_write(
         self,
@@ -173,9 +183,9 @@ class SqlAlchemySocialAccountRepository(
     async def dismiss_prompt(self, user_id: UUID, *, session: object) -> None:
         db = self._editor_session(session)
         await db.execute(
-            update(BloggerProfileModel)
-            .where(BloggerProfileModel.user_id == user_id)
-            .values(social_prompt_dismissed=True)
+            pg_insert(SOCIAL_PROMPT_DISMISSALS)
+            .values(user_id=user_id)
+            .on_conflict_do_nothing(index_elements=["user_id"])
         )
 
     async def list_accounts(
