@@ -3,6 +3,7 @@
 from html import escape
 from secrets import token_hex
 from urllib.parse import quote
+from uuid import UUID
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
@@ -16,11 +17,17 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.bot.telegram.manager_review_messages import (
+    REVIEW_PREFIX,
+    review_message,
+)
+from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.domain.manager_application import (
     FIELD_CHOICES,
     FIELDS,
     INTRO,
+    MANAGER_FIELD_LABELS,
+    MANAGER_PROGRAM_URL,
     WRITTEN_FIELDS,
     application_fields,
     missing_application_fields,
@@ -28,19 +35,6 @@ from ugc_bot.domain.manager_application import (
 
 router = Router()
 PREFIX = "mgr:"
-LABELS = {
-    "name": "Имя",
-    "rate": "Ожидаемая ставка",
-    "work_format": "Формат работы",
-    "work_format_details": "Другой формат работы",
-    "weekly_capacity": "Авторов в неделю",
-    "location": "Город",
-    "phone": "Телефон",
-    "instagram": "Instagram",
-    "case": "Кейс",
-    "settlement": "Расчёт",
-    "shortfall_plan": "Если не хватает блогеров",
-}
 BUTTON_CHOICES = {
     **FIELD_CHOICES,
     "coverage": ("Пропустить",),
@@ -102,7 +96,7 @@ async def show(message, row):
             [
                 InlineKeyboardButton(
                     text="Как устроена работа",
-                    url="https://usemycontent.ru/partner",
+                    url=MANAGER_PROGRAM_URL,
                 )
             ]
         )
@@ -138,6 +132,66 @@ async def open_manager_application(
 async def _user(roles, external_id):
     return await roles.get_user(
         external_id=str(external_id), messenger_type=MessengerType.TELEGRAM
+    )
+
+
+@router.callback_query(F.data.startswith(REVIEW_PREFIX))
+async def review_manager_in_telegram(
+    callback,
+    user_role_service,
+    config,
+    messenger_client,
+    manager_applications=None,
+):
+    message = callback.message
+    if (
+        message is None
+        or message.chat.type != "private"
+        or message.chat.id != callback.from_user.id
+        or manager_applications is None
+    ):
+        await callback.answer()
+        return
+    actor = await _user(user_role_service, callback.from_user.id)
+    if actor is None or not actor.admin or actor.status != UserStatus.ACTIVE:
+        await callback.answer(
+            "Действие доступно администраторам.", show_alert=True
+        )
+        return
+    action, _, payload = callback.data.removeprefix(REVIEW_PREFIX).partition(
+        ":"
+    )
+    identity, _, version = payload.partition(":")
+    try:
+        user_id = UUID(hex=identity)
+        expected = int(version) if action == "a" else None
+    except ValueError:
+        await callback.answer(
+            "Ссылка на анкету недействительна.", show_alert=True
+        )
+        return
+    if expected is not None:
+        try:
+            await manager_applications.approve_in_telegram(
+                user_id, actor.user_id, expected
+            )
+        except ValueError as exc:
+            await callback.answer(str(exc), show_alert=True)
+            return
+    elif action != "v":
+        await callback.answer()
+        return
+    row = await manager_applications.review_card(user_id)
+    if row is None:
+        await callback.answer("Анкета не найдена.", show_alert=True)
+        return
+    await callback.answer("Менеджер принят." if action == "a" else None)
+    text, markup = review_message(config, row, full=True)
+    await messenger_client.send_text(
+        chat_id=str(message.chat.id),
+        text=text,
+        keyboard=markup,
+        parse_mode="HTML",
     )
 
 
@@ -330,7 +384,10 @@ async def _action(  # noqa: C901
         await message.answer(
             "Что изменить?",
             reply_markup=keyboard(
-                [[button(LABELS[key], "field:" + key)] for key in fields]
+                [
+                    [button(MANAGER_FIELD_LABELS[key], "field:" + key)]
+                    for key in fields
+                ]
             ),
         )
     elif field == "field" and index in fields:

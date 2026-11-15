@@ -15,6 +15,7 @@ from ugc_bot.exception_hooks import (
     install_exception_hooks,
 )
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.manager_application_delivery import ManagerApplicationDelivery
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,8 @@ async def run_processor() -> None:
 
     container = Container(config)
     outbox_publisher, kafka_publisher = container.build_outbox_deps()
+    if config.db.database_url.startswith("postgresql"):
+        outbox_publisher.manager_notifier = ManagerApplicationDelivery(config)
 
     if (
         kafka_publisher is None

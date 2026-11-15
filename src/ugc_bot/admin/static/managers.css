@@ -1,0 +1,238 @@
+.managers-page {
+  max-width: 72rem;
+  margin-inline: auto;
+  color: #172537;
+}
+
+.managers-heading {
+  margin: 1rem 0 1.4rem;
+}
+
+.managers-heading h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  letter-spacing: -.035em;
+}
+
+.manager-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 14rem) max-content;
+  gap: .8rem;
+  align-items: end;
+  margin-bottom: .8rem;
+}
+
+.manager-filters label,
+.manager-review-form label {
+  display: grid;
+  gap: .4rem;
+  font-size: .88rem;
+  font-weight: 650;
+}
+
+.manager-filters input,
+.manager-filters select,
+.manager-review-form textarea {
+  width: 100%;
+  min-width: 0;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #cdd7e3;
+  border-radius: .5rem;
+  padding: .62rem .72rem;
+  font: inherit;
+  font-weight: 400;
+}
+
+.manager-register {
+  margin-bottom: 1.5rem;
+}
+
+.manager-register summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.manager-register .manager-filters {
+  grid-template-columns: minmax(0, 1fr) max-content;
+  margin: .85rem 0 0;
+}
+
+.manager-list,
+.manager-card-content,
+.manager-review-form {
+  display: grid;
+  gap: .8rem;
+  min-width: 0;
+}
+
+.manager-list-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .9fr) max-content;
+  gap: .9rem;
+  align-items: center;
+  padding: 1rem 1.2rem;
+  border: 1px solid #e5ebf4;
+}
+
+.manager-list-item h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.manager-list-item h2 a,
+.manager-back {
+  color: #1754a6;
+  text-underline-offset: .17em;
+}
+
+.manager-muted {
+  margin: .28rem 0 0;
+  color: #536276;
+  font-size: .88rem;
+  line-height: 1.45;
+}
+
+.manager-list-status {
+  display: grid;
+  justify-items: start;
+  gap: .12rem;
+}
+
+.manager-badge {
+  display: inline-flex;
+  width: fit-content;
+  padding: .25rem .62rem;
+  border-radius: 99rem;
+  color: #3e4e67;
+  background: #edf1f6;
+  font-weight: 650;
+  font-size: .82rem;
+}
+
+.manager-badge--submitted, .manager-badge--clarify, .manager-check {
+  color: #744c16;
+  background: #fff4d9;
+}
+
+.manager-badge--approved, .manager-check--verified {
+  color: #175d47;
+  background: #e5f5ee;
+}
+
+.manager-badge--declined {
+  color: #8c3546;
+  background: #fcecf0;
+}
+
+.manager-card-heading {
+  margin-top: .9rem;
+}
+
+.manager-meta, .manager-pages {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .65rem;
+  margin-top: .65rem;
+}
+
+.manager-card-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  align-items: start;
+  gap: 1rem;
+}
+
+.manager-card-section {
+  min-width: 0;
+  padding: 1.1rem 1.25rem;
+  border: 1px solid #e5ebf4;
+}
+
+.manager-card-section h2 {
+  margin: 0 0 .85rem;
+  font-size: 1.07rem;
+}
+
+.manager-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .65rem;
+  margin: 0;
+}
+
+.manager-fields > div {
+  min-width: 0;
+  background: #f3f6fb;
+  padding: .64rem .78rem;
+  border-radius: .5rem;
+}
+
+.manager-fields dt {
+  margin-bottom: .32rem;
+  color: #536276;
+  font-size: .82rem;
+}
+
+.manager-fields dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.manager-answer {
+  border-left: .2rem solid #8eb2e4;
+  margin: 0;
+  padding: .52rem .85rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.manager-check,
+.manager-flash {
+  border-radius: .5rem;
+  padding: .62rem .78rem;
+  margin: 0 0 .8rem;
+  font-size: .88rem;
+}
+
+.manager-flash {
+  color: #163b68;
+  background: #e7f0fd;
+}
+
+.manager-review-form {
+  margin-top: .8rem;
+}
+
+.manager-review-form textarea {
+  resize: vertical;
+}
+
+.manager-review-form button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+  .manager-filters, .manager-register .manager-filters,
+  .manager-card-layout, .manager-list-item {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .manager-open {
+    justify-self: start;
+  }
+
+  .manager-list-item {
+    gap: .55rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .manager-fields > div:has(a) {
+    grid-column: 1 / -1;
+  }
+}

@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.methods import SendMessage
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -19,27 +21,37 @@ from ugc_bot.admin.order_worklist import worklist_manager_suggestions
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
+from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
 from ugc_bot.container.creator_invite_factory import build_creator_invites
-from ugc_bot.domain.manager_application import application_fields
+from ugc_bot.domain.manager_application import (
+    MANAGER_NOTICE_EVENTS,
+    MANAGER_REVIEWERS,
+    application_fields,
+    application_version,
+)
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ManagerOrderModel,
     OrderItemModel,
+    OutboxEventModel,
     UserModel,
 )
 from ugc_bot.infrastructure.db.repositories.creator_invites import create_invite
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     ManagerApplications,
 )
+from ugc_bot.manager_application_delivery import ManagerApplicationDelivery
 from ugc_bot.miniapp.manager_invites import InviteRequest, manager_invite_data
 
 __all__ = ["financial_pg_engine", "intake_env"]
 
 
 @pytest.mark.asyncio
-async def test_application_verification_review_and_directory(intake_env):
+async def test_application_verification_review_and_directory(
+    intake_env, monkeypatch
+):
     env = intake_env
     user_id = env["admin"].user_id
     transactions = env["container"].transaction_manager
@@ -49,6 +61,41 @@ async def test_application_verification_review_and_directory(intake_env):
         )
     )
     service = ManagerApplications(transactions, graph)
+    reviewer_ids = [uuid4(), uuid4()]
+    addresses = [980031, 980032]
+    with Session(env["pg"]) as db, db.begin():
+        for reviewer, identity, address in zip(
+            MANAGER_REVIEWERS, reviewer_ids, addresses, strict=True
+        ):
+            db.add(
+                UserModel(
+                    user_id=identity,
+                    username=reviewer,
+                    telegram=reviewer,
+                    telegram_id=str(address),
+                    admin=True,
+                    status="active",
+                    messenger_type="telegram",
+                )
+            )
+    env["config"].bot.bot_token = "123456:synthetic-review-check"
+    env["config"].webhook.webhook_base_url = "https://bot.example.test"
+    sent: list[SendMessage] = []
+
+    async def collect(_session, bot, method, timeout=None):
+        assert bot.token == "123456:synthetic-review-check"
+        assert isinstance(method, SendMessage)
+        sent.append(method)
+
+    monkeypatch.setattr(AiohttpSession, "make_request", collect)
+    repos = env["container"].build_repos()
+    publisher = OutboxPublisher(
+        repos["outbox_repo"],
+        repos["order_repo"],
+        transactions,
+        manager_notifier=ManagerApplicationDelivery(env["config"]),
+    )
+    kafka = SimpleNamespace(publish=AsyncMock())
     assert (await service.open(user_id))["state"] == "draft"
     answers = dict(
         name="Камиль",
@@ -93,6 +140,16 @@ async def test_application_verification_review_and_directory(intake_env):
     )
     assert submitted["state"] == "submitted"
     assert submitted["submitted_at"] is not None
+    version = application_version(submitted["submitted_at"])
+    await publisher.process_pending_events(kafka)
+    assert sorted(message.chat_id for message in sent) == addresses
+    for message in sent:
+        assert "Новая заявка менеджера" in message.text
+        buttons = message.reply_markup.inline_keyboard
+        assert buttons[0][0].url.endswith(f"/admin/managers/{user_id}")
+        assert buttons[1][0].callback_data == f"mreview:v:{user_id.hex}"
+    with pytest.raises(ValueError, match="Instagram"):
+        await service.approve_in_telegram(user_id, reviewer_ids[0], version)
     with pytest.raises(ValueError, match="уже на рассмотрении"):
         await service.answer(
             user_id, "shortfall_plan", answers["shortfall_plan"]
@@ -111,10 +168,23 @@ async def test_application_verification_review_and_directory(intake_env):
     assert await service.verify_instagram(code, "synthetic_instagram_id")
     assert not await service.verify_instagram(code, "synthetic_instagram_id")
 
+    submitted = await service.review_card(user_id)
+    with pytest.raises(ValueError, match="обновилась"):
+        await service.approve_in_telegram(user_id, reviewer_ids[0], version)
+    with pytest.raises(ValueError, match="администраторам"):
+        await service.approve_in_telegram(
+            user_id,
+            env["user"].user_id,
+            application_version(submitted["submitted_at"]),
+        )
+    await service.approve_in_telegram(
+        user_id, reviewer_ids[0], application_version(submitted["submitted_at"])
+    )
     with Session(env["pg"]) as db, db.begin():
         manager = db.get(UserModel, user_id)
         manager.telegram = "test_manager"
-        _review(db, "approved", str(user_id), "")
+        with pytest.raises(ValueError, match="уже обработана"):
+            _review(db, "approved", str(user_id), "")
         assert "test_manager" in worklist_manager_suggestions(db)
         rows = _directory(db, "Казань", "available", 0)
         assert [r["user_id"] for r in rows] == [user_id]
@@ -126,6 +196,29 @@ async def test_application_verification_review_and_directory(intake_env):
         assert rows[0]["answers"]["location_region"] == "Татарстан"
         assert rows[0]["answers"]["location_country"] == "Россия"
     assert await service.approved(user_id)
+    await publisher.process_pending_events(kafka)
+    await publisher.process_pending_events(kafka)
+    kafka.publish.assert_not_called()
+    alerts = [message for message in sent if "Новая заявка" in message.text]
+    assert sorted(message.chat_id for message in alerts) == sorted(
+        addresses * 2
+    )
+    (welcome,) = [message for message in sent if "Вы приняты" in message.text]
+    assert welcome.chat_id == int(env["admin"].telegram_id)
+    assert "пополнения своей базы блогеров" in welcome.text
+    buttons = welcome.reply_markup.inline_keyboard
+    assert buttons[0][0].web_app.url.endswith("?view=manager")
+    assert buttons[1][0].web_app.url.endswith("?view=partner")
+    assert buttons[2][0].url == "https://usemycontent.ru/partner"
+    with Session(env["pg"]) as db:
+        events = db.scalars(
+            select(OutboxEventModel).where(
+                OutboxEventModel.event_type.in_(MANAGER_NOTICE_EVENTS)
+            )
+        ).all()
+        assert len(events) == 5 and all(
+            event.status == "published" for event in events
+        )
 
 
 @pytest.mark.asyncio

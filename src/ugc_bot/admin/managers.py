@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
-from sqlalchemy import exists, func, or_, select, update
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -13,17 +13,24 @@ from starlette.responses import RedirectResponse
 
 from ugc_bot.admin.auth import admin_login_redirect
 from ugc_bot.admin.people import telegram_handle
-from ugc_bot.domain.manager_application import FIELDS
+from ugc_bot.domain.manager_application import (
+    MANAGER_FIELD_LABELS,
+    MANAGER_STATES,
+    application_version,
+)
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
-    AuditLogModel,
     ManagerOrderModel,
     OrderModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.repositories.manager_applications import (
+    record_manager_review,
+    review_manager_application,
+)
 
 
-def _directory(db, query, status, offset):  # noqa: PLR0913
+def _manager_rows():
     member = exists().where(ManagerOrderModel.user_id == UserModel.user_id)
     running = (
         select(func.count())
@@ -37,7 +44,7 @@ def _directory(db, query, status, offset):  # noqa: PLR0913
         .scalar_subquery()
     )
     label = func.coalesce(APPLICATIONS.c.state, "existing")
-    stmt = (
+    return (
         select(
             UserModel.user_id,
             UserModel.username,
@@ -46,17 +53,25 @@ def _directory(db, query, status, offset):  # noqa: PLR0913
             APPLICATIONS.c.registered_by_admin,
             label.label("state"),
             APPLICATIONS.c.answers,
+            APPLICATIONS.c.submitted_at,
+            APPLICATIONS.c.reviewed_at,
             APPLICATIONS.c.instagram_verified_at,
             APPLICATIONS.c.decision_note,
             running.label("orders"),
         )
         .outerjoin(APPLICATIONS, APPLICATIONS.c.user_id == UserModel.user_id)
         .where(or_(member, APPLICATIONS.c.state != "draft"))
-        .order_by(
-            (label == "submitted").desc(),
-            APPLICATIONS.c.updated_at.desc().nulls_last(),
-            UserModel.user_id,
-        )
+    )
+
+
+def _directory(db, query, status, offset):
+    stmt = _manager_rows()
+    label = stmt.selected_columns.state
+    running = stmt.selected_columns.orders
+    stmt = stmt.order_by(
+        (label == "submitted").desc(),
+        APPLICATIONS.c.updated_at.desc().nulls_last(),
+        UserModel.user_id,
     )
     if query:
         pattern = (
@@ -92,93 +107,60 @@ def _directory(db, query, status, offset):  # noqa: PLR0913
     return db.execute(stmt.offset(offset).limit(31)).mappings().all()
 
 
-def _review(db, command, identity, note):
+def _review(db, command, identity, note, *, version=None):
+    if command != "register":
+        review_manager_application(
+            db, UUID(identity), command, note, version=version
+        )
+        return "Изменение сохранено."
     now = datetime.now(timezone.utc)
-    if command == "register":
-        handle = telegram_handle(identity)
-        if handle is None:
-            raise ValueError("Укажите Telegram-ник.")
-        users = db.scalars(
-            select(UserModel.user_id)
-            .where(
-                func.lower(UserModel.telegram) == handle.lower(),
-                UserModel.status == "active",
-                UserModel.telegram_id.is_not(None),
-            )
-            .limit(2)
-        ).all()
-        if len(users) != 1:
-            raise ValueError(
-                "Нужен один активный Telegram-аккаунт, который уже открыл бота."
-            )
-        uid = users[0]
-        created = db.scalar(
-            insert(APPLICATIONS)
-            .values(
-                user_id=uid,
+    handle = telegram_handle(identity)
+    if handle is None:
+        raise ValueError("Укажите Telegram-ник.")
+    users = db.scalars(
+        select(UserModel.user_id)
+        .where(
+            func.lower(UserModel.telegram) == handle.lower(),
+            UserModel.status == "active",
+            UserModel.telegram_id.is_not(None),
+        )
+        .limit(2)
+    ).all()
+    if len(users) != 1:
+        raise ValueError(
+            "Нужен один активный Telegram-аккаунт, который уже открыл бота."
+        )
+    uid = users[0]
+    created = db.scalar(
+        insert(APPLICATIONS)
+        .values(
+            user_id=uid,
+            state="approved",
+            answers={},
+            updated_at=now,
+            reviewed_at=now,
+            registered_by_admin=True,
+        )
+        .on_conflict_do_update(
+            index_elements=[APPLICATIONS.c.user_id],
+            where=APPLICATIONS.c.state == "draft",
+            set_=dict(
                 state="approved",
-                answers={},
                 updated_at=now,
                 reviewed_at=now,
                 registered_by_admin=True,
-            )
-            .on_conflict_do_update(
-                index_elements=[APPLICATIONS.c.user_id],
-                where=APPLICATIONS.c.state == "draft",
-                set_=dict(
-                    state="approved",
-                    updated_at=now,
-                    reviewed_at=now,
-                    registered_by_admin=True,
-                    challenge=None,
-                    challenge_until=None,
-                ),
-            )
-            .returning(APPLICATIONS.c.user_id)
+                challenge=None,
+                challenge_until=None,
+            ),
         )
-        if created is None:
-            raise ValueError(
-                "Для этого аккаунта уже есть запись. Откройте её в списке."
-            )
-        state = "approved"
-    else:
-        uid = UUID(identity)
-        row = (
-            db.execute(
-                select(APPLICATIONS)
-                .where(APPLICATIONS.c.user_id == uid)
-                .with_for_update()
-            )
-            .mappings()
-            .one_or_none()
-        )
-        if row is None or row["state"] != "submitted":
-            raise ValueError("Заявка уже обработана.")
-        if command == "approved" and not row["instagram_verified_at"]:
-            raise ValueError("Кандидату нужно подтвердить Instagram.")
-        if command == "clarify" and not note:
-            raise ValueError("Напишите, что нужно уточнить.")
-        state = command
-        db.execute(
-            update(APPLICATIONS)
-            .where(APPLICATIONS.c.user_id == uid)
-            .values(
-                state=state,
-                reviewed_at=now,
-                updated_at=now,
-                decision_note=note or None,
-            )
-        )
-    db.add(
-        AuditLogModel(
-            entity_type="manager_application",
-            entity_id=uid,
-            action="update",
-            new_values={"state": state, "source": command},
-            changed_at=now,
-        )
+        .returning(APPLICATIONS.c.user_id)
     )
-    return "Изменение сохранено."
+    if created is None:
+        raise ValueError(
+            "Для этого аккаунта уже есть запись. Откройте её в списке."
+        )
+    record_manager_review(db, uid, "approved", command, now)
+    return "Менеджер добавлен. Уведомление поставлено в очередь."
 
 
 def register_managers(  # noqa: C901
@@ -188,9 +170,19 @@ def register_managers(  # noqa: C901
         with Session(engine) as db:
             return _directory(db, query, status, offset)
 
-    def write(command, identity, note):
+    def read_detail(user_id):
+        with Session(engine) as db:
+            return (
+                db.execute(_manager_rows().where(UserModel.user_id == user_id))
+                .mappings()
+                .one_or_none()
+            )
+
+    def write(command, identity, note, version):
         with Session(engine) as db, db.begin():
-            return _review(db, command, identity, note)
+            if version is None:
+                return _review(db, command, identity, note)
+            return _review(db, command, identity, note, version=version)
 
     @app.get("/admin/managers")
     async def managers(
@@ -213,7 +205,29 @@ def register_managers(  # noqa: C901
                 status=status,
                 page=page,
                 has_more=len(rows) > 30,
-                fields=FIELDS,
+                states=MANAGER_STATES,
+                message=request.session.pop("managers_message", None),
+            ),
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get("/admin/managers/{user_id}")
+    async def manager_card(request: Request, user_id: UUID):
+        if not await auth.authenticate(request):
+            return admin_login_redirect(request)
+        if engine.dialect.name != "postgresql":
+            raise HTTPException(503)
+        row = await asyncio.to_thread(read_detail, user_id)
+        if row is None:
+            raise HTTPException(404)
+        return templates.TemplateResponse(
+            request,
+            "manager_card.html",
+            dict(
+                row=row,
+                states=MANAGER_STATES,
+                labels=MANAGER_FIELD_LABELS,
+                version=application_version(row["submitted_at"]),
                 message=request.session.pop("managers_message", None),
             ),
             headers={"Cache-Control": "no-store"},
@@ -233,11 +247,26 @@ def register_managers(  # noqa: C901
         note = str(form.get("note", "")).strip()
         if len(note) > 300:
             raise HTTPException(422)
+        identity = str(form.get("identity", ""))
+        target = "/admin/managers"
+        version_text = str(form.get("version", ""))
+        if version_text and (
+            not version_text.isdecimal() or len(version_text) > 20
+        ):
+            raise HTTPException(422)
         try:
+            if form.get("from_detail") == "1" and command != "register":
+                target += f"/{UUID(identity)}"
             message = await asyncio.to_thread(
-                write, command, str(form.get("identity", "")), note
+                write,
+                command,
+                identity,
+                note,
+                int(version_text) if version_text else None,
             )
+            if command == "approved":
+                message = "Менеджер принят. Уведомление поставлено в очередь."
         except ValueError as exc:
             message = str(exc)
         request.session["managers_message"] = message
-        return RedirectResponse("/admin/managers", status_code=303)
+        return RedirectResponse(target, status_code=303)
