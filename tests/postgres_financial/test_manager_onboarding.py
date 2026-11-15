@@ -485,6 +485,22 @@ async def test_staff_contact_for_own_order_and_manager_notice(intake_env):
     )
     with pytest.raises(ValueError, match="unavailable"):
         await service.reported_contact_text(outsider, identity)
+    assert not (await order_summary.view(client, order_id))["positions"][0][
+        "contact_delivered"
+    ]
+    with pytest.raises(ValueError, match="unavailable"):
+        await service.acknowledge_staff_contact(outsider, identity)
+    await service.acknowledge_staff_contact(client, identity)
+    await service.acknowledge_staff_contact(client, identity)
+    staff_at = clock.now()
+    assert (await order_summary.view(client, order_id))["positions"][0][
+        "contact_at"
+    ] == staff_at
+    async with service.transactions.transaction() as session:
+        snapshot = await order_summary.maturity.repository.load(
+            order_id, session=session
+        )
+        assert snapshot.positions[0].delivery_id == identity
     assert await service.claim_manager_notice(identity) is None
     assert await service.delivery.run_once() == 0
     bot.send_message.assert_not_awaited()
@@ -526,6 +542,24 @@ async def test_staff_contact_for_own_order_and_manager_notice(intake_env):
         await service.selection.respond(order_id, creator)
     accepted = await service.accept(identity, creator)
     assert accepted.paid_item_id == item
+    from tests.postgres_financial.test_creator_invites import fake_receipt
+
+    contact_transport = SimpleNamespace(
+        send=AsyncMock(side_effect=fake_receipt)
+    )
+    await service.card_contact(
+        client, accepted.assignment_id, contact_transport
+    )
+    async with service.transactions.transaction() as session:
+        snapshot = await order_summary.maturity.repository.load(
+            order_id, session=session
+        )
+        assert snapshot.positions[0].delivery_id == identity
+        assert snapshot.positions[0].delivered_at == staff_at
+    assert (await order_summary.view(client, order_id))["positions"][0][
+        "contact_at"
+    ] == staff_at
+
     assert await service.claim_manager_notice(identity) == (
         int(manager.telegram_id),
         order_id,

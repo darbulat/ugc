@@ -62,22 +62,30 @@ def install_final_guard(metadata, connection, **kw):
         if install_financial_completion_guards(connection, names):
             # Match the final migrated authority only for complete metadata.
             # Partial historical metadata keeps its original guard boundary.
-            if BROWSER_ATTEMPTS.name in names:
-                browser = import_module(
-                    "ugc_bot.infrastructure.db.migrations.versions."
-                    "0138_browser_checkout"
-                )
-                connection.exec_driver_sql(browser._authority_sql(browser=True))
-                if BROWSER_ATTEMPTS in kw.get("tables", ()):
-                    connection.exec_driver_sql(BROWSER_CHECKOUT_GUARDS)
-            else:
-                public_scope = import_module(
-                    "ugc_bot.infrastructure.db.migrations.versions."
-                    "0127_public_policy_scope"
-                )
-                connection.exec_driver_sql(
-                    public_scope._authority_sql(public=True)
-                )
+            public_scope = import_module(
+                "ugc_bot.infrastructure.db.migrations.versions."
+                "0127_public_policy_scope"
+            )
+            connection.exec_driver_sql(public_scope._authority_sql(public=True))
+            from ugc_bot.infrastructure.db.invite_handoff_schema import (
+                TABLES as HANDOFF_TABLES,
+            )
+            from ugc_bot.infrastructure.db.invite_handoff_schema import (
+                install_invite_handoff_guards,
+            )
+
+            if {table.name for table in HANDOFF_TABLES} <= names:
+                install_invite_handoff_guards(connection.exec_driver_sql)
+                if BROWSER_ATTEMPTS.name in names:
+                    browser = import_module(
+                        "ugc_bot.infrastructure.db.migrations.versions."
+                        "0139_browser_checkout"
+                    )
+                    connection.exec_driver_sql(
+                        browser._authority_sql(browser=True)
+                    )
+                    if BROWSER_ATTEMPTS in kw.get("tables", ()):
+                        connection.exec_driver_sql(BROWSER_CHECKOUT_GUARDS)
 
 
 sa.event.listen(Base.metadata, "after_create", install_final_guard)

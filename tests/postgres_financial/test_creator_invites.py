@@ -237,6 +237,7 @@ def fake_receipt(attempt):
 async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
     from re import search
 
+    from tests.postgres_financial.test_creator_social import seed_profile
     from ugc_bot.admin.app import create_admin_app
 
     env = intake_env
@@ -252,6 +253,20 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         "TELEGRAM_BOT_USERNAME": "example_test_bot",
     }.items():
         monkeypatch.setenv(key, value)
+    with Session(env["pg"]) as db, db.begin():
+        creator = seed_profile(db, stable_id=uuid4().hex)
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == creator)
+            .values(telegram_id="12341234", telegram="known_contact")
+        )
+        db.execute(
+            update(BloggerProfileModel)
+            .where(BloggerProfileModel.user_id == creator)
+            .values(instagram_url="https://instagram.com/known_contact")
+        )
+    send = AsyncMock(return_value="sent")
+    monkeypatch.setattr("ugc_bot.admin.creator_invites.dispatch_invite", send)
     path = f"/admin/orders/{order_id}/creator-invites"
     with TestClient(create_admin_app()) as client:
         assert client.get(path, follow_redirects=False).is_redirect
@@ -276,7 +291,28 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
             r"https://t.me/example_test_bot[?]start=oi_[a-f0-9]{32}", page.text
         )
         assert "Ждём подтверждения" in page.text
-        assert "№1 · Ссылка уже создана" in page.text
-        assert page.text.index(">№2</option>") < page.text.index(
-            ">№1 · Ссылка уже создана</option>"
+        assert "Первая свободная · №2" in page.text
+        assert ">№1</option>" not in page.text
+        known = {
+            "instagram": "@known_contact",
+            "telegram": "@known_contact",
+            "csrf_token": token[1],
+        }
+        checked = client.post(path, data={**known, "operation": "preview"})
+        assert "бот доступен" in checked.text
+        send.assert_not_awaited()
+        sent = client.post(path, data={**known, "operation": "send"})
+        assert "Приглашение отправлено в Telegram." in sent.text
+        assert "Персональная ссылка готова" not in sent.text
+        send.assert_awaited_once()
+        manual = client.post(
+            path,
+            data={
+                **known,
+                "operation": "send",
+                "record_consent": "1",
+                "consent_source": "telegram",
+            },
         )
+        assert "Персональная ссылка готова" in manual.text
+        send.assert_awaited_once()

@@ -28,6 +28,9 @@ from ugc_bot.infrastructure.db.order_review_models import ALERTS, OWNERS
 from ugc_bot.infrastructure.db.order_summary_models import REPORTS
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.replacement_models import TABLES as REPLACEMENTS
+from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+    first_staff_open,
+)
 from ugc_bot.infrastructure.db.repositories.order_summary import report_state
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 from ugc_bot.infrastructure.db.selection_maturity_models import (
@@ -140,7 +143,9 @@ def _positions():
             OWNERS.c.manager_id.label("owner_override"),
             assignment.creator_id,
             func.coalesce(creator.username, creator.telegram).label("creator"),
-            func.coalesce(original_contact, disclosed).label("contact_at"),
+            func.coalesce(
+                original_contact, disclosed, first_staff_open(item, True)
+            ).label("contact_at"),
             delivery.label("delivery_state"),
             work.state.label("work_state"),
             work.due_at.label("work_due_at"),

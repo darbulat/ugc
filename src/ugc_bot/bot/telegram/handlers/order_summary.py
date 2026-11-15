@@ -10,7 +10,10 @@ from aiogram import Router
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.customer_intake import principal_for
 from ugc_bot.bot.telegram import order_summary_runtime
-from ugc_bot.bot.telegram.handlers.creator_invites import CardContactTransport
+from ugc_bot.bot.telegram.handlers.creator_invites import (
+    CardContactTransport,
+    sharing_buttons,
+)
 from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
 
 router = Router()
@@ -91,7 +94,11 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
         card_contact_available = manual_state in {"card_ready", "accepted"}
         reported = item.get("reported_contact_id")
         if reported:
-            state = "Согласие получено в переписке"
+            state = (
+                "Получение контакта подтверждено"
+                if item.get("staff_opened_at")
+                else "Согласие получено в переписке"
+            )
         elif not item["assignment_id"]:
             state = {"refunded": "Возврат", "paid": "Ожидает контакта"}.get(
                 item["selection_state"], "Подбор"
@@ -248,11 +255,18 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
             rows.append(arrows)
         if mode == "open":
             rows.append([button("Обновить", "open", f":{page}:0")])
+            if not data["work_closed"]:
+                rows.append(
+                    [
+                        Button(label, callback_data=action)
+                        for label, action in sharing_buttons(data["order_id"])
+                    ]
+                )
     return "\n".join(lines), Keyboard(KeyboardKind.INLINE, rows)
 
 
 @router.callback_query(lambda c: bool(c.data and c.data.startswith(PREFIX)))
-async def order_summary_callback(  # noqa: C901
+async def order_summary_callback(  # noqa: C901, PLR0912
     callback,
     user_role_service,
     order_summary_service=None,
@@ -284,24 +298,50 @@ async def order_summary_callback(  # noqa: C901
             else UUID(key)
         )
         service = order_summary_service
-        if action in {"manual", "staff"}:
+        if action in {"manual", "staff", "staffok"}:
             if creator_invite_service is None or not incoming.message_id:
                 raise ValueError("creator_invite_contact_unavailable")
             order_id = (
                 await creator_invite_service.reported_contact(
                     principal, identity
                 )
-                if action == "staff"
+                if action in {"staff", "staffok"}
                 else await service.manual_contact_order(principal, identity)
             )
             data = await service.view(principal, order_id)
             if str(data["message_id"]) != str(incoming.message_id):
                 raise ValueError("creator_invite_contact_unavailable")
             text, keyboard = render_card(service, data, page=int(args[0]))
-            if action == "staff":
+            if action == "staffok":
+                await creator_invite_service.acknowledge_staff_contact(
+                    principal, identity
+                )
+                data = await service.view(principal, order_id)
+                text, keyboard = render_card(service, data, page=int(args[0]))
+                await messenger.edit_text(
+                    chat_id=incoming.chat_id,
+                    message_id=incoming.message_id,
+                    text=text,
+                    keyboard=keyboard,
+                )
+            elif action == "staff":
                 contact = await creator_invite_service.reported_contact_text(
                     principal, identity
                 )
+                if not any(
+                    row.get("reported_contact_id") == identity
+                    and row.get("staff_opened_at")
+                    for row in data["positions"]
+                ):
+                    keyboard.rows.insert(
+                        0,
+                        [
+                            Button(
+                                "Подтвердить получение контакта",
+                                callback_data=f"{PREFIX}staffok:{identity.hex}:{args[0]}",
+                            )
+                        ],
+                    )
                 await messenger.edit_text(
                     chat_id=incoming.chat_id,
                     message_id=incoming.message_id,

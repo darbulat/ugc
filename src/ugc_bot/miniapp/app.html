@@ -32,6 +32,7 @@
   <script src="/miniapp/umc-replacements.js" defer></script>
   <script src="/miniapp/umc-intake-store.js" defer></script>
   <script src="/miniapp/umc-selection.js" defer></script>
+  <script src="/miniapp/umc-invite-handoff.js" defer></script>
   <script src="/miniapp/umc-intake-progress.js" defer></script>
   <script src="/miniapp/umc-order-images.js" defer></script>
   <script src="/miniapp/umc-subscriptions.js" defer></script>
@@ -356,7 +357,7 @@
     <button type="button" class="btn btn-secondary" id="mgr-invite-toggle">Добавить креатора</button>
     <section id="mgr-invite-box" hidden>
       <form id="mgr-invite-form">
-        <label>Позиция <select name="item_id" required></select></label>
+        <label>Позиция в заказе <select name="item_id"></select></label>
         <label>Instagram <input name="instagram" required maxlength="250" placeholder="@username"></label>
         <label>Telegram <input name="telegram" maxlength="100" placeholder="@username"></label>
         <label>Имя <input name="name" maxlength="80"></label>
@@ -368,11 +369,13 @@
             <option value="other">Получено в другой переписке</option>
           </select>
         </label>
-        <button type="submit" class="btn">Создать ссылку</button>
+        <button type="button" class="btn btn-secondary" id="mgr-invite-lookup">Проверить в базе</button>
+        <button type="submit" class="btn" hidden>Создать ссылку</button>
       </form>
       <input id="mgr-invite-link" aria-label="Ссылка для креатора" readonly hidden>
       <button type="button" class="btn btn-secondary" id="mgr-copy-invite" hidden>Скопировать ссылку</button>
       <p id="mgr-invite-status" role="status"></p>
+      <p id="mgr-invite-profile" role="status"></p>
       <ul id="mgr-invite-history"></ul>
     </section>
     <button type="button" class="btn btn-secondary" id="mgr-order-detail-back" data-umc-back>Назад</button>
@@ -2458,11 +2461,22 @@
         document.getElementById('mgr-invite-link').hidden = true;
         document.getElementById('mgr-copy-invite').hidden = true;
         document.getElementById('mgr-invite-history').replaceChildren();
-        document.getElementById('mgr-invite-form').reset();
+        const inviteForm = document.getElementById('mgr-invite-form');
+        inviteForm.reset();
+        inviteForm.querySelector('[type=submit]').hidden = true;
+        document.getElementById('mgr-invite-profile').textContent = '';
         if (currencySymbol) window._mgrCurrentCurrencySymbol = currencySymbol;
         var titleEl = document.getElementById('mgr-order-detail-title');
         if (titleEl) titleEl.textContent = tx('mgr_order_detail_title') + ' ' + title;
         showScreen('screen-manager-order-detail');
+      }
+
+      function managerInviteAction(form) {
+        const button = form.querySelector('[type=submit]');
+        const manual = Boolean(form.elements.consent_source.value);
+        button.value = form.dataset.availability === 'ready' && !manual ? 'send' : 'create';
+        button.textContent = manual ? 'Сохранить контакт и получить ссылку' :
+          button.value === 'send' ? 'Отправить приглашение в бот' : 'Создать ссылку';
       }
 
       async function managerInvite(fields) {
@@ -2473,32 +2487,61 @@
         const link = document.getElementById('mgr-invite-link');
         const history = document.getElementById('mgr-invite-history');
         const copy = document.getElementById('mgr-copy-invite');
-        const button = form.querySelector('button');
+        const button = form.querySelector('[type=submit]');
         button.disabled = true;
         status.textContent = '';
         try {
           const data = await api('/manager/orders/' + orderId + '/creator-invites', fields);
           if (window._mgrCurrentOrderId !== orderId || (window._me && window._me.user_id) !== identity) return;
+          const previousPosition = form.elements.item_id.value;
           form.elements.item_id.replaceChildren();
           data.positions.forEach(function (item) {
             form.elements.item_id.add(new Option('№' + item.ordinal, item.id));
           });
+          if (data.positions.length) {
+            form.elements.item_id.add(new Option('Первая свободная · №' + data.positions[0].ordinal, ''), 0);
+            form.elements.item_id.value = fields.operation === 'lookup' &&
+              data.positions.some(item => item.id === previousPosition) ? previousPosition : '';
+          }
+          if (data.availability) {
+            const names = {
+              ready: 'Подтверждённый профиль из базы · бот доступен',
+              external: 'Профиль не найден',
+              unverified: 'Анкета в базе · нужно подтвердить Instagram',
+              blocked: 'Профиль из базы · бот заблокирован',
+              unavailable: 'Профиль из базы · отправка в бот недоступна'
+            };
+            document.getElementById('mgr-invite-profile').textContent = names[data.availability] || '';
+            form.dataset.availability = data.availability;
+            managerInviteAction(form);
+            button.hidden = false;
+          }
           history.replaceChildren();
           data.invites.forEach(function (item) {
             const row = document.createElement('li');
             const state = item.consented_at ? 'Подтверждено в боте' :
               Date.parse(item.expires_at) <= Date.now() ? 'Срок ссылки истёк' :
-              item.reported_at ? 'Согласие в переписке' : 'Ждём согласия';
+              item.reported_at ? 'Согласие в переписке' :
+              item.opened ? 'Открыто в боте' : 'Ждём согласия';
             row.textContent = '№' + item.ordinal + ' · @' + item.instagram + ' · ' + state;
             history.append(row);
           });
-          if (data.link) {
+          if (data.notice_state === 'sent') {
+            button.hidden = true;
+            link.hidden = true;
+            copy.hidden = true;
+            status.textContent = 'Приглашение отправлено в Telegram.';
+          } else if (data.link) {
+            button.hidden = true;
             link.hidden = false;
             copy.hidden = false;
             link.value = data.link;
             link.focus();
             link.select();
-            status.textContent = 'Скопируйте ссылку. Она действует до 30 дней.';
+            status.textContent = data.notice_state === 'unknown'
+              ? 'Telegram не подтвердил отправку. Ссылку можно скопировать.'
+              : fields.consent_source ? 'Контакт сохранён. Ссылка действует до 30 дней.'
+              : 'Скопируйте ссылку. Она действует до 30 дней.';
           } else if (!data.positions.length) {
             status.textContent = 'Свободных оплаченных позиций нет.';
           }
@@ -2524,9 +2567,30 @@
           link.select();
         }
       });
+      document.getElementById('mgr-invite-lookup').addEventListener('click', function () {
+        const form = document.getElementById('mgr-invite-form');
+        if (!form.reportValidity()) return;
+        managerInvite({operation: 'lookup', instagram: form.elements.instagram.value, telegram: form.elements.telegram.value});
+      });
+      document.getElementById('mgr-invite-form').addEventListener('input', function (event) {
+        if (['instagram', 'telegram'].includes(event.target.name)) {
+          event.currentTarget.querySelector('[type=submit]').hidden = true;
+          document.getElementById('mgr-invite-profile').textContent = '';
+          document.getElementById('mgr-invite-link').hidden = true;
+          document.getElementById('mgr-copy-invite').hidden = true;
+        }
+      });
+      document.getElementById('mgr-invite-form').elements.consent_source.addEventListener('change', function (event) {
+        managerInviteAction(event.currentTarget.form);
+      });
       document.getElementById('mgr-invite-form').addEventListener('submit', function (event) {
         event.preventDefault();
-        managerInvite(Object.fromEntries(new FormData(event.currentTarget)));
+        const fields = Object.fromEntries(new FormData(event.currentTarget));
+        const action = event.currentTarget.querySelector('[type=submit]');
+        if (action.hidden) return;
+        fields.operation = action.value;
+        if (!fields.item_id) delete fields.item_id;
+        managerInvite(fields);
       });
 
       function loadManagerCreators(orderId, filterType, offset) {

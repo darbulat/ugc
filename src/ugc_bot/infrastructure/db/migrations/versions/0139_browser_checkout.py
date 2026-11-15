@@ -10,9 +10,10 @@ from ugc_bot.infrastructure.db.browser_checkout_models import (
     BROWSER_ATTEMPTS,
     GUARD_SQL,
 )
+from ugc_bot.infrastructure.db.invite_handoff_schema import FIRST, NATIVE
 
-revision = "0138_browser_checkout"
-down_revision = "0137_social_prompt_preference"
+revision = "0139_browser_checkout"
+down_revision = "0138_invite_handoff"
 branch_labels = None
 depends_on = None
 
@@ -39,7 +40,7 @@ def _authority_sql(browser: bool) -> str:
     public_scope = import_module(
         "ugc_bot.infrastructure.db.migrations.versions.0127_public_policy_scope"
     )
-    source = public_scope._authority_sql(public=True)
+    source = public_scope._authority_sql(public=True).replace(NATIVE, FIRST)
     if browser:
         start, end = source.index(_PROOF_START), source.index(_PROOF_END)
         proof = source[start:end].strip().removeprefix("OR ")
