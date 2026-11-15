@@ -1,9 +1,10 @@
 """Persist blocking events reported by the messengers."""
 
 from datetime import datetime
+from typing import cast
 from uuid import NAMESPACE_URL, uuid5
 
-from sqlalchemy import literal, select
+from sqlalchemy import Table, literal, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -31,7 +32,7 @@ async def record_bot_unavailable(
     )
     async with transactions.transaction() as session:
         db = _get_async_session(session)
-        audit = AuditLogModel.__table__
+        audit = cast(Table, AuditLogModel.__table__)
         event_id = uuid5(
             NAMESPACE_URL,
             f"ugc:bot-unavailable:{platform}:{external_id}:{occurred_at.isoformat()}",

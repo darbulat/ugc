@@ -277,6 +277,8 @@ async def resume_registration_callback(
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
+    agreement_state = BloggerRegistrationStates.agreements.state
+    assert agreement_state is not None
     await resume_creator_registration(
         event_adapter.from_callback(callback),
         AiogramStateStore(state),
@@ -286,7 +288,7 @@ async def resume_registration_callback(
         bot_texts_service,
         config,
         user_locale,
-        BloggerRegistrationStates.agreements.state,
+        agreement_state,
     )
 
 
