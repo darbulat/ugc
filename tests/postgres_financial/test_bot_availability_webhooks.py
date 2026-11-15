@@ -1,12 +1,16 @@
 """Check that live webhook payloads produce deduplicated availability facts."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from functools import partial
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import httpx
 import pytest
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramForbiddenError
+from aiogram.methods import SendMessage
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,6 +23,10 @@ from ugc_bot.infrastructure.db.repositories.bot_availability import (
     BOT_AVAILABLE_EVENT,
     BOT_UNAVAILABLE_EVENT,
     creator_directory_status,
+    record_telegram_send_block,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    TelegramMessengerClient,
 )
 
 
@@ -30,7 +38,9 @@ async def test_native_bot_blocks_are_recorded_once_on_both_webhooks(
         platform: uuid4()
         for platform in (MessengerType.TELEGRAM, MessengerType.MAX)
     }
-    active_at = datetime(2026, 11, 15, 16, 0, tzinfo=timezone.utc)
+    active_at = datetime.now(timezone.utc).replace(microsecond=0) - timedelta(
+        seconds=15
+    )
     timestamp = int(active_at.timestamp())
     with Session(financial_pg_engine) as db, db.begin():
         db.add_all(
@@ -106,22 +116,47 @@ async def test_native_bot_blocks_are_recorded_once_on_both_webhooks(
         "chat_id": 553344,
     }
     try:
-        for app, name, header, payload in (
+        for module, app, name, header, payload in (
             (
+                telegram_webhook_app,
                 telegram,
                 "telegram",
                 "X-Telegram-Bot-Api-Secret-Token",
                 telegram_payload,
             ),
-            (max_app, "max", "X-Max-Bot-Api-Secret", max_payload),
+            (
+                max_webhook_app,
+                max_app,
+                "max",
+                "X-Max-Bot-Api-Secret",
+                max_payload,
+            ),
         ):
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app),
                 base_url="http://test",
                 headers={header: "synthetic_secret"},
             ) as client:
+                path = f"/webhook/{name}"
+                if name == "max":
+                    for invalid in (
+                        {**payload, "user": {"user_id": "992211"}},
+                        {**payload, "timestamp": 10**32},
+                    ):
+                        response = await client.post(path, json=invalid)
+                        assert response.status_code == 400
+
+                with monkeypatch.context() as failing:
+                    recorder = AsyncMock(
+                        side_effect=RuntimeError("Database unavailable")
+                    )
+                    failing.setattr(module, "record_bot_availability", recorder)
+                    response = await client.post(path, json=payload)
+                    assert response.status_code == 503
+                    recorder.assert_awaited_once()
+
                 for _ in range(2):
-                    result = await client.post(f"/webhook/{name}", json=payload)
+                    result = await client.post(path, json=payload)
                     assert result.status_code == 200
         with Session(financial_pg_engine) as db:
             rows = db.scalars(
@@ -182,6 +217,30 @@ async def test_native_bot_blocks_are_recorded_once_on_both_webhooks(
                     )
                     == 1
                 )
+        monkeypatch.setattr(
+            bot,
+            "send_message",
+            AsyncMock(
+                side_effect=TelegramForbiddenError(
+                    method=SendMessage(chat_id=772233, text="test"),
+                    message="Forbidden: bot was blocked by the user",
+                )
+            ),
+        )
+        messenger = TelegramMessengerClient(
+            bot,
+            on_confirmed_block=partial(
+                record_telegram_send_block, container.transaction_manager
+            ),
+        )
+        with pytest.raises(TelegramForbiddenError):
+            await messenger.send_text(chat_id="772233", text="test")
+        with Session(financial_pg_engine) as db:
+            assert db.scalar(status_query) == UserStatus.BOT_BLOCKED
+            assert (
+                db.get(UserModel, ids[MessengerType.TELEGRAM]).status
+                == UserStatus.ACTIVE
+            )
     finally:
         await bot.session.close()
         await container.dispose()
