@@ -92,6 +92,12 @@ class SqlAlchemyOrderIntakeRepository:
             values.pop("geography", None)
         return values
 
+    async def target_platforms_for_order(
+        self, order_id: UUID, *, session: object
+    ) -> tuple[str, ...]:
+        values = await self._dispatch_targeting(order_id, session)
+        return tuple(values.get("platforms", ()))
+
     async def exact_city_for_order(
         self, order_id, *, session, for_update=False
     ):

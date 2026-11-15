@@ -1497,3 +1497,45 @@ async def test_closed_unpaid_card_with_full_accompaniment_and_no_brief():
     assert "<blockquote" not in card["text"]
     assert "Открыть профиль" not in card["text"]
     assert card["keyboard"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("event", ["created", "paid"])
+async def test_gpt_copy_opens_private_miniapp_from_business_card(event):
+    from dataclasses import replace
+
+    from ugc_bot.infrastructure.messenger.telegram.client import _build_markup
+
+    repo = InMemoryUserRepository()
+    admin = replace(_make_advertiser_user(), telegram_id="123", admin=True)
+    await repo.save(admin)
+    order = _make_order()
+    messenger = FakeMessengerClient()
+    notify = (
+        notify_admins_about_order_paid
+        if event == "paid"
+        else notify_admins_about_order_created
+    )
+    await notify(
+        order,
+        messenger,
+        UserRoleService(user_repo=repo),
+        ContentModerationService(),
+        webhook_base_url="https://bot.example.test/",
+    )
+
+    keyboard = _build_markup(messenger.sent_text[0]["keyboard"])
+    copy = next(
+        button
+        for row in keyboard.inline_keyboard
+        for button in row
+        if button.text == "Скопировать для GPT"
+    )
+    assert copy.web_app.url == (
+        f"https://bot.example.test/miniapp/order-gpt-copy.html?order={order.order_id}"
+    )
+    assert any(
+        button.callback_data
+        for row in keyboard.inline_keyboard
+        for button in row
+    ) is (event == "paid")

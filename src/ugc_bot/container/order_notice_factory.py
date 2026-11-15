@@ -220,6 +220,7 @@ def build_order_notice_delivery(
                 _RecipientRoles(repos["user_repo"], job.recipient),
                 ContentModerationService(),
                 admin_base_url=config.admin.admin_base_url,
+                webhook_base_url=config.webhook.webhook_base_url,
                 currency_symbol=currency_symbol,
                 advertiser_profile=profile,
                 order_details=details,
