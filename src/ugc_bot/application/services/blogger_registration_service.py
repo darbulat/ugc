@@ -274,6 +274,9 @@ class BloggerRegistrationService:
                 if country_obj:
                     profile_currency = country_obj.currency_code
             now = datetime.now(timezone.utc)
+            previous_profile = await self.blogger_repo.get_by_user_id(
+                user_id, session=session
+            )
             profile = BloggerProfile(
                 user_id=user.user_id,
                 instagram_url=instagram_url_clean,
@@ -288,6 +291,10 @@ class BloggerRegistrationService:
                 barter=barter,
                 work_format=work_format,
                 updated_at=now,
+                created_at=previous_profile.created_at
+                or previous_profile.updated_at
+                if previous_profile is not None
+                else now,
                 blogger_gender=blogger_gender,
                 birth_date=birth_date,
                 region=profile_region,

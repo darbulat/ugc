@@ -617,6 +617,7 @@ def build_bot_services(
         user_referral_pending_repo=repos["user_referral_pending_repo"],
         user_referral_binding_repo=repos["user_referral_binding_repo"],
         transaction_manager=transaction_manager,
+        blogger_repo=repos["blogger_repo"],
     )
     geocoder = build_geocoder(config)
     exchange_rate_service = build_exchange_rate_service(config)
@@ -942,12 +943,7 @@ def build_bot_services(
             nps_repo=repos["nps_repo"],
             transaction_manager=transaction_manager,
         ),
-        "referral_service": ReferralService(
-            user_repo=repos["user_repo"],
-            user_referral_pending_repo=repos["user_referral_pending_repo"],
-            user_referral_binding_repo=repos["user_referral_binding_repo"],
-            transaction_manager=transaction_manager,
-        ),
+        "referral_service": referral_service,
         "legacy_financial_case_service": LegacyFinancialCaseService(
             repos["legacy_financial_case_repo"]
         )
