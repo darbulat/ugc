@@ -150,3 +150,24 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+.order-detail__closure {
+  max-width: 44rem;
+  display: grid;
+  gap: .5rem;
+  justify-items: start;
+}
+
+.order-detail__closure textarea {
+  width: 100%;
+  padding: .6rem;
+  border: 1px solid #64748b;
+  border-radius: .4rem;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.order-detail__closure-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

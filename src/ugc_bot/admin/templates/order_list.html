@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% set group = request.query_params.get('group', 'work') %}
-{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'removed', 'repeat', 'all') %}{% set group = 'work' %}{% endif %}
+{% if group not in ('work', 'unpaid', 'closed', 'hidden', 'test', 'check-test', 'removed', 'repeat', 'all') %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
 {% set quick_filters = model_view.quick_filters(request) %}
 {% set advertiser_id = model_view.customer_filter(request) %}
@@ -41,7 +41,7 @@
         </div>
       {% endif %}
       <nav class="nav nav-pills gap-1 mb-3" aria-label="Группы заказов">
-        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('removed', 'Удалённые'), ('repeat', 'Повторные'), ('all', 'Все')] %}
+        {% for key, label in [('work', 'В работе'), ('unpaid', 'Давно без оплаты'), ('closed', 'Закрытые'), ('hidden', 'Скрытые'), ('test', 'Тестовые'), ('check-test', 'Проверить на тест'), ('removed', 'Удалённые'), ('repeat', 'Повторные'), ('all', 'Все')] %}
         <a class="nav-link{% if group == key %} active{% endif %}"
            {% if group == key %}aria-current="page"{% endif %}
            href="{{ request.url.remove_query_params(['page', 'company', 'companyPage', 'status', 'sortBy', 'sort'] if key == 'unpaid' else ['page', 'company', 'companyPage', 'status']).include_query_params(group=key) }}">
@@ -52,6 +52,9 @@
       </nav>
       {% if group == 'test' %}
         <p class="text-muted mb-3">Пометьте свой заказ кнопкой «Это тест». Удаление доступно для черновиков без оплаты, рассылки и других связанных действий. Остальные тестовые заказы можно хранить здесь отдельно.</p>
+      {% endif %}
+      {% if group == 'check-test' %}
+        <p class="text-muted mb-3">Заказы от аккаунтов, которые могли использоваться для тестов. После проверки выберите «Это тест» или «Реальный заказ».</p>
       {% endif %}
       {% if group == 'removed' %}
         <p class="text-muted mb-3">Заказы убраны из рабочего списка. Здесь их можно вернуть.</p>

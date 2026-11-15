@@ -54,8 +54,12 @@ from ugc_bot.admin.order_worklist import (
     _is_test_order,
     aging_unpaid_condition,
     business_order_conditions,
+    format_order_closure_reason,
     order_archived,
+    order_closure_reason,
     order_deletion_blocker,
+    order_requires_closure_reason,
+    order_test_candidate,
     worklist_conditions,
 )
 from ugc_bot.admin.people import (
@@ -2090,6 +2094,23 @@ class AdminDashboardService:
                     "accepted_count"
                 ),
                 _is_test_order().label("is_test"),
+                order_test_candidate().label("test_candidate"),
+                case(
+                    (
+                        OrderModel.status == OrderStatus.CLOSED,
+                        order_closure_reason(),
+                    ),
+                ).label("closure_reason"),
+                case(
+                    (
+                        OrderModel.status == OrderStatus.CLOSED,
+                        order_requires_closure_reason(
+                            postgresql=session.get_bind().dialect.name
+                            == "postgresql"
+                        ),
+                    ),
+                    else_=False,
+                ).label("can_edit_closure_reason"),
                 order_archived().label("archived"),
                 order_activity_at().label("related_at"),
                 PaymentModel.status.label("payment_status"),
@@ -2135,6 +2156,9 @@ class AdminDashboardService:
             dispatched_count,
             accepted_count,
             is_test,
+            test_candidate,
+            closure_reason,
+            can_edit_closure_reason,
             archived,
             related_at,
             payment_status,
@@ -2237,6 +2261,9 @@ class AdminDashboardService:
             "can_delete": deletion_blocker is None,
             "deletion_blocker": deletion_blocker,
             "is_test": bool(is_test),
+            "test_candidate": bool(test_candidate),
+            "closure_reason": format_order_closure_reason(closure_reason),
+            "can_edit_closure_reason": bool(can_edit_closure_reason),
             "archived": bool(archived),
             "managers": [manager_contact(manager) for manager in manager_rows],
             "last_activity_at": latest_order_activity(order, related_at),
@@ -2485,7 +2512,10 @@ class AdminDashboardService:
         cutoff = datetime.now(self._timezone) - timedelta(
             days=self._thresholds.archive_days
         )
-        return order.completed_at < cutoff
+        completed_at = order.completed_at
+        if completed_at.tzinfo is None:
+            completed_at = completed_at.replace(tzinfo=timezone.utc)
+        return completed_at < cutoff
 
     def _order_status_label(
         self, order: OrderModel, responses: int, open_complaints: int
