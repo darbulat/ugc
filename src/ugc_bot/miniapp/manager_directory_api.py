@@ -29,6 +29,7 @@ PAGE_SIZE = 20
 class DirectoryRequest(SignedMiniAppRequest):
     bot_unavailable: bool = Field(default=False, strict=True)
     page: int = Field(default=0, ge=0, le=100000, strict=True)
+    q: str = Field(default="", max_length=120, strict=True)
 
 
 class InvitedCreator(BaseModel):
@@ -129,6 +130,7 @@ def create_manager_directory_router(
                 bot_unavailable=body.bot_unavailable,
                 offset=body.page * PAGE_SIZE,
                 limit=PAGE_SIZE,
+                q=body.q,
             )
         return CreatorPage(
             creators=[

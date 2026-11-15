@@ -340,6 +340,10 @@
 
   <div id="screen-invited-creators" class="screen" data-umc-section="lilac">
     <h1 id="invited-creators-title">Приглашённые креаторы</h1>
+    <form id="invited-search-form" role="search">
+      <label for="invited-search" id="invited-search-label">Имя, ник или город</label>
+      <input id="invited-search" type="search" maxlength="120" autocomplete="off" enterkeyhint="search">
+    </form>
     <label class="umc-directory-filter"><input type="checkbox" id="invited-bot-filter"> <span id="invited-bot-label">Бот недоступен</span></label>
     <p id="invited-creators-status" class="hint" role="status"></p>
     <ul id="invited-creators-list" class="umc-directory-list"></ul>

@@ -198,8 +198,8 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert 'href="/admin/order-model/list"' in response.text
     assert 'href="/admin/orders?period=today"' in response.text
     assert "139 000,00" in response.text and "250,10" in response.text
-    assert response.text.index("Требует внимания") < response.text.index(
-        "Динамика за период"
+    assert response.text.index("Динамика за период") < response.text.index(
+        "Требует внимания"
     )
     for key, label, count in (
         ("no_manager", "Без менеджера", 3),

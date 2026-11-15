@@ -31,11 +31,12 @@ collaboration_pg = collaboration_fixture
 PATH = "/miniapp/api/manager/invited-creators"
 
 
-def _creator(user_id, status):
+def _creator(user_id, status, *, name="Synthetic creator", telegram=None):
     return UserModel(
         user_id=user_id,
         messenger_type=MessengerType.TELEGRAM,
-        username="Synthetic creator",
+        username=name,
+        telegram=telegram,
         status=status,
     )
 
@@ -86,8 +87,10 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
             )
         db.add_all(
             [
-                _creator(blocked, UserStatus.BOT_BLOCKED),
-                _creator(paused, UserStatus.PAUSE),
+                _creator(
+                    blocked, UserStatus.BOT_BLOCKED, telegram="own_special"
+                ),
+                _creator(paused, UserStatus.PAUSE, name="Мария Казанцева"),
                 _creator(unbound, UserStatus.BOT_BLOCKED),
             ]
         )
@@ -173,6 +176,17 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
             assert await listed(telegram, bot_unavailable=True) == set()
             assert await listed(max_app, bot_unavailable=True) == {str(blocked)}
             assert await listed(max_app, page=1) == set()
+            assert await listed(telegram, q="мария") == {str(paused)}
+            assert await listed(telegram, q="  КАЗАНЬ ") == {str(paused)}
+            assert await listed(
+                max_app, q="  КАЗАНЬ ", bot_unavailable=True
+            ) == {str(blocked)}
+            assert await listed(telegram, q="@own_special") == set()
+            assert await listed(max_app, q="@Own_Special") == {str(blocked)}
+            assert await listed(max_app, q=blocked.hex[:12]) == {str(blocked)}
+            assert await listed(max_app, q="Мария") == set()
+            assert await listed(max_app, q="%") == set()
+            assert (await post(max_app, q="x" * 121)).status_code == 422
 
             assert (await post(telegram, f"/{active}")).status_code == 200
             not_found = await post(telegram, f"/{blocked}")
@@ -214,8 +228,12 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
                     .values(referrer_user_id=first)
                 )
             assert (await post(max_app, f"/{blocked}")).status_code == 404
-            assert await listed(telegram, bot_unavailable=True) == {
-                str(blocked)
-            }
+            assert await listed(
+                telegram, q="@own_special", bot_unavailable=True
+            ) == {str(blocked)}
+            assert (
+                await listed(max_app, q="@own_special", bot_unavailable=True)
+                == set()
+            )
     finally:
         await container.session_factory.kw["bind"].dispose()

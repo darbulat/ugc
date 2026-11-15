@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -50,10 +50,26 @@ async def invited_creator_page(
     bot_unavailable: bool,
     offset: int,
     limit: int,
+    q: str = "",
 ):
     query = _invited_creators_query(principal)
     if bot_unavailable:
         query = query.where(UserModel.status == UserStatus.BOT_BLOCKED)
+    term = q.strip().removeprefix("@").strip()
+    if term:
+        query = query.where(
+            or_(
+                UserModel.username.icontains(term, autoescape=True),
+                UserModel.telegram.icontains(term, autoescape=True),
+                BloggerProfileModel.instagram_username.icontains(
+                    term, autoescape=True
+                ),
+                BloggerProfileModel.instagram_url.icontains(
+                    term, autoescape=True
+                ),
+                BloggerProfileModel.city.icontains(term, autoescape=True),
+            )
+        )
     return (
         await session.execute(
             query.order_by(UserModel.created_at.desc(), UserModel.user_id)
