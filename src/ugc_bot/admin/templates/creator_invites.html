@@ -6,6 +6,9 @@
     <a class="admin-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">← К заказу</a>
   </div>
   <h1>Добавить креатора · {{ title }}</h1>
+  {% if preview %}
+    <p>Тестовый заказ без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Открыть итоги в Telegram</a>.</p>
+  {% endif %}
   {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
   {% if link %}
     <section class="card section">
@@ -35,7 +38,7 @@
   <section class="card section">
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
-      <label for="invite-item">Свободная оплаченная позиция</label>
+      <label for="invite-item">{{ "Тестовая позиция" if preview else "Свободная оплаченная позиция" }}</label>
       <select name="item_id" id="invite-item" class="form-select mb-3">
         {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}{% if item.pending_invites %} · Ссылка уже создана{% endif %}</option>{% endfor %}
       </select>
@@ -71,13 +74,13 @@
     </form>
   </section>
   {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
-  {% else %}<p>Свободных оплаченных позиций нет.</p>{% endif %}
+  {% else %}<p>{{ "Свободных тестовых позиций нет." if preview else "Свободных оплаченных позиций нет." }}</p>{% endif %}
   {% if invites %}
   <section class="card section">
     <h2>Приглашения</h2>
     <ul>
       {% for invite in invites %}
-      <li>№{{ invite.ordinal }} · @{{ invite.instagram }}{% if invite.telegram %} · Telegram @{{ invite.telegram }}{% endif %}{% if invite.reported_at %} · Согласие в переписке{% endif %} · {{ 'Из базы' if invite.target_id else 'Внешний креатор' }} · {% if invite.consented_at %}Участие подтверждено{% elif invite.expires_at <= now %}Срок истёк{% else %}Ждём подтверждения · <input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}</li>
+      <li>№{{ invite.ordinal }} · @{{ invite.instagram }}{% if invite.telegram %} · Telegram @{{ invite.telegram }}{% endif %}{% if invite.reported_at %} · Согласие в переписке{% endif %} · {{ 'Из базы' if invite.target_id else 'Внешний креатор' }} · {% if invite.consented_at or invite.consent_source == preview_consent %}Участие подтверждено{% elif invite.expires_at <= now %}Срок истёк{% else %}Ждём подтверждения · <input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}</li>
       {% endfor %}
     </ul>
   </section>

@@ -4,7 +4,7 @@ import re
 from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import and_, exists, func, or_, select, text
 
 from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.enums import OrderStatus
@@ -18,6 +18,10 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
+from ugc_bot.infrastructure.db.repositories.invite_preview import (
+    preview_item,
+    preview_order,
+)
 
 
 async def invitations_available(db):
@@ -36,8 +40,13 @@ def staff_consent_available():
 def free_positions(order_id):
     return select(OrderItemModel).where(
         OrderItemModel.order_id == order_id,
-        OrderItemModel.captured_at.is_not(None),
-        OrderItemModel.selection_state == "paid",
+        or_(
+            and_(
+                OrderItemModel.captured_at.is_not(None),
+                OrderItemModel.selection_state == "paid",
+            ),
+            preview_item(),
+        ),
         ~exists().where(
             ItemAssignmentModel.paid_item_id == OrderItemModel.paid_item_id
         ),
@@ -61,11 +70,16 @@ def order_for_invite(db, order_id, *, lock=False):
     query = select(OrderModel).where(
         OrderModel.order_id == order_id,
         OrderModel.status == OrderStatus.ACTIVE,
-        OrderModel.financial_version.is_not(None),
-        OrderModel.complimentary.is_(False),
-        exists().where(
-            OrderItemModel.order_id == order_id,
-            OrderItemModel.captured_at.is_not(None),
+        or_(
+            and_(
+                OrderModel.financial_version.is_not(None),
+                OrderModel.complimentary.is_(False),
+                exists().where(
+                    OrderItemModel.order_id == order_id,
+                    OrderItemModel.captured_at.is_not(None),
+                ),
+            ),
+            preview_order(),
         ),
     )
     return db.scalar(query.with_for_update() if lock else query)
@@ -272,6 +286,7 @@ async def invitation(db, identity, at, creator_id=None, *, lock=False):
             OrderModel.offer_text,
             OrderModel.geography,
             OrderModel.status,
+            OrderModel.complimentary,
         )
         .join(OrderModel, OrderModel.order_id == INVITES.c.order_id)
         .where(INVITES.c.id == identity)

@@ -22,6 +22,9 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     order_for_invite,
     team,
 )
+from ugc_bot.infrastructure.db.repositories.invite_preview import (
+    PREVIEW_CONSENT,
+)
 
 ERRORS = {
     "creator_invite_telegram_invalid": "Укажите корректный Telegram-ник.",
@@ -134,6 +137,8 @@ def register_creator_invites(  # noqa: C901
                 managers=db.execute(team(order)).all(),
                 link=link,
                 error=error,
+                preview=order.complimentary,
+                preview_consent=PREVIEW_CONSENT,
                 bot=bot,
                 invites=invites,
                 now=now,

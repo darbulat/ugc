@@ -29,6 +29,12 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     invitation,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.invite_preview import (
+    PREVIEW_CONSENT,
+    confirm_preview,
+    preview_order,
+    preview_positions,
+)
 
 
 @dataclass
@@ -45,12 +51,43 @@ class CreatorInviteService:
 
     async def accept(self, identity, user_id):
         row = await self.preview(identity, user_id)
+        if row["complimentary"]:
+            await self._accept_preview(identity, user_id, row["order_id"])
+            return None
         result = await self.selection.respond(
             row["order_id"], user_id, invite_id=identity
         )
         if result is None:
             raise ValueError("creator_invite_unavailable")
         return result
+
+    async def _accept_preview(self, identity, user_id, order_id):
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            order = await db.scalar(
+                select(OrderModel)
+                .where(OrderModel.order_id == order_id, preview_order())
+                .with_for_update()
+            )
+            if order is None or user_id == order.advertiser_id:
+                raise ValueError("creator_invite_unavailable")
+            current = await invitation(
+                db, identity, self.clock.now(), user_id, lock=True
+            )
+            await confirm_preview(db, current, user_id, self.clock.now())
+
+    async def preview_card(self, principal, order_id):
+        async with self.transactions.transaction() as session:
+            db = _session(session)
+            user = await db.get(UserModel, principal.user_id)
+            require_current_principal(
+                principal,
+                principal.user_id,
+                user.user_id if user else None,
+                user.telegram_id if user else None,
+                None,
+            )
+            return await preview_positions(db, order_id, principal.user_id)
 
     async def claim_manager_notice(self, identity):
         """One notification attempt after a creator confirms in Telegram."""
@@ -81,7 +118,18 @@ class CreatorInviteService:
                     update(INVITES)
                     .where(
                         INVITES.c.id == identity,
-                        INVITES.c.consented_at.is_not(None),
+                        (
+                            INVITES.c.consented_at.is_not(None)
+                            | (
+                                (INVITES.c.consent_source == PREVIEW_CONSENT)
+                                & select(OrderModel.order_id)
+                                .where(
+                                    OrderModel.order_id == INVITES.c.order_id,
+                                    preview_order(),
+                                )
+                                .exists()
+                            )
+                        ),
                         INVITES.c.manager_notice_at.is_(None),
                     )
                     .values(manager_notice_at=self.clock.now())
