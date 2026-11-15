@@ -54,12 +54,14 @@ class CreatorCard(InvitedCreator):
     links: list[SocialLink]
 
 
-def _creator_fields(user: UserModel, profile: BloggerProfileModel) -> dict:
+def _creator_fields(
+    user: UserModel, profile: BloggerProfileModel, status: UserStatus
+) -> dict:
     return {
         "creator_id": user.user_id,
         "name": user.username.strip() or (user.telegram or "").strip(),
         "city": (profile.city or "").strip(),
-        "status": user.status,
+        "status": status,
     }
 
 
@@ -134,8 +136,8 @@ def create_manager_directory_router(
             )
         return CreatorPage(
             creators=[
-                InvitedCreator(**_creator_fields(user, profile))
-                for user, profile in rows[:PAGE_SIZE]
+                InvitedCreator(**_creator_fields(user, profile, status))
+                for user, profile, status in rows[:PAGE_SIZE]
             ],
             has_more=len(rows) > PAGE_SIZE,
         )
@@ -153,14 +155,14 @@ def create_manager_directory_router(
             rows = await invited_creator_card(session, principal, creator_id)
         if not rows:
             raise HTTPException(404, "creator_not_found")
-        user, profile, *_ = rows[0]
+        user, profile, status, *_ = rows[0]
         links = []
         instagram = _social_link(
             SocialPlatform.INSTAGRAM, profile.instagram_url
         )
         if instagram:
             links.append(instagram)
-        for _, _, platform, url, handle in rows:
+        for _, _, _, platform, url, handle in rows:
             if not platform or platform == SocialPlatform.INSTAGRAM:
                 continue
             try:
@@ -171,7 +173,7 @@ def create_manager_directory_router(
             if link is not None:
                 links.append(link)
         return CreatorCard(
-            **_creator_fields(user, profile),
+            **_creator_fields(user, profile, status),
             instagram_verified=bool(
                 profile.confirmed and (profile.instagram_user_id or "").strip()
             ),

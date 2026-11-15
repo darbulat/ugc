@@ -28,6 +28,9 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
     UserReferralPendingModel,
 )
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    record_bot_availability,
+)
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 collaboration_pg = collaboration_fixture
@@ -150,11 +153,13 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
                 .where(UserModel.user_id == actor)
                 .values(telegram_id=str(externals[actor]))
             )
+        blocked_creator = _creator(
+            blocked, UserStatus.ACTIVE, telegram="own_special"
+        )
+        blocked_creator.telegram_id = "743921"
         db.add_all(
             [
-                _creator(
-                    blocked, UserStatus.BOT_BLOCKED, telegram="own_special"
-                ),
+                blocked_creator,
                 _creator(paused, UserStatus.PAUSE, name="Мария Казанцева"),
                 _creator(unbound, UserStatus.BOT_BLOCKED),
             ]
@@ -206,6 +211,12 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
         }
     )
     container = Container(config)
+    assert await record_bot_availability(
+        container.transaction_manager,
+        platform=MessengerType.TELEGRAM,
+        external_id="743921",
+        occurred_at=clock.at,
+    )
     transport = httpx.ASGITransport(app=application(container, config))
 
     def signed(actor, platform="telegram"):

@@ -38,6 +38,9 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
     UserReferralBindingModel,
 )
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    creator_directory_status,
+)
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
 )
@@ -178,12 +181,14 @@ def creator_directory_filters(
             == city.strip().lower()
         )
     if status == "active":
-        filters.append(UserModel.status == UserStatus.ACTIVE)
+        filters.append(creator_directory_status() == UserStatus.ACTIVE)
     elif status == "bot_blocked":
-        filters.append(UserModel.status == UserStatus.BOT_BLOCKED)
+        filters.append(creator_directory_status() == UserStatus.BOT_BLOCKED)
     elif status == "limited":
         filters.append(
-            UserModel.status.not_in((UserStatus.ACTIVE, UserStatus.BOT_BLOCKED))
+            creator_directory_status().not_in(
+                (UserStatus.ACTIVE, UserStatus.BOT_BLOCKED)
+            )
         )
     if followers_min is not None and followers_min >= 0:
         filters.append(

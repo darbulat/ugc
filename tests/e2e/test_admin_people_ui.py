@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from tests.helpers.financial_environment import require_test_database
 from ugc_bot.domain.enums import (
     AudienceGender,
+    AuditAction,
     ComplaintStatus,
     InteractionStatus,
     MessengerType,
@@ -24,6 +25,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.domain.social import SELF_REPORTED_FOLLOWERS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
+    AuditLogModel,
     BloggerProfileModel,
     BloggerRatingModel,
     ComplaintModel,
@@ -33,6 +35,9 @@ from ugc_bot.infrastructure.db.models import (
     OrderModel,
     UserModel,
     UserReferralBindingModel,
+)
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    BOT_UNAVAILABLE_EVENT,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
@@ -58,13 +63,16 @@ def people_records():
             user_id=user_id,
             username=name,
             telegram=handle,
+            telegram_id=str(other_id.int % 10**12 + 1)
+            if user_id == other_id
+            else None,
             messenger_type=MessengerType.TELEGRAM,
             status=status,
         )
         for user_id, name, handle, status in [
             (customer_id, f"Анна {token}", f"anna_{token}", UserStatus.ACTIVE),
             (creator_id, creator_name, f"maria_{token}", UserStatus.ACTIVE),
-            (other_id, f"Ирина {token}", None, UserStatus.BOT_BLOCKED),
+            (other_id, f"Ирина {token}", None, UserStatus.ACTIVE),
             (paused_id, f"Ольга {token}", None, UserStatus.PAUSE),
             (
                 inviter_id,
@@ -77,6 +85,15 @@ def people_records():
     with Session(engine) as session, session.begin():
         session.add_all(users)
         session.flush()
+        session.add(
+            AuditLogModel(
+                entity_type=BOT_UNAVAILABLE_EVENT,
+                entity_id=other_id,
+                action=AuditAction.CREATE,
+                new_values={"platform": "telegram"},
+                changed_at=now,
+            )
+        )
         session.add(
             UserReferralBindingModel(
                 referrer_user_id=inviter_id, referred_user_id=other_id
@@ -233,6 +250,9 @@ def people_records():
         yield brand, city, instagram, order_title, creator_name
     finally:
         with engine.begin() as db:
+            db.execute(
+                delete(AuditLogModel).where(AuditLogModel.entity_id == other_id)
+            )
             db.execute(
                 delete(OrderModel).where(OrderModel.order_id == order_id)
             )

@@ -590,3 +590,48 @@ async def test_send_invoice_with_pay_button_text(
     markup = call_kwargs["reply_markup"]
     assert markup.inline_keyboard[0][0].text == "Pay 50 $"
     assert markup.inline_keyboard[0][0].pay is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("reason", "chat_id", "expected"),
+    [
+        ("Forbidden: bot was blocked by the user", "123", True),
+        ("Forbidden: user is deactivated", "123", False),
+        ("Forbidden: bot was blocked by the user", "-123", False),
+    ],
+)
+async def test_reports_only_confirmed_private_bot_blocks(
+    fake_bot: MagicMock, reason: str, chat_id: str, expected: bool
+) -> None:
+    error = TelegramForbiddenError(
+        method=SendMessage(chat_id=1, text="test"), message=reason
+    )
+    fake_bot.send_message.side_effect = error
+    report = AsyncMock()
+    client = TelegramMessengerClient(fake_bot, on_confirmed_block=report)
+
+    with pytest.raises(TelegramForbiddenError) as raised:
+        await client.send_text(chat_id=chat_id, text="test")
+
+    assert raised.value is error
+    assert report.await_count == int(expected)
+    if expected:
+        report.assert_awaited_once_with(chat_id)
+
+
+@pytest.mark.asyncio
+async def test_bot_block_recording_failure_preserves_provider_error(
+    fake_bot: MagicMock,
+) -> None:
+    error = TelegramForbiddenError(
+        method=SendMessage(chat_id=1, text="test"),
+        message="Forbidden: bot was blocked by the user",
+    )
+    fake_bot.send_message.side_effect = error
+    client = TelegramMessengerClient(
+        fake_bot, on_confirmed_block=AsyncMock(side_effect=RuntimeError)
+    )
+    with pytest.raises(TelegramForbiddenError) as raised:
+        await client.send_text(chat_id="123", text="test")
+    assert raised.value is error

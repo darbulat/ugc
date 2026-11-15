@@ -8,6 +8,7 @@ import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager, suppress
+from functools import partial
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
@@ -28,7 +29,8 @@ from ugc_bot.checkout_runtime import (
 from ugc_bot.config import load_config
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
-    record_bot_unavailable,
+    record_bot_availability,
+    record_telegram_send_block,
 )
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
@@ -115,7 +117,15 @@ async def _lifespan(app: FastAPI):
         dispatcher = build_dispatcher(config, storage=storage)
         await dispatcher["bot_texts_service"].load_from_db()
         bot = Bot(token=config.bot.bot_token)
-        messenger_client = TelegramMessengerClient(bot)
+        recorder = dispatcher.get("transaction_manager")
+        messenger_client = TelegramMessengerClient(
+            bot,
+            on_confirmed_block=(
+                partial(record_telegram_send_block, recorder)
+                if recorder is not None
+                else None
+            ),
+        )
         event_adapter = TelegramEventAdapter()
         payment_provider = TelegramPaymentProvider(bot)
 
@@ -272,28 +282,31 @@ async def _persist_checkout_payment(update, dispatcher):
         ) from exc
 
 
-async def _persist_block_event(update: Update, dispatcher: Dispatcher) -> bool:
+async def _persist_availability_event(
+    update: Update, dispatcher: Dispatcher
+) -> bool:
     membership = update.my_chat_member
-    if (
-        membership is not None
-        and membership.chat.type == ChatType.PRIVATE
-        and membership.old_chat_member.status != ChatMemberStatus.KICKED
-        and membership.new_chat_member.status == ChatMemberStatus.KICKED
-    ):
-        try:
-            await record_bot_unavailable(
-                dispatcher["transaction_manager"],
-                platform=MessengerType.TELEGRAM,
-                external_id=str(membership.chat.id),
-                occurred_at=membership.date,
-            )
-        except Exception as exc:
-            logger.error("Telegram blocking event was not saved")
-            raise HTTPException(
-                status_code=503, detail="blocking_event_not_saved"
-            ) from exc
-        return True
-    return False
+    if membership is None or membership.chat.type != ChatType.PRIVATE:
+        return False
+    was_blocked = membership.old_chat_member.status == ChatMemberStatus.KICKED
+    is_blocked = membership.new_chat_member.status == ChatMemberStatus.KICKED
+    if was_blocked == is_blocked:
+        return False
+    try:
+        await record_bot_availability(
+            dispatcher["transaction_manager"],
+            platform=MessengerType.TELEGRAM,
+            external_id=str(membership.chat.id),
+            occurred_at=membership.date,
+            available=not is_blocked,
+            update_id=update.update_id,
+        )
+    except Exception as exc:
+        logger.error("Telegram bot availability event was not saved")
+        raise HTTPException(
+            status_code=503, detail="blocking_event_not_saved"
+        ) from exc
+    return True
 
 
 @app.post("/webhook/telegram")
@@ -337,7 +350,7 @@ async def handle_webhook(
     if await _persist_checkout_payment(update, dispatcher):
         return {"status": "ok"}
 
-    if await _persist_block_event(update, dispatcher):
+    if await _persist_availability_event(update, dispatcher):
         return {"status": "ok"}
 
     if await intercept_reserved_link(
