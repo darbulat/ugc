@@ -738,6 +738,8 @@ class InstagramVerificationCodeModel(Base):
 
     __tablename__ = "instagram_verification_codes"
 
+    request_channel: Mapped[str | None] = mapped_column(String(8))
+
     code_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         primary_key=True,

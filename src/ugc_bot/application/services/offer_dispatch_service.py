@@ -28,6 +28,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.domain.entities import BloggerProfile, InstagramStats, Order, User
 from ugc_bot.domain.enums import (
+    MessengerType,
     OrderStatus,
     OrderType,
     RejectionReason,
@@ -642,12 +643,14 @@ class OfferDispatchService:
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
 
         async def _run(sess: object | None) -> None:
             await self.offer_dispatch_repo.record_sent(
-                order_id, blogger_id, session=sess
+                order_id, blogger_id, session=sess, channel=channel
             )
 
         await with_optional_tx(self.transaction_manager, _run)
@@ -673,6 +676,8 @@ class OfferDispatchService:
         rejection_reason: RejectionReason | None = None,
         desired_price: Decimal | None = None,
         session: object | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> SkipResult:
         """Record blogger skip with optional rejection reason."""
 
@@ -687,6 +692,7 @@ class OfferDispatchService:
                 if rejection_reason
                 else None,
                 desired_price=desired_price,
+                channel=channel,
             )
             manager_id: UUID | None = None
             order_price: Decimal | None = None

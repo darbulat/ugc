@@ -8,6 +8,7 @@ from uuid import UUID
 
 from ugc_bot.application.ports import InstagramVerificationRepository
 from ugc_bot.domain.entities import InstagramVerificationCode
+from ugc_bot.domain.enums import MessengerType
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -48,6 +49,8 @@ def _serialize(vc: InstagramVerificationCode) -> str:
         data["link_username"] = vc.link_username
     if vc.link_phone is not None:
         data["link_phone"] = vc.link_phone
+    if vc.request_channel is not None:
+        data["request_channel"] = vc.request_channel.value
     return json.dumps(data)
 
 
@@ -64,6 +67,9 @@ def _deserialize(data: str) -> InstagramVerificationCode:
         link_max_chat_id=d.get("link_max_chat_id"),
         link_username=d.get("link_username"),
         link_phone=d.get("link_phone"),
+        request_channel=MessengerType(d["request_channel"])
+        if d.get("request_channel")
+        else None,
     )
 
 

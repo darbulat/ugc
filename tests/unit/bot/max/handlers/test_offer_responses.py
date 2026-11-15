@@ -183,7 +183,7 @@ async def test_cancel_price_entry_records_skip_when_user_and_order_known():
     deps = _deps(user=user)
     await router.route_callback(_incoming_cb(f"orr_cancel:{order_id}"), deps)
     deps["offer_dispatch_service"].record_skip.assert_called_once_with(
-        order_id, user.user_id
+        order_id, user.user_id, channel=MessengerType.MAX
     )
 
 

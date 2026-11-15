@@ -9,6 +9,7 @@ from uuid import UUID
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
 from sqlalchemy import func, or_, select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -20,13 +21,16 @@ from ugc_bot.application.ports import (
     BloggerProfileRepository,
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile
-from ugc_bot.domain.enums import BloggerGender, WorkFormat
+from ugc_bot.domain.enums import BloggerGender, MessengerType, WorkFormat
 from ugc_bot.domain.social import CreatorIdentityConflict
 from ugc_bot.infrastructure.db.identity_history_models import (
     IDENTITY_OBSERVATIONS,
 )
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_WRITER_LOCK_SQL,
+)
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    REGISTRATION_CHANNELS,
 )
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -82,6 +86,27 @@ class SqlAlchemyBloggerProfileRepository(
                         )
                         .exists()
                     )
+                )
+            )
+
+    async def record_registration_channel(
+        self,
+        user_id: UUID,
+        channel: MessengerType,
+        completed_at: datetime | None,
+        *,
+        session: object | None,
+    ) -> None:
+        async with _resolve_session(self.session_factory, session) as db:
+            await db.execute(
+                insert(REGISTRATION_CHANNELS)
+                .values(
+                    user_id=user_id,
+                    channel=channel.value,
+                    completed_at=completed_at,
+                )
+                .on_conflict_do_nothing(
+                    index_elements=(REGISTRATION_CHANNELS.c.user_id,)
                 )
             )
 

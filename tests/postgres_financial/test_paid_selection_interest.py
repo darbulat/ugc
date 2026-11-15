@@ -18,6 +18,7 @@ from ugc_bot.application.services.paid_selection_interest import (
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.infrastructure.clock import SystemClock
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -104,13 +105,29 @@ async def test_capture_interest_creates_assignment_and_durable_job(capture_env):
     env = capture_env
     creator, *_ = seed_creators(env)
     await capture(env)
-    result = await service(env).respond(env["order"], creator)
+    result = await service(env).respond(
+        env["order"], creator, channel=MessengerType.MAX
+    )
     assert result.accepted and result.delivery_state == "ready"
     assert result.creator_id == creator and result.manager_id is None
     assert result.confirmed_at <= datetime.now(timezone.utc)
     assert result.assignment_id and result.paid_item_id and result.job_id
-    assert await service(env).respond(env["order"], creator) == result
+    assert (
+        await service(env).respond(
+            env["order"], creator, channel=MessengerType.TELEGRAM
+        )
+        == result
+    )
     with Session(env["pg"]) as db:
+        attribution = db.execute(
+            select(OFFER_CHANNELS).where(
+                OFFER_CHANNELS.c.order_id == env["order"],
+                OFFER_CHANNELS.c.blogger_id == creator,
+            )
+        ).one()
+        assert attribution.response_channel == MessengerType.MAX
+        assert attribution.response_at == result.confirmed_at
+        assert attribution.max_sent_at is None
         assignment = db.get(ItemAssignmentModel, result.assignment_id)
         assert assignment.creator_id == creator
         assert assignment.actor_id == creator and assignment.version == 1

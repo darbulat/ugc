@@ -661,6 +661,7 @@ def test_dashboard_social_summary_links_and_layout(
 
 
 @pytest.mark.e2e
+@pytest.mark.timeout(30)
 def test_creator_base_opens_filtered_directory(
     admin_server, page, people_records
 ):
@@ -686,7 +687,9 @@ def test_creator_base_opens_filtered_directory(
     )
     expect(overview).to_have_count(16)
     check_counts(overview)
-    activity = section.locator(".creator-base-work .creator-base-metric")
+    activity = section.locator(
+        ".creator-base-work .creator-base-metric:visible"
+    )
     expect(activity).to_have_count(4)
     for period in ("7 дней", "30 дней", "90 дней", "Всё время"):
         option = section.get_by_role("link", name=period, exact=True)
@@ -695,7 +698,19 @@ def test_creator_base_opens_filtered_directory(
         check_counts(activity)
 
     section.get_by_role("link", name="90 дней").click()
-    section.get_by_role("link", name=re.compile("Получили предложение")).click()
+    section.get_by_text("Охват MAX за выбранный период", exact=True).click()
+    max_only = section.get_by_role(
+        "link", name=re.compile("только в MAX за период")
+    )
+    count = max_only.locator(".metric__value").inner_text()
+    max_only.click()
+    expect(page.locator(".people-count")).to_have_text(f"Найдено {count}")
+    expect(page.locator('input[name="work_period"]')).to_have_value("90d")
+    page.go_back(wait_until="domcontentloaded")
+
+    section.get_by_role(
+        "link", name=re.compile("^Получили предложение [0-9]")
+    ).click()
     expect(
         page.get_by_role("link", name="Получили предложение · 90 дней")
     ).to_be_visible()

@@ -58,6 +58,7 @@ from ugc_bot.admin.creator_base import (
     CREATOR_ACTIVITY_PERIODS,
     CREATOR_BASE_CARDS,
     CREATOR_BASE_LABELS,
+    MAX_ACTIVITY_LABELS,
     normalize_creator_period,
 )
 from ugc_bot.admin.creator_invites import register_creator_invites
@@ -855,7 +856,7 @@ async def _render_dashboard_page(
     work_period = normalize_creator_period(work_period)
     creator_base = await _get_cached_or_fetch(
         cache,
-        f"creator-base:v1:{work_period}" if cache else None,
+        f"creator-base:v2:{work_period}" if cache else None,
         _dashboard_cache_ttl(work_period),
         lambda: dashboard_service.get_creator_base(work_period),
     )
@@ -868,6 +869,7 @@ async def _render_dashboard_page(
             "creator_base_cards": CREATOR_BASE_CARDS,
             "creator_activity_labels": CREATOR_ACTIVITY_LABELS,
             "creator_activity_periods": CREATOR_ACTIVITY_PERIODS,
+            "max_activity_labels": MAX_ACTIVITY_LABELS,
             "work_period": work_period,
             "period": period_key,
             "periods": _DASHBOARD_PERIODS,
@@ -1068,6 +1070,7 @@ async def _render_creators_page(
             "work_period_label": (
                 CREATOR_ACTIVITY_PERIODS[work_period]
                 if base_segment in CREATOR_ACTIVITY_LABELS
+                or base_segment in MAX_ACTIVITY_LABELS
                 else ""
             ),
         },

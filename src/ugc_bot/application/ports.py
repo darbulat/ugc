@@ -163,6 +163,17 @@ class BloggerProfileRepository(ABC):
         """Whether this creator previously verified an Instagram identity."""
         return False
 
+    async def record_registration_channel(
+        self,
+        user_id: UUID,
+        channel: MessengerType,
+        completed_at: datetime | None,
+        *,
+        session: object | None,
+    ) -> None:
+        """Keep the first verification channel and known completion time."""
+        raise NotImplementedError  # pragma: no cover
+
     async def get_by_user_ids(
         self,
         user_ids: List[UUID],
@@ -339,6 +350,8 @@ class OfferDispatchRepository(ABC):
         order_id: UUID,
         blogger_id: UUID,
         session: object | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
 
@@ -353,6 +366,8 @@ class OfferDispatchRepository(ABC):
         manager_id: UUID | None = None,
         rejection_reason: str | None = None,
         desired_price: Decimal | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> None:
         """Update dispatch with response (accepted/in_offer) and updated_at."""
 

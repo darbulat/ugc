@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from ugc_bot.domain.enums import MessengerType
+
 
 @dataclass(frozen=True, slots=True)
 class SelectionInterest:
@@ -46,4 +48,5 @@ class PaidSelectionRepository(Protocol):
         *,
         session: object,
         invite_id: UUID | None = None,
+        channel: MessengerType | None = None,
     ) -> SelectionInterest: ...

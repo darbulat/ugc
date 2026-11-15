@@ -11,6 +11,7 @@ from ugc_bot.infrastructure.db import (  # noqa: F401
     dispatch_control,
     invite_handoff_models,
     manager_application_models,
+    messenger_attribution,
     models,
     order_review_models,
     order_summary_models,
