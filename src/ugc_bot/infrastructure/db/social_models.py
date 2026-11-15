@@ -101,3 +101,15 @@ sa.Index(
     postgresql_where=sa.text("platform = 'instagram' AND verified"),
     sqlite_where=sa.text("platform = 'instagram' AND verified"),
 )
+
+
+SOCIAL_PROMPT_DISMISSALS = sa.Table(
+    "creator_social_prompt_dismissals",
+    Base.metadata,
+    sa.Column(
+        "user_id",
+        sa.Uuid(),
+        sa.ForeignKey("blogger_profiles.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)

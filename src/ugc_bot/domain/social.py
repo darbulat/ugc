@@ -42,6 +42,9 @@ SOCIAL_PLATFORM_LABELS = {
 }
 
 
+SELF_REPORTED_FOLLOWERS = "creator_self_reported"
+
+
 class CreatorIdentityConflict(ValueError):
     """A verified Instagram identity already belongs to another creator."""
 

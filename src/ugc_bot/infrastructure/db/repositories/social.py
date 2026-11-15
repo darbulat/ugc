@@ -1,6 +1,6 @@
 """Atomic, canonical-owner social account upserts."""
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from uuid import UUID
 
 from sqlalchemy import delete, select, text
@@ -25,7 +25,10 @@ from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 from ugc_bot.infrastructure.db.repositories.profiles import (
     _to_blogger_profile_entity,
 )
-from ugc_bot.infrastructure.db.social_models import SocialAccountModel
+from ugc_bot.infrastructure.db.social_models import (
+    SOCIAL_PROMPT_DISMISSALS,
+    SocialAccountModel,
+)
 
 
 def _entity(model: SocialAccountModel) -> SocialAccount:
@@ -156,7 +159,15 @@ class SqlAlchemySocialAccountRepository(
             text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY")
         )
         await self._editor_actor(db, user_id, principal, lock=False)
-        return await self._editor_facts(db, user_id, lock=False)
+        facts = await self._editor_facts(db, user_id, lock=False)
+        if facts.profile is None:
+            return facts
+        dismissed = await db.scalar(
+            select(SOCIAL_PROMPT_DISMISSALS.c.user_id).where(
+                SOCIAL_PROMPT_DISMISSALS.c.user_id == user_id
+            )
+        )
+        return replace(facts, prompt_dismissed=dismissed is not None)
 
     async def prepare_editor_write(
         self,
@@ -168,6 +179,14 @@ class SqlAlchemySocialAccountRepository(
         db = self._editor_session(session)
         await self._editor_actor(db, user_id, principal, lock=True)
         return await self._editor_facts(db, user_id, lock=True)
+
+    async def dismiss_prompt(self, user_id: UUID, *, session: object) -> None:
+        db = self._editor_session(session)
+        await db.execute(
+            pg_insert(SOCIAL_PROMPT_DISMISSALS)
+            .values(user_id=user_id)
+            .on_conflict_do_nothing(index_elements=["user_id"])
+        )
 
     async def list_accounts(
         self,

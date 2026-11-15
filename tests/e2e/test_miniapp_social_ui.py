@@ -24,6 +24,7 @@ class SocialNetwork(MiniAppNetwork):
         self.blogger_registered = True
         self.confirmed = confirmed
         self.me_confirmed = confirmed
+        self.dismissed = False
         self.socials: list[dict] = []
         self.fail_list = False
         self.fail_save = False
@@ -68,6 +69,7 @@ class SocialNetwork(MiniAppNetwork):
             "/social/accounts",
             "/social/accounts/save",
             "/social/accounts/remove",
+            "/social/prompt/dismiss",
             "/blogger/instagram-verification/start",
         }:
             super().route(route)
@@ -107,8 +109,14 @@ class SocialNetwork(MiniAppNetwork):
                         if self.empty_accounts
                         else [self.instagram(), *self.socials],
                         "next_platform": self.next_platform(body),
+                        "show_prompt": self.confirmed
+                        and not self.dismissed
+                        and not self.socials,
                     }
                 )
+        elif path == "/social/prompt/dismiss":
+            self.dismissed = True
+            route.fulfill(json={"dismissed": True})
         elif path == "/social/accounts/save":
             if self.fail_save or not self.confirmed:
                 route.fulfill(
@@ -130,10 +138,14 @@ class SocialNetwork(MiniAppNetwork):
                 "handle": body.get("platform_name")
                 or body["url"].rsplit("/", 1)[-1],
                 "verified": False,
-                "work_format": body["work_format"],
-                "followers_count": None,
-                "metrics_source": None,
-                "metrics_fetched_at": None,
+                "work_format": (existing or {}).get("work_format", "ugc_only"),
+                "followers_count": body["reported_followers"],
+                "metrics_source": "creator_self_reported"
+                if body["reported_followers"] is not None
+                else None,
+                "metrics_fetched_at": "2026-11-14T12:00:00Z"
+                if body["reported_followers"] is not None
+                else None,
             }
             self.socials = [
                 item for item in self.socials if item["platform"] != network
@@ -181,7 +193,7 @@ def save_link(page: Page, network: str, url: str) -> None:
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("locale", ["ru", "en", "kk"])
-def test_sequential_socials_skip_edit_reload_remove(
+def test_optional_social_prompt_later_edit_reload_remove(
     page: Page, platform: str, locale: str
 ) -> None:
     page.set_viewport_size(
@@ -189,49 +201,39 @@ def test_sequential_socials_skip_edit_reload_remove(
     )
     network = SocialNetwork(locale)
     errors = open_socials(page, network, platform)
-    expect(page.locator("#screen-social-accounts")).to_be_visible()
-    screenshot(page, f"social-{platform}-{locale}-tiktok-prompt")
+    prompt = page.locator("#screen-social-prompt")
+    expect(prompt).to_be_visible()
+    screenshot(page, f"social-{platform}-{locale}-prompt")
+    page.locator("#btn-social-prompt-later").click()
+    expect(page.locator("#screen-blogger-dashboard")).to_be_visible()
+    assert network.dismissed
+    page.reload()
+    expect(page.locator("#screen-blogger-dashboard")).to_be_visible()
+    expect(prompt).to_be_hidden()
+    page.locator("#btn-blogger-social-accounts").click()
+    page.locator('[data-social-add="tiktok"]').click()
+    page.locator("#social-followers").fill("1200")
     save_link(page, "tiktok", "https://www.tiktok.com/@synthetic_social")
-    expect(page.locator("#form-social-account")).to_have_attribute(
-        "data-network", "youtube"
-    )
-    page.locator("#btn-social-skip").click()
-    expect(page.locator("#form-social-account")).to_have_attribute(
-        "data-network", "telegram"
-    )
-    save_link(page, "telegram", "https://t.me/synthetic_social")
     expect(page.locator("#form-social-account")).to_be_hidden()
+    row = page.locator('[data-social-network="tiktok"]')
+    expect(row).not_to_contain_text(UNKNOWN[locale])
+    page.locator('[data-social-add="telegram"]').click()
+    save_link(page, "telegram", "https://t.me/synthetic_social")
     expect(page.locator(".umc-social-account")).to_have_count(3)
     expect(page.locator(".is-verified")).to_have_count(1)
-    expect(page.locator('[data-social-network="tiktok"]')).to_contain_text(
-        UNKNOWN[locale]
-    )
-    assert not any(item["platform"] == "vk" for item in network.socials)
-    page.locator('[data-social-add="vk"]').click()
-    expect(page.locator("#form-social-account")).to_have_attribute(
-        "data-network", "vk"
-    )
-    page.locator("#btn-social-skip").click()
-    expect(page.locator("#form-social-account")).to_be_hidden()
-    assert any(
-        body.get("skipped") == ["youtube", "vk"]
-        and body.get("include_vk") is True
-        for path, body in network.requests
-        if path == "/social/accounts"
-    )
+    expect(page.locator('[data-social-add="vk"]')).to_be_visible()
     screenshot(page, f"social-{platform}-{locale}-saved-links")
-    page.reload()
-    expect(page.locator("#screen-social-accounts")).to_be_visible()
-    expect(page.locator(".umc-social-account")).to_have_count(3)
     page.locator('[data-social-edit="tiktok"]').click()
+    expect(page.locator("#social-followers")).to_have_value("1200")
     page.locator("#social-account-url").fill(
         "https://www.tiktok.com/@synthetic_updated"
     )
-    page.locator("#social-account-work-format").select_option("ads_in_account")
+    expect(page.locator("#social-followers")).to_have_value("")
     page.locator("#btn-social-save").click()
-    expect(page.locator('[data-social-network="tiktok"] a')).to_have_attribute(
+    expect(row.locator("a")).to_have_attribute(
         "href", "https://www.tiktok.com/@synthetic_updated"
     )
+    expect(row).to_contain_text(UNKNOWN[locale])
     page.locator('[data-social-remove="telegram"]').click()
     expect(page.locator('[data-social-network="telegram"]')).to_have_count(0)
     page.locator("#btn-social-back").click()
@@ -249,16 +251,7 @@ def test_sequential_socials_skip_edit_reload_remove(
                 "platform",
                 "network",
                 "url",
-                "work_format",
-            }
-        elif path.endswith("/remove"):
-            assert set(body) == {"init_data", "platform", "account_id"}
-        else:
-            assert set(body) == {
-                "init_data",
-                "platform",
-                "skipped",
-                "include_vk",
+                "reported_followers",
             }
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"
@@ -290,10 +283,9 @@ def test_unverified_instagram_gate_uses_existing_verification(
     network.confirmed = True
     network.me_confirmed = True
     page.locator("#btn-instagram-verification-back").click()
-    expect(page.locator("#screen-social-accounts")).to_be_visible()
-    expect(page.locator("#form-social-account")).to_have_attribute(
-        "data-network", "tiktok"
-    )
+    expect(page.locator("#screen-social-prompt")).to_be_visible()
+    page.locator("#btn-social-prompt-add").click()
+    expect(page.locator('[data-social-add="tiktok"]')).to_be_visible()
     assert not errors
 
 
@@ -312,6 +304,7 @@ def test_social_loading_save_remove_failures_are_retryable(page: Page) -> None:
     expect(page.locator("#form-social-account")).to_be_hidden()
     network.fail_list = False
     page.locator("#btn-social-reload").click()
+    page.locator('[data-social-add="tiktok"]').click()
     expect(page.locator("#form-social-account")).to_be_visible()
     network.fail_save = True
     page.locator("#social-account-url").fill(
@@ -353,6 +346,7 @@ def test_new_social_ui_localizes_existing_additional_locales(
     page: Page, locale: str
 ) -> None:
     errors = open_socials(page, SocialNetwork(locale))
+    page.locator("#btn-social-prompt-add").click()
     expect(page.locator("#screen-social-accounts")).to_be_visible()
     title = "Сацыяльныя сеткі" if locale == "be" else "Ijtimoiy tarmoqlar"
     expect(page.locator("#social-accounts-title")).to_have_text(title)
@@ -388,6 +382,7 @@ def test_server_badges_unknown_metrics_and_link_rendering_are_authoritative(
         },
     ]
     errors = open_socials(page, network)
+    page.locator("#btn-blogger-social-accounts").click()
     expect(page.locator("#screen-social-accounts")).to_be_visible()
     tiktok = page.locator('[data-social-network="tiktok"]')
     expect(tiktok.locator("a")).to_have_count(0)
@@ -407,6 +402,9 @@ def test_native_social_save_pending_state_and_exact_signed_payload(
 ) -> None:
     network = SocialNetwork()
     errors = open_socials(page, network, native=True)
+    expect(page.locator("#screen-social-prompt")).to_be_visible()
+    page.evaluate("window.__host.wa.MainButton.click()")
+    page.locator('[data-social-add="tiktok"]').click()
     expect(page.locator("#screen-social-accounts")).to_be_visible()
     expect(page.locator("#btn-social-save")).to_be_hidden()
     page.locator("#social-account-url").fill(
@@ -428,7 +426,7 @@ def test_native_social_save_pending_state_and_exact_signed_payload(
         "platform": "telegram",
         "network": "tiktok",
         "url": "https://www.tiktok.com/@synthetic_pending",
-        "work_format": "ugc_only",
+        "reported_followers": None,
     }
     assert (
         page.evaluate("window.__host.wa.MainButton.params.is_active") is False
@@ -489,9 +487,7 @@ def test_server_instagram_gate_overrides_stale_profile_confirmation(
 def test_add_named_other_platform(page, platform):
     network = SocialNetwork("ru")
     open_socials(page, network, platform)
-    page.locator("#btn-social-skip").click()
-    page.locator("#btn-social-skip").click()
-    page.locator("#btn-social-skip").click()
+    page.locator("#btn-social-prompt-add").click()
     page.locator('[data-social-add="other"]').click()
     page.locator("#social-platform-name").fill("Twitch")
     save_link(page, "other", "https://twitch.tv/creator")

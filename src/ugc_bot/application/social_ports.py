@@ -142,6 +142,7 @@ class SocialEditorFacts:
     owner_id: UUID
     profile: BloggerProfile | None
     accounts: tuple[SocialAccount, ...]
+    prompt_dismissed: bool = False
 
     def __post_init__(self):
         _validate_editor_accounts(self.accounts)
@@ -165,6 +166,7 @@ class SocialEditorFacts:
 class SocialEditorState:
     accounts: tuple[SocialAccount, ...]
     next_platform: SocialPlatform | None
+    show_prompt: bool = False
 
     def __post_init__(self):
         _validate_editor_accounts(self.accounts)
@@ -198,8 +200,16 @@ class SocialEditorRepository(Protocol):
         session: object,
     ) -> SocialEditorFacts: ...
 
+    async def dismiss_prompt(
+        self, user_id: UUID, *, session: object
+    ) -> None: ...
+
 
 class SocialEditorPort(Protocol):
+    async def dismiss_editor_prompt(
+        self, user_id: UUID, *, principal: AuthenticatedMessengerPrincipal
+    ) -> None: ...
+
     async def editor_state(
         self,
         user_id: UUID,
@@ -218,6 +228,8 @@ class SocialEditorPort(Protocol):
         principal: AuthenticatedMessengerPrincipal,
         work_format: WorkFormat | None = None,
         platform_name: str | None = None,
+        reported_followers: int | None = None,
+        replace_report: bool = False,
     ) -> SocialEditorSaved: ...
 
     async def remove_editor_account(

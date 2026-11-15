@@ -60,6 +60,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.domain.social import (
+    SELF_REPORTED_FOLLOWERS,
     SOCIAL_PLATFORM_LABELS,
     SocialPlatform,
     normalize_social_url,
@@ -1289,7 +1290,7 @@ class AdminDashboardService:
             accounts = await SqlAlchemySocialAccountRepository(
                 self._session_factory
             ).list_accounts(user_id, session=session)
-            socials = {}
+            socials: dict[str, dict[str, Any]] = {}
             for account in accounts:
                 platform = account.platform
                 if platform == SocialPlatform.INSTAGRAM:
@@ -1306,6 +1307,11 @@ class AdminDashboardService:
                         "url": url,
                         "label": SOCIAL_PLATFORM_LABELS.get(platform, handle),
                     }
+                    if account.metrics_source == SELF_REPORTED_FOLLOWERS:
+                        socials[platform.value].update(
+                            reported_followers=account.followers_count,
+                            reported_at=account.metrics_fetched_at,
+                        )
             card["blogger_profile"] = {
                 "social_links": socials,
                 "instagram_url": blogger.instagram_url,

@@ -236,12 +236,12 @@
       other: 'Другая площадка', platformName: 'Название площадки',
       title: 'Соцсети', intro: 'Дополните профиль креатора ссылками на ваши соцсети.',
       gate: 'Сначала подтвердите Instagram. После проверки можно добавить остальные соцсети.', verify: 'Подтвердить Instagram',
-      verified: 'Подтверждено', unverified: 'Указано автором, не верифицировано', followers: 'Подписчики', unknown: 'Нет данных', source: 'Источник', observed: 'Данные на',
-      url: 'Ссылка на профиль или канал', format: 'Формат работы', ugc: 'Только UGC', ads: 'Реклама в аккаунте',
-      add: 'Добавить', edit: 'Изменить', remove: 'Удалить ссылку', save: 'Сохранить ссылку', skip: 'Пропустить', cancel: 'Отменить',
+      verified: 'Подтверждено', unverified: 'Указано автором, не верифицировано', followers: 'Подписчики', unknown: 'Нет данных',
+      url: 'Ссылка на профиль или канал',
+      add: 'Добавить', edit: 'Изменить', remove: 'Удалить ссылку', save: 'Сохранить ссылку', cancel: 'Отменить',
       optional: 'Можно пропустить и добавить ссылку позже. Дополнительные ссылки не проходят проверку владения.',
       loading: 'Загружаем соцсети…', saving: 'Сохраняем ссылку…', removing: 'Удаляем ссылку…',
-      empty: 'Соцсети пока не добавлены.', done: 'Можно вернуться к профилю или добавить пропущенные ссылки.', vk: 'Добавить VK (необязательно)',
+      empty: 'Соцсети пока не добавлены.',
       reload: 'Обновить список', back: 'Назад', saved: 'Ссылка сохранена.', removed: 'Ссылка удалена.', absent: 'Ссылка уже отсутствует.',
       loadError: 'Не удалось загрузить соцсети.', saveError: 'Не удалось сохранить ссылку.', removeError: 'Не удалось удалить ссылку.',
       authorityError: 'Доступ к соцсетям изменился. Обновите список, чтобы продолжить.'
@@ -250,12 +250,12 @@
       other: 'Other platform', platformName: 'Platform name',
       title: 'Social accounts', intro: 'Add your social links to your creator profile.',
       gate: 'Verify Instagram first. Other social accounts become available after verification.', verify: 'Verify Instagram',
-      verified: 'Verified', unverified: 'Provided by creator, unverified', followers: 'Followers', unknown: 'No data', source: 'Source', observed: 'Observed on',
-      url: 'Profile or channel URL', format: 'Work format', ugc: 'UGC only', ads: 'Ads in account',
-      add: 'Add', edit: 'Edit', remove: 'Remove link', save: 'Save link', skip: 'Skip', cancel: 'Cancel',
+      verified: 'Verified', unverified: 'Provided by creator, unverified', followers: 'Followers', unknown: 'No data',
+      url: 'Profile or channel URL',
+      add: 'Add', edit: 'Edit', remove: 'Remove link', save: 'Save link', cancel: 'Cancel',
       optional: 'You can skip and add a link later. Ownership of supplemental links is not verified.',
       loading: 'Loading social accounts…', saving: 'Saving link…', removing: 'Removing link…',
-      empty: 'No social accounts added yet.', done: 'Return to your profile or add skipped links.', vk: 'Add VK (optional)',
+      empty: 'No social accounts added yet.',
       reload: 'Reload accounts', back: 'Back', saved: 'Link saved.', removed: 'Link removed.', absent: 'The link is already absent.',
       loadError: 'Could not load social accounts.', saveError: 'Could not save the link.', removeError: 'Could not remove the link.',
       authorityError: 'Access to social accounts has changed. Reload accounts to continue.'
@@ -264,12 +264,12 @@
       other: 'Басқа платформа', platformName: 'Платформа атауы',
       title: 'Әлеуметтік желілер', intro: 'Креатор профиліне әлеуметтік желілеріңіздің сілтемелерін қосыңыз.',
       gate: 'Алдымен Instagram аккаунтын растаңыз. Содан кейін басқа әлеуметтік желілерді қосуға болады.', verify: 'Instagram аккаунтын растау',
-      verified: 'Расталған', unverified: 'Автор көрсеткен, расталмаған', followers: 'Жазылушылар', unknown: 'Деректер жоқ', source: 'Дереккөз', observed: 'Деректер күні',
-      url: 'Профиль не арна сілтемесі', format: 'Жұмыс форматы', ugc: 'Тек UGC', ads: 'Аккаунттағы жарнама',
-      add: 'Қосу', edit: 'Өзгерту', remove: 'Сілтемені жою', save: 'Сілтемені сақтау', skip: 'Өткізіп жіберу', cancel: 'Бас тарту',
+      verified: 'Расталған', unverified: 'Автор көрсеткен, расталмаған', followers: 'Жазылушылар', unknown: 'Деректер жоқ',
+      url: 'Профиль не арна сілтемесі',
+      add: 'Қосу', edit: 'Өзгерту', remove: 'Сілтемені жою', save: 'Сілтемені сақтау', cancel: 'Бас тарту',
       optional: 'Қазір өткізіп, сілтемені кейін қосуға болады. Қосымша сілтемелерге иелік ету расталмайды.',
       loading: 'Әлеуметтік желілер жүктелуде…', saving: 'Сілтеме сақталуда…', removing: 'Сілтеме жойылуда…',
-      empty: 'Әлеуметтік желілер әлі қосылмаған.', done: 'Профильге оралыңыз немесе өткізілген сілтемелерді қосыңыз.', vk: 'VK қосу (міндетті емес)',
+      empty: 'Әлеуметтік желілер әлі қосылмаған.',
       reload: 'Тізімді жаңарту', back: 'Артқа', saved: 'Сілтеме сақталды.', removed: 'Сілтеме жойылды.', absent: 'Сілтеме жоқ.',
       loadError: 'Әлеуметтік желілерді жүктеу мүмкін болмады.', saveError: 'Сілтемені сақтау мүмкін болмады.', removeError: 'Сілтемені жою мүмкін болмады.',
       authorityError: 'Әлеуметтік желілерге қолжетімділік өзгерді. Жалғастыру үшін тізімді жаңартыңыз.'
@@ -278,12 +278,12 @@
       other: 'Іншая пляцоўка', platformName: 'Назва пляцоўкі',
       title: 'Сацыяльныя сеткі', intro: 'Дадайце спасылкі на сацыяльныя сеткі ў профіль крэатара.',
       gate: 'Спачатку пацвердзіце Instagram. Пасля праверкі можна дадаць іншыя сацыяльныя сеткі.', verify: 'Пацвердзіць Instagram',
-      verified: 'Пацверджана', unverified: 'Указана аўтарам, не праверана', followers: 'Падпісчыкі', unknown: 'Няма даных', source: 'Крыніца', observed: 'Даныя на',
-      url: 'Спасылка на профіль ці канал', format: 'Фармат працы', ugc: 'Толькі UGC', ads: 'Рэклама ў акаўнце',
-      add: 'Дадаць', edit: 'Змяніць', remove: 'Выдаліць спасылку', save: 'Захаваць спасылку', skip: 'Прапусціць', cancel: 'Адмяніць',
+      verified: 'Пацверджана', unverified: 'Указана аўтарам, не праверана', followers: 'Падпісчыкі', unknown: 'Няма даных',
+      url: 'Спасылка на профіль ці канал',
+      add: 'Дадаць', edit: 'Змяніць', remove: 'Выдаліць спасылку', save: 'Захаваць спасылку', cancel: 'Адмяніць',
       optional: 'Можна прапусціць і дадаць спасылку пазней. Валоданне дадатковымі спасылкамі не правяраецца.',
       loading: 'Загружаем сацыяльныя сеткі…', saving: 'Захоўваем спасылку…', removing: 'Выдаляем спасылку…',
-      empty: 'Сацыяльныя сеткі пакуль не дададзены.', done: 'Вярніцеся ў профіль або дадайце прапушчаныя спасылкі.', vk: 'Дадаць VK (неабавязкова)',
+      empty: 'Сацыяльныя сеткі пакуль не дададзены.',
       reload: 'Абнавіць спіс', back: 'Назад', saved: 'Спасылка захавана.', removed: 'Спасылка выдалена.', absent: 'Спасылка ўжо адсутнічае.',
       loadError: 'Не атрымалася загрузіць сацыяльныя сеткі.', saveError: 'Не атрымалася захаваць спасылку.', removeError: 'Не атрымалася выдаліць спасылку.',
       authorityError: 'Доступ да сацыяльных сетак змяніўся. Абнавіце спіс, каб працягнуць.'
@@ -292,12 +292,12 @@
       other: 'Boshqa platforma', platformName: 'Platforma nomi',
       title: 'Ijtimoiy tarmoqlar', intro: 'Kreator profilingizga ijtimoiy tarmoq havolalarini qo‘shing.',
       gate: 'Avval Instagram akkauntingizni tasdiqlang. Shundan so‘ng boshqa tarmoqlarni qo‘shish mumkin.', verify: 'Instagramni tasdiqlash',
-      verified: 'Tasdiqlangan', unverified: 'Muallif ko‘rsatgan, tasdiqlanmagan', followers: 'Obunachilar', unknown: 'Ma’lumot yo‘q', source: 'Manba', observed: 'Ma’lumot sanasi',
-      url: 'Profil yoki kanal havolasi', format: 'Ish formati', ugc: 'Faqat UGC', ads: 'Akkauntdagi reklama',
-      add: 'Qo‘shish', edit: 'O‘zgartirish', remove: 'Havolani o‘chirish', save: 'Havolani saqlash', skip: 'O‘tkazib yuborish', cancel: 'Bekor qilish',
+      verified: 'Tasdiqlangan', unverified: 'Muallif ko‘rsatgan, tasdiqlanmagan', followers: 'Obunachilar', unknown: 'Ma’lumot yo‘q',
+      url: 'Profil yoki kanal havolasi',
+      add: 'Qo‘shish', edit: 'O‘zgartirish', remove: 'Havolani o‘chirish', save: 'Havolani saqlash', cancel: 'Bekor qilish',
       optional: 'Hozir o‘tkazib, havolani keyin qo‘shish mumkin. Qo‘shimcha havolalarga egalik tasdiqlanmaydi.',
       loading: 'Ijtimoiy tarmoqlar yuklanmoqda…', saving: 'Havola saqlanmoqda…', removing: 'Havola o‘chirilmoqda…',
-      empty: 'Hali ijtimoiy tarmoqlar qo‘shilmagan.', done: 'Profilga qayting yoki o‘tkazib yuborilgan havolalarni qo‘shing.', vk: 'VK qo‘shish (ixtiyoriy)',
+      empty: 'Hali ijtimoiy tarmoqlar qo‘shilmagan.',
       reload: 'Ro‘yxatni yangilash', back: 'Orqaga', saved: 'Havola saqlandi.', removed: 'Havola o‘chirildi.', absent: 'Havola allaqachon yo‘q.',
       loadError: 'Ijtimoiy tarmoqlarni yuklab bo‘lmadi.', saveError: 'Havolani saqlab bo‘lmadi.', removeError: 'Havolani o‘chirib bo‘lmadi.',
       authorityError: 'Ijtimoiy tarmoqlarga kirish o‘zgardi. Davom etish uchun ro‘yxatni yangilang.'
@@ -306,7 +306,14 @@
   var names = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', telegram: 'Telegram', vk: 'VK', dzen: 'Дзен', rutube: 'Rutube' };
   var samples = { tiktok: 'https://www.tiktok.com/@username', youtube: 'https://www.youtube.com/@channel', telegram: 'https://t.me/channel', vk: 'https://vk.com/username', dzen: 'https://dzen.ru/channel_name', rutube: 'https://rutube.ru/channel/123456/', other: 'https://example.com/profile' };
   var hosts = { instagram: ['instagram.com', 'www.instagram.com'], tiktok: ['tiktok.com', 'www.tiktok.com', 'm.tiktok.com'], youtube: ['youtube.com', 'www.youtube.com', 'm.youtube.com'], telegram: ['t.me', 'telegram.me', 'www.t.me'], vk: ['vk.com', 'www.vk.com', 'm.vk.com'], dzen: ['dzen.ru', 'www.dzen.ru'], rutube: ['rutube.ru', 'www.rutube.ru'] };
-  var state = { loaded: false, accounts: [], next: null, skipped: [], includeVk: false, busy: false, active: null, manual: false, offered: false, returnScreen: 'screen-blogger-dashboard' };
+  var promptCopy = {
+    ru: ['Добавьте другие соцсети', 'Сохраните ссылки на площадки, где вы ведёте свои аккаунты. Это можно сделать позже в профиле.', 'Добавить ссылки', 'Позже', 'Подписчики (необязательно)', 'Со слов креатора'],
+    en: ['Add other social accounts', 'Save links to your accounts. You can also add them later in your profile.', 'Add links', 'Later', 'Followers (optional)', 'Reported by creator'],
+    kk: ['Басқа әлеуметтік желілерді қосыңыз', 'Аккаунт сілтемелерін сақтаңыз. Оларды профильге кейін де қосуға болады.', 'Сілтемелерді қосу', 'Кейін', 'Жазылушылар саны (міндетті емес)', 'Креатор көрсеткен'],
+    be: ['Дадайце іншыя сацсеткі', 'Захавайце спасылкі на свае акаўнты. Іх можна дадаць і пазней у профілі.', 'Дадаць спасылкі', 'Пазней', 'Падпісчыкі (неабавязкова)', 'Са слоў крэатара'],
+    uz: ['Boshqa ijtimoiy tarmoqlarni qo‘shing', 'Akkaunt havolalarini saqlang. Ularni keyinroq profilingizda ham qo‘shishingiz mumkin.', 'Havolalarni qo‘shish', 'Keyinroq', 'Obunachilar (ixtiyoriy)', 'Ijodkor ko‘rsatgan']
+  };
+  var state = { loaded: false, accounts: [], next: null, showPrompt: false, busy: false, active: null, account: null, offered: false, returnScreen: 'screen-blogger-dashboard' };
   function byId(id) { return document.getElementById(id); }
   function locale() { var requested = window._me && window._me.locale; return copies[requested] ? requested : 'ru'; }
   function copy() { return copies[locale()] || copies.ru; }
@@ -319,10 +326,11 @@
   function verified() { return state.loaded && state.next !== 'instagram' && state.accounts.some(function (account) { return account.platform === 'instagram' && account.verified === true; }); }
   function localize() {
     var c = copy();
-    var ids = { 'social-accounts-title': c.title, 'social-accounts-intro': c.intro, 'social-accounts-gate-text': c.gate, 'btn-social-verify-instagram': c.verify, 'social-accounts-empty': c.empty, 'social-accounts-done': c.done, 'lbl-social-account-url': c.url, 'lbl-social-platform-name': c.platformName, 'lbl-social-account-work-format': c.format, 'btn-social-save': c.save, 'btn-social-reload': c.reload, 'btn-social-back': c.back, 'social-account-editor-hint': c.optional, 'btn-blogger-social-accounts': c.title, 'btn-edit-profile-socials': c.title };
+    var ids = { 'social-accounts-title': c.title, 'social-accounts-intro': c.intro, 'social-accounts-gate-text': c.gate, 'btn-social-verify-instagram': c.verify, 'social-accounts-empty': c.empty, 'lbl-social-account-url': c.url, 'lbl-social-platform-name': c.platformName, 'btn-social-save': c.save, 'btn-social-reload': c.reload, 'btn-social-back': c.back, 'social-account-editor-hint': c.optional, 'btn-blogger-social-accounts': c.title, 'btn-edit-profile-socials': c.title };
     Object.keys(ids).forEach(function (id) { byId(id).textContent = ids[id]; });
-    byId('social-account-work-format').options[0].textContent = c.ugc;
-    byId('social-account-work-format').options[1].textContent = c.ads;
+    ['social-prompt-title', 'social-prompt-text', 'btn-social-prompt-add', 'btn-social-prompt-later', 'lbl-social-followers'].forEach(function (id, i) {
+      byId(id).textContent = promptCopy[locale()][i];
+    });
   }
   function platformLabel(network) { return network === 'other' ? copy().other : names[network]; }
   function setPlatformName(network, name) {
@@ -351,10 +359,9 @@
     state.loaded = false;
     state.accounts = [];
     state.next = null;
-    state.skipped = [];
-    state.includeVk = false;
+    state.showPrompt = false;
     state.active = null;
-    state.manual = false;
+    state.account = null;
     byId('social-accounts-list').replaceChildren();
     var form = byId('form-social-account');
     form.hidden = true;
@@ -363,10 +370,10 @@
     byId('social-account-url').value = '';
     byId('social-account-url').placeholder = '';
     byId('social-account-url').removeAttribute('aria-invalid');
-    byId('social-account-work-format').value = 'ugc_only';
+    byId('social-followers').value = '';
     byId('social-account-editor-title').textContent = '';
     byId('social-accounts-add-options').replaceChildren();
-    ['social-accounts-add-options', 'social-accounts-gate', 'social-accounts-empty', 'social-accounts-done'].forEach(function (id) { byId(id).hidden = true; });
+    ['social-accounts-add-options', 'social-accounts-gate', 'social-accounts-empty'].forEach(function (id) { byId(id).hidden = true; });
     clearMessages();
     window.UMCShell.syncControls();
   }
@@ -393,25 +400,25 @@
     button.addEventListener('click', handler);
     return button;
   }
-  function editor(network, account, manual) {
+  function editor(network, account) {
     if (!verified() || !samples[network]) return;
     state.active = network;
-    state.manual = !!manual;
+    state.account = account || null;
     var form = byId('form-social-account');
     form.hidden = false;
     byId('social-accounts-add-options').hidden = true;
-    byId('social-accounts-done').hidden = true;
     form.dataset.network = network;
     byId('social-account-editor-title').textContent = (account ? copy().edit : copy().add) + ' ' + platformLabel(network);
     setPlatformName(network, account && account.handle);
     byId('social-account-url').value = account ? account.url : '';
     byId('social-account-url').placeholder = samples[network];
     byId('social-account-url').removeAttribute('aria-invalid');
-    byId('social-account-work-format').value = (account && account.work_format) || (window._me && window._me.blogger_profile && window._me.blogger_profile.work_format) || 'ugc_only';
-    byId('btn-social-skip').textContent = manual ? copy().cancel : copy().skip;
-    if (manual) byId(network === 'other' ? 'social-platform-name' : 'social-account-url').focus();
+    byId('social-followers').value = account && account.metrics_source === 'creator_self_reported' && Number.isSafeInteger(account.followers_count) ? String(account.followers_count) : '';
+    byId('btn-social-skip').textContent = copy().cancel;
+    byId(network === 'other' ? 'social-platform-name' : 'social-account-url').focus();
+    window.UMCShell.syncControls();
   }
-  function render(prompt) {
+  function render() {
     var c = copy();
     localize();
     var list = byId('social-accounts-list');
@@ -428,11 +435,13 @@
       var observed = date(account.metrics_fetched_at);
       var count = Number.isSafeInteger(account.followers_count) && account.followers_count >= 0 && account.metrics_source && observed ? account.followers_count : null;
       item.appendChild(node('p', c.followers + ': ' + (count === null ? c.unknown : new Intl.NumberFormat(locale()).format(count))));
-      if (count !== null) item.appendChild(node('p', c.source + ': ' + account.metrics_source + ' · ' + c.observed + ': ' + observed));
-      item.appendChild(node('p', c.format + ': ' + (account.work_format === 'ads_in_account' ? c.ads : c.ugc)));
+      if (count !== null) {
+        var source = account.metrics_source === 'creator_self_reported' ? promptCopy[locale()][5] : account.metrics_source;
+        item.appendChild(node('p', source + ' · ' + observed));
+      }
       if (account.platform !== 'instagram' && verified() && samples[account.platform]) {
         var controls = node('div', undefined, 'umc-social-actions');
-        controls.appendChild(action(c.edit, function () { clearMessages(); editor(account.platform, account, true); }, 'socialEdit', account.platform));
+        controls.appendChild(action(c.edit, function () { clearMessages(); editor(account.platform, account); }, 'socialEdit', account.platform));
         controls.appendChild(action(c.remove, function () { remove(account); }, 'socialRemove', account.platform));
         item.appendChild(controls);
       }
@@ -443,29 +452,32 @@
     byId('form-social-account').hidden = true;
     state.active = null;
     setPlatformName(null);
-    byId('social-accounts-done').hidden = !verified() || state.next !== null;
     var options = byId('social-accounts-add-options');
     options.hidden = false;
     options.replaceChildren();
     if (verified()) {
-      ['tiktok', 'youtube', 'telegram', 'dzen', 'rutube', 'other'].forEach(function (network) {
-        if (!state.accounts.some(function (account) { return account.platform === network; })) options.appendChild(action(network === 'other' ? c.other : c.add + ' ' + platformLabel(network), function () { clearMessages(); editor(network, null, true); }, 'socialAdd', network));
+      ['vk', 'youtube', 'tiktok', 'telegram', 'dzen', 'rutube', 'other'].forEach(function (network) {
+        if (!state.accounts.some(function (account) { return account.platform === network; })) {
+          options.appendChild(action(network === 'other' ? c.other : c.add + ' ' + platformLabel(network), function () {
+            clearMessages();
+            editor(network);
+          }, 'socialAdd', network));
+        }
       });
-      if (!state.accounts.some(function (account) { return account.platform === 'vk'; })) options.appendChild(action(c.vk, function () { if (state.next !== null && state.next !== 'vk') { clearMessages(); editor('vk', null, true); return; } state.includeVk = true; state.skipped = state.skipped.filter(function (network) { return network !== 'vk'; }); load(true); }, 'socialAdd', 'vk'));
-      if (prompt && samples[state.next]) editor(state.next, null, false);
     }
   }
-  function load(prompt, message) {
+  function load(message) {
     if (state.busy) return Promise.resolve();
     state.loaded = false;
     busy(true, copy().loading);
     byId('social-accounts-error').textContent = '';
-    return bridge.request('/social/accounts', { skipped: state.skipped.slice(), include_vk: state.includeVk }).then(function (data) {
+    return bridge.request('/social/accounts', {}).then(function (data) {
       if (!data || !Array.isArray(data.accounts) || (data.next_platform !== null && !names[data.next_platform])) throw new Error(copy().loadError);
       state.accounts = data.accounts;
       state.loaded = true;
       state.next = data.next_platform;
-      render(prompt);
+      state.showPrompt = data.show_prompt === true;
+      render();
       if (message) byId('social-accounts-success').textContent = message;
     }).catch(function (exception) {
       // A failed gate lookup cannot expose supplemental input controls.
@@ -480,46 +492,66 @@
   function open() {
     if (state.busy) return;
     var current = document.querySelector('.screen.active');
-    if (current && current !== screen) state.returnScreen = current.id;
+    if (current && current !== screen && current.id !== 'screen-social-prompt') state.returnScreen = current.id;
     localize(); clearMessages();
     bridge.showScreen(screen.id);
-    load(true);
+    load();
   }
   function remove(account) {
     if (state.busy || !verified() || account.platform === 'instagram') return;
     clearMessages(); busy(true, copy().removing);
     bridge.request('/social/accounts/remove', { account_id: account.account_id }).then(function (data) {
       busy(false);
-      return load(false, data.removed === true ? copy().removed : copy().absent);
+      return load(data.removed === true ? copy().removed : copy().absent);
     }).catch(function (exception) { busy(false); error(copy().removeError, exception); });
   }
   byId('btn-blogger-social-accounts').addEventListener('click', open);
   byId('btn-edit-profile-socials').addEventListener('click', open);
-  byId('btn-social-reload').addEventListener('click', function () { load(true); });
+  byId('btn-social-reload').addEventListener('click', function () { load(); });
   byId('btn-social-back').addEventListener('click', function () { bridge.showScreen(state.returnScreen); });
   byId('btn-social-verify-instagram').addEventListener('click', function () {
     bridge.showScreen('screen-blogger-dashboard');
     byId('btn-blogger-confirm-instagram').click();
   });
+  byId('btn-social-prompt-add').addEventListener('click', open);
+  byId('btn-social-prompt-later').addEventListener('click', function () {
+    var button = this;
+    button.disabled = true;
+    byId('social-prompt-error').textContent = '';
+    bridge.request('/social/prompt/dismiss', {}).then(function () {
+      bridge.showScreen('screen-blogger-dashboard');
+    }).catch(function () {
+      byId('social-prompt-error').textContent = copy().loadError;
+    }).finally(function () { button.disabled = false; });
+  });
   byId('btn-social-skip').addEventListener('click', function () {
-    if (state.busy || !state.active) return;
-    clearMessages();
-    if (state.manual) { render(false); return; }
-    if (state.skipped.indexOf(state.active) === -1) state.skipped.push(state.active);
-    load(true);
+    if (!state.busy) {
+      clearMessages();
+      render();
+      window.UMCShell.syncControls();
+    }
+  });
+  byId('social-account-url').addEventListener('input', function () {
+    if (state.account && this.value.trim() !== state.account.url) {
+      byId('social-followers').value = '';
+      state.account = null;
+    }
   });
   byId('form-social-account').addEventListener('submit', function (event) {
     event.preventDefault();
     if (state.busy || !verified() || !samples[state.active]) return;
     var network = state.active;
-    var sequential = !state.manual;
-    var payload = { network: network, url: byId('social-account-url').value.trim(), work_format: byId('social-account-work-format').value };
+    var followers = byId('social-followers').value;
+    var payload = {
+      network: network,
+      url: byId('social-account-url').value.trim(),
+      reported_followers: followers === '' ? null : Number(followers)
+    };
     if (network === 'other') payload.platform_name = byId('social-platform-name').value.trim();
     clearMessages(); busy(true, copy().saving);
     bridge.request('/social/accounts/save', payload).then(function () {
-      state.skipped = state.skipped.filter(function (skipped) { return skipped !== network; });
       busy(false);
-      return load(sequential, copy().saved);
+      return load(copy().saved);
     }).catch(function (exception) { busy(false); error(copy().saveError, exception); });
   });
   function context() {
@@ -529,12 +561,12 @@
     if (!me || !me.has_blogger_profile || !me.blogger_profile || !me.blogger_profile.confirmed || state.offered) return;
     state.offered = true;
     // Fetch after canonical confirmation; the server decides whether a prompt remains.
-    load(false).then(function () {
+    load().then(function () {
       var current = document.querySelector('.screen.active');
-      if (verified() && samples[state.next] && current && current.id === 'screen-blogger-dashboard') {
+      if (verified() && state.showPrompt && current && current.id === 'screen-blogger-dashboard') {
         state.returnScreen = current.id;
-        bridge.showScreen(screen.id);
-        render(true);
+        byId('social-prompt-error').textContent = '';
+        bridge.showScreen('screen-social-prompt');
       }
     });
   }

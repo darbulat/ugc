@@ -13,6 +13,7 @@ from ugc_bot.infrastructure.db import (  # noqa: F401
     models,
     order_review_models,
     order_summary_models,
+    social_models,
 )
 from ugc_bot.infrastructure.db.base import Base
 
