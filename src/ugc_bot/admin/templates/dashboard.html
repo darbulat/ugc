@@ -137,58 +137,7 @@
     </div>
   </section>
 
-  <section class="section" aria-labelledby="creators-heading">
-    <div class="page-heading">
-      <h2 id="creators-heading">База креаторов</h2>
-      <a href="/admin/users/creators">Открыть креаторов</a>
-    </div>
-    <div class="grid dashboard-metrics">
-      <article class="card">
-        <h3>Доступность в Telegram</h3>
-        {% for key, label in [('profiles', 'Профилей в базе'), ('telegram', 'Из них с Telegram'), ('bot_blocked', 'Из них заблокировали бота')] %}
-          <div class="metric">
-            <span class="metric__label">{{ label }}</span>
-            <span class="metric__values">
-              <strong class="metric__value">{{ creators.get(key, 0) }}</strong>
-              {% if key == 'bot_blocked' and creators.get('telegram') %}
-                <span class="metric__delta" title="Доля среди креаторов с Telegram">{{ ('%.1f'|format(100 * creators.bot_blocked / creators.telegram))|replace('.', ',') }}%</span>
-              {% endif %}
-            </span>
-          </div>
-        {% endfor %}
-        <p class="muted">Текущий статус в базе. История блокировок по дням недоступна.</p>
-      </article>
-      <article class="card">
-        <h3>Участие в заказах</h3>
-        <div class="metric">
-          <span class="metric__label">{{ 'Участвовали за всё время' if period == 'all' else 'Участвовали за период' }}</span>
-          <strong class="metric__value">{{ creators.get('ever_worked' if period == 'all' else 'worked_period', 0) }}</strong>
-        </div>
-        {% if period != 'all' %}
-          {% for key, label in [('first_period', 'Участвовали впервые'), ('returning_period', 'Участвовали повторно')] %}
-            <div class="metric">
-              <span class="metric__label">{{ label }}</span>
-              <strong class="metric__value">{{ creators.get(key, 0) }}</strong>
-            </div>
-          {% endfor %}
-        {% endif %}
-        <details>
-          <summary class="muted">Как считаем участие</summary>
-          <div class="metric">
-            <span class="metric__label">Приняли оффер в пределах лимита</span>
-            <strong class="metric__value">{{ creators.get('legacy_period', 0) }}</strong>
-          </div>
-          <div class="metric">
-            <span class="metric__label">Начали платное сотрудничество</span>
-            <strong class="metric__value">{{ creators.get('paid_started_period', 0) }}</strong>
-          </div>
-          <p class="muted">Креатор может пройти оба этапа в разных заказах. В итоговом числе он учитывается один раз. Тестовые заказы исключены.
-            {% if period != 'all' %}Даты откликов по старым заказам приблизительные.{% endif %}
-          </p>
-        </details>
-      </article>
-    </div>
-  </section>
+  {% include "creator_base.html" %}
 
   <section class="section dashboard-charts-section" aria-labelledby="charts-heading">
     <div class="page-heading">

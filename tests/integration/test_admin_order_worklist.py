@@ -595,7 +595,10 @@ def test_dashboard_shortcuts_count_the_same_orders_as_the_list(
                 )
             )
 
-    # The charts and historical metrics also use PostgreSQL-only tables.
+    # Creator and historical metrics use tables omitted by this SQLite fixture.
+    monkeypatch.setattr(
+        AdminDashboardService, "get_creator_base", AsyncMock(return_value={})
+    )
     monkeypatch.setattr(
         AdminDashboardService,
         "get_dashboard",

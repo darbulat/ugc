@@ -22,6 +22,9 @@ from ugc_bot.application.ports import (
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile
 from ugc_bot.domain.enums import BloggerGender, WorkFormat
 from ugc_bot.domain.social import CreatorIdentityConflict
+from ugc_bot.infrastructure.db.identity_history_models import (
+    IDENTITY_OBSERVATIONS,
+)
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_WRITER_LOCK_SQL,
 )
@@ -63,6 +66,24 @@ class SqlAlchemyBloggerProfileRepository(
             .execution_options(populate_existing=True)
         )
         return _to_blogger_profile_entity(model) if model is not None else None
+
+    async def has_verified_identity_history(
+        self, user_id: UUID, *, session: object | None
+    ) -> bool:
+        async with _resolve_session(self.session_factory, session) as db:
+            history = IDENTITY_OBSERVATIONS
+            return bool(
+                await db.scalar(
+                    select(
+                        select(history.c.creator_user_id)
+                        .where(
+                            history.c.creator_user_id == user_id,
+                            history.c.active.is_(True),
+                        )
+                        .exists()
+                    )
+                )
+            )
 
     async def get_by_user_id(
         self, user_id: UUID, session: object | None = None

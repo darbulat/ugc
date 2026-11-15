@@ -81,7 +81,7 @@ class SocialNetwork(MiniAppNetwork):
                     "locale": self.locale,
                     "country": "ru",
                     "currency_symbol": self.symbol,
-                    "has_advertiser_profile": False,
+                    "has_advertiser_profile": self.registered,
                     "has_blogger_profile": True,
                     "blogger_profile": {
                         "confirmed": self.me_confirmed,
@@ -498,3 +498,19 @@ def test_add_named_other_platform(page, platform):
     )
     page.locator('[data-social-edit="other"]').click()
     expect(page.locator("#social-platform-name")).to_have_value("Twitch")
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("also_advertiser", [False, True])
+def test_registration_message_opens_social_editor(
+    page: Page, platform: str, also_advertiser: bool
+):
+    network = SocialNetwork()
+    network.registered = also_advertiser
+    errors = open_app(
+        page, network, platform, init_data=SIGNED_DATA, query="?view=socials"
+    )
+    expect(page.locator("#screen-social-accounts")).to_be_visible()
+    page.locator('[data-social-add="youtube"]').click()
+    save_link(page, "youtube", "https://www.youtube.com/@synthetic_social")
+    assert not errors

@@ -3085,9 +3085,11 @@
         updateRegisterButtonLabels();
         var managerBtn = document.getElementById('btn-manager-role');
         if (managerBtn) managerBtn.style.display = (me && me.is_manager) ? '' : 'none';
+        var view = new URLSearchParams(location.search).get('view');
+        var openCreatorSocials = view === 'socials' && me.blogger_profile && me.blogger_profile.confirmed;
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
+        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreatorSocials)) {
           updateBloggerDashboardState(me);
           showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {

@@ -36,6 +36,10 @@ from ugc_bot.admin.complaints import (
     COMPLAINT_STATUS_LABELS,
     OPEN_COMPLAINT_STATUSES,
 )
+from ugc_bot.admin.creator_base import (
+    creator_base_counts,
+    creator_base_filter,
+)
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
     active_pick_reasons,
@@ -652,6 +656,10 @@ class AdminDashboardService:
             for row in rows
         ]
 
+    async def get_creator_base(self, period: str) -> dict[str, int]:
+        async with self._session_factory() as session:
+            return await creator_base_counts(session, period, self._timezone)
+
     async def list_creators(
         self,
         period: PeriodKey,
@@ -670,6 +678,8 @@ class AdminDashboardService:
         platform: SocialPlatform | None = None,
         platform_followers_min: int | None = None,
         platform_followers_unknown: bool = False,
+        base_segment: str = "",
+        work_period: str = "30d",
     ) -> dict:
         """Return paginated creator list with counts and filters."""
         window = self._build_period_window(period)
@@ -685,6 +695,10 @@ class AdminDashboardService:
             platform_followers_min=platform_followers_min,
             platform_followers_unknown=platform_followers_unknown,
         )
+        if base_segment:
+            filters.append(
+                creator_base_filter(base_segment, work_period, self._timezone)
+            )
         if only_new:
             filters.extend(
                 (

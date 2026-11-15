@@ -1,0 +1,59 @@
+{% macro metric(key, label, work_period='') %}
+  {% set target = request.url_for('admin_creators').include_query_params(base_segment=key) %}
+  {% if work_period %}
+    {% set target = target.include_query_params(work_period=work_period) %}
+  {% endif %}
+  <a class="metric creator-base-metric" href="{{ target }}">
+    <span class="metric__label">{{ label }}</span>
+    <strong class="metric__value">{{ creator_base.get(key, 0) }}</strong>
+  </a>
+{% endmacro %}
+<section class="section creator-base" id="creator-base" aria-labelledby="creators-heading">
+  <div class="page-heading">
+    <h2 id="creators-heading">Состояние базы</h2>
+    <a href="{{ request.url_for('admin_creators') }}">Открыть креаторов</a>
+  </div>
+  <div class="grid dashboard-metrics">
+    {% for title, items in creator_base_cards %}
+      <article class="card">
+        <h3>{{ title }}</h3>
+        {% for key, label in items %}{{ metric(key, label) }}{% endfor %}
+      </article>
+    {% endfor %}
+  </div>
+  <article class="card creator-base-work">
+    <div class="page-heading">
+      <h3>Участие в заказах</h3>
+      <nav class="creator-work-periods" aria-label="Период участия в заказах">
+        {% for key, label in creator_activity_periods.items() %}
+          <a href="{{ request.url.include_query_params(work_period=key) }}#creator-base"{% if work_period == key %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+      </nav>
+    </div>
+    <div class="grid dashboard-metrics">
+      {% for key in ('offered', 'accepted', 'worked') %}
+        {{ metric(key, creator_activity_labels[key], work_period) }}
+      {% endfor %}
+    </div>
+    {{ metric('responded', creator_activity_labels.responded, work_period) }}
+    <details>
+      <summary>Как считаем</summary>
+      <p class="muted">В каждом показателе креатор учитывается один раз за период. Все отклики включают принятие и отказ. «Работали» включает начавших работу за период и тех, у кого работа ещё идёт. Для старых заказов ориентируемся на принятое предложение и включение в подбор. Даты старых откликов приблизительные.</p>
+      {% if creators %}
+        <h4>Участие по общему периоду дашборда</h4>
+        <div class="metric">
+          <span class="metric__label">{{ 'Участвовали за всё время' if period == 'all' else 'Участвовали за период' }}</span>
+          <strong class="metric__value">{{ creators.get('ever_worked' if period == 'all' else 'worked_period', 0) }}</strong>
+        </div>
+        {% if period != 'all' %}
+          {% for key, label in [('first_period', 'Участвовали впервые'), ('returning_period', 'Участвовали повторно')] %}
+            <div class="metric">
+              <span class="metric__label">{{ label }}</span>
+              <strong class="metric__value">{{ creators.get(key, 0) }}</strong>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endif %}
+    </details>
+  </article>
+</section>

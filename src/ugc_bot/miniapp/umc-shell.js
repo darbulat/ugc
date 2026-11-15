@@ -563,8 +563,11 @@
     // Fetch after canonical confirmation; the server decides whether a prompt remains.
     load().then(function () {
       var current = document.querySelector('.screen.active');
-      if (verified() && state.showPrompt && current && current.id === 'screen-blogger-dashboard') {
-        state.returnScreen = current.id;
+      if (!verified() || !current || current.id !== 'screen-blogger-dashboard') return;
+      state.returnScreen = current.id;
+      if (new URLSearchParams(location.search).get('view') === 'socials') {
+        bridge.showScreen(screen.id);
+      } else if (state.showPrompt) {
         byId('social-prompt-error').textContent = '';
         bridge.showScreen('screen-social-prompt');
       }
