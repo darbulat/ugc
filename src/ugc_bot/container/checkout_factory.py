@@ -54,7 +54,10 @@ def build_browser_checkout(config: AppConfig, transactions, repos):
     shop = financial.yookassa_browser_shop_id
     secret = financial.yookassa_browser_secret_key.get_secret_value().strip()
     telegram_account = config.bot.telegram_payment_account_id.strip()
-    if transactions is None or not (shop and secret and telegram_account):
+    public_base_url = config.webhook.webhook_base_url.rstrip("/")
+    if transactions is None or not (
+        shop and secret and telegram_account and public_base_url
+    ):
         return None
     history_repo = repos.get("creator_identity_history_repo")
     capture = SqlAlchemyFinancialCaptureRepository(
@@ -78,6 +81,7 @@ def build_browser_checkout(config: AppConfig, transactions, repos):
                 total, currency, config.market.receipt_service_description
             )
         )["receipt"],
+        public_base_url=public_base_url,
         can_create=(
             financial.yookassa_browser_enabled
             and financial.core_enabled

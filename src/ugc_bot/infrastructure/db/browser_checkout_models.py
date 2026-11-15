@@ -8,6 +8,19 @@ from ugc_bot.infrastructure.db.base import Base
 ACTIVE_STATES = ("creating", "pending", "review")
 ACTIVE_SQL = "state IN ('creating', 'pending', 'review')"
 
+BROWSER_LINKS = sa.Table(
+    "browser_checkout_links",
+    Base.metadata,
+    sa.Column(
+        "order_id",
+        sa.Uuid(),
+        sa.ForeignKey("orders.order_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("client_id", sa.Uuid(), nullable=False),
+    sa.Column("token", sa.Uuid(), nullable=False, unique=True),
+)
+
 BROWSER_ATTEMPTS = sa.Table(
     "browser_checkout_attempts",
     Base.metadata,

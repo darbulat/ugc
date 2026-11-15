@@ -11,22 +11,60 @@ from ugc_bot.domain.browser_checkout import InvoiceRejected, InvoiceUnavailable
 
 logger = logging.getLogger(__name__)
 
+BROWSER_PAGE_PATH = "/miniapp/browser-payment.html"
+
 
 class BrowserCheckoutService:
     def __init__(
-        self, repository, transactions, gateway, receipt, *, can_create: bool
+        self,
+        repository,
+        transactions,
+        gateway,
+        receipt,
+        *,
+        public_base_url: str,
+        can_create: bool,
     ):
         self.repository = repository
         self.transactions = transactions
         self.gateway = gateway
         self.receipt = receipt
+        self.public_base_url = public_base_url
         self.can_create = can_create
 
     async def view(self, order_id: UUID):
         async with self.transactions.transaction() as session:
-            return await self.repository.view(order_id, session=session)
+            view = await self.repository.view(order_id, session=session)
+        if view is None:
+            return None
+        token = view["token"]
+        return {
+            "state": view["state"],
+            "url": f"{self.public_base_url}{BROWSER_PAGE_PATH}#{token}"
+            if token
+            else None,
+        }
 
-    async def create(self, order_id: UUID, receipt_email: str):
+    async def offer(self, order_id: UUID) -> None:
+        if not self.can_create:
+            raise OrderCreationError("browser_payment_paused")
+        async with self.transactions.transaction() as session:
+            await self.repository.offer(order_id, session=session)
+
+    async def buyer_view(self, token: UUID):
+        async with self.transactions.transaction() as session:
+            view = await self.repository.buyer_view(token, session=session)
+        if view is None:
+            return {"state": "unavailable"}
+        if not self.can_create and view["state"] in {
+            "available",
+            "failed",
+            "canceled",
+        }:
+            return {"state": "unavailable"}
+        return view
+
+    async def start(self, token: UUID, receipt_email: str):
         if not self.can_create:
             raise OrderCreationError("browser_payment_paused")
         email = receipt_email.strip()
@@ -35,8 +73,8 @@ class BrowserCheckoutService:
         ):
             raise OrderCreationError("browser_receipt_email_required")
         async with self.transactions.transaction() as session:
-            await self.repository.reserve(
-                order_id, email, self.receipt, session=session
+            order_id = await self.repository.reserve(
+                token, email, self.receipt, session=session
             )
         await self.run_once(order_id)
 

@@ -8,6 +8,7 @@ from alembic import op
 from ugc_bot.infrastructure.db import models  # noqa: F401
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     BROWSER_ATTEMPTS,
+    BROWSER_LINKS,
     GUARD_SQL,
 )
 from ugc_bot.infrastructure.db.invite_handoff_schema import FIRST, NATIVE
@@ -63,6 +64,7 @@ def _authority_sql(browser: bool) -> str:
 
 def upgrade() -> None:
     connection = op.get_bind()
+    BROWSER_LINKS.create(connection)
     BROWSER_ATTEMPTS.create(connection)
     connection.exec_driver_sql(GUARD_SQL)
     connection.exec_driver_sql(_authority_sql(True))
@@ -87,3 +89,4 @@ DROP FUNCTION browser_checkout_guard_native_auth();
 """
     )
     BROWSER_ATTEMPTS.drop(connection)
+    BROWSER_LINKS.drop(connection)

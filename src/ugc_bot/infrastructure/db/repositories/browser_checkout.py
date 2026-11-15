@@ -12,6 +12,7 @@ from ugc_bot.domain.browser_checkout import BrowserInvoice, browser_invoice_url
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     ACTIVE_STATES,
+    BROWSER_LINKS,
 )
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     BROWSER_ATTEMPTS as ATTEMPTS,
@@ -43,7 +44,96 @@ class SqlBrowserCheckout:
         self.test_mode = test_mode
         self.notices = notices
 
+    async def offer(self, order_id: UUID, *, session) -> None:
+        db = _session(session)
+        owner = await db.scalar(
+            select(OrderModel.advertiser_id).where(
+                OrderModel.order_id == order_id
+            )
+        )
+        if owner is None:
+            raise LookupError("order_not_found")
+        _, order, _ = await self.capture._locked(order_id, owner, db)
+        if order.status != OrderStatus.NEW or order.currency != "RUB":
+            raise OrderCreationError("order_not_payable")
+        if await self._paid(db, order_id):
+            raise OrderCreationError("order_not_payable")
+        link = await self._link_for_order(db, order_id)
+        if link is None:
+            await db.execute(
+                insert(BROWSER_LINKS).values(
+                    order_id=order_id, client_id=owner, token=uuid4()
+                )
+            )
+        elif link.client_id != owner:
+            await db.execute(
+                update(BROWSER_LINKS)
+                .where(BROWSER_LINKS.c.order_id == order_id)
+                .values(client_id=owner, token=uuid4())
+            )
+
+    @staticmethod
+    async def _link_for_order(db, order_id):
+        result = await db.execute(
+            select(BROWSER_LINKS).where(BROWSER_LINKS.c.order_id == order_id)
+        )
+        return result.mappings().one_or_none()
+
+    @staticmethod
+    async def _paid(db, order_id):
+        return await db.scalar(
+            select(
+                exists().where(
+                    PaymentModel.order_id == order_id,
+                    (PaymentModel.status == PaymentStatus.PAID)
+                    | PaymentModel.captured_minor.is_not(None)
+                    | PaymentModel.paid_at.is_not(None),
+                )
+            )
+        )
+
+    @staticmethod
+    async def _link_for_token(db, token):
+        return (
+            (
+                await db.execute(
+                    select(BROWSER_LINKS)
+                    .join(
+                        OrderModel,
+                        OrderModel.order_id == BROWSER_LINKS.c.order_id,
+                    )
+                    .where(
+                        BROWSER_LINKS.c.token == token,
+                        OrderModel.advertiser_id == BROWSER_LINKS.c.client_id,
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+
+    async def buyer_view(self, token: UUID, *, session):
+        link = await self._link_for_token(_session(session), token)
+        if link is None:
+            raise LookupError("browser_link_not_found")
+        return await self._view(link.order_id, session=session)
+
     async def view(self, order_id, *, session):
+        db = _session(session)
+        view = await self._view(order_id, session=session)
+        if view is None:
+            return None
+        token = await db.scalar(
+            select(BROWSER_LINKS.c.token)
+            .join(OrderModel, OrderModel.order_id == BROWSER_LINKS.c.order_id)
+            .where(
+                BROWSER_LINKS.c.order_id == order_id,
+                OrderModel.advertiser_id == BROWSER_LINKS.c.client_id,
+            )
+        )
+        return {"state": view["state"], "token": token}
+
+    async def _view(self, order_id, *, session):
         db = _session(session)
         order = await db.get(OrderModel, order_id)
         if (
@@ -52,6 +142,8 @@ class SqlBrowserCheckout:
             or order.currency != "RUB"
         ):
             return None
+        if await self._paid(db, order_id):
+            return {"state": "paid", "url": None}
         row = (
             (
                 await db.execute(
@@ -87,15 +179,12 @@ class SqlBrowserCheckout:
             return {"state": "telegram_pending"}
         return {"state": row.state if row else "available"}
 
-    async def reserve(self, order_id: UUID, email: str, receipt, *, session):
+    async def reserve(self, token: UUID, email: str, receipt, *, session):
         db = _session(session)
-        owner = await db.scalar(
-            select(OrderModel.advertiser_id).where(
-                OrderModel.order_id == order_id
-            )
-        )
-        if owner is None:
-            raise LookupError("order_not_found")
+        link = await self._link_for_token(db, token)
+        if link is None:
+            raise LookupError("browser_link_not_found")
+        order_id, owner = link.order_id, link.client_id
         _, order, items = await self.capture._locked(order_id, owner, db)
         if order.status != OrderStatus.NEW or order.currency != "RUB":
             raise OrderCreationError("order_not_payable")
@@ -106,7 +195,7 @@ class SqlBrowserCheckout:
             )
         )
         if active is not None:
-            return
+            return order_id
         if await db.scalar(select(unresolved_telegram_payment(order_id))):
             raise OrderCreationError("telegram_payment_pending")
         now = datetime.now(timezone.utc)
@@ -162,6 +251,7 @@ class SqlBrowserCheckout:
                 next_check_at=now,
             )
         )
+        return order_id
 
     @staticmethod
     async def _require_unpaid_quote(db, order_id, total, currency):

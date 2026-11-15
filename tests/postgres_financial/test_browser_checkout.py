@@ -1,9 +1,10 @@
 """Real Postgres payment-channel contention and provider capture lifecycle."""
 
 import asyncio
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -14,12 +15,16 @@ from tests.postgres_financial.test_checkout_runtime import (
 )
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.application.services.browser_checkout import BrowserCheckoutService
+from ugc_bot.application.services.checkout_paid_receipts import (
+    PaidReceiptProcessor,
+)
 from ugc_bot.domain.browser_checkout import (
     BROWSER_PROVIDER,
     BrowserInvoice,
     BrowserPayment,
     InvoiceUnavailable,
 )
+from ugc_bot.domain.checkout import NativePaidReceipt
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import BROWSER_ATTEMPTS
 from ugc_bot.infrastructure.db.models import (
@@ -56,8 +61,15 @@ def service(env, gateway):
         env["transactions"],
         gateway,
         lambda amount, currency: {"items": []},
+        public_base_url="https://bot.example.test",
         can_create=True,
     )
+
+
+async def offer(checkout, oid):
+    await checkout.offer(oid)
+    view = await checkout.view(oid)
+    return UUID(view["url"].rsplit("#", 1)[1])
 
 
 async def due(env):
@@ -89,11 +101,19 @@ async def test_browser_capture_blocks_existing_telegram_invoice(
     gateway = AsyncMock()
     gateway.observe.side_effect = create
     checkout = service(env, gateway)
-    task = asyncio.create_task(checkout.create(oid, "buyer@example.com"))
+    token = await offer(checkout, oid)
+    assert await offer(checkout, oid) == token
+    gateway.observe.assert_not_awaited()
+    assert (await env["checkout"].status(oid, actor))["can_open"] is True
+    assert (await checkout.buyer_view(token))["state"] == "available"
+    task = asyncio.create_task(checkout.start(token, "buyer@example.com"))
     await asyncio.wait_for(entered.wait(), 5)
     try:
-        await checkout.create(oid, "other@example.com")
-        assert await checkout.view(oid) == {"state": "creating", "url": None}
+        await checkout.start(token, "other@example.com")
+        assert await checkout.buyer_view(token) == {
+            "state": "creating",
+            "url": None,
+        }
         native = await env["checkout"].request_invoice(oid, actor, "native")
         assert native["reason"] == "browser_payment_active"
         assert native["invoice_url"] is None
@@ -105,7 +125,7 @@ async def test_browser_capture_blocks_existing_telegram_invoice(
         finish.set()
         await task
     gateway.observe.assert_awaited_once()
-    assert await checkout.view(oid) == {"state": "pending", "url": URL}
+    assert await checkout.buyer_view(token) == {"state": "pending", "url": URL}
     await due(env)
     gateway.observe.side_effect = None
     gateway.observe.return_value = BrowserInvoice(
@@ -168,13 +188,62 @@ async def test_existing_telegram_authorization_blocks_browser_creation(
     env = checkout_env
     oid, actor = env["order"].order_id, env["actor"]
     await env["checkout"].request_invoice(oid, actor, "native")
-    await env["checkout"].authorize(oid, actor.external_id, "q", 1740000, "RUB")
     gateway = AsyncMock()
     checkout = service(env, gateway)
-    assert (await checkout.view(oid))["state"] == "telegram_pending"
+    token = await offer(checkout, oid)
+    await env["checkout"].authorize(oid, actor.external_id, "q", 1740000, "RUB")
+    assert (await checkout.buyer_view(token))["state"] == "telegram_pending"
     with pytest.raises(OrderCreationError, match="telegram_payment_pending"):
-        await checkout.create(oid, "buyer@example.com")
+        await checkout.start(token, "buyer@example.com")
+    receipt = NativePaidReceipt(
+        actor.external_id,
+        "trusted-chat",
+        "native-message",
+        oid,
+        "provider-paid",
+        "telegram-paid",
+        1740000,
+        "RUB",
+        datetime.now(timezone.utc),
+    )
+    async with env["transactions"].transaction() as session:
+        assert await env["checkout_repo"].accept_receipt(
+            receipt, session=session
+        )
+    payment = replace(
+        env["container"].build_bot_services()["payment_service"],
+        capture_repository=env["checkout_repo"].capture,
+        capture_account=env["config"].bot.telegram_payment_account_id,
+    )
+    assert await PaidReceiptProcessor(
+        env["checkout_repo"], env["transactions"], payment
+    ).run_once()
+    assert await checkout.buyer_view(token) == {"state": "paid", "url": None}
     gateway.observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browser_available_after_telegram_link_timeout(checkout_env):
+    env = checkout_env
+    oid, actor = env["order"].order_id, env["actor"]
+    env["gateway"].create_link.side_effect = TimeoutError
+    native = await env["checkout"].request_invoice(oid, actor, "native")
+    assert native["invoice_state"] == "unknown"
+    assert not native["can_open"]
+    gateway = AsyncMock()
+    gateway.observe.return_value = BrowserInvoice(
+        f"in-{uuid4()}", "pending", URL
+    )
+    checkout = service(env, gateway)
+    token = await offer(checkout, oid)
+    assert (await checkout.buyer_view(token))["state"] == "available"
+    gateway.observe.assert_not_awaited()
+    await checkout.start(token, "buyer@example.com")
+    attempt = gateway.observe.await_args.args[0]
+    assert attempt.request["payment_data"]["receipt"]["customer"] == {
+        "email": "buyer@example.com"
+    }
+    assert await checkout.buyer_view(token) == {"state": "pending", "url": URL}
 
 
 @pytest.mark.asyncio
@@ -184,6 +253,9 @@ async def test_paid_legacy_projection_cannot_issue_browser_invoice(
     env = checkout_env
     oid, actor = env["order"].order_id, env["actor"]
     await env["checkout"].request_invoice(oid, actor, "native")
+    gateway = AsyncMock()
+    checkout = service(env, gateway)
+    token = await offer(checkout, oid)
     async with env["transactions"].transaction() as session:
         await session.execute(
             update(PaymentModel)
@@ -192,12 +264,13 @@ async def test_paid_legacy_projection_cannot_issue_browser_invoice(
                 status=PaymentStatus.PAID, paid_at=datetime.now(timezone.utc)
             )
         )
-    gateway = AsyncMock()
-    checkout = service(env, gateway)
+    assert (await checkout.buyer_view(token))["state"] == "paid"
     with pytest.raises(
         OrderCreationError, match="browser_payment_quote_not_unpaid"
     ):
-        await checkout.create(oid, "buyer@example.com")
+        await checkout.start(token, "buyer@example.com")
+    with pytest.raises(OrderCreationError, match="order_not_payable"):
+        await checkout.offer(oid)
     gateway.observe.assert_not_awaited()
 
 
@@ -209,14 +282,22 @@ async def test_missing_or_closed_order_cannot_issue_invoice(checkout_env):
     missing = uuid4()
     assert await checkout.view(missing) is None
     with pytest.raises(LookupError, match="order_not_found"):
-        await checkout.create(missing, "buyer@example.com")
+        await checkout.offer(missing)
+    with pytest.raises(LookupError, match="browser_link_not_found"):
+        await checkout.buyer_view(missing)
+    with pytest.raises(LookupError, match="browser_link_not_found"):
+        await checkout.start(missing, "buyer@example.com")
     oid = env["order"].order_id
+    token = await offer(checkout, oid)
     async with env["transactions"].transaction() as session:
         order = await session.get(OrderModel, oid)
         order.status = OrderStatus.CLOSED
     assert await checkout.view(oid) is None
     with pytest.raises(OrderCreationError, match="order_not_payable"):
-        await checkout.create(oid, "buyer@example.com")
+        await checkout.offer(oid)
+    with pytest.raises(OrderCreationError, match="order_not_payable"):
+        await checkout.start(token, "buyer@example.com")
+    assert (await checkout.buyer_view(token))["state"] == "unavailable"
     gateway.observe.assert_not_awaited()
 
 
@@ -235,10 +316,11 @@ async def test_retry_reuses_request_and_releases_on_cancellation(
         BrowserInvoice(invoice_id, "canceled"),
     ]
     checkout = service(env, gateway)
-    await checkout.create(oid, "buyer@example.com")
+    token = await offer(checkout, oid)
+    await checkout.start(token, "buyer@example.com")
     assert (await checkout.view(oid))["state"] == "creating"
     await due(env)
-    await checkout.create(oid, "different@example.com")
+    await checkout.start(token, "different@example.com")
     initial, replay = [call.args[0] for call in gateway.observe.await_args_list]
     assert initial.attempt_id == replay.attempt_id
     assert initial.request == replay.request

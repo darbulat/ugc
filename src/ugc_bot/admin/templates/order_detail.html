@@ -118,42 +118,36 @@
           </script>
         {% endif %}
         {% if payment_state == 'telegram_pending' %}
-          <p>Сначала сверьте предыдущую попытку оплаты в Telegram с эквайером.</p>
+          <p>Проверяем предыдущую попытку оплаты в Telegram.</p>
         {% elif payment_state == 'creating' %}
-          <p role="status">ЮKassa подготавливает счёт. Обновите страницу, чтобы получить ссылку.</p>
+          <p role="status">ЮKassa подготавливает счёт для клиента.</p>
         {% elif payment_state == 'review' %}
           <p role="alert">Платёж сверяется. Повторная оплата закрыта до проверки результата.</p>
         {% elif payment_state == 'pending' %}
           <p role="status">Ожидает подтверждения от ЮKassa.</p>
-          {% if browser_payment.url %}
-            <p><a class="admin-button" href="{{ browser_payment.url }}" target="_blank" rel="noopener noreferrer">Открыть счёт ЮKassa</a></p>
-            <label for="browser-payment-url">Ссылка для клиента</label>
-            <input id="browser-payment-url" type="url" value="{{ browser_payment.url }}" readonly size="48">
-            <button class="admin-button" type="button" id="copy-browser-payment">Скопировать ссылку</button>
-            <span id="browser-copy-feedback" role="status"></span>
-            <script>
-              document.getElementById('copy-browser-payment').addEventListener('click', async function () {
-                const input = document.getElementById('browser-payment-url');
-                try {
-                  await navigator.clipboard.writeText(input.value);
-                  document.getElementById('browser-copy-feedback').textContent = 'Ссылка скопирована';
-                } catch {
-                  input.focus();
-                  input.select();
-                }
-              });
-            </script>
-          {% endif %}
         {% elif payment_state == 'paid' %}
-          <p role="status">Оплата подтверждена ЮKassa.</p>
-        {% elif browser_payment_can_create %}
-          {% if payment_state == 'canceled' %}<p>Предыдущий счёт закрыт ЮKassa.</p>{% endif %}
-          {% if payment_state == 'failed' %}<p>Ссылку создать не удалось. Проверьте данные для чека и повторите.</p>{% endif %}
+          <p role="status">Заказ оплачен.</p>
+        {% endif %}
+        {% if browser_payment.url and payment_state != 'paid' %}
+          <label for="browser-payment-url">Ссылка для клиента</label>
+          <input id="browser-payment-url" type="url" value="{{ browser_payment.url }}" readonly size="48">
+          <button class="admin-button" type="button" id="copy-browser-payment">Скопировать ссылку</button>
+          <span id="browser-copy-feedback" role="status"></span>
+          <script>
+            document.getElementById('copy-browser-payment').addEventListener('click', async function () {
+              const input = document.getElementById('browser-payment-url');
+              try {
+                await navigator.clipboard.writeText(input.value);
+                document.getElementById('browser-copy-feedback').textContent = 'Ссылка скопирована';
+              } catch {
+                input.focus();
+                input.select();
+              }
+            });
+          </script>
+        {% elif browser_payment_can_create and payment_state in ('available', 'telegram_pending', 'canceled', 'failed') %}
           <form class="order-detail__closure" method="post" action="{{ request.url_for('create_browser_payment', order_id=order.order_id).include_query_params(return_to=back_url) }}">
             <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
-            <label for="browser-receipt-email">Электронная почта клиента для чека</label>
-            <input id="browser-receipt-email" type="email" name="receipt_email" maxlength="254" required>
-            <small class="muted">Пока счёт ЮKassa открыт, оплата этого заказа в Telegram приостановлена.</small>
             <button class="admin-button admin-button--primary" type="submit">Создать ссылку на оплату</button>
           </form>
         {% endif %}

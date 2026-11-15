@@ -1561,30 +1561,18 @@ def _register_browser_checkout_action(app: FastAPI, auth: AdminAuth) -> None:
             raise HTTPException(
                 status_code=503, detail="Оплата в браузере недоступна"
             )
-        email = (await request.form()).get("receipt_email")
         try:
-            await checkout.create(
-                order_id, email if isinstance(email, str) else ""
-            )
+            await checkout.offer(order_id)
         except LookupError:
             raise HTTPException(
                 status_code=404, detail="Заказ не найден"
             ) from None
         except OrderCreationError as exc:
             request.session["browser_payment_message"] = {
-                "telegram_payment_pending": (
-                    "Сверьте результат предыдущей оплаты в Telegram."
-                ),
-                "browser_payment_quote_expiring": (
-                    "До срока подбора осталось слишком мало времени."
-                ),
-                "browser_receipt_email_required": (
-                    "Введите электронную почту клиента для чека."
-                ),
                 "browser_payment_paused": (
                     "Создание платёжных ссылок приостановлено."
                 ),
-            }.get(str(exc), "Для этого заказа сейчас нельзя создать счёт.")
+            }.get(str(exc), "Для этого заказа сейчас нельзя создать ссылку.")
         destination = request.url_for("admin_order_detail", order_id=order_id)
         destination = destination.include_query_params(
             return_to=_order_return_url(request)

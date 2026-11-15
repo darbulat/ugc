@@ -84,6 +84,14 @@ async def _set_webhook_with_retry(
             await asyncio.sleep(wait_sec)
 
 
+def _init_browser_checkout(app, dispatcher, config) -> None:
+    app.state.browser_checkout = (
+        dispatcher["container"].build_browser_checkout()
+        if config.financial.yookassa_browser_shop_id
+        else None
+    )
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     """Initialize bot, dispatcher, storage and register webhook on startup."""
@@ -155,6 +163,7 @@ async def _lifespan(app: FastAPI):
 
         app.state.config = config
         app.state.dispatcher = dispatcher
+        _init_browser_checkout(app, dispatcher, config)
         app.state.bot = bot
         app.state.storage = storage
         app.state.webhook_semaphore = asyncio.Semaphore(

@@ -75,6 +75,7 @@ from ugc_bot.miniapp.auth import (
     get_telegram_user_id_and_username,
     validate_init_data_for_platform,
 )
+from ugc_bot.miniapp.browser_payment_api import router as browser_payment_router
 from ugc_bot.miniapp.business_order_prompt_api import (
     router as business_order_prompt_router,
 )
@@ -649,6 +650,7 @@ router.include_router(create_manual_grant_router(resolve_financial_principal))
 router.include_router(create_debt_recovery_router(resolve_financial_principal))
 router.include_router(create_subscription_router(resolve_financial_principal))
 router.include_router(create_checkout_router(_checkout_actor))
+router.include_router(browser_payment_router)
 router.include_router(create_order_intake_router(resolve_financial_principal))
 router.include_router(create_order_image_router(resolve_financial_principal))
 router.include_router(business_order_prompt_router)

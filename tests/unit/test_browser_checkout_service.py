@@ -30,6 +30,8 @@ async def transaction():
 def checkout_service(*, claim=None, can_create=True):
     repo = SimpleNamespace(
         reserve=AsyncMock(),
+        offer=AsyncMock(),
+        buyer_view=AsyncMock(),
         claim=AsyncMock(return_value=claim),
         finish=AsyncMock(),
     )
@@ -38,6 +40,7 @@ def checkout_service(*, claim=None, can_create=True):
         SimpleNamespace(transaction=transaction),
         SimpleNamespace(observe=AsyncMock()),
         None,
+        public_base_url="https://bot.example.test",
         can_create=can_create,
     )
 
@@ -53,9 +56,23 @@ def checkout_service(*, claim=None, can_create=True):
 async def test_creation_guard_does_not_reserve_order(enabled, email, error):
     service = checkout_service(can_create=enabled)
     with pytest.raises(OrderCreationError, match=error):
-        await service.create(uuid4(), email)
+        await service.start(uuid4(), email)
     service.repository.reserve.assert_not_awaited()
     service.gateway.observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_sales_pause_keeps_existing_payment_visible():
+    checkout = checkout_service(can_create=False)
+    token = uuid4()
+    with pytest.raises(OrderCreationError, match="browser_payment_paused"):
+        await checkout.offer(uuid4())
+    checkout.repository.offer.assert_not_awaited()
+    checkout.repository.buyer_view.return_value = {"state": "available"}
+    assert await checkout.buyer_view(token) == {"state": "unavailable"}
+    existing = {"state": "pending", "url": "https://yookassa.ru/my/i/test/a"}
+    checkout.repository.buyer_view.return_value = existing
+    assert await checkout.buyer_view(token) == existing
 
 
 @pytest.mark.asyncio
@@ -105,6 +122,7 @@ def test_factory_freezes_receipt_data_and_starts_with_creation_paused():
             "YOOKASSA_BROWSER_SHOP_ID": "123",
             "YOOKASSA_BROWSER_SECRET_KEY": "synthetic",
             "YOOKASSA_BROWSER_TEST_MODE": True,
+            "WEBHOOK_BASE_URL": "https://bot.example.test/",
             "TELEGRAM_PAYMENT_ACCOUNT_ID": "telegram",
         }
     )
