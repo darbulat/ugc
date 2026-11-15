@@ -21,12 +21,20 @@ from ugc_bot.application.services.creator_identity_history_service import (
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
+from ugc_bot.domain.browser_checkout import (
+    BROWSER_CAPTURE_SOURCE,
+    BROWSER_PROVIDER,
+    BrowserPayment,
+)
 from ugc_bot.domain.entities import Payment
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.domain.financial import utc
 from ugc_bot.domain.financial_tariff import require_invoice_total
 from ugc_bot.domain.identity_history import IdentityHistoryUnavailable
 from ugc_bot.domain.refund_rules import RefundRules
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    browser_capture_matches,
+)
 from ugc_bot.infrastructure.db.models import (
     FinancialPolicyVersionModel,
     OrderItemModel,
@@ -57,12 +65,31 @@ def intent_id(order_id: UUID) -> UUID:
     return uuid5(NAMESPACE_URL, f"ugc:financial:intent:{order_id}")
 
 
-def capture_id(account: str, external_id: str) -> UUID:
+def capture_id(
+    account: str, external_id: str, provider: str = PROVIDER
+) -> UUID:
     # Length-delimited components cannot alias through separators in IDs.
     return uuid5(
         NAMESPACE_URL,
-        f"ugc:capture:{PROVIDER}:{len(account)}:{account}:{external_id}",
+        f"ugc:capture:{provider}:{len(account)}:{account}:{external_id}",
     )
+
+
+def capture_source(identity, provider):
+    if provider == PROVIDER:
+        key, origin = "telegram_payment_charge_id", "telegram.message.date"
+    elif provider == BROWSER_PROVIDER:
+        key, origin = "browser_invoice_id", BROWSER_CAPTURE_SOURCE
+    else:
+        return None
+    value = identity.get(key)
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or identity.get("captured_at_source") != origin
+    ):
+        return None
+    return {key: value, "captured_at_source": origin}
 
 
 class SqlAlchemyFinancialCaptureRepository:
@@ -273,7 +300,7 @@ class SqlAlchemyFinancialCaptureRepository:
         prior = (
             await db.scalars(
                 select(PaymentModel).where(
-                    PaymentModel.provider == PROVIDER,
+                    PaymentModel.provider == payment.provider,
                     PaymentModel.external_id == external_id,
                     PaymentModel.payment_id != payment.payment_id,
                 )
@@ -294,16 +321,113 @@ class SqlAlchemyFinancialCaptureRepository:
         *,
         session: object,
     ) -> Payment:
-        db, order, items = await self._locked(order_id, client_id, session)
         at = self._receipt_time(receipt, order_id, account)
+        db, order, items = await self._locked(order_id, client_id, session)
+        return await self._capture(
+            order,
+            items,
+            account,
+            PROVIDER,
+            external_id=receipt.provider_payment_charge_id,
+            amount_minor=receipt.total_amount,
+            currency=receipt.currency,
+            at=at,
+            source={
+                "telegram_payment_charge_id": (
+                    receipt.telegram_payment_charge_id
+                ),
+                "captured_at_source": "telegram.message.date",
+            },
+            db=db,
+        )
+
+    async def capture_browser(
+        self,
+        order_id: UUID,
+        client_id: UUID,
+        proof: BrowserPayment,
+        *,
+        session: object,
+    ) -> Payment:
+        # The browser reservation owns this order and has already verified the
+        # merchant, invoice and payment directly with YooKassa.
+        db, order, items = await self._locked(order_id, client_id, session)
+        if not await db.scalar(
+            select(
+                browser_capture_matches(
+                    order_id,
+                    {
+                        "account": proof.shop_id,
+                        "external_id": proof.payment_id,
+                        "browser_invoice_id": proof.invoice_id,
+                        "amount_minor": proof.amount_minor,
+                    },
+                    proof.captured_at,
+                )
+            )
+        ):
+            raise OrderCreationError("browser_capture_proof_required")
+        intent = await db.get(OutboxEventModel, intent_id(order_id))
+        payment = await db.scalar(
+            select(PaymentModel)
+            .where(PaymentModel.order_id == order_id)
+            .with_for_update()
+        )
+        if (
+            intent is None
+            or payment is None
+            or payment.status != PaymentStatus.PENDING
+            or payment.captured_minor is not None
+            or intent.payload.get("provider") != PROVIDER
+            or payment.provider != PROVIDER
+        ):
+            raise OrderCreationError("browser_capture_quote_unavailable")
+        # Retain the frozen quote and replace only its destination for the
+        # captured payment. All writes roll back together on any conflict.
+        intent.payload = intent.payload | {
+            "provider": BROWSER_PROVIDER,
+            "account": proof.shop_id,
+        }
+        payment.provider = BROWSER_PROVIDER
+        return await self._capture(
+            order,
+            items,
+            proof.shop_id,
+            BROWSER_PROVIDER,
+            external_id=proof.payment_id,
+            amount_minor=proof.amount_minor,
+            currency="RUB",
+            at=proof.captured_at,
+            source={
+                "browser_invoice_id": proof.invoice_id,
+                "captured_at_source": BROWSER_CAPTURE_SOURCE,
+            },
+            db=db,
+        )
+
+    async def _capture(
+        self,
+        order,
+        items,
+        account,
+        provider,
+        *,
+        external_id,
+        amount_minor,
+        currency,
+        at,
+        source,
+        db,
+    ) -> Payment:
+        order_id, client_id = order.order_id, order.advertiser_id
         intent = await db.get(OutboxEventModel, intent_id(order_id))
         expected = intent.payload if intent is not None else {}
         if (
-            expected.get("provider") != PROVIDER
+            expected.get("provider") != provider
             or expected.get("account") != account
             or expected.get("client_id") != str(client_id)
-            or expected.get("currency") != receipt.currency
-            or expected.get("amount_minor") != receipt.total_amount
+            or expected.get("currency") != currency
+            or expected.get("amount_minor") != amount_minor
             or expected.get("policy_version") != order.financial_version
             or expected.get("quote_key") != items[0].quote_key
             or expected.get("components")
@@ -313,7 +437,7 @@ class SqlAlchemyFinancialCaptureRepository:
             ]
         ):
             raise OrderCreationError("capture_intent_mismatch")
-        event_id = capture_id(account, receipt.provider_payment_charge_id)
+        event_id = capture_id(account, external_id, provider)
         await db.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
             {"key": str(event_id)},
@@ -326,16 +450,15 @@ class SqlAlchemyFinancialCaptureRepository:
         )
         identity = dict(
             expected,
-            external_id=receipt.provider_payment_charge_id,
-            telegram_payment_charge_id=receipt.telegram_payment_charge_id,
+            external_id=external_id,
             captured_at=at.isoformat(),
-            captured_at_source="telegram.message.date",
+            **source,
         )
         if event is not None:
             if (
                 event.payload.get("capture") != identity
                 or payment is None
-                or payment.captured_minor != receipt.total_amount
+                or payment.captured_minor != amount_minor
             ):
                 raise OrderCreationError("capture_external_id_conflict")
             # Return the original receipt even after status changes.
@@ -344,22 +467,20 @@ class SqlAlchemyFinancialCaptureRepository:
             payment is None
             or payment.status != PaymentStatus.PENDING
             or payment.captured_minor is not None
-            or payment.provider != PROVIDER
-            or payment.currency != receipt.currency
-            or Decimal(str(payment.amount)) * 100 != receipt.total_amount
+            or payment.provider != provider
+            or payment.currency != currency
+            or Decimal(str(payment.amount)) * 100 != amount_minor
             or payment.financial_version != order.financial_version
             or order.status != OrderStatus.NEW
             or any(i.captured_at is not None for i in items)
         ):
             raise OrderCreationError("capture_payment_conflict")
-        await self._check_external_scope(
-            db, payment, account, receipt.provider_payment_charge_id
-        )
+        await self._check_external_scope(db, payment, account, external_id)
         await self._policy(db, order, items, at, issuing=False)
         attribution = await self._client_attribution(client_id, at, db)
         payment.status = PaymentStatus.PAID
-        payment.external_id = receipt.provider_payment_charge_id
-        payment.captured_minor = receipt.total_amount
+        payment.external_id = external_id
+        payment.captured_minor = amount_minor
         payment.paid_at = at
         payment.updated_at = at
         for item in items:

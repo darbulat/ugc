@@ -1,6 +1,8 @@
 """Tests for admin dashboard routes."""
 
+import re
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -445,6 +447,56 @@ def test_admin_order_detail_html(monkeypatch) -> None:
     )
     response = client.get(f"/admin/orders/{order_id}")
     assert response.status_code == 200
+
+
+def test_admin_creates_browser_invoice_with_csrf_and_reads_paid_status(
+    monkeypatch,
+) -> None:
+    from uuid import uuid4
+
+    order_id = uuid4()
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={},
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={"order_id": str(order_id), "status_label": "new"},
+    )
+    checkout = SimpleNamespace(
+        can_create=True,
+        view=AsyncMock(return_value={"state": "available"}),
+        create=AsyncMock(),
+    )
+    client.app.state.browser_checkout = checkout
+    url = f"/admin/orders/{order_id}/browser-payment"
+    form = client.get(f"/admin/orders/{order_id}")
+    assert "Создать ссылку на оплату" in form.text
+    assert form.headers["cache-control"] == "private, no-store"
+    token = re.search(r'name="csrf_token" value="([^"]+)"', form.text)[1]
+    assert (
+        client.post(
+            url, data={"receipt_email": "buyer@example.com"}
+        ).status_code
+        == 403
+    )
+    checkout.create.assert_not_awaited()
+    response = client.post(
+        url,
+        data={"csrf_token": token, "receipt_email": "buyer@example.com"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    checkout.create.assert_awaited_once_with(order_id, "buyer@example.com")
+    checkout.view.return_value = {"state": "paid", "url": None}
+    assert client.get(url).json() == {"state": "paid", "url": None}
+    paid = client.get(f"/admin/orders/{order_id}")
+    assert "Оплата подтверждена ЮKassa" in paid.text
+    assert "Создать ссылку на оплату" not in paid.text
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+    assert client.get(url).status_code == 401
 
 
 def test_admin_dashboard_api(monkeypatch) -> None:

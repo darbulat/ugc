@@ -9,8 +9,13 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import insert, select, text, update
 
+from ugc_bot.domain.browser_checkout import BROWSER_PROVIDER
 from ugc_bot.domain.checkout import CheckoutActor, PreparedInvoice
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus, UserStatus
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    browser_capture_matches,
+    browser_payment_active,
+)
 from ugc_bot.infrastructure.db.checkout_models import (
     ATTEMPTS,
     AUTHORIZATIONS,
@@ -35,6 +40,7 @@ from ugc_bot.infrastructure.db.models import (
 )
 from ugc_bot.infrastructure.db.repositories.financial_capture import (
     capture_id,
+    capture_source,
     intent_id,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
@@ -133,7 +139,9 @@ class SqlCheckoutRepository:
         _, order = await self._owner(order_id, actor, db, lock=True)
         current = await self._checkout(order_id, db, lock=True)
         intent = await db.get(OutboxEventModel, intent_id(order_id))
-        if not self._original_client(order, current, intent):
+        if not self._original_client(order, current, intent) or await db.scalar(
+            select(browser_payment_active(order_id))
+        ):
             return await self._snapshot(order, db)
         payload_hash = digest(
             [
@@ -337,13 +345,16 @@ class SqlCheckoutRepository:
             value["telegram_handoff"] = (
                 f"https://t.me/{name}?start=pay_{order_id}"
                 if value["order_open_for_payment"]
+                and value["reason"] != "browser_payment_active"
                 and user.telegram_id
                 and name
                 and name.replace("_", "").isalnum()
                 else None
             )
             value["reason"] = (
-                "checkout_order_not_payable"
+                "browser_payment_active"
+                if value["reason"] == "browser_payment_active"
+                else "checkout_order_not_payable"
                 if not value["order_open_for_payment"]
                 else "telegram_handoff_required"
                 if value["telegram_handoff"]
@@ -370,6 +381,9 @@ class SqlCheckoutRepository:
             if intent
             else "not_requested"
         )
+        browser_active = bool(
+            await db.scalar(select(browser_payment_active(order.order_id)))
+        )
         if current and state == "creating" and current.lease_until <= now():
             state = "unknown"
         original_client = self._original_client(order, current, intent)
@@ -395,6 +409,7 @@ class SqlCheckoutRepository:
             and capture_state == "not_recorded"
             and order_open_for_payment
             and authorization_id is None
+            and not browser_active
             and not paused
         )
         return dict(
@@ -402,7 +417,7 @@ class SqlCheckoutRepository:
             policy_version=order.financial_version,
             currency="RUB",
             amount_minor=intent.payload["amount_minor"] if intent else None,
-            invoice_state=state,
+            invoice_state="browser_active" if browser_active else state,
             attempt_id=current.attempt_id if current else None,
             invoice_url=current.invoice_url if current and can_open else None,
             capture_state=capture_state,
@@ -410,7 +425,13 @@ class SqlCheckoutRepository:
             writes_paused=paused,
             order_open_for_payment=order_open_for_payment,
             can_open=can_open,
-            reason=None if original_client else "checkout_unavailable",
+            reason=(
+                "checkout_unavailable"
+                if not original_client
+                else "browser_payment_active"
+                if browser_active
+                else None
+            ),
             version=current.version if current else 0,
             authorization_id=authorization_id,
         )
@@ -427,9 +448,15 @@ class SqlCheckoutRepository:
             )
         if intent is None:
             return "unavailable", None
+        if intent.payload.get("provider") != payment.provider:
+            return "unavailable", None
         event = await db.get(
             OutboxEventModel,
-            capture_id(intent.payload.get("account", ""), payment.external_id),
+            capture_id(
+                intent.payload.get("account", ""),
+                payment.external_id,
+                payment.provider,
+            ),
         )
         capture = event.payload.get("capture", {}) if event else {}
         if (
@@ -442,7 +469,7 @@ class SqlCheckoutRepository:
                 for key, value in intent.payload.items()
             )
             or capture.get("external_id") != payment.external_id
-            or not capture.get("telegram_payment_charge_id")
+            or capture_source(capture, payment.provider) is None
             or payment.captured_minor != intent.payload.get("amount_minor")
             or payment.currency != capture.get("currency")
         ):
@@ -458,6 +485,10 @@ class SqlCheckoutRepository:
                 )
             )
         ).all()
+        if payment.provider == BROWSER_PROVIDER and not await db.scalar(
+            select(browser_capture_matches(order.order_id, capture, at))
+        ):
+            return "unavailable", None
         if at != payment.paid_at or sum(allocations) != payment.captured_minor:
             return "unavailable", None
         return "confirmed", at
@@ -485,7 +516,7 @@ class SqlCheckoutRepository:
         _, order = await self._owner(
             order_id, actor, db, lock=True, active=True
         )
-        current = await self._checkout(order_id, db, lock=True)
+        current = await self._native_authorization_checkout(order_id, db)
         if (
             current is None
             or current.account != self.account
@@ -571,6 +602,11 @@ class SqlCheckoutRepository:
             )
         )
         return value
+
+    async def _native_authorization_checkout(self, order_id, db):
+        if await db.scalar(select(browser_payment_active(order_id))):
+            raise ValueError("browser_payment_active")
+        return await self._checkout(order_id, db, lock=True)
 
     async def accept_receipt(self, receipt, *, session):
         db = _session(session)

@@ -101,6 +101,12 @@ async def send_checkout_if_v1(
         return True
     if result.get("capture_state") == "confirmed":
         await messenger.send_text(chat_id=incoming.chat_id, text=copy[3])
+    elif result.get("reason") == "browser_payment_active":
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=customer_text(locale, "browser_payment_active"),
+            keyboard=help_keyboard,
+        )
     elif result.get("authorization_id"):
         await messenger.send_text(
             chat_id=incoming.chat_id,

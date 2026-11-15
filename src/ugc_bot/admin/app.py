@@ -140,6 +140,9 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.domain.social import SocialPlatform
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    browser_payment_active,
+)
 from ugc_bot.infrastructure.db.checkout_models import AUTHORIZATIONS, INBOX
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -329,6 +332,7 @@ async def _guard_complimentary_activation(order, payment, session) -> None:
         select(
             exists().where(AUTHORIZATIONS.c.order_id == order.order_id)
             | exists().where(INBOX.c.order_id == order.order_id)
+            | browser_payment_active(order.order_id)
         )
     )
     if payment_in_flight:
@@ -1222,6 +1226,8 @@ async def _render_order_detail_page(
     closure_result = messages.pop(str(order_id), None)
     if not messages:
         request.session.pop("order_closure_result", None)
+    checkout = getattr(request.app.state, "browser_checkout", None)
+    browser_payment = await checkout.view(order_id) if checkout else None
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -1231,7 +1237,15 @@ async def _render_order_detail_page(
             "closure_reason_limit": ORDER_CLOSURE_REASON_LIMIT,
             "closure_result": closure_result,
             "delay_reason_labels": _DELAY_REASON_LABELS,
+            "browser_payment": browser_payment,
+            "browser_payment_can_create": bool(
+                checkout and checkout.can_create
+            ),
+            "browser_payment_message": request.session.pop(
+                "browser_payment_message", None
+            ),
         },
+        headers={"Cache-Control": "private, no-store"},
     )
 
 
@@ -1520,6 +1534,64 @@ def _make_require_admin(auth: AdminAuth):
             raise HTTPException(status_code=401, detail="Не авторизован")
 
     return _require_admin
+
+
+def _register_browser_checkout_action(app: FastAPI, auth: AdminAuth) -> None:
+    @app.get(
+        "/admin/orders/{order_id}/browser-payment",
+        dependencies=[Depends(_make_require_admin(auth))],
+    )
+    async def browser_payment_status(request: Request, order_id: UUID):
+        checkout = getattr(request.app.state, "browser_checkout", None)
+        result = await checkout.view(order_id) if checkout else None
+        return JSONResponse(
+            result, headers={"Cache-Control": "private, no-store"}
+        )
+
+    @app.post(
+        "/admin/orders/{order_id}/browser-payment",
+        dependencies=[Depends(_make_require_admin(auth))],
+    )
+    async def create_browser_payment(request: Request, order_id: UUID):
+        from ugc_bot.application.errors import OrderCreationError
+
+        await _require_action_token(request)
+        checkout = getattr(request.app.state, "browser_checkout", None)
+        if checkout is None:
+            raise HTTPException(
+                status_code=503, detail="Оплата в браузере недоступна"
+            )
+        email = (await request.form()).get("receipt_email")
+        try:
+            await checkout.create(
+                order_id, email if isinstance(email, str) else ""
+            )
+        except LookupError:
+            raise HTTPException(
+                status_code=404, detail="Заказ не найден"
+            ) from None
+        except OrderCreationError as exc:
+            request.session["browser_payment_message"] = {
+                "telegram_payment_pending": (
+                    "Сверьте результат предыдущей оплаты в Telegram."
+                ),
+                "browser_payment_quote_expiring": (
+                    "До срока подбора осталось слишком мало времени."
+                ),
+                "browser_receipt_email_required": (
+                    "Введите электронную почту клиента для чека."
+                ),
+                "browser_payment_paused": (
+                    "Создание платёжных ссылок приостановлено."
+                ),
+            }.get(str(exc), "Для этого заказа сейчас нельзя создать счёт.")
+        destination = request.url_for("admin_order_detail", order_id=order_id)
+        destination = destination.include_query_params(
+            return_to=_order_return_url(request)
+        )
+        return RedirectResponse(
+            f"{destination}#browser-payment", status_code=303
+        )
 
 
 def _register_dashboard_html_routes(
@@ -4073,6 +4145,8 @@ def create_admin_app() -> FastAPI:
     engine = container.get_admin_engine()
     app = FastAPI(title=config.admin.admin_site_name)
     app.add_middleware(SessionMiddleware, secret_key=config.admin.admin_secret)
+    if config.financial.yookassa_browser_shop_id:
+        app.state.browser_checkout = container.build_browser_checkout()
 
     _add_health_route(app, engine)
 
@@ -4114,6 +4188,7 @@ def create_admin_app() -> FastAPI:
     _register_order_worklist_manager_action(app, auth, engine, config)
     _register_order_worklist_action(app, auth, engine, admin_cache)
     _register_order_closure_action(app, auth, engine)
+    _register_browser_checkout_action(app, auth)
     _register_complaint_action(app, auth, engine, admin_cache)
 
     admin = EnumAwareAdmin(

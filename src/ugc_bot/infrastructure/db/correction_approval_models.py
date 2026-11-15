@@ -5,6 +5,12 @@ from importlib import import_module
 import sqlalchemy as sa
 
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    BROWSER_ATTEMPTS,
+)
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    GUARD_SQL as BROWSER_CHECKOUT_GUARDS,
+)
 from ugc_bot.infrastructure.db.correction_approval_schema import (
     correction_approval_pending_sql,
     correction_approval_tables,
@@ -56,11 +62,22 @@ def install_final_guard(metadata, connection, **kw):
         if install_financial_completion_guards(connection, names):
             # Match the final migrated authority only for complete metadata.
             # Partial historical metadata keeps its original guard boundary.
-            public_scope = import_module(
-                "ugc_bot.infrastructure.db.migrations.versions."
-                "0127_public_policy_scope"
-            )
-            connection.exec_driver_sql(public_scope._authority_sql(public=True))
+            if BROWSER_ATTEMPTS.name in names:
+                browser = import_module(
+                    "ugc_bot.infrastructure.db.migrations.versions."
+                    "0138_browser_checkout"
+                )
+                connection.exec_driver_sql(browser._authority_sql(browser=True))
+                if BROWSER_ATTEMPTS in kw.get("tables", ()):
+                    connection.exec_driver_sql(BROWSER_CHECKOUT_GUARDS)
+            else:
+                public_scope = import_module(
+                    "ugc_bot.infrastructure.db.migrations.versions."
+                    "0127_public_policy_scope"
+                )
+                connection.exec_driver_sql(
+                    public_scope._authority_sql(public=True)
+                )
 
 
 sa.event.listen(Base.metadata, "after_create", install_final_guard)

@@ -25,6 +25,9 @@ from ugc_bot.application.order_summary_admin_text import (
     order_summary_admin_text,
 )
 from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    browser_payment_active,
+)
 from ugc_bot.infrastructure.db.checkout_models import (
     AUTHORIZATIONS,
     INBOX,
@@ -125,6 +128,7 @@ class SqlAlchemyCustomerWorkflowRepository:
                     ),
                 )
                 | exists().where(INBOX.c.order_id == order_id)
+                | browser_payment_active(order_id)
             )
         ) or any(
             p.status == PaymentStatus.PENDING

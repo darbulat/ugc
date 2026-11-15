@@ -142,6 +142,18 @@ def test_terminal_order_keeps_existing_payment_state_visible(
     expect(page.locator("#umc-checkout-action")).to_be_hidden()
 
 
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_browser_reservation_hides_all_native_payment_actions(page, platform):
+    network = CheckoutNetwork()
+    network.value.update(invoice_state="browser_active", can_open=False)
+    open_selection(page, network, platform)
+    expect(page.locator("#umc-checkout-status")).to_contain_text(
+        "A browser invoice is open for this order."
+    )
+    expect(page.locator("#umc-checkout-action")).to_be_hidden()
+    expect(page.locator("#umc-checkout-link-account")).to_be_hidden()
+
+
 @pytest.mark.parametrize(
     "native_status", ["paid", "pending", "cancelled", "failed"]
 )
