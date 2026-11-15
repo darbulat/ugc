@@ -62,6 +62,8 @@ from ugc_bot.admin.people import (
     advertiser_directory_filters,
     creator_directory_filters,
     creator_inviters,
+    creator_social_summary,
+    instagram_audience_count,
     user_card_history,
 )
 from ugc_bot.domain.enums import (
@@ -316,6 +318,11 @@ class AdminDashboardService:
             t0 = time.perf_counter()
             cohorts = await cohort_metrics(session, datetime.now(timezone.utc))
             timings["cohort_metrics"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
+            social_summary = await creator_social_summary(session)
+            timings["creator_social_summary"] = (
+                time.perf_counter() - t0
+            ) * 1000
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -432,6 +439,7 @@ class AdminDashboardService:
             "picked_creators_count": picked_creators_count,
             "picked_creators_target": PICKED_CREATORS_TARGET,
             "creator_metrics": creators,
+            "creator_social_summary": social_summary,
             "cohort_metrics": cohorts,
             "order_conversion": conversion,
             "previous_conversion": previous_conversion,
@@ -1671,11 +1679,15 @@ class AdminDashboardService:
             .outerjoin(responses, responses.c.user_id == UserModel.user_id)
             .outerjoin(complaints, complaints.c.user_id == UserModel.user_id)
         )
-        follower_column = BloggerProfileModel.instagram_followers_count
+        follower_column: SQLColumnExpression[int | None] = (
+            BloggerProfileModel.instagram_followers_count
+        )
         if platform is not None:
             observed_at = BloggerProfileModel.instagram_stats_fetched_at
             metrics_source: SQLColumnExpression[str | None] = null()
-            if platform != SocialPlatform.INSTAGRAM:
+            if platform == SocialPlatform.INSTAGRAM:
+                follower_column = instagram_audience_count()
+            else:
                 audience = aliased(SocialAccountModel)
                 query = query.join(
                     audience,

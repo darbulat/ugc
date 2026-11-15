@@ -2,16 +2,30 @@
 
 import re
 from contextlib import suppress
+from typing import TypedDict
 from uuid import UUID
 
-from sqlalchemy import SQLColumnExpression, func, not_, or_, select, union_all
+from sqlalchemy import (
+    SQLColumnExpression,
+    case,
+    func,
+    literal,
+    not_,
+    or_,
+    select,
+    union_all,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.admin.order_worklist import worklist_conditions
 from ugc_bot.domain.enums import UserStatus
-from ugc_bot.domain.social import SocialPlatform, normalize_social_url
+from ugc_bot.domain.social import (
+    SOCIAL_PLATFORM_LABELS,
+    SocialPlatform,
+    normalize_social_url,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -30,6 +44,72 @@ from ugc_bot.infrastructure.db.repositories.ratings import (
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 PROFILE_HISTORY_PAGE_SIZE = 10
+CREATOR_PLATFORM_LABELS = {
+    **SOCIAL_PLATFORM_LABELS,
+    SocialPlatform.OTHER: "Другая площадка",
+}
+
+
+class CreatorSocialSummary(TypedDict):
+    platform: SocialPlatform
+    label: str
+    with_link: int
+    with_followers: int
+    without_followers: int
+
+
+def instagram_audience_count() -> ColumnElement[int | None]:
+    """Only nonnegative counts are usable in legacy Instagram profiles."""
+    count = BloggerProfileModel.instagram_followers_count
+    return case((count >= 0, count))
+
+
+async def creator_social_summary(
+    session: AsyncSession,
+) -> list[CreatorSocialSummary]:
+    profile = BloggerProfileModel
+    account = SocialAccountModel
+    instagram = (
+        select(
+            literal(SocialPlatform.INSTAGRAM.value),
+            func.count(),
+            func.count(instagram_audience_count()),
+        )
+        .select_from(UserModel)
+        .join(profile)
+        .where(func.trim(profile.instagram_url) != "")
+    )
+    additional = (
+        select(
+            account.platform, func.count(), func.count(account.followers_count)
+        )
+        .select_from(UserModel)
+        .join(profile)
+        .join(account, account.user_id == UserModel.user_id)
+        .where(
+            account.platform != SocialPlatform.INSTAGRAM,
+            func.trim(account.url) != "",
+        )
+        .group_by(account.platform)
+    )
+    result = await session.execute(union_all(instagram, additional))
+    counts = {
+        platform: (with_link, with_followers)
+        for platform, with_link, with_followers in result.all()
+    }
+    summary: list[CreatorSocialSummary] = []
+    for platform, label in CREATOR_PLATFORM_LABELS.items():
+        with_link, with_followers = counts.get(platform, (0, 0))
+        summary.append(
+            {
+                "platform": platform,
+                "label": label,
+                "with_link": with_link,
+                "with_followers": with_followers,
+                "without_followers": with_link - with_followers,
+            }
+        )
+    return summary
 
 
 def _person_search(q: str | None, *profile_fields) -> list[ColumnElement[bool]]:
@@ -113,7 +193,7 @@ def creator_directory_filters(
         filters.append(func.trim(BloggerProfileModel.instagram_url) != "")
         filters.extend(
             _audience_conditions(
-                BloggerProfileModel.instagram_followers_count,
+                instagram_audience_count(),
                 platform_followers_min,
                 platform_followers_unknown,
             )
