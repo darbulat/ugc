@@ -142,6 +142,83 @@ def _login(client):
     assert response.status_code == 302
 
 
+def test_repeat_order_list_displays_current_recorded_closure_reason(worklist):
+    client, engine, ids = worklist
+    now = datetime.now(timezone.utc)
+    completed_at = now - timedelta(hours=1)
+    chosen = {
+        "Active example": "owner_requested_close_orders_before_november_2026",
+        "Financial example": "customer_cancelled_unpaid_order",
+        "Draft example": "Закрыли по просьбе <клиента>",
+        "Dispatch example": None,
+    }
+    with Session(engine) as session, session.begin():
+        original = session.get(OrderModel, ids["Paid example"])
+        original.created_at = now - timedelta(days=3)
+        payment = session.scalar(select(PaymentModel))
+        payment.paid_at = now - timedelta(days=2)
+        for offer, value in chosen.items():
+            order = session.get(OrderModel, ids[offer])
+            order.created_at = now - timedelta(days=1)
+            previous = order.status.value
+            order.status = OrderStatus.CLOSED
+            order.completed_at = completed_at
+            if value:
+                session.add(
+                    AuditLogModel(
+                        entity_type="order",
+                        entity_id=order.order_id,
+                        action=AuditAction.UPDATE,
+                        old_values={"status": previous},
+                        new_values={"status": "closed", "reason": value},
+                        changed_at=completed_at,
+                    )
+                )
+        session.add_all(
+            [
+                AuditLogModel(
+                    entity_type="order",
+                    entity_id=ids["Active example"],
+                    action=AuditAction.UPDATE,
+                    old_values={"status": "closed"},
+                    new_values={
+                        "status": "closed",
+                        "reason": "Посторонняя правка",
+                    },
+                    changed_at=now,
+                ),
+                AuditLogModel(
+                    entity_type="order",
+                    entity_id=ids["Dispatch example"],
+                    action=AuditAction.UPDATE,
+                    old_values={"status": "active"},
+                    new_values={
+                        "status": "closed",
+                        "reason": "Старое закрытие",
+                    },
+                    changed_at=completed_at - timedelta(hours=1),
+                ),
+            ]
+        )
+
+    _login(client)
+    response = client.get(LIST, params={"group": "repeat"})
+    assert response.status_code == 200
+    assert (
+        "По запросу владельца закрыли заявки, созданные до 01.11.2026."
+        in response.text
+    )
+    assert "Заказчик отменил заявку до оплаты." in response.text
+    assert "Закрыли по просьбе &lt;клиента&gt;" in response.text
+    assert response.text.count("Причина закрытия не записана.") == 1
+    assert "Посторонняя правка" not in response.text
+    assert "Старое закрытие" not in response.text
+    assert (
+        "По запросу владельца"
+        not in client.get(LIST, params={"group": "all"}).text
+    )
+
+
 @pytest.mark.asyncio
 async def test_dashboard_average_check_uses_paid_totals_by_currency(worklist):
     _, engine, ids = worklist

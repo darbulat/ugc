@@ -1,4 +1,5 @@
 {% set details = model_view.worklist_details(order_rows) %}
+{% set closure_reasons = model_view.closure_reasons(order_rows) if group == 'repeat' else {} %}
 {% set reminders = model_view.unpaid_reminder_statuses(order_rows) if group == 'unpaid' else {} %}
 <div class="table-responsive" tabindex="0" role="region" aria-label="Таблица заказов">
   <table class="table card-table table-vcenter order-worklist-table">
@@ -35,6 +36,9 @@
         <td class="order-number">{{ '{:,.2f}'.format(row.price).replace(',', ' ').replace('.', ',') }} {{ row.currency }}</td>
         <td>
           <span class="order-status-label order-status-{{ row.status }}">{{ model_view.worklist_status_labels[row.status] }}</span>
+          {% if group == 'repeat' and row.status == 'closed' %}
+            <small class="order-row-note">{{ closure_reasons.get(row.order_id) or 'Причина закрытия не записана.' }}</small>
+          {% endif %}
           {% if not info.archived %}
           {% for reason in info.attention_reasons %}
             <small class="order-row-note order-row-alert">{{ model_view.worklist_reason_labels[reason] }}</small>
