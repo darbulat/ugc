@@ -37,11 +37,23 @@ from ugc_bot.domain.enums import MessengerType
 
 _TEXTS_RU = DEFAULT_TEXTS["ru"]
 _ROLE_KEYS = ["btn_creator", "btn_advertiser", "btn_support"]
+_MANAGER_MENU_CALLBACKS = [
+    "role:creator",
+    "mgr:open",
+    "role:advertiser",
+    "partner:open",
+]
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("with_manager", [False, True])
 async def test_start_command_sends_role_keyboard(
-    user_repo, messenger_client, event_adapter, config, bot_texts_service
+    user_repo,
+    messenger_client,
+    event_adapter,
+    config,
+    bot_texts_service,
+    with_manager,
 ) -> None:
     """Ensure /start sends role keyboard and start text."""
 
@@ -58,14 +70,20 @@ async def test_start_command_sends_role_keyboard(
         bot_texts_service=bot_texts_service,
         messenger_client=messenger_client,
         event_adapter=event_adapter,
+        manager_applications=object() if with_manager else None,
     )
 
     assert message.answers
     assert _TEXTS_RU["start_message"] in message.answers[0][0]
     keyboard = message.answers[0][1]
     assert keyboard is not None
-    role_texts = {k: _TEXTS_RU[k] for k in _ROLE_KEYS}
-    assert keyboard.rows == role_inline_keyboard(role_texts).rows
+    if with_manager:
+        assert [
+            row[0].callback_data for row in keyboard.rows
+        ] == _MANAGER_MENU_CALLBACKS
+    else:
+        role_texts = {k: _TEXTS_RU[k] for k in _ROLE_KEYS}
+        assert keyboard.rows == role_inline_keyboard(role_texts).rows
 
 
 @pytest.mark.asyncio
@@ -660,12 +678,17 @@ async def test_country_selected_saves_country_and_shows_role_keyboard(
         config=config,
         bot_texts_service=bot_texts_service,
         messenger_client=client,
+        manager_applications=object(),
     )
 
     saved = await user_repo.get_by_external("99", MessengerType.TELEGRAM)
     assert saved is not None
     assert saved.country == "kz"
     assert len(client.sent_text) == 1
+    keyboard = client.sent_text[0]["keyboard"]
+    assert [
+        row[0].callback_data for row in keyboard.rows
+    ] == _MANAGER_MENU_CALLBACKS
     # keyboard must be removed from the country selection message
     assert len(client.edited_reply_markups) == 1
     assert client.edited_reply_markups[0]["keyboard"] is None

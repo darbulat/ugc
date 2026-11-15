@@ -208,10 +208,12 @@ def flow_inline_keyboard(rows: list[list[Button]]) -> Keyboard:
     return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
 
-def role_inline_keyboard(texts: dict[str, str]) -> Keyboard:
+def role_inline_keyboard(
+    texts: dict[str, str], *, include_manager: bool = False
+) -> Keyboard:
     """Role selection (inline). Needs: btn_creator, btn_advertiser."""
 
-    return Keyboard(
+    keyboard = Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
@@ -229,6 +231,11 @@ def role_inline_keyboard(texts: dict[str, str]) -> Keyboard:
             [partner_menu_button(texts)],
         ],
     )
+    if include_manager:
+        keyboard.rows.insert(
+            1, [Button("Хочу стать менеджером", callback_data="mgr:open")]
+        )
+    return keyboard
 
 
 def creator_start_keyboard(texts: dict[str, str]) -> Keyboard:
