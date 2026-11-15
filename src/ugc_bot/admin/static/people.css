@@ -65,6 +65,7 @@
 .people-search { flex: 3 1 16rem; }
 
 .people-filters input[type="search"],
+.people-filters input[type="text"],
 .people-filters select,
 .people .people-button {
   min-width: 0;
