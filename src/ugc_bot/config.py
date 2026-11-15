@@ -152,6 +152,10 @@ _FLAT_KEYS = {
         "CAMPAIGN_DELIVERY_INTERVAL_SECONDS",
     ],
     "financial": [
+        "YOOKASSA_BROWSER_SHOP_ID",
+        "YOOKASSA_BROWSER_SECRET_KEY",
+        "YOOKASSA_BROWSER_TEST_MODE",
+        "YOOKASSA_BROWSER_ENABLED",
         "FINANCIAL_SELECTION_PRICE_MINOR",
         "FINANCIAL_ACCOMPANIMENT_PRICE_MINOR",
         "FINANCIAL_CORE_ENABLED",
@@ -732,6 +736,20 @@ class FinancialConfig(BaseSettings):
     """Independent emergency gates; policy/order parameters have no defaults."""
 
     model_config = _ENV
+    yookassa_browser_shop_id: str = Field(
+        default="",
+        alias="YOOKASSA_BROWSER_SHOP_ID",
+        pattern=r"^(?:[0-9]{1,32})?$",
+    )
+    yookassa_browser_secret_key: SecretStr = Field(
+        default=SecretStr(""), alias="YOOKASSA_BROWSER_SECRET_KEY"
+    )
+    yookassa_browser_test_mode: bool = Field(
+        default=False, alias="YOOKASSA_BROWSER_TEST_MODE"
+    )
+    yookassa_browser_enabled: bool = Field(
+        default=False, alias="YOOKASSA_BROWSER_ENABLED"
+    )
     superadmin_user_ids_raw: str = Field(
         default="", alias="FINANCIAL_SUPERADMIN_USER_IDS", max_length=16384
     )

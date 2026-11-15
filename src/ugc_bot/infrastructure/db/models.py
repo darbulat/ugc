@@ -47,6 +47,9 @@ from ugc_bot.domain.enums import (
     WorkFormat,
 )
 from ugc_bot.infrastructure.db import (
+    browser_checkout_models as _browser_checkout_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (
     checkout_models as _checkout_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db.base import Base

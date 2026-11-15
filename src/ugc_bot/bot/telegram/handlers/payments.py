@@ -511,6 +511,10 @@ async def pre_checkout_query_handler(
                         incoming.currency,
                     )
         except Exception as exc:
+            browser_active = (
+                isinstance(exc, ValueError)
+                and str(exc) == "browser_payment_active"
+            )
             pending = isinstance(exc, ValueError) and str(exc) in {
                 "payment_authorization_pending",
                 "paid_receipt_pending",
@@ -528,9 +532,11 @@ async def pre_checkout_query_handler(
                 error_message=(
                     customer_text(
                         pre_checkout_query.from_user.language_code,
-                        "payment_pending",
+                        "browser_payment_active"
+                        if browser_active
+                        else "payment_pending",
                     )
-                    if pending
+                    if pending or browser_active
                     else (
                         "Оплата пока недоступна. Проверьте сохранённый статус "
                         "заказа."

@@ -87,6 +87,74 @@
       {% endif %}
     </section>
 
+    {% if browser_payment or browser_payment_message %}
+    <section class="card order-detail__section" id="browser-payment" aria-labelledby="browser-payment-heading">
+      <h2 id="browser-payment-heading">Оплата в браузере</h2>
+      {% if browser_payment_message %}<p role="alert">{{ browser_payment_message }}</p>{% endif %}
+      {% if browser_payment %}
+        {% set payment_state = browser_payment.state %}
+        {% if payment_state in ('creating', 'pending', 'review') %}
+          <span id="browser-payment-watch" hidden
+                data-url="{{ request.url_for('browser_payment_status', order_id=order.order_id) }}"
+                data-state="{{ payment_state }}" data-link="{{ 'yes' if browser_payment.url else 'no' }}"></span>
+          <script>
+            const paymentWatch = document.getElementById('browser-payment-watch');
+            async function refreshBrowserPayment() {
+              try {
+                const response = await fetch(paymentWatch.dataset.url, { cache: 'no-store' });
+                if ([401, 403].includes(response.status)) return;
+                if (response.ok) {
+                  const payment = await response.json();
+                  if (!payment || payment.state !== paymentWatch.dataset.state ||
+                      (payment.url ? 'yes' : 'no') !== paymentWatch.dataset.link) {
+                    window.location.reload();
+                    return;
+                  }
+                }
+              } catch {}
+              setTimeout(refreshBrowserPayment, 5000);
+            }
+            setTimeout(refreshBrowserPayment, 5000);
+          </script>
+        {% endif %}
+        {% if payment_state == 'telegram_pending' %}
+          <p>Проверяем предыдущую попытку оплаты в Telegram.</p>
+        {% elif payment_state == 'creating' %}
+          <p role="status">ЮKassa подготавливает счёт для клиента.</p>
+        {% elif payment_state == 'review' %}
+          <p role="alert">Платёж сверяется. Повторная оплата закрыта до проверки результата.</p>
+        {% elif payment_state == 'pending' %}
+          <p role="status">Ожидает подтверждения от ЮKassa.</p>
+        {% elif payment_state == 'paid' %}
+          <p role="status">Заказ оплачен.</p>
+        {% endif %}
+        {% if browser_payment.url and payment_state != 'paid' %}
+          <label for="browser-payment-url">Ссылка для клиента</label>
+          <input id="browser-payment-url" type="url" value="{{ browser_payment.url }}" readonly size="48">
+          <button class="admin-button" type="button" id="copy-browser-payment">Скопировать ссылку</button>
+          <span id="browser-copy-feedback" role="status"></span>
+          <script>
+            document.getElementById('copy-browser-payment').addEventListener('click', async function () {
+              const input = document.getElementById('browser-payment-url');
+              try {
+                await navigator.clipboard.writeText(input.value);
+                document.getElementById('browser-copy-feedback').textContent = 'Ссылка скопирована';
+              } catch {
+                input.focus();
+                input.select();
+              }
+            });
+          </script>
+        {% elif browser_payment_can_create and payment_state in ('available', 'telegram_pending', 'canceled', 'failed') %}
+          <form class="order-detail__closure" method="post" action="{{ request.url_for('create_browser_payment', order_id=order.order_id).include_query_params(return_to=back_url) }}">
+            <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+            <button class="admin-button admin-button--primary" type="submit">Создать ссылку на оплату</button>
+          </form>
+        {% endif %}
+      {% endif %}
+    </section>
+    {% endif %}
+
     {% if order.can_edit_closure_reason or order.closure_reason or closure_result %}
     <section class="card order-detail__section" id="order-closure" aria-labelledby="order-closure-heading">
       <h2 id="order-closure-heading">Закрытие заказа</h2>

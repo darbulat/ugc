@@ -437,6 +437,13 @@ class Container:
             self._transaction_manager,
         )
 
+    def build_browser_checkout(self):
+        from ugc_bot.container.checkout_factory import build_browser_checkout
+
+        return build_browser_checkout(
+            self._config, self._transaction_manager, self.build_repos()
+        )
+
     def build_order_notice_delivery(self, messenger_client):
         """Durable created/paid cards use the persisted quote and contacts."""
         from ugc_bot.container.order_notice_factory import (
