@@ -5,6 +5,17 @@
 {% set search_placeholder = 'Имя, Instagram, Telegram или ID' %}
 {% set empty_message = 'Креаторы не найдены. Попробуйте изменить поиск или сбросить фильтры.' %}
 {% set extra_filters = city or status or platform or followers_min is not none %}
+{% set directory_class = 'people-creators' %}
+{% set audience_label = 'Подписчики · ' ~ platform_labels[platform] if platform else 'Подписчики Instagram' %}
+{% set sorts = [
+  ('username', 'Креатор', 'asc'),
+  ('city', 'Город', 'asc'),
+  ('followers', audience_label, 'desc'),
+  ('responses', 'Отклики', 'desc'),
+  ('complaints', 'Жалобы', 'desc'),
+  ('status', 'Статус', 'desc'),
+  ('created_at', 'Регистрация', 'desc')
+] %}
 {% block head %}
   {{ super() }}
   <script defer src="{{ admin_asset(request, 'creator-directory.js') }}"></script>
@@ -22,7 +33,7 @@
       {% endfor %}
     </select>
   </div>
-  <div class="people-field">
+  <div class="people-field people-status">
     <label for="people-status">Статус</label>
     <select id="people-status" name="status">
       <option value="">Любой</option>
@@ -68,7 +79,7 @@
 {% block columns %}
   {{ sort_header('username', 'Креатор', 'asc') }}
   {{ sort_header('city', 'Город', 'asc') }}
-  {{ sort_header('followers', 'Подписчики Instagram') }}
+  {{ sort_header('followers', audience_label) }}
   <th scope="col">Рейтинг</th>
   {{ sort_header('responses', 'Отклики') }}
   {{ sort_header('complaints', 'Жалобы') }}
@@ -76,8 +87,21 @@
   <th scope="col">Кто пригласил</th>
   {{ sort_header('created_at', 'Регистрация') }}
 {% endblock %}
+{% block mobile_sort %}
+  <details class="people-mobile-sort">
+    <summary>Сортировка{% for key, label, _ in sorts if key == sort %} · {{ label }} {{ '↑' if order == 'asc' else '↓' }}{% endfor %}</summary>
+    <ul>
+      {% for key, label, default_direction in sorts %}
+        <li{% if key == sort %} class="people-sort-selected"{% endif %}>{{ sort_link(key, label, default_direction) }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+{% endblock %}
+{% macro mobile_label(label) %}
+  <span class="people-mobile-label">{{ label }}</span>
+{% endmacro %}
 {% macro cells(person, profile_url) %}
-  <td class="people-identity">
+  <td class="people-identity" role="cell">
     <a class="people-name" href="{{ profile_url }}">{{ person.username or person.telegram or 'Профиль креатора' }}</a>
     {% if person.instagram or person.telegram %}
       <div class="people-contacts">
@@ -86,12 +110,30 @@
       </div>
     {% endif %}
   </td>
-  <td>{{ person.city.strip().title() if person.city.strip() else '—' }}</td>
-  <td class="people-number">{{ count(person.instagram_followers_count) if person.instagram_followers_count is not none else '—' }}</td>
-  <td class="people-number">{% if person.rating is defined and person.rating is not none %}<a href="{{ profile_url }}#ratings">{{ stars(person.rating) }}</a>{% else %}—{% endif %}</td>
-  <td class="people-number">{{ count(person.responses) }}</td>
-  <td class="people-number">{% if person.complaints %}<a class="people-pill people-pill--alert" href="{{ profile_url }}#complaints">{{ count(person.complaints) }}</a>{% else %}0{% endif %}</td>
-  <td><span class="people-pill{% if person.status == 'active' %} people-pill--active{% elif person.status == 'bot_blocked' %} people-pill--alert{% endif %}">{{ user_status_labels.get(person.status, person.status) }}</span></td>
-  <td>{{ inviter(person.inviter, request) }}</td>
-  <td class="people-date">{{ person.created_at|admin_date }}</td>
+  <td role="cell">{{ mobile_label('Город') }}{{ person.city.strip().title() if person.city.strip() else '—' }}</td>
+  <td role="cell" class="people-audience">
+    {{ mobile_label(audience_label) }}
+    {% if platform %}
+      {% set audience = person.audience|default(none) %}
+      {% if audience and audience.followers is not none %}
+        <span class="people-number">{{ count(audience.followers) }}</span>
+        {% if audience.self_reported or audience.observed_at %}
+          <span class="people-audience-meta">
+            {% if audience.self_reported %}<span>Со слов креатора</span>{% endif %}
+            {% if audience.observed_at %}<span>{{ audience.observed_at|admin_date }}</span>{% endif %}
+          </span>
+        {% endif %}
+      {% else %}
+        <span class="people-secondary">Не указано</span>
+      {% endif %}
+    {% else %}
+      <span class="people-number">{{ count(person.instagram_followers_count) if person.instagram_followers_count is not none else '—' }}</span>
+    {% endif %}
+  </td>
+  <td role="cell">{{ mobile_label('Рейтинг') }}{% if person.rating is defined and person.rating is not none %}<a href="{{ profile_url }}#ratings">{{ stars(person.rating) }}</a>{% else %}—{% endif %}</td>
+  <td role="cell">{{ mobile_label('Отклики') }}<span class="people-number">{{ count(person.responses) }}</span></td>
+  <td role="cell">{{ mobile_label('Жалобы') }}{% if person.complaints %}<a class="people-pill people-pill--alert" href="{{ profile_url }}#complaints">{{ count(person.complaints) }}</a>{% else %}0{% endif %}</td>
+  <td role="cell">{{ mobile_label('Статус') }}<span class="people-pill{% if person.status == 'active' %} people-pill--active{% elif person.status == 'bot_blocked' %} people-pill--alert{% endif %}">{{ user_status_labels.get(person.status, person.status) }}</span></td>
+  <td role="cell">{{ mobile_label('Кто пригласил') }}{{ inviter(person.inviter, request) }}</td>
+  <td role="cell">{{ mobile_label('Регистрация') }}<span class="people-date">{{ person.created_at|admin_date }}</span></td>
 {% endmacro %}

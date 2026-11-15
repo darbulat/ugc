@@ -2,19 +2,22 @@
 {% block head %}
   <link rel="stylesheet" href="{{ admin_asset(request, 'people.css') }}">
 {% endblock %}
-{% macro sort_header(key, label, default_direction='desc') %}
+{% macro sort_link(key, label, default_direction='desc') %}
   {% set selected = sort == key %}
-  <th scope="col"{% if selected %} aria-sort="{{ 'ascending' if order == 'asc' else 'descending' }}"{% endif %}>
-    <a href="{{ request.url.remove_query_params('page').include_query_params(sort=key, order=('asc' if order == 'desc' else 'desc') if selected else default_direction) }}">
-      {{ label }}{% if selected %}<span aria-hidden="true">{{ ' ↑' if order == 'asc' else ' ↓' }}</span>{% endif %}
-    </a>
+  <a href="{{ request.url.remove_query_params('page').include_query_params(sort=key, order=('asc' if order == 'desc' else 'desc') if selected else default_direction) }}">
+    {{ label }}{% if selected %}<span aria-hidden="true">{{ ' ↑' if order == 'asc' else ' ↓' }}</span>{% endif %}
+  </a>
+{% endmacro %}
+{% macro sort_header(key, label, default_direction='desc') %}
+  <th scope="col"{% if sort == key %} aria-sort="{{ 'ascending' if order == 'asc' else 'descending' }}"{% endif %}>
+    {{ sort_link(key, label, default_direction) }}
   </th>
 {% endmacro %}
 {% from "people_parts.html" import telegram, instagram, stars, count, pager %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
   {% set source = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
-  <section class="people">
+  <section class="people{% if directory_class %} {{ directory_class }}{% endif %}">
     <header class="people-heading">
       <h1>{{ title }}</h1>
       <div class="people-actions">
@@ -49,13 +52,14 @@
         </div>
       </form>
       {% if entries %}
+        {% block mobile_sort %}{% endblock %}
         <div class="people-scroll" tabindex="0" role="region" aria-label="{{ title }}">
-          <table class="table people-table">
+          <table class="table people-table" role="table">
             <thead><tr>{% block columns %}{% endblock %}</tr></thead>
-            <tbody>
+            <tbody role="rowgroup">
               {% for person in entries %}
                 {% set profile_url = request.url_for('admin_user_card', user_id=person.user_id).include_query_params(return_to=source) %}
-                <tr>{{ cells(person, profile_url) }}</tr>
+                <tr role="row">{{ cells(person, profile_url) }}</tr>
               {% endfor %}
             </tbody>
           </table>
