@@ -96,11 +96,11 @@
       </div>
       {% if key == 'terms' %}
       {% if obj.status != 'closed' %}
-        <div class="mt-3" id="order-closure-field">
+        <div class="mt-3" id="order-closure-field" data-reason-required="{{ 1 if order_actions.requires_closure_reason else 0 }}">
           <label class="form-label" for="order-closure-reason">Причина закрытия</label>
           <textarea id="order-closure-reason" name="closure_reason" class="form-control" rows="3"
                     maxlength="{{ model_view.closure_reason_limit }}" aria-describedby="order-closure-hint">{{ closure_reason_value|default('') }}</textarea>
-          <small class="form-hint" id="order-closure-hint">Заполните при выборе статуса «Закрытый».</small>
+          <small class="form-hint" id="order-closure-hint">{{ 'Заполните при выборе статуса «Закрытый».' if order_actions.requires_closure_reason else 'При закрытии можно оставить пояснение, например «Не запускали».' }}</small>
         </div>
       {% endif %}
 {% if order_quote_details %}

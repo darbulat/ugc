@@ -778,6 +778,60 @@ def test_advertiser_recency_uses_visible_order_history(worklist):
     )
 
 
+def test_possible_test_orders_are_reviewed_individually(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    draft_id = ids["Draft example"]
+    other_id = ids["Dispatch example"]
+    with Session(engine) as session, session.begin():
+        draft = session.get(OrderModel, draft_id)
+        draft.created_at = datetime.now(timezone.utc) - timedelta(days=2)
+        session.get(UserModel, draft.advertiser_id).username = "Камиль"
+        closed = session.get(OrderModel, ids["Closed example"])
+        session.get(UserModel, closed.advertiser_id).username = "Камиль Петров"
+    candidates = f"{LIST}?group=check-test"
+    pending = client.get(candidates)
+    assert pending.status_code == 200
+    assert (
+        "Draft example" in pending.text and "Dispatch example" in pending.text
+    )
+    assert "Closed example" not in pending.text
+    assert (
+        "Draft example" not in client.get(LIST, params={"group": "unpaid"}).text
+    )
+    assert (
+        "Draft example" not in client.get(LIST, params={"group": "test"}).text
+    )
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', pending.text)[1]
+
+    confirm = f"/admin/order-worklist/{draft_id}/confirm-real?group=check-test"
+    assert client.post(confirm).status_code == 403
+    real = client.post(confirm, data={"csrf_token": csrf})
+    assert "Заказ отмечен как реальный" in real.text
+    assert "Draft example" not in real.text and "Dispatch example" in real.text
+    assert "Draft example" in client.get(LIST, params={"group": "unpaid"}).text
+    client.post(confirm, data={"csrf_token": csrf})
+
+    marked = client.post(
+        f"/admin/order-worklist/{other_id}/mark-test?group=check-test",
+        data={"csrf_token": csrf},
+    )
+    assert "Dispatch example" not in marked.text
+    assert "Dispatch example" in client.get(LIST, params={"group": "test"}).text
+    with Session(engine) as session:
+        events = session.scalars(
+            select(AuditLogModel).where(
+                AuditLogModel.entity_type == "order_test_marker",
+                AuditLogModel.entity_id.in_([draft_id, other_id]),
+            )
+        ).all()
+        assert len(events) == 2
+        assert {event.entity_id: event.new_values for event in events} == {
+            draft_id: {"test": False},
+            other_id: {"test": True},
+        }
+
+
 def test_test_order_requires_marker_and_keeps_audit(worklist):
     client, engine, ids = worklist
     _login(client)
@@ -1248,12 +1302,14 @@ def test_order_editor_rejects_new_overflow_and_preserves_legacy_text(worklist):
 def test_order_editor_records_manual_closure_reason(worklist):
     client, engine, ids = worklist
     _login(client)
-    order_id = ids["Draft example"]
+    order_id = ids["Paid example"]
+    with Session(engine) as session, session.begin():
+        session.get(OrderModel, order_id).status = OrderStatus.NEW
     edit = f"/admin/order-model/edit/{order_id}"
     data = {
         "order_type": "ugc_only",
         "product_link": "https://example.com",
-        "offer_text": "Draft example",
+        "offer_text": "Paid example",
         "price": "1200",
         "bloggers_needed": "4",
         "status": "closed",
@@ -1294,6 +1350,118 @@ def test_order_editor_records_manual_closure_reason(worklist):
         assert event.old_values == {"status": "new"}
         assert event.new_values == {"status": "closed", "reason": reason}
         assert event.changed_at == order.completed_at
+
+
+@pytest.mark.parametrize("reason", ["", "Не запускали"])
+def test_order_editor_can_close_unworked_draft_with_optional_reason(
+    worklist, reason
+):
+    client, engine, ids = worklist
+    _login(client)
+    order_id = ids["Draft example"]
+    result = client.post(
+        f"/admin/order-model/edit/{order_id}",
+        data={
+            "order_type": "ugc_only",
+            "product_link": "https://example.com",
+            "offer_text": "Draft example",
+            "price": "1200",
+            "bloggers_needed": "4",
+            "status": "closed",
+            "closure_reason": reason,
+            "save": "Save",
+        },
+    )
+    assert result.status_code == 200 and result.url.path == LIST
+    with Session(engine) as session:
+        order = session.get(OrderModel, order_id)
+        event = session.scalars(
+            select(AuditLogModel).where(AuditLogModel.entity_id == order_id)
+        ).one()
+        assert order.status == OrderStatus.CLOSED and order.completed_at
+        assert event.new_values.get("reason", "") == reason
+
+
+def test_closed_card_records_and_updates_reason_for_repeat_order(worklist):
+    client, engine, ids = worklist
+    order_id = ids["Dispatch example"]
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        original = session.get(OrderModel, ids["Paid example"])
+        original.created_at = now - timedelta(days=3)
+        session.scalar(select(PaymentModel)).paid_at = now - timedelta(days=2)
+        order = session.get(OrderModel, order_id)
+        order.created_at = now - timedelta(days=1)
+        order.completed_at = now - timedelta(hours=2)
+        order.status = OrderStatus.CLOSED
+        completed_at = order.completed_at.replace(tzinfo=None)
+    card = f"/admin/orders/{order_id}"
+    action = card + "/closure-reason"
+    repeat_url = f"{LIST}?group=repeat"
+    assert client.post(action).status_code == 401
+    _login(client)
+    assert client.post(action).status_code == 403
+    repeat = client.get(repeat_url)
+    assert "Причина закрытия не записана." in repeat.text
+    assert "Указать причину" in repeat.text
+    token = re.search(r'name="csrf_token" value="([^"]+)"', repeat.text)[1]
+    page = client.get(card, params={"return_to": repeat_url})
+    assert 'name="closure_reason"' in page.text
+
+    def save(reason, url=action):
+        return client.post(
+            url,
+            params={"return_to": repeat_url},
+            data={"csrf_token": token, "closure_reason": reason},
+        )
+
+    assert "Укажите причину закрытия." in save("  ").text
+    assert "не длиннее 500 символов" in save("я" * 501).text
+    assert (
+        "только для закрытого заказа"
+        in save(
+            "Проверка", f"/admin/orders/{ids['Active example']}/closure-reason"
+        ).text
+    )
+    unworked = f"/admin/orders/{ids['Closed example']}"
+    assert 'name="closure_reason"' not in client.get(unworked).text
+    assert (
+        "К заказу не привязаны"
+        in save("Проверка", unworked + "/closure-reason").text
+    )
+    first = "Не согласовали сроки с креатором"
+    second = "Заказчик перенёс сроки <причина>"
+    result = save(f" {first} ")
+    assert result.status_code == 200 and result.url.path == card
+    assert result.url.params["return_to"] == repeat_url
+    assert "Причина закрытия сохранена." in result.text and first in result.text
+    assert first in client.get(repeat_url).text
+    assert "Причина закрытия сохранена." in save(second).text
+    save(second)
+    repeated = client.get(repeat_url).text
+    assert "Заказчик перенёс сроки &lt;причина&gt;" in repeated
+    assert first not in repeated
+
+    with Session(engine) as session:
+        order = session.get(OrderModel, order_id)
+        assert order.status == OrderStatus.CLOSED
+        assert order.completed_at == completed_at
+        events = session.scalars(
+            select(AuditLogModel)
+            .where(AuditLogModel.entity_id == order_id)
+            .order_by(AuditLogModel.changed_at)
+        ).all()
+        assert [event.entity_type for event in events] == [
+            "order_closure_reason"
+        ] * 2
+        assert [event.old_values for event in events] == [
+            {"reason": None},
+            {"reason": first},
+        ]
+        assert [event.new_values for event in events] == [
+            {"reason": first},
+            {"reason": second},
+        ]
 
 
 def test_complaint_read_search_and_close_without_measures(worklist):

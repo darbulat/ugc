@@ -32,6 +32,7 @@
           <div class="order-detail__badges">
             <span class="badge order-detail__status">{{ status_labels.get(status, status) }}</span>
             {% if order.get('is_test') %}<span class="badge">Тестовый</span>{% endif %}
+            {% if order.get('test_candidate') %}<span class="badge badge--alert">Проверить на тест</span>{% endif %}
             {% if order.get('archived') %}<span class="badge">Удалён из списка</span>{% endif %}
           </div>
           <h1>{{ title|truncate(120) }}</h1>
@@ -85,6 +86,26 @@
       </div>
       {% endif %}
     </section>
+
+    {% if order.can_edit_closure_reason or order.closure_reason or closure_reason_message %}
+    <section class="card order-detail__section" id="order-closure" aria-labelledby="order-closure-heading">
+      <h2 id="order-closure-heading">Закрытие заказа</h2>
+      {% if closure_reason_message %}<p role="status">{{ closure_reason_message }}</p>{% endif %}
+      {% if order.can_edit_closure_reason %}
+      <form class="order-detail__closure" method="post"
+            action="{{ request.url_for('save_order_closure_reason', order_id=order.order_id).include_query_params(return_to=back_url) }}">
+        <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+        <label for="order-closure-reason">Причина закрытия</label>
+        <textarea id="order-closure-reason" name="closure_reason" required maxlength="{{ closure_reason_limit }}"
+                  rows="3" aria-describedby="order-closure-hint">{{ order.closure_reason }}</textarea>
+        <small class="muted" id="order-closure-hint">Укажите, почему закрыли заказ и какие сложности возникли.</small>
+        <button type="submit" class="admin-button admin-button--primary">Сохранить причину</button>
+      </form>
+      {% elif order.closure_reason %}
+      <p class="order-detail__closure-text">{{ order.closure_reason }}</p>
+      {% endif %}
+    </section>
+    {% endif %}
 
     <section class="card order-detail__section" aria-labelledby="order-responses-heading">
       <h2 id="order-responses-heading">{{ 'Подобранные креаторы и отклики' if order.responses_list else 'Креаторы и отклики' }}</h2>
