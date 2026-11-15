@@ -50,11 +50,9 @@ async def test_application_verification_review_and_directory(intake_env):
     )
     service = ManagerApplications(transactions, graph)
     assert (await service.open(user_id))["state"] == "draft"
-    with pytest.raises(ValueError, match="пропущенные"):
-        await service.submit(user_id)
     answers = dict(
         name="Камиль",
-        location="Россия, Казань",
+        location="Казань",
         phone="+70000000000",
         instagram="@test_manager",
         case="Вёл 10 авторов для кафе",
@@ -62,30 +60,50 @@ async def test_application_verification_review_and_directory(intake_env):
         rate="600–800",
         work_format="Агентство",
         weekly_capacity="11–30",
-        reliability="Предупрежу заранее.",
+        shortfall_plan="Сверю сроки и поищу авторов в городских сообществах.",
     )
     assert set(answers) == set(application_fields(answers))
     with pytest.raises(ValueError, match="предложенных"):
         await service.answer(user_id, "weekly_capacity", "50")
+    with pytest.raises(ValueError, match="две суммы"):
+        await service.answer(user_id, "rate", "Обсудим")
+    with pytest.raises(ValueError, match="найденного"):
+        await service.answer(user_id, "location", "Казань")
+    with pytest.raises(ValueError, match="Instagram"):
+        await service.answer(user_id, "instagram", "@некорректный")
+    for field in ("case", "shortfall_plan"):
+        with pytest.raises(ValueError, match="от 20 символов"):
+            await service.answer(user_id, field, "Быстро")
     for field, value in answers.items():
+        if field in {"location", "shortfall_plan"}:
+            continue
         await service.answer(user_id, field, value)
+    await service.answer(
+        user_id, "location", "Казань", location_context=("Татарстан", "Россия")
+    )
     with pytest.raises(ValueError, match="не относится"):
         await service.answer(user_id, "work_format_details", "лишний ответ")
     await service.answer(user_id, "work_format", "Другое")
-    with pytest.raises(ValueError, match="пропущенные"):
-        await service.submit(user_id)
+    assert (await service.open(user_id))["state"] == "draft"
     await service.answer(user_id, "work_format_details", "Веду спецпроекты")
     await service.answer(user_id, "work_format", "Агентство")
     assert "work_format_details" not in (await service.open(user_id))["answers"]
-    await service.submit(user_id)
-    await service.submit(user_id)
+    submitted = await service.answer(
+        user_id, "shortfall_plan", answers["shortfall_plan"]
+    )
+    assert submitted["state"] == "submitted"
+    assert submitted["submitted_at"] is not None
+    with pytest.raises(ValueError, match="уже на рассмотрении"):
+        await service.answer(
+            user_id, "shortfall_plan", answers["shortfall_plan"]
+        )
     with Session(env["pg"]) as db, db.begin():
         with pytest.raises(ValueError, match="Instagram"):
             _review(db, "approved", str(user_id), "")
         _review(db, "clarify", str(user_id), "Уточните загрузку")
     assert (await service.open(user_id))["decision_note"] == "Уточните загрузку"
     await service.answer(user_id, "coverage", "Казань, 10 авторов")
-    await service.submit(user_id)
+    await service.answer(user_id, "shortfall_plan", answers["shortfall_plan"])
     code = await service.instagram_challenge(user_id)
     assert code == await service.instagram_challenge(user_id)
     assert not await service.verify_instagram(code, "synthetic_instagram_id")
@@ -100,8 +118,13 @@ async def test_application_verification_review_and_directory(intake_env):
         assert "test_manager" in worklist_manager_suggestions(db)
         rows = _directory(db, "Казань", "available", 0)
         assert [r["user_id"] for r in rows] == [user_id]
+        country_rows = _directory(db, "Россия", "available", 0)
+        assert [r["user_id"] for r in country_rows] == [user_id]
         assert rows[0]["answers"]["weekly_capacity"] == "11–30"
         assert rows[0]["answers"]["work_format"] == "Агентство"
+        assert rows[0]["answers"]["location"] == "Казань"
+        assert rows[0]["answers"]["location_region"] == "Татарстан"
+        assert rows[0]["answers"]["location_country"] == "Россия"
     assert await service.approved(user_id)
 
 
