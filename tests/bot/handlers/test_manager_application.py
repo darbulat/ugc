@@ -240,10 +240,10 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await tap("work_format:1")
     await tap("field:case")
     assert "какие проекты ведёт ваша команда" in message.answers[-1]
-    assert (
-        "<i>(Одно короткое предложение, от 20 символов.)</i>"
-        in (message.answers[-1])
-    )
+    assert "<i>(От 20 символов.)</i>" in message.answers[-1]
+    assert "сколько блогеров" in message.answers[-1]
+    assert "ссылка на кейс" in message.answers[-1]
+    assert "1800" not in message.answers[-1]
     service.answer.side_effect = ValueError(
         f"Напишите от {MIN_WRITTEN_LENGTH} символов."
     )
@@ -268,6 +268,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     assert row["answers"]["coverage"] == "Казань, гастрономия"
     assert "<blockquote>Вы взяли заказ на 30 блогеров." in message.answers[-1]
     assert "UMC подобрала 25." in message.answers[-1]
+    assert "почему вы выбрали именно их" in message.answers[-1]
     assert "<i>(От 20 символов." in message.answers[-1]
     message.text = (
         "Уточню у команды сроки и подберу авторов через местные сообщества."
@@ -281,6 +282,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     instruction, instruction_keyboard = message.answers[-1]
     assert "<b>Заявка на рассмотрении.</b>" in instruction
     assert "<i>Код действует 15 минут с момента выдачи.</i>" in instruction
+    assert "Бот сам сообщит в Telegram" in instruction
     assert code not in instruction
     direct, status = (row[0] for row in instruction_keyboard.inline_keyboard)
     assert (
@@ -313,13 +315,12 @@ async def test_manager_edits_submits_and_verifies_application(config):
     assert service.instagram_challenge.await_count == 2
     row.update(state="clarify", decision_note="Уточните <загрузку> & сроки")
     await tap("open")
-    assert (
-        "<blockquote>Уточните &lt;загрузку&gt; &amp; сроки</blockquote>"
-        in (message.answers[-1][0])
-    )
+    assert "Заявка на рассмотрении" in message.answers[-1][0]
+    assert "Уточните" not in message.answers[-1][0]
     row["state"] = "approved"
     await tap("status")
     assert "/app" in message.answers[-1]
+    assert "Уточните" not in message.answers[-1]
 
 
 @pytest.mark.parametrize(
