@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import List, Optional, Tuple
 from uuid import UUID
 
-from sqlalchemy import and_, delete, func, select, union_all, update
+from sqlalchemy import and_, delete, func, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -32,6 +32,7 @@ from ugc_bot.domain.enums import (
     PayoutRequestStatus,
 )
 from ugc_bot.infrastructure.db.models import (
+    BloggerProfileModel,
     InteractionModel,
     OfferDispatchModel,
     OrderModel,
@@ -171,10 +172,34 @@ class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
         pending: UserReferralPending,
         session: object | None = None,
     ) -> None:
-        """Persist pending referral."""
+        """Keep the first invite even when links arrive concurrently."""
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
+            # Registration locks the same user before writing the profile.
+            await db_session.execute(
+                select(UserModel.user_id)
+                .where(UserModel.user_id == pending.user_id)
+                .with_for_update(key_share=True)
+            )
+            unavailable = select(
+                or_(
+                    select(UserReferralPendingModel.user_id)
+                    .where(UserReferralPendingModel.user_id == pending.user_id)
+                    .exists(),
+                    select(UserReferralBindingModel.referred_user_id)
+                    .where(
+                        UserReferralBindingModel.referred_user_id
+                        == pending.user_id
+                    )
+                    .exists(),
+                    select(BloggerProfileModel.user_id)
+                    .where(BloggerProfileModel.user_id == pending.user_id)
+                    .exists(),
+                )
+            )
+            if (await db_session.execute(unavailable)).scalar_one_or_none():
+                return
             model = UserReferralPendingModel(
                 user_id=pending.user_id,
                 referrer_user_id=pending.referrer_user_id,
@@ -190,9 +215,13 @@ class SqlAlchemyUserReferralPendingRepository(UserReferralPendingRepository):
             self.session_factory, session
         ) as db_session:
             exec_result = await db_session.execute(
-                select(UserReferralPendingModel).where(
-                    UserReferralPendingModel.user_id == user_id
+                select(UserReferralPendingModel)
+                .where(UserReferralPendingModel.user_id == user_id)
+                .order_by(
+                    UserReferralPendingModel.created_at,
+                    UserReferralPendingModel.referrer_user_id,
                 )
+                .limit(1)
             )
             result = exec_result.scalar_one_or_none()
             return _to_user_referral_pending_entity(result) if result else None

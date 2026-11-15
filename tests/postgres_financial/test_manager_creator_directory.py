@@ -1,5 +1,6 @@
 """Signed manager directory reads backed by the real referral bindings."""
 
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import httpx
@@ -13,6 +14,7 @@ from tests.postgres_financial.test_collaboration_persistence import (
 from tests.postgres_financial.test_partner_view_api import application
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
+from ugc_bot.domain.entities import UserReferralPending
 from ugc_bot.domain.enums import (
     AudienceGender,
     MessengerType,
@@ -24,6 +26,7 @@ from ugc_bot.infrastructure.db.models import (
     ManagerOrderModel,
     UserModel,
     UserReferralBindingModel,
+    UserReferralPendingModel,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
@@ -31,11 +34,12 @@ collaboration_pg = collaboration_fixture
 PATH = "/miniapp/api/manager/invited-creators"
 
 
-def _creator(user_id, status):
+def _creator(user_id, status, *, name="Synthetic creator", telegram=None):
     return UserModel(
         user_id=user_id,
         messenger_type=MessengerType.TELEGRAM,
-        username="Synthetic creator",
+        username=name,
+        telegram=telegram,
         status=status,
     )
 
@@ -54,6 +58,68 @@ def _profile(user_id):
         audience_geo="synthetic",
         price=1,
     )
+
+
+@pytest.mark.asyncio
+async def test_first_invite_is_fixed_and_existing_creator_cannot_be_claimed(
+    collaboration_pg,
+):
+    factory, _, _, _, seeded = collaboration_pg
+    existing = seeded["creator"]
+    first, second, newcomer = (uuid4() for _ in range(3))
+    first_code, second_code = first.hex[:12], second.hex[:12]
+    async with factory.begin() as db:
+        for user_id, code in ((first, first_code), (second, second_code)):
+            user = _creator(user_id, UserStatus.ACTIVE)
+            user.referral_code = code
+            db.add(user)
+        db.add(_creator(newcomer, UserStatus.ACTIVE))
+
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "telegram-test-token",
+            "DATABASE_URL": factory.kw["bind"].url.render_as_string(
+                hide_password=False
+            ),
+            "KAFKA_ENABLED": False,
+            "USE_REDIS_STORAGE": False,
+        }
+    )
+    container = Container(config)
+    services = container.build_bot_services()
+    referrals = services["referral_service"]
+    signup = services["blogger_registration_service"]
+    pending = services["user_referral_pending_repo"]
+    bindings = services["user_referral_binding_repo"]
+    try:
+        assert not await referrals.save_pending_referral(existing, first_code)
+        assert await pending.get_by_user(existing) is None
+
+        # Simulate a stale pending record written before the guard existed.
+        now = datetime.now(timezone.utc)
+        async with factory.begin() as db:
+            db.add(
+                UserReferralPendingModel(
+                    user_id=existing, referrer_user_id=first, created_at=now
+                )
+            )
+        await signup.confirm_blogger_agreement(existing)
+        assert await pending.get_by_user(existing) is None
+        assert await bindings.get_by_referred_user(existing) is None
+
+        assert await referrals.save_pending_referral(newcomer, first_code)
+        assert await referrals.save_pending_referral(newcomer, second_code)
+        # Also exercise insert conflict handling independent of the lookup.
+        await pending.save(UserReferralPending(newcomer, second, now))
+        async with factory.begin() as db:
+            db.add(_profile(newcomer))
+        await signup.confirm_blogger_agreement(newcomer)
+        assert await referrals.save_pending_referral(newcomer, second_code)
+        binding = await bindings.get_by_referred_user(newcomer)
+        assert binding is not None and binding.referrer_user_id == first
+        assert await pending.get_by_user(newcomer) is None
+    finally:
+        await container.session_factory.kw["bind"].dispose()
 
 
 @pytest.mark.asyncio
@@ -86,8 +152,10 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
             )
         db.add_all(
             [
-                _creator(blocked, UserStatus.BOT_BLOCKED),
-                _creator(paused, UserStatus.PAUSE),
+                _creator(
+                    blocked, UserStatus.BOT_BLOCKED, telegram="own_special"
+                ),
+                _creator(paused, UserStatus.PAUSE, name="Мария Казанцева"),
                 _creator(unbound, UserStatus.BOT_BLOCKED),
             ]
         )
@@ -173,6 +241,17 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
             assert await listed(telegram, bot_unavailable=True) == set()
             assert await listed(max_app, bot_unavailable=True) == {str(blocked)}
             assert await listed(max_app, page=1) == set()
+            assert await listed(telegram, q="мария") == {str(paused)}
+            assert await listed(telegram, q="  КАЗАНЬ ") == {str(paused)}
+            assert await listed(
+                max_app, q="  КАЗАНЬ ", bot_unavailable=True
+            ) == {str(blocked)}
+            assert await listed(telegram, q="@own_special") == set()
+            assert await listed(max_app, q="@Own_Special") == {str(blocked)}
+            assert await listed(max_app, q=blocked.hex[:12]) == {str(blocked)}
+            assert await listed(max_app, q="Мария") == set()
+            assert await listed(max_app, q="%") == set()
+            assert (await post(max_app, q="x" * 121)).status_code == 422
 
             assert (await post(telegram, f"/{active}")).status_code == 200
             not_found = await post(telegram, f"/{blocked}")
@@ -214,8 +293,12 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
                     .values(referrer_user_id=first)
                 )
             assert (await post(max_app, f"/{blocked}")).status_code == 404
-            assert await listed(telegram, bot_unavailable=True) == {
-                str(blocked)
-            }
+            assert await listed(
+                telegram, q="@own_special", bot_unavailable=True
+            ) == {str(blocked)}
+            assert (
+                await listed(max_app, q="@own_special", bot_unavailable=True)
+                == set()
+            )
     finally:
         await container.session_factory.kw["bind"].dispose()

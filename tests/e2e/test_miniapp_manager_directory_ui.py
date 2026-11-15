@@ -39,6 +39,15 @@ class ManagerDirectoryNetwork(MiniAppNetwork):
             creators = (
                 [BLOCKED] if body["bot_unavailable"] else [ACTIVE, BLOCKED]
             )
+            query = body.get("q", "").lower()
+            creators = [
+                creator
+                for creator in creators
+                if any(
+                    query in creator[field].lower()
+                    for field in ("name", "city")
+                )
+            ]
             route.fulfill(json={"creators": creators, "has_more": False})
         elif path == PATH + "/" + BLOCKED["creator_id"]:
             route.fulfill(
@@ -66,18 +75,24 @@ def test_invited_creator_filter_and_card_return(page, platform, native):
     page.get_by_role("button", name="Приглашённые креаторы").click()
 
     listing = page.locator("#screen-invited-creators")
-    expect(
-        listing.get_by_role("button", name="Мария", exact=True)
-    ).to_be_visible()
+    active = listing.get_by_role("button", name="Мария", exact=True)
+    expect(active).to_be_visible()
     blocked = listing.get_by_role(
         "button", name="Ирина · Казань · Бот недоступен"
     )
     expect(blocked).to_be_visible()
+    search = listing.get_by_role("searchbox", name="Имя, ник или город")
+    search.fill("мар")
+    expect(blocked).to_have_count(0)
+    expect(active).to_be_visible()
     status_filter = listing.get_by_role("checkbox", name="Бот недоступен")
     status_filter.check()
     expect(
-        listing.get_by_role("button", name="Мария", exact=True)
-    ).to_have_count(0)
+        listing.get_by_text("Креаторы по этому запросу не найдены.")
+    ).to_be_visible()
+    search.fill("  казань  ")
+    expect(blocked).to_be_visible()
+    expect(active).to_have_count(0)
     blocked.click()
 
     card = page.locator("#screen-invited-creator-card")
@@ -90,10 +105,12 @@ def test_invited_creator_filter_and_card_return(page, platform, native):
     else:
         card.get_by_role("button", name="К списку").click()
     expect(status_filter).to_be_checked()
+    expect(search).to_have_value("  казань  ")
     expect(blocked).to_be_visible()
-    expect(
-        listing.get_by_role("button", name="Мария", exact=True)
-    ).to_have_count(0)
+    expect(active).to_have_count(0)
+    search.clear()
+    status_filter.uncheck()
+    expect(active).to_be_visible()
     if native:
         page.evaluate("window.__host.wa.BackButton.click()")
     else:
@@ -103,4 +120,8 @@ def test_invited_creator_filter_and_card_return(page, platform, native):
         (path, body) for path, body in network.requests if path.startswith(PATH)
     ]
     assert all(body["platform"] == platform for _, body in directory_calls)
+    assert any(
+        body.get("q") == "казань" and body["bot_unavailable"]
+        for _, body in directory_calls
+    )
     assert not errors

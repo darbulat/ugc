@@ -604,6 +604,17 @@ def test_dashboard_social_summary_links_and_layout(
     page.set_viewport_size({"width": width, "height": 900})
     _login(page, admin_server)
     page.goto(f"{admin_server}/admin/dashboard?period=today")
+    section_ids = page.locator("main section[aria-labelledby]").evaluate_all(
+        "(sections) => sections.map(section => "
+        "section.getAttribute('aria-labelledby'))"
+    )
+    assert section_ids[:5] == [
+        "period-heading",
+        "creators-heading",
+        "charts-heading",
+        "cohorts-heading",
+        "creator-social-heading",
+    ]
     summary = page.get_by_role("table", name="Соцсети креаторов")
     youtube = summary.get_by_role("row").filter(has_text="YouTube")
     expect(youtube.get_by_role("link")).to_have_text(["2", "2", "0"])

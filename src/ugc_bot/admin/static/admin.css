@@ -582,12 +582,10 @@ body {
 }
 
 .creator-social-summary {
-  margin-top: 1rem;
-  max-width: 46rem;
   padding: clamp(.625rem, 2vw, 1rem);
 }
 
-.creator-social-summary h3 {
+.creator-social-summary h2 {
   margin: 0;
 }
 

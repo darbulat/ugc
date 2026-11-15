@@ -8,6 +8,7 @@ from typing import Optional
 from uuid import UUID
 
 from ugc_bot.application.ports import (
+    BloggerProfileRepository,
     TransactionManager,
     UserReferralBindingRepository,
     UserReferralPendingRepository,
@@ -33,6 +34,22 @@ class ReferralService:
     user_referral_pending_repo: UserReferralPendingRepository
     user_referral_binding_repo: UserReferralBindingRepository
     transaction_manager: TransactionManager | None = None
+    blogger_repo: BloggerProfileRepository | None = None
+
+    async def _creator_registered_at(
+        self, user_id: UUID, session: object | None
+    ) -> datetime | None:
+        if self.blogger_repo is None:
+            return None
+        profile = await self.blogger_repo.get_by_user_id(
+            user_id, session=session
+        )
+        if profile is None:
+            return None
+        registered_at = profile.created_at or profile.updated_at
+        return registered_at.replace(
+            tzinfo=registered_at.tzinfo or timezone.utc
+        )
 
     def parse_referral_code(self, text: str | None) -> str | None:
         """Extract referral code from /start ref_XXX payload.
@@ -58,7 +75,7 @@ class ReferralService:
 
         Returns True if saved, user already had a pending referral,
         or user already has a binding (no pending needed).
-        Does not create pending when user is already referred (has binding).
+        Does not capture a new invite for a registered creator.
         """
 
         async def _run(session: object | None) -> bool:
@@ -83,6 +100,9 @@ class ReferralService:
             )
             if existing_binding is not None:
                 return True
+
+            if await self._creator_registered_at(user_id, session) is not None:
+                return False
 
             pending = UserReferralPending(
                 user_id=user_id,
@@ -122,6 +142,18 @@ class ReferralService:
                     creator_user_id, session=sess
                 )
                 return existing
+
+            registered_at = await self._creator_registered_at(
+                creator_user_id, sess
+            )
+            invited_at = pending.created_at.replace(
+                tzinfo=pending.created_at.tzinfo or timezone.utc
+            )
+            if registered_at is not None and invited_at > registered_at:
+                await self.user_referral_pending_repo.delete_by_user(
+                    creator_user_id, session=sess
+                )
+                return None
 
             binding = UserReferralBinding(
                 referrer_user_id=pending.referrer_user_id,

@@ -31,126 +31,6 @@
     <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
   </div>
 
-  <section class="section" aria-labelledby="attention-heading">
-    <div class="page-heading">
-      <h2 id="attention-heading">Требует внимания</h2>
-      <a href="/admin/order-model/list?status=active">Активные заказы · {{ attention.get('active', 0) }}</a>
-    </div>
-    <div class="attention-queues">
-      {% for key, label, rows in [
-        ('delayed', 'Проблемы с подбором', attention.get('delayed', [])),
-        ('complaints', 'Открытые жалобы', payload.get('open_complaints_list', [])),
-        ('moderation', 'На модерации', attention.get('moderation', [])),
-        ('unpaid', 'Давно без оплаты', attention.get('unpaid', []))
-      ] %}
-      {% set count = payload.problems.open_complaints if key == 'complaints' else rows|length %}
-      <details class="card attention-queue" {% if key == 'delayed' and count %}open{% endif %}>
-        <summary><span>{{ label }}</span> <strong>{{ count }}</strong></summary>
-        {% if rows %}
-        <ul class="attention-list">
-          {% for row in rows %}
-          <li>
-            <div class="attention-list__main">
-              {% if key == 'complaints' %}
-                <a href="{{ url_for('admin:details', identity='complaint-model', pk=row.complaint_id).include_query_params(return_to='/admin/complaint-model/list?status=open') }}">{{ (row.reason or 'Открыть жалобу')|truncate(120) }}</a>
-                <small>{{ row.reporter }} · {{ row.created_at|admin_date }}</small>
-              {% else %}
-                <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">{{ row.offer_text or ('Заказ ' ~ row.order_id[:8]) }}</a>
-                <small>{{ row.advertiser }} · создан {{ row.created_at|admin_date }}</small>
-              {% endif %}
-            </div>
-            <div class="attention-list__meta">
-              {% if key == 'complaints' %}
-                <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">К заказу</a>
-              {% else %}
-                {% for reason in row.reasons %}
-                  <span class="badge">{{ delay_reason_labels.get(reason, reason) }}</span>
-                {% endfor %}
-                {% if key == 'delayed' %}
-                  <small>
-                    {% if row.days_since_payment is not none %}
-                      {% if row.days_since_payment < 1 %}Меньше дня{% else %}{{ day_count(row.days_since_payment) }}{% endif %} с оплаты
-                    {% elif row.complimentary %}Без оплаты
-                    {% else %}Дата оплаты неизвестна{% endif %}
-                    {% if row.selection_due_at %}
-                      · Срок подбора {% if row.selection_days is not none %}{{ day_count(row.selection_days) }} · {% endif %}до {{ row.selection_due_at|admin_date }}
-                      {% if row.days_until_selection_due is defined and row.days_until_selection_due is not none %}
-                        · <strong>{% if row.days_until_selection_due < 0 %}Просрочено {% if row.days_until_selection_due <= -1 %}на {% endif %}{{ deadline_duration(-row.days_until_selection_due) }}{% elif row.days_until_selection_due > 0 %}Осталось {{ deadline_duration(row.days_until_selection_due) }}{% else %}Срок истёк{% endif %}</strong>
-                      {% endif %}
-                    {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
-                    · подобрано {{ row.picked_count }} / {{ row.needed_count }}
-                  </small>
-                {% else %}
-                  <small>{{ row.age_hours|round|int }} ч с создания</small>
-                {% endif %}
-              {% endif %}
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-        {% else %}
-          <p class="empty">Нет записей.</p>
-        {% endif %}
-        {% if key == 'complaints' and count %}
-          <a class="attention-queue__link" href="/admin/complaint-model/list?status=open">Все открытые жалобы</a>
-        {% elif key == 'unpaid' %}
-          <a class="attention-queue__link" href="/admin/order-model/list?group=unpaid">Открыть список заявок без оплаты</a>
-        {% endif %}
-      </details>
-      {% endfor %}
-      {% for key, label in order_quick_filter_labels.items() %}
-        <a class="card attention-queue attention-queue--shortcut"
-           href="/admin/order-model/list?group=work&amp;{{ key }}=1">
-          <span>{{ label }}{% if key == 'inactive' %} <small>· от {{ order_inactivity_days }} дней</small>{% endif %}</span>
-          <strong>{{ order_attention_counts[key] }}</strong>
-        </a>
-      {% endfor %}
-      <details class="card attention-queue payout-queue" id="payout-requests"{% if payout_attention %} open{% endif %}>
-        <summary>
-          <span>Заявки на вывод</span>
-          {% if payout_attention %}
-            <strong class="badge payout-status payout-status--attention">К проверке · {{ payout_attention }}</strong>
-          {% else %}
-            <small class="muted">Нет заявок к проверке</small>
-          {% endif %}
-        </summary>
-        {% if payload.payout_requests %}
-        <div class="admin-table-scroll" role="region" aria-label="Заявки на вывод" tabindex="0">
-          <table class="table payout-table">
-            <thead><tr><th>Пользователь</th><th>Дата</th><th>Сумма</th><th>Статус</th></tr></thead>
-            <tbody>
-              {% for p in payload.payout_requests %}
-                <tr>
-                  <td><a href="/admin/users/{{ p.user_id }}">{{ p.telegram or p.username or 'Профиль' }}</a></td>
-                  <td>{{ p.requested_at|admin_date }}</td>
-                  <td>{% if p.amount is not none %}{{ "{:,.2f}".format(p.amount).replace(',', ' ').replace('.', ',') }} {{ p.currency or '' }}{% else %}—{% endif %}</td>
-                  <td>
-                    {% set needs_attention = p.status in ['pending', 'reserved', 'blocked', 'unknown', 'failed'] %}
-                    <span class="badge payout-status{% if needs_attention %} payout-status--attention{% elif p.status == 'paid' %} payout-status--paid{% endif %}">{{ p.status_label }}</span>
-                    {% if p.legacy %}<a href="/admin/payout-request-model/details/{{ p.request_id }}">Детали</a>{% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-          <p class="empty">История заявок пока пуста.</p>
-        {% endif %}
-        <a class="attention-queue__link" href="/admin/payout-request-model/list">Реферальные выплаты</a>
-      </details>
-    </div>
-  </section>
-
-  <section class="section progress-bar">
-    <span class="progress-bar__label">Креаторы, получившие назначение: {{ picked_count }} / {{ picked_target }}</span>
-    <div class="progress-bar__track" role="progressbar" aria-label="Креаторы, получившие назначение"
-         aria-valuenow="{{ picked_pct }}" aria-valuemin="0" aria-valuemax="100">
-      <div class="progress-bar__fill" style="width: {{ picked_pct }}%;"></div>
-    </div>
-    <p class="muted">За всё время, включая заказы без оплаты. Тестовые заказы исключены.</p>
-  </section>
-
   <section class="section" aria-labelledby="period-heading">
     <div class="page-heading">
       <h2 id="period-heading">За период</h2>
@@ -308,41 +188,54 @@
         </details>
       </article>
     </div>
-    {% if payload.get('creator_social_summary') %}
-    <article class="card creator-social-summary" aria-labelledby="creator-social-heading">
+  </section>
+
+  <section class="section dashboard-charts-section" aria-labelledby="charts-heading">
+    <div class="page-heading">
+      <h2 id="charts-heading">Динамика за период</h2>
+      {% if payload.get('metrics_timezone') %}<span class="muted">{{ payload.metrics_timezone }}</span>{% endif %}
+    </div>
+    <div id="dashboard-charts" data-period="{{ period }}" class="grid">
+      {% for key, label in [('registrations', 'Регистрации'), ('orders', 'Создание и оплата заказов'), ('turnover', 'Суммы оплат')] %}
+      <article class="card chart-card" data-chart="{{ key }}">
+        <div class="page-heading chart-heading">
+          <h3>{{ label }}</h3>
+          <button type="button" class="admin-button chart-expand" aria-label="Увеличить график «{{ label }}»" disabled>Увеличить</button>
+        </div>
+        <p class="muted chart-state" role="status">Загрузка…</p>
+        <div class="chart-plot" hidden><canvas role="img" aria-label="{{ label }} по дням"></canvas></div>
+      </article>
+      {% endfor %}
+    </div>
+    <details class="card chart-observations" hidden>
+      <summary>Дни с наибольшими показателями</summary>
+      <p class="muted">Здесь отмечены дни с максимальным значением каждого показателя. Откройте график за этот день, чтобы сверить данные с датами кампаний или рассылок.</p>
+      <ul class="chart-peaks"></ul>
+    </details>
+    <dialog id="chart-detail" class="chart-dialog" aria-labelledby="chart-detail-title">
       <div class="page-heading">
-        <h3 id="creator-social-heading">Соцсети креаторов</h3>
-        <span class="muted">За всё время</span>
+        <h2 id="chart-detail-title"></h2>
+        <form method="dialog"><button class="admin-button" autofocus>Закрыть</button></form>
       </div>
-      <table class="table" aria-labelledby="creator-social-heading">
-        <colgroup span="2"></colgroup>
-        <colgroup span="2"></colgroup>
-        <thead>
-          <tr>
-            <th scope="col" rowspan="2">Площадка</th>
-            <th scope="col" rowspan="2">Есть ссылка</th>
-            <th scope="colgroup" colspan="2">Подписчики</th>
-          </tr>
-          <tr>
-            <th scope="col">Указаны</th>
-            <th scope="col">Не указаны</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% set directory = request.url_for('admin_creators') %}
-          {% for row in payload.creator_social_summary %}
-            {% set platform_url = directory.include_query_params(platform=row.platform) %}
-            <tr>
-              <th scope="row">{{ row.label }}</th>
-              <td><a href="{{ platform_url }}" aria-label="{{ row.label }}, есть ссылка: {{ row.with_link }}">{{ row.with_link }}</a></td>
-              <td><a href="{{ platform_url.include_query_params(platform_followers_min=0) }}" aria-label="{{ row.label }}, подписчики указаны: {{ row.with_followers }}">{{ row.with_followers }}</a></td>
-              <td><a href="{{ platform_url.include_query_params(platform_followers_unknown='true') }}" aria-label="{{ row.label }}, подписчики не указаны: {{ row.without_followers }}">{{ row.without_followers }}</a></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </article>
-    {% endif %}
+      <p class="muted chart-detail-note"></p>
+      <form class="chart-controls">
+        <label>С <input type="date" name="from" required></label>
+        <label>По <input type="date" name="to" required></label>
+        <button class="admin-button admin-button--primary" type="submit">Показать</button>
+        <button class="admin-button" type="button" data-days="7">Последние 7 дней</button>
+        <button class="admin-button" type="button" data-days="0">Весь период</button>
+      </form>
+      <p class="chart-range muted" aria-live="polite"></p>
+      <div class="chart-plot chart-plot--large"><canvas role="img" aria-labelledby="chart-detail-title"></canvas></div>
+      <details class="chart-values">
+        <summary>Значения по дням</summary>
+        <div class="admin-table-scroll" role="region" aria-label="Значения по дням" tabindex="0">
+          <table class="table"><thead></thead><tbody></tbody></table>
+        </div>
+      </details>
+    </dialog>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script defer src="{{ admin_asset(request, 'dashboard.js') }}"></script>
   </section>
 
   {% set cohorts = payload.get('cohort_metrics') %}
@@ -397,52 +290,160 @@
   </section>
   {% endif %}
 
-  <section class="section dashboard-charts-section" aria-labelledby="charts-heading">
+  {% if payload.get('creator_social_summary') %}
+  <section class="section card creator-social-summary" aria-labelledby="creator-social-heading">
     <div class="page-heading">
-      <h2 id="charts-heading">Динамика за период</h2>
-      {% if payload.get('metrics_timezone') %}<span class="muted">{{ payload.metrics_timezone }}</span>{% endif %}
+      <h2 id="creator-social-heading">Соцсети креаторов</h2>
+      <span class="muted">За всё время</span>
     </div>
-    <div id="dashboard-charts" data-period="{{ period }}" class="grid">
-      {% for key, label in [('registrations', 'Регистрации'), ('orders', 'Создание и оплата заказов'), ('turnover', 'Суммы оплат')] %}
-      <article class="card chart-card" data-chart="{{ key }}">
-        <div class="page-heading chart-heading">
-          <h3>{{ label }}</h3>
-          <button type="button" class="admin-button chart-expand" aria-label="Увеличить график «{{ label }}»" disabled>Увеличить</button>
-        </div>
-        <p class="muted chart-state" role="status">Загрузка…</p>
-        <div class="chart-plot" hidden><canvas role="img" aria-label="{{ label }} по дням"></canvas></div>
-      </article>
-      {% endfor %}
+    <table class="table" aria-labelledby="creator-social-heading">
+      <colgroup span="2"></colgroup>
+      <colgroup span="2"></colgroup>
+      <thead>
+        <tr>
+          <th scope="col" rowspan="2">Площадка</th>
+          <th scope="col" rowspan="2">Есть ссылка</th>
+          <th scope="colgroup" colspan="2">Подписчики</th>
+        </tr>
+        <tr>
+          <th scope="col">Указаны</th>
+          <th scope="col">Не указаны</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set directory = request.url_for('admin_creators') %}
+        {% for row in payload.creator_social_summary %}
+          {% set platform_url = directory.include_query_params(platform=row.platform) %}
+          <tr>
+            <th scope="row">{{ row.label }}</th>
+            <td><a href="{{ platform_url }}" aria-label="{{ row.label }}, есть ссылка: {{ row.with_link }}">{{ row.with_link }}</a></td>
+            <td><a href="{{ platform_url.include_query_params(platform_followers_min=0) }}" aria-label="{{ row.label }}, подписчики указаны: {{ row.with_followers }}">{{ row.with_followers }}</a></td>
+            <td><a href="{{ platform_url.include_query_params(platform_followers_unknown='true') }}" aria-label="{{ row.label }}, подписчики не указаны: {{ row.without_followers }}">{{ row.without_followers }}</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  <section class="section" aria-labelledby="attention-heading">
+    <div class="page-heading">
+      <h2 id="attention-heading">Требует внимания</h2>
+      <a href="/admin/order-model/list?status=active">Активные заказы · {{ attention.get('active', 0) }}</a>
     </div>
-    <details class="card chart-observations" hidden>
-      <summary>Дни с наибольшими показателями</summary>
-      <p class="muted">Здесь отмечены дни с максимальным значением каждого показателя. Откройте график за этот день, чтобы сверить данные с датами кампаний или рассылок.</p>
-      <ul class="chart-peaks"></ul>
-    </details>
-    <dialog id="chart-detail" class="chart-dialog" aria-labelledby="chart-detail-title">
-      <div class="page-heading">
-        <h2 id="chart-detail-title"></h2>
-        <form method="dialog"><button class="admin-button" autofocus>Закрыть</button></form>
-      </div>
-      <p class="muted chart-detail-note"></p>
-      <form class="chart-controls">
-        <label>С <input type="date" name="from" required></label>
-        <label>По <input type="date" name="to" required></label>
-        <button class="admin-button admin-button--primary" type="submit">Показать</button>
-        <button class="admin-button" type="button" data-days="7">Последние 7 дней</button>
-        <button class="admin-button" type="button" data-days="0">Весь период</button>
-      </form>
-      <p class="chart-range muted" aria-live="polite"></p>
-      <div class="chart-plot chart-plot--large"><canvas role="img" aria-labelledby="chart-detail-title"></canvas></div>
-      <details class="chart-values">
-        <summary>Значения по дням</summary>
-        <div class="admin-table-scroll" role="region" aria-label="Значения по дням" tabindex="0">
-          <table class="table"><thead></thead><tbody></tbody></table>
-        </div>
+    <div class="attention-queues">
+      {% for key, label, rows in [
+        ('delayed', 'Проблемы с подбором', attention.get('delayed', [])),
+        ('complaints', 'Открытые жалобы', payload.get('open_complaints_list', [])),
+        ('moderation', 'На модерации', attention.get('moderation', [])),
+        ('unpaid', 'Давно без оплаты', attention.get('unpaid', []))
+      ] %}
+      {% set count = payload.problems.open_complaints if key == 'complaints' else rows|length %}
+      <details class="card attention-queue" {% if key == 'delayed' and count %}open{% endif %}>
+        <summary><span>{{ label }}</span> <strong>{{ count }}</strong></summary>
+        {% if rows %}
+        <ul class="attention-list">
+          {% for row in rows %}
+          <li>
+            <div class="attention-list__main">
+              {% if key == 'complaints' %}
+                <a href="{{ url_for('admin:details', identity='complaint-model', pk=row.complaint_id).include_query_params(return_to='/admin/complaint-model/list?status=open') }}">{{ (row.reason or 'Открыть жалобу')|truncate(120) }}</a>
+                <small>{{ row.reporter }} · {{ row.created_at|admin_date }}</small>
+              {% else %}
+                <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">{{ row.offer_text or ('Заказ ' ~ row.order_id[:8]) }}</a>
+                <small>{{ row.advertiser }} · создан {{ row.created_at|admin_date }}</small>
+              {% endif %}
+            </div>
+            <div class="attention-list__meta">
+              {% if key == 'complaints' %}
+                <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=dashboard_url) }}">К заказу</a>
+              {% else %}
+                {% for reason in row.reasons %}
+                  <span class="badge">{{ delay_reason_labels.get(reason, reason) }}</span>
+                {% endfor %}
+                {% if key == 'delayed' %}
+                  <small>
+                    {% if row.days_since_payment is not none %}
+                      {% if row.days_since_payment < 1 %}Меньше дня{% else %}{{ day_count(row.days_since_payment) }}{% endif %} с оплаты
+                    {% elif row.complimentary %}Без оплаты
+                    {% else %}Дата оплаты неизвестна{% endif %}
+                    {% if row.selection_due_at %}
+                      · Срок подбора {% if row.selection_days is not none %}{{ day_count(row.selection_days) }} · {% endif %}до {{ row.selection_due_at|admin_date }}
+                      {% if row.days_until_selection_due is defined and row.days_until_selection_due is not none %}
+                        · <strong>{% if row.days_until_selection_due < 0 %}Просрочено {% if row.days_until_selection_due <= -1 %}на {% endif %}{{ deadline_duration(-row.days_until_selection_due) }}{% elif row.days_until_selection_due > 0 %}Осталось {{ deadline_duration(row.days_until_selection_due) }}{% else %}Срок истёк{% endif %}</strong>
+                      {% endif %}
+                    {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
+                    · подобрано {{ row.picked_count }} / {{ row.needed_count }}
+                  </small>
+                {% else %}
+                  <small>{{ row.age_hours|round|int }} ч с создания</small>
+                {% endif %}
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+          <p class="empty">Нет записей.</p>
+        {% endif %}
+        {% if key == 'complaints' and count %}
+          <a class="attention-queue__link" href="/admin/complaint-model/list?status=open">Все открытые жалобы</a>
+        {% elif key == 'unpaid' %}
+          <a class="attention-queue__link" href="/admin/order-model/list?group=unpaid">Открыть список заявок без оплаты</a>
+        {% endif %}
       </details>
-    </dialog>
-    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <script defer src="{{ admin_asset(request, 'dashboard.js') }}"></script>
+      {% endfor %}
+      {% for key, label in order_quick_filter_labels.items() %}
+        <a class="card attention-queue attention-queue--shortcut"
+           href="/admin/order-model/list?group=work&amp;{{ key }}=1">
+          <span>{{ label }}{% if key == 'inactive' %} <small>· от {{ order_inactivity_days }} дней</small>{% endif %}</span>
+          <strong>{{ order_attention_counts[key] }}</strong>
+        </a>
+      {% endfor %}
+      <details class="card attention-queue payout-queue" id="payout-requests"{% if payout_attention %} open{% endif %}>
+        <summary>
+          <span>Заявки на вывод</span>
+          {% if payout_attention %}
+            <strong class="badge payout-status payout-status--attention">К проверке · {{ payout_attention }}</strong>
+          {% else %}
+            <small class="muted">Нет заявок к проверке</small>
+          {% endif %}
+        </summary>
+        {% if payload.payout_requests %}
+        <div class="admin-table-scroll" role="region" aria-label="Заявки на вывод" tabindex="0">
+          <table class="table payout-table">
+            <thead><tr><th>Пользователь</th><th>Дата</th><th>Сумма</th><th>Статус</th></tr></thead>
+            <tbody>
+              {% for p in payload.payout_requests %}
+                <tr>
+                  <td><a href="/admin/users/{{ p.user_id }}">{{ p.telegram or p.username or 'Профиль' }}</a></td>
+                  <td>{{ p.requested_at|admin_date }}</td>
+                  <td>{% if p.amount is not none %}{{ "{:,.2f}".format(p.amount).replace(',', ' ').replace('.', ',') }} {{ p.currency or '' }}{% else %}—{% endif %}</td>
+                  <td>
+                    {% set needs_attention = p.status in ['pending', 'reserved', 'blocked', 'unknown', 'failed'] %}
+                    <span class="badge payout-status{% if needs_attention %} payout-status--attention{% elif p.status == 'paid' %} payout-status--paid{% endif %}">{{ p.status_label }}</span>
+                    {% if p.legacy %}<a href="/admin/payout-request-model/details/{{ p.request_id }}">Детали</a>{% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <p class="empty">История заявок пока пуста.</p>
+        {% endif %}
+        <a class="attention-queue__link" href="/admin/payout-request-model/list">Реферальные выплаты</a>
+      </details>
+    </div>
+  </section>
+
+  <section class="section progress-bar">
+    <span class="progress-bar__label">Креаторы, получившие назначение: {{ picked_count }} / {{ picked_target }}</span>
+    <div class="progress-bar__track" role="progressbar" aria-label="Креаторы, получившие назначение"
+         aria-valuenow="{{ picked_pct }}" aria-valuemin="0" aria-valuemax="100">
+      <div class="progress-bar__fill" style="width: {{ picked_pct }}%;"></div>
+    </div>
+    <p class="muted">За всё время, включая заказы без оплаты. Тестовые заказы исключены.</p>
   </section>
 
   {% if payload.get("_timings_ms") %}

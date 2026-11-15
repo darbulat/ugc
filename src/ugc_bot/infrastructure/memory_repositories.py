@@ -354,7 +354,7 @@ class InMemoryUserReferralPendingRepository(UserReferralPendingRepository):
         session: object | None = None,
     ) -> None:
         """Persist pending referral."""
-        self._pending[pending.user_id] = pending
+        self._pending.setdefault(pending.user_id, pending)
 
     async def get_by_user(
         self, user_id: UUID, session: object | None = None
