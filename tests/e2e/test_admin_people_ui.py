@@ -590,3 +590,40 @@ def test_platform_audience_sort_and_layout(
     assert container.evaluate(
         "(element) => element.scrollWidth <= element.clientWidth"
     )
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+@pytest.mark.parametrize("width", [320, 1440])
+def test_dashboard_social_summary_links_and_layout(
+    admin_server, page, people_records, width
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _, _, _, _, creator_name = people_records
+    page.set_viewport_size({"width": width, "height": 900})
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/dashboard?period=today")
+    summary = page.get_by_role("table", name="Соцсети креаторов")
+    youtube = summary.get_by_role("row").filter(has_text="YouTube")
+    expect(youtube.get_by_role("link")).to_have_text(["2", "2", "0"])
+    assert summary.evaluate(
+        "(table) => table.getBoundingClientRect().right <= window.innerWidth"
+    )
+    youtube.get_by_role("link", name="YouTube, подписчики указаны: 2").click()
+    expect(page.get_by_label("Есть ссылка на площадку")).to_have_value(
+        "youtube"
+    )
+    expect(page.get_by_label("От N подписчиков")).to_have_value("0")
+    expect(
+        page.get_by_role("link", name=creator_name, exact=True)
+    ).to_be_visible()
+
+    page.go_back()
+    dzen = summary.get_by_role("row").filter(has_text="Дзен")
+    dzen.get_by_role("link", name="Дзен, подписчики не указаны: 2").click()
+    expect(page.get_by_label("Есть ссылка на площадку")).to_have_value("dzen")
+    expect(page.get_by_label("Число не указано")).to_be_checked()
+    expect(
+        page.get_by_role("link", name=creator_name, exact=True)
+    ).to_be_visible()

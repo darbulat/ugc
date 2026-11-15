@@ -581,6 +581,44 @@ body {
   margin-top: .7rem;
 }
 
+.creator-social-summary {
+  margin-top: 1rem;
+  max-width: 46rem;
+  padding: clamp(.625rem, 2vw, 1rem);
+}
+
+.creator-social-summary h3 {
+  margin: 0;
+}
+
+.creator-social-summary :is(th, td) {
+  padding: .35rem clamp(.25rem, 1.4vw, .75rem);
+}
+
+.creator-social-summary tbody th {
+  background: inherit;
+}
+
+.creator-social-summary :is(thead th, td) {
+  text-align: center;
+}
+
+.creator-social-summary thead th:first-child[rowspan] {
+  text-align: left;
+}
+
+.creator-social-summary td {
+  padding-block: 0;
+}
+
+.creator-social-summary td a {
+  display: grid;
+  min-height: 44px;
+  place-items: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
 .dashboard-summary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
