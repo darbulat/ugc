@@ -27,6 +27,19 @@ def _admin_card_url(config, user_id):
     return f"{base}/managers/{user_id}"
 
 
+def _review_answers(answers):
+    facts, written = [], []
+    for field, label in MANAGER_FIELD_LABELS.items():
+        if field == "name" or not answers.get(field):
+            continue
+        value = escape(str(answers[field]))
+        if field in {"case", "shortfall_plan", "reliability", "coverage"}:
+            written.append(f"<b>{label}</b>\n<blockquote>{value}</blockquote>")
+        else:
+            facts.append(f"<b>{label}</b> · {value}")
+    return ["\n".join(facts), *written] if facts else written
+
+
 def review_message(config, row, *, full=False):
     user_id = row["user_id"]
     answers = row["answers"] or {}
@@ -42,16 +55,7 @@ def review_message(config, row, *, full=False):
     identity = f"<b>{name}</b> · {telegram}" if telegram else f"<b>{name}</b>"
     lines = [f"<b>{heading}</b>", identity, f"{state} · {instagram}"]
     if full:
-        for field, label in MANAGER_FIELD_LABELS.items():
-            if field == "name" or not answers.get(field):
-                continue
-            value = escape(str(answers[field]))
-            if field in {"case", "shortfall_plan", "reliability", "coverage"}:
-                lines.append(
-                    f"<b>{label}</b>\n<blockquote>{value}</blockquote>"
-                )
-            else:
-                lines.append(f"<b>{label}</b> · {value}")
+        lines.extend(_review_answers(answers))
     buttons: list[list[Button]] = []
     if url := _admin_card_url(config, user_id):
         buttons.append([Button(text="Открыть анкету в админке", url=url)])
