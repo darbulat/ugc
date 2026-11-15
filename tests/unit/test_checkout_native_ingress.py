@@ -75,7 +75,9 @@ async def test_native_precheckout_checks_actual_currency_amount_approval():
     order = uuid4()
     query = PreCheckoutQuery(
         id="actual-query",
-        from_user=User(id=123, is_bot=False, first_name="Client"),
+        from_user=User(
+            id=123, is_bot=False, first_name="Client", language_code="en"
+        ),
         currency="RUB",
         total_amount=1740000,
         invoice_payload=str(order),
@@ -105,6 +107,9 @@ async def test_native_precheckout_checks_actual_currency_amount_approval():
     )
     provider.confirm_pre_checkout.assert_not_awaited()
     provider.reject_pre_checkout.assert_awaited_once()
+    message = provider.reject_pre_checkout.await_args.kwargs["error_message"]
+    assert "previous payment attempt" in message
+    assert "Payment help" in message
 
 
 @pytest.mark.asyncio

@@ -3,6 +3,7 @@
 CUSTOMER_TEXTS = {
     "ru": {
         "payment_help": "Помощь с оплатой",
+        "payment_pending": "Есть предыдущая попытка оплаты. Пока мы проверяем её результат, не оплачивайте заказ повторно. Для связи с поддержкой выберите «Помощь с оплатой» в чате с ботом.",
         "payment_help_reason": "Опишите, что случилось с оплатой заказа №{number}.",
         "order_cancel_button": "Отменить заказ",
         "order_keep_button": "Оставить заказ",
@@ -48,6 +49,7 @@ CUSTOMER_TEXTS = {
     },
     "en": {
         "payment_help": "Payment help",
+        "payment_pending": "A previous payment attempt is awaiting confirmation. Please wait before trying again. For assistance, select “Payment help” in the bot chat.",
         "payment_help_reason": "Tell us what happened when you tried to pay for order #{number}.",
         "order_cancel_button": "Cancel order",
         "order_keep_button": "Keep order",
@@ -93,6 +95,7 @@ CUSTOMER_TEXTS = {
     },
     "kk": {
         "payment_help": "Төлем бойынша көмек",
+        "payment_pending": "Алдыңғы төлем әрекеті әлі расталмады. Нәтижесі анықталғанша қайта төлемеңіз. Көмек алу үшін бот чатында «Төлем бойынша көмек» түймесін таңдаңыз.",
         "payment_help_reason": "№{number} тапсырысын төлеу кезінде не болғанын сипаттаңыз.",
         "order_cancel_button": "Тапсырыстан бас тарту",
         "order_keep_button": "Тапсырысты қалдыру",
@@ -138,6 +141,7 @@ CUSTOMER_TEXTS = {
     },
     "be": {
         "payment_help": "Дапамога з аплатай",
+        "payment_pending": "Папярэдняя спроба аплаты яшчэ не пацверджана. Дачакайцеся выніку перад паўторнай аплатай. Па дапамогу націсніце «Дапамога з аплатай» у чаце з ботам.",
         "payment_help_reason": "Апішыце, што здарылася з аплатай заказу №{number}.",
         "order_cancel_button": "Скасаваць заказ",
         "order_keep_button": "Пакінуць заказ",
@@ -183,6 +187,7 @@ CUSTOMER_TEXTS = {
     },
     "uz": {
         "payment_help": "To‘lov bo‘yicha yordam",
+        "payment_pending": "Avvalgi to‘lov urinishi hali tasdiqlanmagan. Natija aniqlanguncha qayta to‘lamang. Yordam olish uchun bot chatida «To‘lov bo‘yicha yordam» tugmasini tanlang.",
         "payment_help_reason": "№{number} buyurtma to‘lovida nima bo‘lganini yozing.",
         "order_cancel_button": "Buyurtmani bekor qilish",
         "order_keep_button": "Buyurtmani saqlash",

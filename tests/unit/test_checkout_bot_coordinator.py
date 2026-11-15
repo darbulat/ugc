@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from tests.application.services.test_checkout_service import setup
+from ugc_bot.bot.customer_actions import PAYMENT_SUPPORT_PREFIX
 from ugc_bot.bot.telegram.handlers.checkout import send_checkout_if_v1
 from ugc_bot.domain.enums import MessengerType
 
@@ -21,6 +22,7 @@ from ugc_bot.domain.enums import MessengerType
         "max",
         "rejected",
         "confirmed",
+        "pending",
         "unknown",
     ],
 )
@@ -47,10 +49,13 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
             else MessengerType.TELEGRAM,
         ),
     )
+    order_id = uuid4()
     repo.prepare.return_value = {
         "capture_state": "confirmed" if case == "confirmed" else "not_recorded",
-        "invoice_state": "unknown",
-        "can_open": False,
+        "invoice_state": "ready" if case == "pending" else "unknown",
+        "authorization_id": uuid4() if case == "pending" else None,
+        "can_open": case == "pending",
+        "invoice_url": "https://t.me/$synthetic_invoice",
     }
     if case == "rejected":
         repo.prepare.side_effect = ValueError("not payable")
@@ -59,7 +64,7 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         market=SimpleNamespace(receipt_service_description="receipt"),
     )
     result = await send_checkout_if_v1(
-        uuid4(),
+        order_id,
         SimpleNamespace(user_id=owner_id),
         incoming,
         SimpleNamespace(bot=AsyncMock()),
@@ -74,3 +79,9 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         messenger.send_text.assert_awaited_once()
     else:
         messenger.send_text.assert_not_awaited()
+    if case == "pending":
+        message = messenger.send_text.await_args.kwargs
+        assert "previous payment attempt" in message["text"]
+        [[button]] = message["keyboard"].rows
+        assert button.callback_data == f"{PAYMENT_SUPPORT_PREFIX}{order_id}"
+        assert button.url is None
