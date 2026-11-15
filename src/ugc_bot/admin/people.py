@@ -4,7 +4,7 @@ import re
 from contextlib import suppress
 from uuid import UUID
 
-from sqlalchemy import func, not_, or_, select, union_all
+from sqlalchemy import SQLColumnExpression, func, not_, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
@@ -67,6 +67,18 @@ def _complaint_filter(enabled: bool) -> list[ColumnElement[bool]]:
     ]
 
 
+def _audience_conditions(
+    count: SQLColumnExpression[int | None],
+    minimum: int | None,
+    unknown: bool,
+) -> list[ColumnElement[bool]]:
+    if unknown:
+        return [count.is_(None)]
+    if minimum is not None and minimum >= 0:
+        return [count >= minimum]
+    return []
+
+
 def creator_directory_filters(
     q: str | None,
     city: str,
@@ -74,6 +86,9 @@ def creator_directory_filters(
     followers_min: int | None,
     with_complaints: bool,
     platform: SocialPlatform | None = None,
+    *,
+    platform_followers_min: int | None = None,
+    platform_followers_unknown: bool = False,
 ) -> list[ColumnElement[bool]]:
     filters = _person_search(q, BloggerProfileModel.instagram_url)
     filters.extend(_complaint_filter(with_complaints))
@@ -96,6 +111,13 @@ def creator_directory_filters(
         )
     if platform == SocialPlatform.INSTAGRAM:
         filters.append(func.trim(BloggerProfileModel.instagram_url) != "")
+        filters.extend(
+            _audience_conditions(
+                BloggerProfileModel.instagram_followers_count,
+                platform_followers_min,
+                platform_followers_unknown,
+            )
+        )
     elif platform is not None:
         filters.append(
             select(SocialAccountModel.account_id)
@@ -103,6 +125,11 @@ def creator_directory_filters(
                 SocialAccountModel.user_id == UserModel.user_id,
                 SocialAccountModel.platform == platform,
                 func.trim(SocialAccountModel.url) != "",
+                *_audience_conditions(
+                    SocialAccountModel.followers_count,
+                    platform_followers_min,
+                    platform_followers_unknown,
+                ),
             )
             .correlate(UserModel)
             .exists()

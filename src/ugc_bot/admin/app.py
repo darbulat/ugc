@@ -915,6 +915,12 @@ async def _render_referrers_page(
     )
 
 
+def _parse_follower_minimum(value: str) -> int | None:
+    if value.isascii() and value.isdigit() and len(value) <= 12:
+        return int(value)
+    return None
+
+
 async def _render_creators_page(
     request: Request,
     auth: AdminAuth,
@@ -934,6 +940,8 @@ async def _render_creators_page(
     status: str,
     followers_min: int | None,
     platform: SocialPlatform | None,
+    platform_followers_min: int | None,
+    platform_followers_unknown: bool,
 ):
     """Render creators list HTML page."""
     if not await auth.authenticate(request):
@@ -952,8 +960,10 @@ async def _render_creators_page(
         status,
         followers_min,
         platform.value if platform else None,
+        platform_followers_min,
+        platform_followers_unknown,
     )
-    cache_key = f"creator-directory:v4:{cache_params!r}" if cache else None
+    cache_key = f"creator-directory:v5:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
@@ -970,6 +980,8 @@ async def _render_creators_page(
             followers_min=followers_min,
             include_ratings=True,
             platform=platform,
+            platform_followers_min=platform_followers_min,
+            platform_followers_unknown=platform_followers_unknown,
         )
 
     result = await _get_cached_or_fetch(
@@ -1006,6 +1018,8 @@ async def _render_creators_page(
             "status": status,
             "followers_min": followers_min,
             "platform": platform,
+            "platform_followers_min": platform_followers_min,
+            "platform_followers_unknown": platform_followers_unknown,
             "platform_labels": {
                 **SOCIAL_PLATFORM_LABELS,
                 SocialPlatform.OTHER: "Другая площадка",
@@ -1533,6 +1547,8 @@ def _register_dashboard_html_routes(
         status: str = "",
         followers_min: str = "",
         platform: str = "",
+        platform_followers_min: str = "",
+        platform_followers_unknown: bool = False,
     ):
         try:
             social_platform = SocialPlatform(platform)
@@ -1555,12 +1571,12 @@ def _register_dashboard_html_routes(
             order,
             city.strip().lower(),
             status,
-            int(followers_min)
-            if followers_min.isascii()
-            and followers_min.isdigit()
-            and len(followers_min) <= 12
-            else None,
+            _parse_follower_minimum(followers_min),
             social_platform,
+            _parse_follower_minimum(platform_followers_min)
+            if social_platform and not platform_followers_unknown
+            else None,
+            bool(social_platform and platform_followers_unknown),
         )
 
     @app.get("/admin/users/advertisers", response_class=HTMLResponse)

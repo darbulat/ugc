@@ -5,6 +5,10 @@
 {% set search_placeholder = 'Имя, Instagram, Telegram или ID' %}
 {% set empty_message = 'Креаторы не найдены. Попробуйте изменить поиск или сбросить фильтры.' %}
 {% set extra_filters = city or status or platform or followers_min is not none %}
+{% block head %}
+  {{ super() }}
+  <script defer src="{{ admin_asset(request, 'creator-directory.js') }}"></script>
+{% endblock %}
 {% block quick_filters %}
   <a class="people-button" href="{{ request.url.remove_query_params('page').include_query_params(status='bot_blocked') }}">Креаторы с недоступным ботом</a>
 {% endblock %}
@@ -49,11 +53,22 @@
       {% endfor %}
     </select>
   </div>
+  <div class="people-field">
+    <label for="platform-followers-min">От N подписчиков</label>
+    <input id="platform-followers-min" type="text" inputmode="numeric"
+           name="platform_followers_min" maxlength="12" pattern="[0-9]{1,12}"
+           value="{{ platform_followers_min if platform_followers_min is not none else '' }}"
+           placeholder="Например, 1000">
+  </div>
+  <label class="people-check">
+    <input id="platform-followers-unknown" type="checkbox" name="platform_followers_unknown"
+           value="true"{% if platform_followers_unknown %} checked{% endif %}> Число не указано
+  </label>
 {% endblock %}
 {% block columns %}
   {{ sort_header('username', 'Креатор', 'asc') }}
   {{ sort_header('city', 'Город', 'asc') }}
-  {{ sort_header('followers', 'Подписчики') }}
+  {{ sort_header('followers', 'Подписчики Instagram') }}
   <th scope="col">Рейтинг</th>
   {{ sort_header('responses', 'Отклики') }}
   {{ sort_header('complaints', 'Жалобы') }}

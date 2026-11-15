@@ -44,7 +44,7 @@
         <div class="people-actions">
           <button class="people-button people-button--primary" type="submit">Найти</button>
           {% if search_query or period != 'all' or with_complaints or extra_filters %}
-            <a class="people-button" href="{{ request.url.remove_query_params(['q', 'period', 'only_new', 'with_complaints', 'city', 'status', 'followers_min', 'platform', 'activity', 'page']) }}">Сбросить</a>
+            <a class="people-button" href="{{ request.url.remove_query_params(['q', 'period', 'only_new', 'with_complaints', 'city', 'status', 'followers_min', 'platform', 'platform_followers_min', 'platform_followers_unknown', 'activity', 'page']) }}">Сбросить</a>
           {% endif %}
         </div>
       </form>

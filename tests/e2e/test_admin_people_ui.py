@@ -20,6 +20,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
     WorkFormat,
 )
+from ugc_bot.domain.social import SELF_REPORTED_FOLLOWERS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -107,20 +108,64 @@ def people_records():
                     instagram_followers_count=followers,
                 )
             )
-        for platform, url, handle in (
-            ("tiktok", f"https://www.tiktok.com/@{instagram}", instagram),
-            ("youtube", f"https://www.youtube.com/@{instagram}", instagram),
-            ("dzen", f"https://dzen.ru/{instagram}", instagram),
-            ("other", "https://www.twitch.tv/synthetic", "Twitch"),
+        for user_id, platform, url, handle, followers in (
+            (
+                creator_id,
+                "tiktok",
+                f"https://www.tiktok.com/@{instagram}",
+                instagram,
+                None,
+            ),
+            (
+                creator_id,
+                "youtube",
+                f"https://www.youtube.com/@{instagram}",
+                instagram,
+                20000,
+            ),
+            (
+                creator_id,
+                "dzen",
+                f"https://dzen.ru/{instagram}",
+                instagram,
+                None,
+            ),
+            (
+                creator_id,
+                "other",
+                "https://www.twitch.tv/synthetic",
+                "Twitch",
+                None,
+            ),
+            (
+                other_id,
+                "youtube",
+                f"https://www.youtube.com/@other_{token}",
+                f"other_{token}",
+                1200,
+            ),
+            (
+                other_id,
+                "dzen",
+                f"https://dzen.ru/other_{token}",
+                f"other_{token}",
+                None,
+            ),
+            (other_id, "rutube", "https://rutube.ru/channel/123/", "123", 0),
         ):
             session.add(
                 SocialAccountModel(
                     account_id=uuid4(),
-                    user_id=creator_id,
+                    user_id=user_id,
                     platform=platform,
                     url=url,
                     handle=handle,
                     work_format=WorkFormat.UGC_ONLY,
+                    followers_count=followers,
+                    metrics_source=SELF_REPORTED_FOLLOWERS
+                    if followers is not None
+                    else None,
+                    metrics_fetched_at=now if followers is not None else None,
                     created_at=now,
                     updated_at=now,
                 )
@@ -390,3 +435,87 @@ def test_creator_platform_filter_combines_with_search_and_filters(
     expect(page.locator(".people-table tbody tr")).to_contain_text(
         "Бот недоступен"
     )
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+def test_selected_platform_audience_with_search_and_blocked_bot(
+    admin_server, page, people_records
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _, city, instagram, _, active_name = people_records
+    token = instagram.removeprefix("city_creator_")
+    blocked_name = f"Ирина {token}"
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/users/creators")
+    form = page.locator(".people-filters")
+    table = page.locator(".people-table")
+    platform = form.get_by_label("Есть ссылка на площадку")
+    minimum = form.get_by_label("От N подписчиков")
+    unknown = form.get_by_label("Число не указано")
+    search = form.get_by_label("Поиск")
+    submit = form.get_by_role("button", name="Найти")
+    expect(minimum).to_be_disabled()
+    expect(unknown).to_be_disabled()
+
+    search.fill(token)
+    form.get_by_label("Город").select_option(city.lower())
+    platform.select_option("youtube")
+    minimum.fill("1200")
+    submit.click()
+    expect(page.get_by_text("Найдено 2", exact=True)).to_be_visible()
+    page.get_by_role("link", name="Креаторы с недоступным ботом").click()
+    expect(form.get_by_label("Статус")).to_have_value("bot_blocked")
+    expect(search).to_have_value(token)
+    expect(platform).to_have_value("youtube")
+    expect(minimum).to_have_value("1200")
+    expect(table.get_by_role("link", name=active_name)).to_have_count(0)
+    table.get_by_role("link", name=blocked_name).click()
+    expect(
+        page.get_by_text("со слов креатора", exact=False).first
+    ).to_be_visible()
+    page.get_by_role("link", name="Назад к списку").click()
+    expect(minimum).to_have_value("1200")
+
+    search.fill(active_name)
+    submit.click()
+    expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+    search.fill(token)
+    minimum.fill("1201")
+    submit.click()
+    expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+
+    platform.select_option("dzen")
+    unknown.check()
+    expect(minimum).to_be_disabled()
+    submit.click()
+    expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+    expect(table.get_by_role("link", name=blocked_name)).to_be_visible()
+    expect(unknown).to_be_checked()
+
+    for known_or_missing in ("youtube", "rutube", "vk"):
+        platform.select_option(known_or_missing)
+        submit.click()
+        expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+
+    platform.select_option("rutube")
+    unknown.uncheck()
+    minimum.fill("0")
+    submit.click()
+    expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+    expect(minimum).to_have_value("0")
+
+    platform.select_option("instagram")
+    minimum.fill("800")
+    submit.click()
+    expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+    minimum.fill("801")
+    submit.click()
+    expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+
+    form.get_by_role("link", name="Сбросить").click()
+    expect(platform).to_have_value("")
+    expect(minimum).to_have_value("")
+    expect(unknown).not_to_be_checked()
+    expect(unknown).to_be_disabled()
