@@ -389,6 +389,14 @@ class SqlCheckoutRepository:
         order_open_for_payment = (
             original_client and order.status == OrderStatus.NEW
         )
+        authorization_id = current.authorization_id if current else None
+        can_open = (
+            state == "ready"
+            and capture_state == "not_recorded"
+            and order_open_for_payment
+            and authorization_id is None
+            and not paused
+        )
         return dict(
             order_id=order.order_id,
             policy_version=order.financial_version,
@@ -396,20 +404,15 @@ class SqlCheckoutRepository:
             amount_minor=intent.payload["amount_minor"] if intent else None,
             invoice_state=state,
             attempt_id=current.attempt_id if current else None,
-            invoice_url=current.invoice_url
-            if current and state == "ready" and order_open_for_payment
-            else None,
+            invoice_url=current.invoice_url if current and can_open else None,
             capture_state=capture_state,
             captured_at=captured_at,
             writes_paused=paused,
             order_open_for_payment=order_open_for_payment,
-            can_open=state == "ready"
-            and capture_state == "not_recorded"
-            and order_open_for_payment
-            and not paused,
+            can_open=can_open,
             reason=None if original_client else "checkout_unavailable",
             version=current.version if current else 0,
-            authorization_id=current.authorization_id if current else None,
+            authorization_id=authorization_id,
         )
 
     async def _capture_proof(self, order, intent, db):

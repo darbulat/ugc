@@ -50,6 +50,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.texts.defaults.customer import customer_text
 from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.messenger.telegram.adapter import (
     TelegramEventAdapter,
@@ -474,10 +475,12 @@ async def pre_checkout_query_handler(
         event_adapter if event_adapter is not None else TelegramEventAdapter(),
     )
     incoming = adapter.from_pre_checkout(pre_checkout_query)
+    log_context = {}
     if payment_service is not None or checkout_service is not None:
         try:
             async with asyncio.timeout(7):
                 order_id = UUID(incoming.payload)
+                log_context["order_id"] = str(order_id)
                 order = (
                     await payment_service.get_order(order_id)
                     if payment_service
@@ -507,16 +510,46 @@ async def pre_checkout_query_handler(
                         incoming.total_amount,
                         incoming.currency,
                     )
-        except Exception:
+        except Exception as exc:
+            pending = isinstance(exc, ValueError) and str(exc) in {
+                "payment_authorization_pending",
+                "paid_receipt_pending",
+            }
+            logger.warning(
+                "Telegram pre-checkout validation rejected",
+                extra={
+                    **log_context,
+                    "error_type": type(exc).__name__,
+                    "payment_pending": pending,
+                },
+            )
             await payment_provider.reject_pre_checkout(
                 query_id=incoming.query_id,
                 error_message=(
-                    "Оплата пока недоступна. Проверьте сохранённый статус "
-                    "заказа."
+                    customer_text(
+                        pre_checkout_query.from_user.language_code,
+                        "payment_pending",
+                    )
+                    if pending
+                    else (
+                        "Оплата пока недоступна. Проверьте сохранённый статус "
+                        "заказа."
+                    )
                 ),
             )
             return
-    await payment_provider.confirm_pre_checkout(query_id=incoming.query_id)
+    try:
+        await payment_provider.confirm_pre_checkout(query_id=incoming.query_id)
+    except Exception as exc:
+        logger.warning(
+            "Telegram pre-checkout approval response failed",
+            extra={
+                **log_context,
+                "error_type": type(exc).__name__,
+            },
+        )
+        raise
+    logger.info("Telegram accepted pre-checkout approval", extra=log_context)
 
 
 async def _persist_native_paid(incoming, checkout_service, payment_service):
