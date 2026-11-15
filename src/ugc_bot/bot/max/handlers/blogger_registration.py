@@ -26,11 +26,13 @@ from ugc_bot.application.services.user_role_service import (
     UserRoleService,
     _extract_instagram_username,
 )
+from ugc_bot.bot.creator_registration import (
+    resume_creator_registration,
+    show_creator_agreements,
+)
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.blogger_registration import (
     _get_location_from_incoming,
-    resume_creator_registration,
-    show_creator_agreements,
 )
 from ugc_bot.bot.telegram.handlers.instagram_verification import (
     _format_verification_instruction,
