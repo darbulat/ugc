@@ -12,7 +12,12 @@ from aiogram.types import (
 )
 
 from ugc_bot.domain.enums import MessengerType
-from ugc_bot.domain.manager_application import FIELD_CHOICES, FIELDS, INTRO
+from ugc_bot.domain.manager_application import (
+    FIELD_CHOICES,
+    FIELDS,
+    INTRO,
+    application_fields,
+)
 
 router = Router()
 PREFIX = "mgr:"
@@ -23,12 +28,13 @@ CONSENT = (
 LABELS = {
     "name": "Имя",
     "rate": "Ожидаемая ставка",
+    "work_format": "Формат работы",
+    "work_format_details": "Другой формат работы",
     "weekly_capacity": "Авторов в неделю",
     "location": "Страна и город",
     "phone": "Телефон",
     "instagram": "Instagram",
     "case": "Кейс",
-    "coverage": "Ниши и детали",
     "settlement": "Расчёт",
     "reliability": "Действия при срыве",
 }
@@ -37,6 +43,13 @@ BUTTON_CHOICES = {
     "rate": ("Обсудим",),
     "coverage": ("Пропустить",),
 }
+PHONE_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="Поделиться номером", request_contact=True)]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=True,
+)
 
 
 class ManagerForm(StatesGroup):
@@ -122,23 +135,14 @@ async def ask(message, state, row, field=None, config=None):
         await show(message, row)
         return
     answers = row["answers"]
-    field = field or next((key for key in FIELDS if key not in answers), None)
+    fields = application_fields(answers)
+    field = field or next((key for key in fields if key not in answers), None)
     if field:
         await state.set_state(ManagerForm.answer)
         await state.set_data({"field": field})
         markup = None
         if field == "phone":
-            markup = ReplyKeyboardMarkup(
-                keyboard=[
-                    [
-                        KeyboardButton(
-                            text="Поделиться номером", request_contact=True
-                        )
-                    ]
-                ],
-                resize_keyboard=True,
-                one_time_keyboard=True,
-            )
+            markup = PHONE_KEYBOARD
         elif field in BUTTON_CHOICES:
             markup = keyboard(
                 [
@@ -146,9 +150,13 @@ async def ask(message, state, row, field=None, config=None):
                     for i, label in enumerate(BUTTON_CHOICES[field])
                 ]
             )
-        await message.answer(
-            FIELDS[field][0], reply_markup=markup, parse_mode=None
-        )
+        prompt = FIELDS[field][0]
+        if field == "case" and answers.get("work_format") in {
+            "Агентство",
+            "В команде бренда",
+        }:
+            prompt += " Можете добавить, какие проекты ведёт ваша команда."
+        await message.answer(prompt, reply_markup=markup, parse_mode=None)
         return
     await state.clear()
     rows = [[button("Отправить заявку", "submit"), button("Изменить", "edit")]]
@@ -161,7 +169,7 @@ async def ask(message, state, row, field=None, config=None):
                 )
             ]
         )
-    lines = [f"{LABELS[field]} · {answers[field]}" for field in FIELDS]
+    lines = [f"{LABELS[field]} · {answers[field]}" for field in fields]
     await message.answer(
         "\n\n".join(["Проверьте заявку", "\n".join(lines), CONSENT]),
         reply_markup=keyboard(rows),
@@ -200,6 +208,7 @@ async def _action(  # noqa: C901
 ):
     user_id = row["user_id"]
     field, separator, index = action.partition(":")
+    fields = application_fields(row["answers"])
     if action == "open":
         await state.clear()
         await show(message, row)
@@ -209,11 +218,11 @@ async def _action(  # noqa: C901
         await message.answer(
             "Что изменить?",
             reply_markup=keyboard(
-                [[button(LABELS[field], "field:" + field)] for field in FIELDS]
+                [[button(LABELS[key], "field:" + key)] for key in fields]
             ),
         )
-    elif action.startswith("field:") and action[6:] in FIELDS:
-        await ask(message, state, row, field=action[6:], config=config)
+    elif field == "field" and index in fields:
+        await ask(message, state, row, field=index, config=config)
     elif separator and field in BUTTON_CHOICES:
         if (await state.get_data()).get("field") != field:
             return
@@ -224,7 +233,7 @@ async def _action(  # noqa: C901
         await service.answer(user_id, field, value)
         await ask(message, state, await service.open(user_id), config=config)
     elif action == "submit":
-        if FIELDS.keys() - row["answers"].keys():
+        if any(key not in row["answers"] for key in fields):
             await ask(message, state, row, config=config)
             return
         await service.submit(user_id)
@@ -265,7 +274,11 @@ async def manager_application_answer(
     if field == "phone":
         contact = message.contact
         if not contact or contact.user_id != message.from_user.id:
-            await message.answer(FIELDS["phone"][0])
+            await message.answer(
+                "Нажмите «Поделиться номером», "
+                "чтобы продолжить анкету менеджера.",
+                reply_markup=PHONE_KEYBOARD,
+            )
             return
         value = contact.phone_number
     elif field in FIELD_CHOICES:

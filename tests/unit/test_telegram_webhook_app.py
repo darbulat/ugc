@@ -1021,7 +1021,9 @@ def test_miniapp_api_cities_returns_list(client: TestClient) -> None:
     assert data == []
 
 
-def test_miniapp_api_config_success(client: TestClient) -> None:
+def test_miniapp_api_config_success(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """POST /miniapp/api/config returns allowed_blogger_counts and options."""
     init_data = _make_valid_init_data("test_token", 55555)
     user_id = uuid4()
@@ -1047,6 +1049,12 @@ def test_miniapp_api_config_success(client: TestClient) -> None:
     assert "allowed_blogger_counts" in data
     assert "content_usage_options" in data
     assert "bot_username" in data
+    assert data["manager_application_enabled"] is False
+
+    monkeypatch.setitem(dispatcher, "manager_applications", object())
+    response = client.post("/miniapp/api/config", json={"init_data": init_data})
+    assert response.status_code == 200
+    assert response.json()["manager_application_enabled"] is True
 
 
 def test_miniapp_api_create_order_invalid_bloggers_needed_400(

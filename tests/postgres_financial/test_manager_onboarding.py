@@ -21,7 +21,7 @@ from ugc_bot.application.native_principal_ports import (
 )
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
 from ugc_bot.container.creator_invite_factory import build_creator_invites
-from ugc_bot.domain.manager_application import FIELDS
+from ugc_bot.domain.manager_application import application_fields
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
@@ -58,17 +58,25 @@ async def test_application_verification_review_and_directory(intake_env):
         phone="+70000000000",
         instagram="@test_manager",
         case="Вёл 10 авторов для кафе",
-        coverage="Казань",
         settlement="ИП",
         rate="600–800",
+        work_format="Агентство",
         weekly_capacity="11–30",
         reliability="Предупрежу заранее.",
     )
-    assert answers.keys() == FIELDS.keys()
+    assert set(answers) == set(application_fields(answers))
     with pytest.raises(ValueError, match="предложенных"):
         await service.answer(user_id, "weekly_capacity", "50")
     for field, value in answers.items():
         await service.answer(user_id, field, value)
+    with pytest.raises(ValueError, match="не относится"):
+        await service.answer(user_id, "work_format_details", "лишний ответ")
+    await service.answer(user_id, "work_format", "Другое")
+    with pytest.raises(ValueError, match="пропущенные"):
+        await service.submit(user_id)
+    await service.answer(user_id, "work_format_details", "Веду спецпроекты")
+    await service.answer(user_id, "work_format", "Агентство")
+    assert "work_format_details" not in (await service.open(user_id))["answers"]
     await service.submit(user_id)
     await service.submit(user_id)
     with Session(env["pg"]) as db, db.begin():
@@ -93,6 +101,7 @@ async def test_application_verification_review_and_directory(intake_env):
         rows = _directory(db, "Казань", "available", 0)
         assert [r["user_id"] for r in rows] == [user_id]
         assert rows[0]["answers"]["weekly_capacity"] == "11–30"
+        assert rows[0]["answers"]["work_format"] == "Агентство"
     assert await service.approved(user_id)
 
 

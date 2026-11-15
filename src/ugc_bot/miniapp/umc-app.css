@@ -175,7 +175,8 @@ form .btn-secondary { background: var(--bg); }
 .role-btns .btn { margin: 0; background: var(--card); color: var(--ink); min-height: 72px; text-align: left; justify-content: flex-start; font-size: 18px; }
 .role-btns .btn[data-role="advertiser"] { background: var(--lavender); color: var(--on-pastel); }
 .role-btns .btn[data-role="blogger"] { background: var(--peach); color: var(--on-pastel); }
-.role-btns .btn[data-role="manager"] { background: var(--lilac); color: var(--on-pastel); }
+.role-btns .btn[data-role="manager"],
+.role-btns #link-manager-application { background: var(--lilac); color: var(--on-pastel); }
 .umc :where(a, button, input, select, textarea, [tabindex]):focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 .umc [tabindex="0"][role="button"]:focus-visible { outline-offset: -4px; }
 /* The supplied subset lacks ӘҒҚҢӨҺҮ and lowercase variants. Keep Kazakh text in one coherent system family. */
