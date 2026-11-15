@@ -86,7 +86,9 @@ def screen():
     )
 
 
-async def click(screen, payload, *, chat="123", message_id="1", text=None):
+async def click(
+    screen, payload, *, chat="123", message_id="1", text=None, invites=None
+):
     incoming = IncomingCallback(
         callback_id="callback",
         chat_id=chat,
@@ -101,6 +103,7 @@ async def click(screen, payload, *, chat="123", message_id="1", text=None):
         NS(bot=screen.telegram),
         screen.users,
         screen.service,
+        creator_invite_service=invites,
         messenger_client=screen.messenger,
         event_adapter=NS(from_callback=lambda _: incoming),
     )
@@ -384,3 +387,57 @@ async def test_scheduler_continues_after_obsolete_order(screen):
     assert [
         item.args for item in screen.service.close_if_resolved.await_args_list
     ] == [(screen.order, customer), (other_order, customer)]
+
+
+@pytest.mark.asyncio
+async def test_staff_contact_requires_confirming_from_the_current_card(screen):
+    invite = uuid4()
+    screen.row.update(
+        assignment_id=None,
+        reported_contact_id=invite,
+        staff_opened_at=None,
+        selection_state="paid",
+    )
+
+    async def acknowledge(*args):
+        screen.row["staff_opened_at"] = datetime.now(UTC)
+
+    invitations = NS(
+        reported_contact=AsyncMock(return_value=screen.order),
+        reported_contact_text=AsyncMock(return_value="Telegram: @staff_author"),
+        acknowledge_staff_contact=AsyncMock(side_effect=acknowledge),
+    )
+    payload = f"staff:{invite.hex}:0"
+    await click(screen, payload, message_id="10")
+    assert screen.messenger.answer_callback.await_args.kwargs["show_alert"]
+    await click(screen, payload, message_id="8", invites=invitations)
+    assert screen.messenger.answer_callback.await_args.kwargs["show_alert"]
+    invitations.reported_contact_text.assert_not_awaited()
+    await click(screen, payload, message_id="10", invites=invitations)
+    edit = screen.messenger.edit_text.await_args.kwargs
+    assert "@staff_author" in edit["text"]
+    confirmation = next(
+        b.callback_data
+        for row in edit["keyboard"].rows
+        for b in row
+        if b.text == "Подтвердить получение контакта"
+    )
+    invitations.acknowledge_staff_contact.assert_not_awaited()
+    await click(screen, confirmation[3:], message_id="10", invites=invitations)
+    assert (
+        "Получение контакта подтверждено"
+        in (screen.messenger.edit_text.await_args.kwargs["text"])
+    )
+    principal, identity = invitations.acknowledge_staff_contact.await_args.args
+    assert principal.user_id == screen.data["client_id"]
+    assert identity == invite
+    await click(screen, payload, message_id="10", invites=invitations)
+    edit = screen.messenger.edit_text.await_args.kwargs
+    assert "@staff_author" in edit["text"]
+    assert all(
+        b.text != "Подтвердить получение контакта"
+        for row in edit["keyboard"].rows
+        for b in row
+    )
+    assert invitations.acknowledge_staff_contact.await_count == 1
+    screen.telegram.send_message.assert_not_awaited()

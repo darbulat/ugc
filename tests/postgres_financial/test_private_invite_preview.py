@@ -1,10 +1,12 @@
 """A private active order can rehearse both creator invitation paths."""
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from aiogram.exceptions import TelegramForbiddenError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,7 @@ from ugc_bot.application.native_principal_ports import (
 )
 from ugc_bot.application.services.invite_handoff_notices import (
     deliver_invite_notice,
+    dispatch_invite,
 )
 from ugc_bot.container.creator_invite_factory import build_creator_invites
 from ugc_bot.infrastructure.db.models import (
@@ -42,8 +45,9 @@ __all__ = ["financial_pg_engine", "intake_env"]
 
 
 @pytest.mark.asyncio
-async def test_preview_uses_private_card_and_never_captures_or_sends(
-    intake_env,
+@pytest.mark.parametrize("outcome", ["sent", "failed", "unknown"])
+async def test_preview_uses_private_card_without_capture_or_real_delivery(
+    intake_env, monkeypatch, outcome
 ):
     env = intake_env
     order_id = uuid4()
@@ -140,17 +144,28 @@ async def test_preview_uses_private_card_and_never_captures_or_sends(
     with pytest.raises(ValueError, match="instagram_mismatch"):
         await service.accept(wrong, creator_id)
     mock_bot = SimpleNamespace(send_message=AsyncMock())
+
+    @asynccontextmanager
+    async def bot_context():
+        yield mock_bot
+
+    monkeypatch.setattr(
+        "aiogram.Bot",
+        lambda **kwargs: SimpleNamespace(context=bot_context),
+    )
+    mock_bot.send_message.side_effect = {
+        "sent": None,
+        "unknown": TimeoutError,
+        "failed": TelegramForbiddenError(method=None, message="bot blocked"),
+    }[outcome]
     assert await service.creator_contact(link, creator_id) is None
     with pytest.raises(PermissionError):
         await service.client_sharing(outsider, order_id, True)
     await service.client_sharing(client, order_id, True)
-    assert (
-        await deliver_invite_notice(service, mock_bot, link, "creator")
-        == "sent"
-    )
-    assert (
-        await deliver_invite_notice(service, mock_bot, link, "creator") is None
-    )
+    assert await dispatch_invite(env["config"], service, link) == outcome
+    mock_bot.send_message.side_effect = None
+    assert await dispatch_invite(env["config"], service, link) == outcome
+    mock_bot.send_message.assert_awaited_once()
     assert (
         await deliver_invite_notice(service, mock_bot, link, "customer") is None
     )
