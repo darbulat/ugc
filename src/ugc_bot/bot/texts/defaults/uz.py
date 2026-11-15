@@ -766,6 +766,14 @@ UZ: dict[str, str] = {
         "Quyidagi tugmani bosing yoki raqamni qo'lda kiriting "
         "(misol: 998901234567)."
     ),
+    "btn_creator_add_socials": "Ijtimoiy tarmoqlarni qo‘shish",
+    "msg_creator_registration_complete": (
+        "Ro‘yxatdan o‘tish yakunlandi. Mos buyurtma paydo bo‘lganda, bot taklif "
+        "yuboradi. "
+        "Taklifni qabul qilish yoki rad etish mumkin. Savollaringiz bo‘lsa, "
+        "«Yordam» bo‘limini oching. "
+        "Ishlashga tayyor platformalaringiz havolalarini qo‘shing."
+    ),
     "msg_instagram_confirmed": (
         "Instagram tasdiqlandi ✅. Brendlar taklif yuborishi mumkin."
     ),

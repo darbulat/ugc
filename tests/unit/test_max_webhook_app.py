@@ -1065,3 +1065,36 @@ async def test_max_command_registration_failure_does_not_abort_startup(caplog):
     client.set_my_commands.side_effect = MaxAPIError(404, "not found")
     await _register_max_commands(client)
     assert "Failed to register Max bot commands" in caplog.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("storage_down", [False, True])
+async def test_bot_start_refreshes_max_availability(storage_down):
+    router = MaxRouter()
+    handler = AsyncMock()
+    router.message(lambda message: True)(handler)
+    state = _make_app_state(router)
+    transactions = object()
+    state.bot_services["transaction_manager"] = transactions
+    request = MagicMock()
+    request.app.state = state
+    request.headers = {}
+    request.json = AsyncMock(
+        return_value={
+            "update_type": "bot_started",
+            "timestamp": 1760000000000,
+            "chat_id": 252972060,
+            "user": {"user_id": 23759393},
+        }
+    )
+    store = AsyncMock(
+        side_effect=RuntimeError("Unavailable") if storage_down else None
+    )
+    with patch("ugc_bot.max_webhook_app.record_bot_availability", store):
+        response = await handle_max_webhook(request)
+
+    assert response.status_code == (503 if storage_down else 200)
+    assert store.await_args.args == (transactions,)
+    assert store.await_args.kwargs["available"] is True
+    assert store.await_args.kwargs["external_id"] == "23759393"
+    assert handler.await_count == int(not storage_down)

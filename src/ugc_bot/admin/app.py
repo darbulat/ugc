@@ -53,6 +53,13 @@ from ugc_bot.admin.complaints import (
     dismiss_open_complaint,
     search_complaints,
 )
+from ugc_bot.admin.creator_base import (
+    CREATOR_ACTIVITY_LABELS,
+    CREATOR_ACTIVITY_PERIODS,
+    CREATOR_BASE_CARDS,
+    CREATOR_BASE_LABELS,
+    normalize_creator_period,
+)
 from ugc_bot.admin.creator_invites import register_creator_invites
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
@@ -810,6 +817,7 @@ async def _render_dashboard_page(
     referrers_order: str,
     referrers_filter: str,
     timings: str,
+    work_period: str,
 ):
     """Render dashboard HTML page."""
     if not await auth.authenticate(request):
@@ -844,11 +852,23 @@ async def _render_dashboard_page(
         referrers_filter=referrers_filter or None,
         include_timings=include_timings,
     )
+    work_period = normalize_creator_period(work_period)
+    creator_base = await _get_cached_or_fetch(
+        cache,
+        f"creator-base:v1:{work_period}" if cache else None,
+        _dashboard_cache_ttl(work_period),
+        lambda: dashboard_service.get_creator_base(work_period),
+    )
     return templates.TemplateResponse(
         request,
         "dashboard.html",
         {
             "payload": payload,
+            "creator_base": creator_base,
+            "creator_base_cards": CREATOR_BASE_CARDS,
+            "creator_activity_labels": CREATOR_ACTIVITY_LABELS,
+            "creator_activity_periods": CREATOR_ACTIVITY_PERIODS,
+            "work_period": work_period,
             "period": period_key,
             "periods": _DASHBOARD_PERIODS,
             "period_labels": _PERIOD_LABELS,
@@ -955,11 +975,15 @@ async def _render_creators_page(
     platform: SocialPlatform | None,
     platform_followers_min: int | None,
     platform_followers_unknown: bool,
+    base_segment: str,
+    work_period: str,
 ):
     """Render creators list HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
     period_key = _normalize_period(period)
+    base_segment = base_segment if base_segment in CREATOR_BASE_LABELS else ""
+    work_period = normalize_creator_period(work_period)
     cache_params = (
         period_key,
         only_new,
@@ -975,8 +999,10 @@ async def _render_creators_page(
         platform.value if platform else None,
         platform_followers_min,
         platform_followers_unknown,
+        base_segment,
+        work_period,
     )
-    cache_key = f"creator-directory:v8:{cache_params!r}" if cache else None
+    cache_key = f"creator-directory:v9:{cache_params!r}" if cache else None
 
     async def _fetch():
         return await dashboard_service.list_creators(
@@ -995,6 +1021,8 @@ async def _render_creators_page(
             platform=platform,
             platform_followers_min=platform_followers_min,
             platform_followers_unknown=platform_followers_unknown,
+            base_segment=base_segment,
+            work_period=work_period,
         )
 
     result = await _get_cached_or_fetch(
@@ -1034,6 +1062,14 @@ async def _render_creators_page(
             "platform_followers_min": platform_followers_min,
             "platform_followers_unknown": platform_followers_unknown,
             "platform_labels": CREATOR_PLATFORM_LABELS,
+            "base_segment": base_segment,
+            "base_segment_label": CREATOR_BASE_LABELS.get(base_segment),
+            "work_period": work_period,
+            "work_period_label": (
+                CREATOR_ACTIVITY_PERIODS[work_period]
+                if base_segment in CREATOR_ACTIVITY_LABELS
+                else ""
+            ),
         },
     )
 
@@ -1506,6 +1542,7 @@ def _register_dashboard_html_routes(
         referrers_order: str = "desc",
         referrers_filter: str = "all",
         timings: str = "",
+        work_period: str = "30d",
     ):
         return await _render_dashboard_page(
             request,
@@ -1520,6 +1557,7 @@ def _register_dashboard_html_routes(
             referrers_order,
             referrers_filter,
             timings,
+            work_period,
         )
 
     @app.get("/admin/referrers", response_class=HTMLResponse)
@@ -1565,6 +1603,8 @@ def _register_dashboard_html_routes(
         platform: str = "",
         platform_followers_min: str = "",
         platform_followers_unknown: bool = False,
+        base_segment: str = "",
+        work_period: str = "30d",
     ):
         try:
             social_platform = SocialPlatform(platform)
@@ -1593,6 +1633,8 @@ def _register_dashboard_html_routes(
             if social_platform and not platform_followers_unknown
             else None,
             bool(social_platform and platform_followers_unknown),
+            base_segment,
+            work_period,
         )
 
     @app.get("/admin/users/advertisers", response_class=HTMLResponse)

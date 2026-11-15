@@ -3247,11 +3247,13 @@
         else managerLink.removeAttribute('href');
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
-        if (me.is_manager && new URLSearchParams(location.search).get('view') === 'manager') {
+        var view = new URLSearchParams(location.search).get('view');
+        var openCreatorSocials = view === 'socials' && me.blogger_profile && me.blogger_profile.confirmed;
+        if (me.is_manager && view === 'manager') {
           loadManagerOrders(0);
         } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile && !me.has_advertiser_profile) {
+        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreatorSocials)) {
           updateBloggerDashboardState(me);
           showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {

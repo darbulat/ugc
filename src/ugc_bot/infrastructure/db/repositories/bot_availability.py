@@ -18,17 +18,22 @@ BOT_UNAVAILABLE_EVENT = "bot_unavailable"
 BOT_AVAILABLE_EVENT = "bot_available"
 
 
-def creator_directory_status() -> ColumnElement[UserStatus]:
-    """Read Telegram reachability while retaining the stored account status."""
+def latest_bot_availability(platform: MessengerType):
+    """Latest recorded event for the profile’s current account on a channel."""
     audit = AuditLogModel
-    external_id = audit.new_values["telegram_id"].as_string()
-    latest = (
+    external_id = audit.new_values[f"{platform}_id"].as_string()
+    current_id = (
+        UserModel.telegram_id
+        if platform == MessengerType.TELEGRAM
+        else UserModel.max_id
+    )
+    return (
         select(audit.entity_type)
         .where(
             audit.entity_id == UserModel.user_id,
             audit.entity_type.in_((BOT_UNAVAILABLE_EVENT, BOT_AVAILABLE_EVENT)),
-            audit.new_values["platform"].as_string() == MessengerType.TELEGRAM,
-            or_(external_id.is_(None), external_id == UserModel.telegram_id),
+            audit.new_values["platform"].as_string() == platform,
+            or_(external_id.is_(None), external_id == current_id),
         )
         .order_by(
             audit.changed_at.desc(),
@@ -39,6 +44,11 @@ def creator_directory_status() -> ColumnElement[UserStatus]:
         .correlate(UserModel)
         .scalar_subquery()
     )
+
+
+def creator_directory_status() -> ColumnElement[UserStatus]:
+    """Read Telegram reachability while retaining the stored account status."""
+    latest = latest_bot_availability(MessengerType.TELEGRAM)
     return case(
         (
             (UserModel.status != UserStatus.DELETED)
@@ -75,9 +85,10 @@ async def record_bot_availability(
             f"ugc:{event_type.replace('_', '-')}:{platform}:"
             f"{external_id}:{occurred_at.isoformat()}"
         )
-        details: dict[str, str | int] = {"platform": platform.value}
-        if platform == MessengerType.TELEGRAM:
-            details["telegram_id"] = external_id
+        details: dict[str, str | int] = {
+            "platform": platform.value,
+            f"{platform}_id": external_id,
+        }
         if update_id is not None:
             event_key = f"{event_key}:{update_id}"
             details["update_id"] = update_id

@@ -204,7 +204,9 @@ async def metrics() -> Response:
     return Response(content=body, media_type=CONTENT_TYPE_LATEST)
 
 
-async def _record_bot_stopped(data: dict, bot_services: dict) -> JSONResponse:
+async def _record_max_availability(
+    data: dict, bot_services: dict, *, available: bool = False
+) -> JSONResponse:
     user = data.get("user")
     user_id = user.get("user_id") if isinstance(user, dict) else None
     timestamp = data.get("timestamp")
@@ -220,9 +222,10 @@ async def _record_bot_stopped(data: dict, bot_services: dict) -> JSONResponse:
             platform=MessengerType.MAX,
             external_id=str(user_id),
             occurred_at=occurred_at,
+            available=available,
         )
     except Exception:
-        logger.error("MAX bot stop event was not saved")
+        logger.error("MAX bot availability event was not saved")
         return JSONResponse({"ok": False}, status_code=503)
     return JSONResponse({"ok": True})
 
@@ -249,7 +252,7 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
 
     update_type = data.get("update_type")
     if update_type == "bot_stopped":
-        return await _record_bot_stopped(data, state.bot_services)
+        return await _record_max_availability(data, state.bot_services)
 
     event_adapter: MaxEventAdapter = state.event_adapter
 
@@ -264,6 +267,11 @@ async def handle_max_webhook(request: Request) -> JSONResponse:
         if update_type in ("message_created", "bot_started"):
             if update_type == "bot_started":
                 incoming = event_adapter.from_bot_started(data)
+                result = await _record_max_availability(
+                    data, state.bot_services, available=True
+                )
+                if result.status_code == 503:
+                    return result
             else:
                 incoming = event_adapter.from_message(data)
             state_store = MaxRedisStateStore(

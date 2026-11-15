@@ -1,6 +1,8 @@
 """Tests for Instagram verification service."""
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -234,13 +236,30 @@ async def test_verify_code_preserves_optional_fields() -> None:
 
 
 @pytest.mark.asyncio
-async def test_verify_code_by_instagram_sender_success() -> None:
+@pytest.mark.parametrize(
+    ("agreement", "had_identity", "expected_welcome"),
+    [(True, False, True), (True, True, False), (False, False, False)],
+)
+async def test_verify_code_by_instagram_sender_success(
+    monkeypatch, agreement: bool, had_identity: bool, expected_welcome: bool
+) -> None:
     """Test successful verification via Instagram webhook."""
     user_repo = InMemoryUserRepository()
     profile_repo = InMemoryBloggerProfileRepository()
     verification_repo = InMemoryInstagramVerificationRepository()
     user_id = await _seed_user(user_repo)
     await _seed_profile(profile_repo, user_id)
+    profile = await profile_repo.get_by_user_id(user_id)
+    assert profile is not None
+    if agreement:
+        await profile_repo.save(
+            replace(profile, agreement_confirmed_at=datetime.now(timezone.utc))
+        )
+    monkeypatch.setattr(
+        InMemoryBloggerProfileRepository,
+        "has_verified_identity_history",
+        AsyncMock(return_value=had_identity),
+    )
 
     service = memory_service(
         instagram_api_client=InMemoryInstagramGraphApiClient(
@@ -266,6 +285,7 @@ async def test_verify_code_by_instagram_sender_success() -> None:
     )
 
     assert isinstance(result, VerificationSuccess) and result.user_id == user_id
+    assert result.registration_completed is expected_welcome
     updated = await profile_repo.get_by_user_id(user_id)
     assert updated is not None
     assert updated.confirmed is True

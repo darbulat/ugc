@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -157,9 +158,12 @@ async def test_notify_user_verification_missing_telegram_user(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("recent", [False, True])
+@pytest.mark.parametrize(
+    ("lookup", "completed"),
+    [("off", False), ("found", False), ("found", True), ("timeout", True)],
+)
 async def test_notify_user_verification_success(
-    test_config: AppConfig, recent: bool
+    test_config: AppConfig, lookup: str, completed: bool
 ) -> None:
     """Send notification when user and telegram record exist."""
 
@@ -199,11 +203,15 @@ async def test_notify_user_verification_success(
         instagram_api_client=None,
     )
 
-    if recent:
+    if lookup != "off":
         test_config.db.database_url = "postgresql://testserver/test"
     test_config.bot.bot_username = "test_bot"
+    test_config.webhook.webhook_base_url = "https://example.test"
     invite = uuid4()
-    resume = AsyncMock(return_value=invite if recent else None)
+    resume = AsyncMock(
+        return_value=invite,
+        side_effect=TimeoutError if lookup == "timeout" else None,
+    )
     sent = AsyncMock()
 
     @asynccontextmanager
@@ -221,18 +229,28 @@ async def test_notify_user_verification_success(
         ),
     ):
         await _notify_user_verification_success(
-            user.user_id, service, test_config
+            user.user_id, service, test_config, registration_completed=completed
         )
 
     sent.assert_awaited_once()
     keyboard = sent.call_args.kwargs["keyboard"].rows
     urls = [button.url for row in keyboard for button in row if button.url]
-    if recent:
-        resume.assert_awaited_once()
-        assert urls == [f"https://t.me/test_bot?start=oi_{invite.hex}"]
-    else:
+    if lookup == "off":
         resume.assert_not_awaited()
+    else:
+        resume.assert_awaited_once()
+    if lookup == "found":
+        assert urls == [f"https://t.me/test_bot?start=oi_{invite.hex}"]
+        assert keyboard[0][0].url == urls[0]
+    else:
         assert not urls
+    if completed:
+        assert any(
+            button.web_app_url
+            == "https://example.test/miniapp/app.html?view=socials"
+            for row in keyboard
+            for button in row
+        )
 
 
 @pytest.mark.asyncio
@@ -2062,3 +2080,61 @@ def test_manager_instagram_uses_graph_proof_without_a_valid_legacy_signature(
         )
     else:
         direct.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "platform", [MessengerType.TELEGRAM, MessengerType.MAX]
+)
+async def test_first_registration_adds_socials_and_support(platform):
+    user = User(
+        user_id=uuid4(),
+        username="Synthetic creator",
+        messenger_type=platform,
+        status=UserStatus.ACTIVE,
+        issue_count=0,
+        created_at=None,
+        telegram_id="123",
+        max_id="456",
+        max_chat_id="789",
+        language="ru",
+    )
+    config = AppConfig.model_validate(
+        {
+            "BOT_TOKEN": "test-token",
+            "DATABASE_URL": "sqlite:///:memory:",
+            "WEBHOOK_BASE_URL": "https://telegram.example.test",
+            "MAX_BOT_TOKEN": "max-token",
+            "MAX_BOT_WEBHOOK_URL": "https://max.example.test/webhook/max",
+        }
+    )
+    service = AsyncMock()
+    service.get_notification_recipient.return_value = (
+        user,
+        SimpleNamespace(confirmed=True),
+    )
+    factory, origin, page = (
+        ("_create_max_messenger", "max", "max_app.html")
+        if platform == MessengerType.MAX
+        else ("_create_messenger", "telegram", "app.html")
+    )
+    messenger = AsyncMock()
+    with patch(f"ugc_bot.instagram_webhook_app.{factory}") as create:
+        create.return_value.__aenter__ = AsyncMock(return_value=messenger)
+        create.return_value.__aexit__ = AsyncMock(return_value=False)
+        await _notify_user_verification_success(
+            user.user_id, service, config, registration_completed=True
+        )
+        await _notify_user_verification_success(user.user_id, service, config)
+
+    welcome, reverified = [
+        call.kwargs for call in messenger.send_text.call_args_list
+    ]
+    assert "Регистрация завершена" in welcome["text"]
+    assert (
+        welcome["keyboard"].rows[0][0].web_app_url
+        == f"https://{origin}.example.test/miniapp/{page}?view=socials"
+    )
+    assert welcome["keyboard"].rows[-1][0].callback_data == "support"
+    assert len(reverified["keyboard"].rows) == 1
+    assert "Instagram" in reverified["text"]

@@ -157,6 +157,12 @@ class BloggerProfileRepository(ABC):
     ) -> Optional[BloggerProfile]:
         return None
 
+    async def has_verified_identity_history(
+        self, user_id: UUID, *, session: object | None
+    ) -> bool:
+        """Whether this creator previously verified an Instagram identity."""
+        return False
+
     async def get_by_user_ids(
         self,
         user_ids: List[UUID],

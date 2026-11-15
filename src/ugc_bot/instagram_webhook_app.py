@@ -7,12 +7,14 @@ import logging
 from contextlib import asynccontextmanager
 from functools import partial
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from ugc_bot.application.legacy_link_ports import validated_max_chat_id
+from ugc_bot.application.messenger.dto import Button
 from ugc_bot.application.services.instagram_verification_service import (
     InstagramVerificationService,
     VerificationApiUnavailable,
@@ -25,6 +27,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 )
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     ManagerApplications,
 )
@@ -280,14 +283,51 @@ async def handle_webhook(
     return {"status": "ok"}
 
 
+async def _invitation_resume_button(
+    user, chat_id, verification_service, config
+):
+    if (
+        not user.telegram_id
+        or str(user.telegram_id) != str(chat_id)
+        or (user.messenger_type == MessengerType.MAX and user.max_chat_id)
+        or not config.db.database_url.startswith("postgresql")
+    ):
+        return None
+    from datetime import datetime, timezone
+
+    from ugc_bot.infrastructure.db.repositories.invite_handoff import (
+        recent_invitation,
+    )
+
+    try:
+        invite = await recent_invitation(
+            verification_service.transaction_manager,
+            user.user_id,
+            datetime.now(timezone.utc),
+        )
+    except Exception:
+        logger.warning("Could not load the creator's pending invitation")
+        return None
+    bot = config.bot.bot_username.strip().lstrip("@")
+    if not invite or not bot:
+        return None
+    return Button(
+        "Вернуться к приглашению",
+        url=f"https://t.me/{bot}?start=oi_{invite.hex}",
+    )
+
+
 async def _notify_user_verification_success(
     user_id: UUID,
     verification_service: InstagramVerificationService,
     config: AppConfig,
+    *,
+    registration_completed: bool = False,
 ) -> None:
     """Send notification to user about successful verification."""
     try:
         from ugc_bot.bot.telegram.handlers.keyboards import (
+            CALLBACK_SUPPORT,
             blogger_menu_inline_keyboard,
         )
 
@@ -319,50 +359,51 @@ async def _notify_user_verification_success(
             "msg_instagram_confirmed",
         ]
         texts = {k: locale_texts.get(k, "") for k in keys}
+        message = locale_texts.get(
+            "msg_instagram_confirmed",
+            "Instagram подтверждён ✅. Бренды могут отправлять предложения.",
+        )
         keyboard = blogger_menu_inline_keyboard(
             texts, confirmed=confirmed, verification_started=False
         )
-        if user.telegram_id and str(user.telegram_id) == str(chat_id):
-            from datetime import datetime, timezone
-
-            from ugc_bot.application.messenger.dto import Button
-            from ugc_bot.infrastructure.db.repositories.invite_handoff import (
-                recent_invitation,
+        if registration_completed:
+            message = locale_texts["msg_creator_registration_complete"]
+            max_route = user.messenger_type == MessengerType.MAX and bool(
+                user.max_chat_id
             )
-
-            if config.db.database_url.startswith("postgresql"):
-                try:
-                    invite = await recent_invitation(
-                        verification_service.transaction_manager,
-                        user_id,
-                        datetime.now(timezone.utc),
-                    )
-                except Exception:
-                    logger.warning(
-                        "Could not load the creator's pending invitation"
-                    )
-                else:
-                    bot_username = config.bot.bot_username.strip().lstrip("@")
-                    if invite and bot_username:
-                        keyboard.rows.insert(
-                            0,
-                            [
-                                Button(
-                                    "Вернуться к приглашению",
-                                    url=f"https://t.me/{bot_username}?start=oi_{invite.hex}",
-                                )
-                            ],
+            if max_route and config.max_bot:
+                url = urlsplit(config.max_bot.webhook_url)
+                base = f"{url.scheme}://{url.netloc}" if url.netloc else ""
+                page = "max_app.html"
+            else:
+                base = config.webhook.webhook_base_url.rstrip("/")
+                page = "app.html"
+            if base:
+                keyboard.rows.insert(
+                    0,
+                    [
+                        Button(
+                            text=locale_texts["btn_creator_add_socials"],
+                            web_app_url=f"{base}/miniapp/{page}?view=socials",
                         )
-        async with messenger_cm as messenger_client:
-            msg_confirmed = locale_texts.get(
-                "msg_instagram_confirmed",
-                "Instagram подтверждён ✅. "
-                "Бренды могут отправлять предложения.",
+                    ],
+                )
+            keyboard.rows.append(
+                [
+                    Button(
+                        text=locale_texts["btn_support"],
+                        callback_data=CALLBACK_SUPPORT,
+                    )
+                ]
             )
+        resume = await _invitation_resume_button(
+            user, chat_id, verification_service, config
+        )
+        if resume is not None:
+            keyboard.rows.insert(0, [resume])
+        async with messenger_cm as messenger_client:
             await messenger_client.send_text(
-                chat_id=chat_id,
-                text=msg_confirmed,
-                keyboard=keyboard,
+                chat_id=chat_id, text=message, keyboard=keyboard
             )
     except Exception:
         logger.warning(
@@ -620,20 +661,20 @@ async def _dispatch_verification_result(
         await _notify_max_user_link_outcome(result, config)
     elif isinstance(result, VerificationUnavailable):
         return
-    elif isinstance(result, VerificationLinkSuccess):
+    elif isinstance(result, VerificationSuccess | VerificationLinkSuccess):
         await _notify_user_verification_success(
-            result.user_id, verification_service, config
-        )
-        await _notify_user_account_linked(
-            result.linked_user_id,
+            result.user_id,
             verification_service,
             config,
-            max_chat_id=result.max_chat_id,
+            registration_completed=result.registration_completed,
         )
-    elif isinstance(result, VerificationSuccess):
-        await _notify_user_verification_success(
-            result.user_id, verification_service, config
-        )
+        if isinstance(result, VerificationLinkSuccess):
+            await _notify_user_account_linked(
+                result.linked_user_id,
+                verification_service,
+                config,
+                max_chat_id=result.max_chat_id,
+            )
     elif isinstance(result, VerificationMismatch):
         if result.link_max_chat_id:
             await _notify_max_user_mismatch(result, config)

@@ -721,6 +721,14 @@ EN: dict[str, str] = {
         "Enter phone number for order contact.\n"
         "Tap the button below or enter the number manually (e.g. 89001110777)."
     ),
+    "btn_creator_add_socials": "Add social accounts",
+    "msg_creator_registration_complete": (
+        "Your registration is complete. The bot will send an offer when a matching "
+        "order is available. "
+        "You can accept or decline each offer. If you have questions, open "
+        "Support. "
+        "Add links to the platforms you are ready to work on."
+    ),
     "msg_instagram_confirmed": (
         "Instagram verified ✅. Brands can send you offers."
     ),

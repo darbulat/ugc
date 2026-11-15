@@ -78,6 +78,11 @@ def _build_admin_client(
         "get_creators_by_city",
         AsyncMock(return_value=[]),
     )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_creator_base",
+        AsyncMock(return_value={"registered": 1817}),
+    )
     app = create_admin_app()
     return TestClient(app)
 
@@ -213,7 +218,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Последние 7 дней к предыдущим 7 дням" in response.text
     assert "было 4" in response.text and "+100,0%" in response.text
     assert "было 0" in response.text
-    assert "9,7%" in response.text
+    assert "Состояние базы" in response.text
+    assert "base_segment=registered" in response.text
+    assert "1817" in response.text
+    assert "base_segment=worked&amp;work_period=30d" in response.text
+    assert "work_period=90d" in response.text
     assert "@usemycontent" in response.text and "0 ₽" in response.text
     assert "Участвовали за период" in response.text
     assert "Участвовали впервые" in response.text
@@ -834,7 +843,9 @@ def test_dashboard_html_uses_cache_on_second_request(
     }
     serialized = serialize_admin_payload(payload)
     mock_cache = MagicMock()
-    mock_cache.get = AsyncMock(side_effect=[None, serialized])
+    mock_cache.get = AsyncMock(
+        side_effect=[None, None, serialized, serialize_admin_payload({})]
+    )
     mock_cache.set = AsyncMock()
     get_dashboard_mock = AsyncMock(return_value=payload)
     counts_mock = AsyncMock(
@@ -876,6 +887,9 @@ def test_dashboard_html_uses_cache_on_second_request(
         AdminDashboardService,
         "get_order_card",
         AsyncMock(return_value={}),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService, "get_creator_base", AsyncMock(return_value={})
     )
     with patch(
         "ugc_bot.admin.app.AdminCache",
