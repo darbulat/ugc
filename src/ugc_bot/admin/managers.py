@@ -242,7 +242,13 @@ def register_managers(  # noqa: C901
         await require_action_token(request)
         form = await request.form()
         command = str(form.get("command", ""))
-        if command not in {"register", "approved", "clarify", "declined"}:
+        if command not in {
+            "register",
+            "approved",
+            "clarify",
+            "declined",
+            "note",
+        }:
             raise HTTPException(422)
         note = str(form.get("note", "")).strip()
         if len(note) > 300:

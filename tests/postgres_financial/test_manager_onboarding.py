@@ -29,6 +29,7 @@ from ugc_bot.application.native_principal_ports import (
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.bot.telegram.handlers.manager_application import (
     review_manager_in_telegram,
+    show,
 )
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
 from ugc_bot.container.creator_invite_factory import build_creator_invites
@@ -36,6 +37,7 @@ from ugc_bot.domain.enums import UserStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_NOTICE_EVENTS,
     MANAGER_REVIEWERS,
+    MAX_WRITTEN_LENGTH,
     application_fields,
     application_version,
 )
@@ -51,6 +53,7 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import create_invite
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     ManagerApplications,
 )
+from ugc_bot.instagram_webhook_app import _process_single_messaging_event
 from ugc_bot.manager_application_delivery import ManagerApplicationDelivery
 from ugc_bot.miniapp.manager_invites import InviteRequest, manager_invite_data
 
@@ -115,7 +118,8 @@ async def test_application_verification_review_and_directory(
         location="Казань",
         phone="+70000000000",
         instagram="@test_manager",
-        case="Вёл 10 авторов для кафе",
+        case="Вёл 10 авторов для кафе. Кейс: https://cases.example.test/team\n"
+        + "Согласовал съёмку и сроки, получил публикации по брифу. " * 20,
         settlement="ИП",
         rate="600–800",
         work_format="Агентство",
@@ -134,6 +138,10 @@ async def test_application_verification_review_and_directory(
     for field in ("case", "shortfall_plan"):
         with pytest.raises(ValueError, match="от 20 символов"):
             await service.answer(user_id, field, "Быстро")
+        with pytest.raises(
+            ValueError, match=f"до {MAX_WRITTEN_LENGTH} символов"
+        ):
+            await service.answer(user_id, field, "я" * (MAX_WRITTEN_LENGTH + 1))
     for field, value in answers.items():
         if field in {"location", "shortfall_plan"}:
             continue
@@ -197,6 +205,9 @@ async def test_application_verification_review_and_directory(
         assert answers["shortfall_plan"] in card.text
         assert 'value="approved" disabled' in card.text
         assert 'name="csrf_token"' in card.text
+        assert "Внутренняя заметка" in card.text
+        assert 'href="https://cases.example.test/team"' in card.text
+        assert answers["case"].rsplit("\n", 1)[1].strip() in card.text
 
     reviewer = SimpleNamespace(
         user_id=reviewer_ids[0], admin=True, status=UserStatus.ACTIVE
@@ -238,7 +249,8 @@ async def test_application_verification_review_and_directory(
     displayed = messenger.send_text.call_args.kwargs
     assert displayed["chat_id"] == str(addresses[0])
     assert "<b>Город</b> · Казань" in displayed["text"]
-    assert f"<blockquote>{answers['case']}</blockquote>" in displayed["text"]
+    assert "<blockquote>Вёл 10 авторов для кафе." in displayed["text"]
+    assert "Полные ответы открываются в админке." in displayed["text"]
     assert all(
         button.callback_data is None
         or not button.callback_data.startswith("mreview:a:")
@@ -255,15 +267,40 @@ async def test_application_verification_review_and_directory(
         with pytest.raises(ValueError, match="Instagram"):
             _review(db, "approved", str(user_id), "")
         _review(db, "clarify", str(user_id), "Уточните загрузку")
-    assert (await service.open(user_id))["decision_note"] == "Уточните загрузку"
+    internal = await service.open(user_id)
+    assert internal["decision_note"] == "Уточните загрузку"
+    candidate_chat = SimpleNamespace(answer=AsyncMock())
+    await show(candidate_chat, internal)
+    assert "на рассмотрении" in candidate_chat.answer.call_args.args[0]
+    assert "Уточните загрузку" not in candidate_chat.answer.call_args.args[0]
     await service.answer(user_id, "coverage", "Казань, 10 авторов")
     await service.answer(user_id, "shortfall_plan", answers["shortfall_plan"])
     code = await service.instagram_challenge(user_id)
     assert code == await service.instagram_challenge(user_id)
     assert not await service.verify_instagram(code, "synthetic_instagram_id")
     graph.get_profile_by_id.return_value.username = "test_manager"
-    assert await service.verify_instagram(code, "synthetic_instagram_id")
-    assert not await service.verify_instagram(code, "synthetic_instagram_id")
+    webhook_event = {
+        "sender": {"id": "synthetic_instagram_id"},
+        "message": {"text": code},
+    }
+    creator_verifier = SimpleNamespace(
+        verify_code_by_instagram_sender=AsyncMock()
+    )
+    for _ in range(2):
+        assert await _process_single_messaging_event(
+            webhook_event, creator_verifier, env["config"], service
+        )
+    creator_verifier.verify_code_by_instagram_sender.assert_not_awaited()
+    await publisher.process_pending_events(kafka)
+    (confirmation,) = [
+        m for m in sent if m.text.startswith("<b>Instagram подтверждён")
+    ]
+    assert confirmation.chat_id == int(env["admin"].telegram_id)
+    assert "Анкета передана команде" in confirmation.text
+    (ready,) = [m for m in sent if "готова к проверке" in m.text]
+    assert ready.chat_id == addresses[0]
+    approve_from_notice = ready.reply_markup.inline_keyboard[0][0]
+    assert approve_from_notice.text == "Принять менеджера"
 
     submitted = await service.review_card(user_id)
     with pytest.raises(ValueError, match="обновилась"):
@@ -278,7 +315,12 @@ async def test_application_verification_review_and_directory(
     approval = messenger.send_text.call_args.kwargs["keyboard"].rows[0][0]
     assert approval.text == "Принять менеджера"
     assert len(approval.callback_data.encode()) <= 64
-    response = await click_review(approval.callback_data)
+    assert approval.callback_data == approve_from_notice.callback_data
+    with Session(env["pg"]) as db, db.begin():
+        _review(db, "note", str(user_id), "Внутренний комментарий")
+        _review(db, "clarify", str(user_id), "")
+    assert (await service.review_card(user_id))["state"] == "clarify"
+    response = await click_review(approve_from_notice.callback_data)
     response.assert_awaited_once_with("Менеджер принят.")
     assert "Одобрен" in messenger.send_text.call_args.kwargs["text"]
     response = await click_review(approval.callback_data)
@@ -309,7 +351,12 @@ async def test_application_verification_review_and_directory(
     )
     (welcome,) = [message for message in sent if "Вы приняты" in message.text]
     assert welcome.chat_id == int(env["admin"].telegram_id)
-    assert "пополнения своей базы блогеров" in welcome.text
+    assert "Пополняйте свою базу блогеров" in welcome.text
+    assert "С сегодняшнего дня можете начинать работу" in welcome.text
+    assert "Внутренний комментарий" not in welcome.text
+    assert (await service.review_card(user_id))["decision_note"] == (
+        "Внутренний комментарий"
+    )
     buttons = welcome.reply_markup.inline_keyboard
     assert buttons[0][0].web_app.url.endswith("?view=manager")
     assert buttons[1][0].web_app.url.endswith("?view=partner")
@@ -320,7 +367,7 @@ async def test_application_verification_review_and_directory(
                 OutboxEventModel.event_type.in_(MANAGER_NOTICE_EVENTS)
             )
         ).all()
-        assert len(events) == 5 and all(
+        assert len(events) == 7 and all(
             event.status == "published" for event in events
         )
 

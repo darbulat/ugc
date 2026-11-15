@@ -6,11 +6,22 @@ from datetime import datetime
 
 from ugc_bot.domain.creator_invites import instagram_handle
 
-MANAGER_REVIEWERS = ("kamilbakhteev", "usemycontent")
+MANAGER_DUTY_REVIEWER = "kamilbakhteev"
+MANAGER_REVIEWERS = (MANAGER_DUTY_REVIEWER, "usemycontent")
 MANAGER_PROGRAM_URL = "https://usemycontent.ru/partner"
 MANAGER_SUBMITTED = "manager.application.submitted"
 MANAGER_APPROVED = "manager.application.approved"
-MANAGER_NOTICE_EVENTS = frozenset({MANAGER_SUBMITTED, MANAGER_APPROVED})
+MANAGER_INSTAGRAM_VERIFIED = "manager.application.instagram_verified"
+MANAGER_READY_FOR_REVIEW = "manager.application.ready_for_review"
+MANAGER_REVIEWABLE_STATES = frozenset({"submitted", "clarify"})
+MANAGER_NOTICE_EVENTS = frozenset(
+    {
+        MANAGER_SUBMITTED,
+        MANAGER_APPROVED,
+        MANAGER_INSTAGRAM_VERIFIED,
+        MANAGER_READY_FOR_REVIEW,
+    }
+)
 MANAGER_STATES = {
     "submitted": "На проверке",
     "clarify": "Нужно уточнение",
@@ -51,6 +62,7 @@ INTRO = (
 )
 
 MIN_WRITTEN_LENGTH = 20
+MAX_WRITTEN_LENGTH = 1800
 WRITTEN_FIELDS = frozenset({"case", "shortfall_plan"})
 
 FIELDS = {
@@ -74,11 +86,12 @@ FIELDS = {
     "settlement": ("Как вам удобно получать оплату?", 40),
     "case": (
         "Расскажите об одном проекте с блогерами.\n\n"
-        "Какая была задача, что вы делали и что получилось? "
-        "Если кейса пока нет, расскажите, как организовали бы первый заказ. "
-        "Ссылку на кейс можно приложить.\n\n"
-        f"(Одно короткое предложение, от {MIN_WRITTEN_LENGTH} символов.)",
-        500,
+        "Опишите задачу, вашу роль и результат. Например, сколько блогеров "
+        "вы привлекли, за какой срок и что получил заказчик. "
+        "Если есть ссылка на кейс, добавьте её. Если опыта ещё нет, "
+        "расскажите, как организовали бы первый заказ.\n\n"
+        f"(От {MIN_WRITTEN_LENGTH} символов.)",
+        MAX_WRITTEN_LENGTH,
     ),
     "reliability": (
         "До публикации остался день, и блогер отказался от участия. "
@@ -90,10 +103,11 @@ FIELDS = {
         "Вы взяли заказ на 30 блогеров. UMC подобрала 25. Ещё 5 нужно "
         "найти в указанном городе или районе.\n\n"
         "Расскажите, где будете искать авторов вне базы UMC, как проверите, "
-        "что они подходят, и когда сообщите команде о результате.\n\n"
+        "что они подходят, и когда сообщите команде о результате. "
+        "Опишите порядок шагов и почему вы выбрали именно их.\n\n"
         f"(От {MIN_WRITTEN_LENGTH} символов. "
         "После ответа заявка отправится автоматически.)",
-        500,
+        MAX_WRITTEN_LENGTH,
     ),
     # Preserve the prompt and answers for older applications.
     "coverage": (
@@ -143,16 +157,18 @@ def normalize_manager_rate(value: str) -> str | None:
     return str(amount) if amount == upper else f"{amount}–{upper}"
 
 
+def _validate_written_answer(value: str) -> str:
+    if len(" ".join(value.split())) < MIN_WRITTEN_LENGTH:
+        raise ValueError(f"Напишите ответ от {MIN_WRITTEN_LENGTH} символов.")
+    if len(value) > MAX_WRITTEN_LENGTH:
+        raise ValueError(f"Сократите ответ до {MAX_WRITTEN_LENGTH} символов.")
+    return value
+
+
 def validate_application_answer(field: str, value: str) -> str:
     value = value.strip()
-    if (
-        field in WRITTEN_FIELDS
-        and len(" ".join(value.split())) < MIN_WRITTEN_LENGTH
-    ):
-        raise ValueError(
-            f"Напишите хотя бы одно предложение от {MIN_WRITTEN_LENGTH} "
-            "символов."
-        )
+    if field in WRITTEN_FIELDS:
+        return _validate_written_answer(value)
     if field not in FIELDS or not 0 < len(value) <= FIELDS[field][1]:
         raise ValueError("Проверьте длину ответа.")
     if field == "rate":

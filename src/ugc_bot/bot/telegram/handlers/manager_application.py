@@ -63,7 +63,7 @@ def keyboard(rows):
 async def show(message, row):
     status = {
         "submitted": "<b>Заявка на рассмотрении.</b>",
-        "clarify": "<b>Команда попросила уточнить заявку.</b>",
+        "clarify": "<b>Заявка на рассмотрении.</b>",
         "approved": (
             "<b>Вы в списке менеджеров.</b>\n\nНазначенные заказы доступны "
             "в разделе «Менеджер» Mini App. Откройте приложение через /app."
@@ -73,8 +73,6 @@ async def show(message, row):
             "Можно обновить ответы и подать её повторно."
         ),
     }.get(row["state"], f"<b>Работа менеджера в UMC</b>\n\n{escape(INTRO)}")
-    if row["decision_note"]:
-        status += f"\n\n<blockquote>{escape(row['decision_note'])}</blockquote>"
     if row["state"] == "approved":
         await message.answer(status, parse_mode="HTML")
         return
@@ -270,7 +268,7 @@ async def send_instagram_challenge(message, service, row, config):
         "1. Скопируйте код из сообщения выше.\n"
         f"2. Откройте Direct <b>@{escape(target)}</b> и отправьте код "
         "с аккаунта, указанного в анкете.\n"
-        "3. Вернитесь сюда и нажмите «Проверить статус».\n\n"
+        "3. Бот сам сообщит в Telegram, когда Instagram будет подтверждён.\n\n"
         "<i>Код действует 15 минут с момента выдачи.</i>",
         reply_markup=keyboard(
             [
