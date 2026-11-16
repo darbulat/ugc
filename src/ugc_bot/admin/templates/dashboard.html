@@ -18,21 +18,30 @@
     <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
   </div>
 
-  {% set completed = payload.get('completed_creators_count', 0) %}
-  {% set target = payload.get('completed_creators_target', 1000) %}
-  {% set progress = [completed, target]|min %}
-  <section class="section card dashboard-goal" aria-labelledby="creator-goal-heading">
-    <h2 id="creator-goal-heading">Креаторы, завершившие заказ</h2>
-    <div class="dashboard-goal__values">
-      <strong class="dashboard-goal__total">{{ '{:,}'.format(completed).replace(',', ' ') }}</strong>
-      <span>из {{ '{:,}'.format(target).replace(',', ' ') }}</span>
+  {% set creator_target = payload.get('completed_creators_target', 1000) %}
+  <section class="section card dashboard-goal" id="dashboard-goals" aria-label="Цели дашборда">
+    {% for key, label, target in [
+      ('completed_creators', 'Завершили заказ', creator_target),
+      ('picked_creators', 'Получили назначение', creator_target),
+      ('responded_creators', 'Откликнулись на оффер', creator_target),
+      ('managers', 'Менеджеры', payload.get('managers_target', 100))
+    ] %}
+    {% set total = payload.get(key ~ '_count', 0) %}
+    {% set progress = [total, target]|min %}
+    <div class="dashboard-goal__item">
+      <div class="dashboard-goal__reading">
+        <h2 class="dashboard-goal__label" id="goal-{{ key }}">{{ label }}</h2>
+        <span class="dashboard-goal__values">
+          <strong>{{ '{:,}'.format(total).replace(',', ' ') }}</strong>
+          из {{ '{:,}'.format(target).replace(',', ' ') }}
+        </span>
+      </div>
+      <div class="progress-bar__track" role="progressbar" aria-labelledby="goal-{{ key }}"
+           aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="{{ target }}">
+        <div class="progress-bar__fill" style="width: {{ (progress * 100 / target)|round(1) }}%;"></div>
+      </div>
     </div>
-    <div class="progress-bar__track" role="progressbar" aria-labelledby="creator-goal-heading"
-         aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="{{ target }}">
-      <div class="progress-bar__fill" style="width: {{ (progress * 100 / target)|round(1) }}%;"></div>
-    </div>
-    <p class="muted">Уникальные креаторы за всё время, включая заказы без оплаты.</p>
-    <p class="muted">Креаторы, получившие назначение · {{ '{:,}'.format(payload.get('picked_creators_count', 0)).replace(',', ' ') }}</p>
+    {% endfor %}
   </section>
 
   {% include "dashboard_attention.html" %}

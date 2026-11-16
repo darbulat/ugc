@@ -151,20 +151,67 @@ def test_preview_customer_sees_contacts_in_summary_after_confirmation(page):
     expect(page.locator("#summary-order")).to_have_text("UMC-E0828CE4")
     contacts = page.get_by_role("region", name="Контакты креаторов")
     expect(contacts.get_by_text("Ожидает контакта")).to_have_count(2)
+    expect(contacts.get_by_role("link")).to_have_count(0)
     network.summary["creator_contacts"][0].update(
         instagram="@umc_e0828ce4_demo", telegram="@umc_e0828ce4_demo"
     )
     network.summary["states"] = {"contact_received": 1, "awaiting_contact": 1}
     page.evaluate("window.__host.wa.MainButton.click()")
     first = contacts.get_by_role("listitem").filter(has_text="№1")
-    expect(first.get_by_text("Instagram: @umc_e0828ce4_demo")).to_be_visible()
-    expect(first.get_by_text("Telegram: @umc_e0828ce4_demo")).to_be_visible()
+    instagram = first.get_by_role("link", name="Instagram: @umc_e0828ce4_demo")
+    telegram = first.get_by_role("link", name="Telegram: @umc_e0828ce4_demo")
+    expect(instagram).to_have_attribute(
+        "href", "https://instagram.com/umc_e0828ce4_demo/"
+    )
+    expect(telegram).to_have_attribute("href", "https://t.me/umc_e0828ce4_demo")
+    instagram.click()
+    telegram.click()
+    assert (
+        page.evaluate("window.__host.calls").count(
+            ["link", "https://instagram.com/umc_e0828ce4_demo/"]
+        )
+        == 1
+    )
+    assert (
+        page.evaluate("window.__host.calls").count(
+            ["telegram-link", "https://t.me/umc_e0828ce4_demo"]
+        )
+        == 1
+    )
     expect(contacts.get_by_text("Ожидает контакта")).to_have_count(1)
 
     network.summary_code = 403
     page.evaluate("window.__host.wa.MainButton.click()")
     expect(page.locator("#summary-error")).not_to_be_empty()
     expect(page.locator("#summary-creator-contacts-list")).to_be_empty()
+    assert not errors
+
+
+def test_contact_links_use_only_the_expected_social_domains(page):
+    network = SummaryNetwork()
+    network.summary["creator_contacts"] = [
+        {
+            "ordinal": 1,
+            "instagram": "https://www.instagram.com/synthetic_creator",
+            "telegram": "https://t.me/synthetic_creator",
+        },
+        {
+            "ordinal": 2,
+            "instagram": "https://instagram.com.example.test/invalid",
+            "telegram": "javascript:alert(1)",
+        },
+    ]
+    errors = open_app(
+        page, network, init_data=SIGNED, query=f"?summary={ORDER}"
+    )
+    contacts = page.get_by_role("region", name="Контакты креаторов")
+    expect(contacts.get_by_role("link")).to_have_count(2)
+    expect(
+        contacts.get_by_role("link", name="Instagram:", exact=False)
+    ).to_have_attribute("href", "https://instagram.com/synthetic_creator/")
+    expect(
+        contacts.get_by_role("link", name="Telegram:", exact=False)
+    ).to_have_attribute("href", "https://t.me/synthetic_creator")
     assert not errors
 
 

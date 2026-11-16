@@ -185,6 +185,9 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "picked_creators_count": 100,
             "completed_creators_count": 37,
             "completed_creators_target": 1000,
+            "responded_creators_count": 1205,
+            "managers_count": 13,
+            "managers_target": 100,
         },
         creators=[],
         advertisers=[],
@@ -209,15 +212,26 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert 'href="/admin/orders?period=today"' in response.text
     assert "139 000,00" in response.text and "250,10" in response.text
     assert (
-        response.text.index("Креаторы, завершившие заказ")
+        response.text.index('id="dashboard-goals"')
         < response.text.index("Требует внимания")
         < response.text.index("Динамика за период")
     )
-    assert (
-        'aria-valuenow="37" aria-valuemin="0" aria-valuemax="1000"'
-        in response.text
-    )
-    assert "Креаторы, получившие назначение · 100" in response.text
+    for key, label, total, progress, target in (
+        ("completed_creators", "Завершили заказ", "37", 37, 1000),
+        ("picked_creators", "Получили назначение", "100", 100, 1000),
+        ("responded_creators", "Откликнулись на оффер", "1 205", 1000, 1000),
+        ("managers", "Менеджеры", "13", 13, 100),
+    ):
+        goal = response.text.split(f'id="goal-{key}"', 1)[1].split(
+            "</section>", 1
+        )[0]
+        assert goal.startswith(f">{label}</h2>")
+        assert f"<strong>{total}</strong>" in goal.split("</span>", 1)[0]
+        assert (
+            f'aria-labelledby="goal-{key}"\n           '
+            f'aria-valuenow="{progress}" aria-valuemin="0" '
+            f'aria-valuemax="{target}"'
+        ) in goal
     for key, label, count in (
         ("no_manager", "Без менеджера", 3),
         ("inactive", "Давно без активности", 0),
@@ -226,7 +240,6 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             f'href="/admin/order-model/list?group=work&amp;{key}=1">', 1
         )[1].split("</a>", 1)[0]
         assert label in link and f"<strong>{count}</strong>" in link
-    assert "Креаторы, получившие назначение" in response.text
     assert "Последние 7 дней к предыдущим 7 дням" in response.text
     assert "было 4" in response.text and "+100,0%" in response.text
     assert "было 0" in response.text
