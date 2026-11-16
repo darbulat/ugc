@@ -2734,8 +2734,19 @@ def test_miniapp_api_register_blogger_create_requires_birth_date(
     )
 
 
+@pytest.mark.parametrize(
+    ("point", "preserve_location", "expected_city"),
+    [
+        (None, True, "Moscow"),
+        ("MULTIPOINT((37.6 55.7))", None, None),
+        ("MULTIPOINT((37.6 55.7))", False, "Moscow"),
+    ],
+)
 def test_miniapp_api_register_blogger_update_own_profile_success(
     client: TestClient,
+    point: str | None,
+    preserve_location: bool | None,
+    expected_city: str | None,
 ) -> None:
     """POST register/blogger with own Instagram updates profile, returns 200."""
     from ugc_bot.application.services.blogger_registration_service import (
@@ -2759,6 +2770,7 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
         instagram_url="https://instagram.com/mine",
         confirmed=True,
         city="Moscow",
+        location_geometry=point,
         topics={"selected": ["tech"]},
         audience_gender=AudienceGender.ALL,
         audience_age_min=18,
@@ -2787,6 +2799,11 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
             "init_data": init_data,
             "instagram_url": "https://instagram.com/mine",
             "city": "Moscow",
+            **(
+                {"preserve_location": preserve_location}
+                if preserve_location is not None
+                else {}
+            ),
             "audience_geo": "РФ",
             "audience_age_min": 18,
             "audience_age_max": 35,
@@ -2804,6 +2821,10 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
     assert response.json().get("ok") is True
     assert response.json().get("user_id") == str(user_id)
     mock_blogger_svc.update_blogger_profile.assert_called_once()
+    assert (
+        mock_blogger_svc.update_blogger_profile.call_args.kwargs["city"]
+        == expected_city
+    )
     mock_blogger_svc.save_blogger_before_agreement.assert_not_called()
 
 

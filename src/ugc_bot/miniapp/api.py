@@ -29,6 +29,7 @@ from ugc_bot.application.services.admin_notification_service import (
 )
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
+    preserve_saved_blogger_location,
 )
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.manager_service import (
@@ -57,7 +58,7 @@ from ugc_bot.bot.telegram.validators import (
     validate_topics,
 )
 from ugc_bot.domain.checkout import CheckoutActor
-from ugc_bot.domain.entities import OfferDispatch, Order
+from ugc_bot.domain.entities import BloggerProfile, OfferDispatch, Order
 from ugc_bot.domain.entities import User as UserEntity
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -229,7 +230,7 @@ class RegisterBloggerRequest(BaseModel):
     country: str | None = None
     lat: float | None = None  # from map picker; skip geocoder when set
     lon: float | None = None
-    preserve_location: bool = False
+    preserve_location: bool | None = None
 
 
 def _location_geometry_from_blogger_request(
@@ -1100,7 +1101,7 @@ def _validate_blogger_body(
 
 async def _blogger_register_update(
     svc: BloggerRegistrationService,
-    user_id: UUID,
+    profile: BloggerProfile,
     body: RegisterBloggerRequest,
     instagram_url: str,
     birth_date_val: date | None,
@@ -1111,9 +1112,18 @@ async def _blogger_register_update(
     location_geometry: str | None = None,
 ) -> dict:
     """Update existing blogger profile. Raises HTTPException on error."""
-    preserve_location = body.preserve_location and location_geometry is None
+    preserve_location = (
+        location_geometry is None
+        and preserve_saved_blogger_location(
+            profile,
+            body.preserve_location,
+            city=body.city,
+            region=body.region,
+            country=body.country,
+        )
+    )
     result = await svc.update_blogger_profile(
-        user_id,
+        profile.user_id,
         instagram_url=instagram_url,
         city=None if preserve_location else body.city,
         region=None if preserve_location else body.region,
@@ -1137,7 +1147,7 @@ async def _blogger_register_update(
         )
     return {
         "ok": True,
-        "user_id": str(user_id),
+        "user_id": str(profile.user_id),
         "needs_agreement": (
             result.profile is not None
             and result.profile.agreement_confirmed_at is None
@@ -1241,7 +1251,7 @@ async def register_blogger(
         try:
             return await _blogger_register_update(
                 svc,
-                user_id,
+                existing,
                 body,
                 instagram_url,
                 birth_date_val,

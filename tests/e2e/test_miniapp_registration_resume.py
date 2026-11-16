@@ -1,7 +1,7 @@
 """Interrupted registration keeps the verified account, profile and intent."""
 
 import pytest
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, Route, expect
 
 from tests.e2e.test_miniapp_design_system import MiniAppNetwork, open_app
 from tests.e2e.test_miniapp_selection_ui import SelectionNetwork
@@ -165,3 +165,58 @@ def test_reopening_creator_agreement_discards_unsaved_map_pin(
         "Нажмите на карту или найдите город"
     )
     assert not errors
+
+
+def test_creator_profile_waits_for_the_latest_city_lookup(
+    page: Page, platform: str
+) -> None:
+    class Network(MiniAppNetwork):
+        held: list[Route]
+
+        def __init__(self):
+            super().__init__()
+            self.held = []
+
+        def route(self, route: Route) -> None:
+            if route.request.url.endswith("/geocode/forward"):
+                self.held.append(route)
+            else:
+                super().route(route)
+
+    network = Network()
+    network.blogger_registered = True
+    network.blogger_agreement_confirmed = False
+    network.blogger_city = "Saved city"
+    open_app(page, network, platform)
+    page.locator("#back-from-blg-agreements").click()
+    page.locator("#blg-name").fill("Creator")
+    page.locator("#blg-instagram").fill("synthetic")
+    page.locator("#blg-birth-day").select_option("1")
+    page.locator("#blg-birth-month").select_option("1")
+    page.locator("#blg-birth-year").select_option("1990")
+    page.locator("#blg-topics").fill("beauty")
+    page.locator("#blg-audience-geo").fill("Russia")
+    page.locator("#blg-price").fill("1000")
+    page.locator("#btn-blogger-city-map").click()
+    page.locator("#blg-city-search").fill("New city")
+    page.locator("#btn-blogger-city-search").click()
+    page.locator("#btn-blogger-city-search").click()
+    page.locator("#btn-submit-blogger").click()
+    expect(page.locator("#blg-error")).to_have_text("Загрузка…")
+    assert len(network.held) == 2
+    network.held[0].fulfill(json={"city": "Old result", "lat": 1, "lon": 2})
+    page.locator("#btn-submit-blogger").click()
+    expect(page.locator("#blg-error")).to_have_text("Загрузка…")
+    assert not any(path == "/register/blogger" for path, _ in network.requests)
+    network.held[1].fulfill(json={"city": "New city", "lat": 3, "lon": 4})
+    expect(page.locator("#blg-city")).to_have_value("New city")
+    page.locator("#btn-submit-blogger").click()
+    expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+    payload = next(
+        body for path, body in network.requests if path == "/register/blogger"
+    )
+    assert (payload["city"], payload["lat"], payload["lon"]) == (
+        "New city",
+        3,
+        4,
+    )

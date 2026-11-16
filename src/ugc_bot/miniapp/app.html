@@ -1962,9 +1962,17 @@
       var bloggerCityMapInstance = null;
       var bloggerCityMarker = null;
       var bloggerLocationRequest = 0;
+      var bloggerLocationPending = false;
       var hintElCityMap = document.getElementById('blg-city-map-hint');
+      function finishBloggerLocationRequest(request) {
+        if (request !== bloggerLocationRequest) return;
+        bloggerLocationPending = false;
+        var error = document.getElementById('blg-error');
+        if (error.textContent === tx('loading')) error.textContent = '';
+      }
+
       function resetBloggerLocationDraft() {
-        bloggerLocationRequest++;
+        finishBloggerLocationRequest(++bloggerLocationRequest);
         ['blg-region', 'blg-country', 'blg-lat', 'blg-lon', 'blg-city-search'].forEach(function(id) {
           document.getElementById(id).value = '';
         });
@@ -1995,6 +2003,7 @@
         }
         map.on('click', function(e) {
           var request = ++bloggerLocationRequest;
+          bloggerLocationPending = true;
           var lat = e.latlng.lat;
           var lon = e.latlng.lng;
           if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
@@ -2009,7 +2018,7 @@
             if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
           }).catch(function() {
             if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_error');
-          });
+          }).finally(function() { finishBloggerLocationRequest(request); });
         });
       }
       document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
@@ -2035,6 +2044,7 @@
           setTimeout(initBloggerCityMap, 100);
         }
         var request = ++bloggerLocationRequest;
+        bloggerLocationPending = true;
         api('/geocode/forward', { city: query }).then(function(data) {
           if (request !== bloggerLocationRequest) return;
           document.getElementById('blg-city').value = data.city || '';
@@ -2054,7 +2064,7 @@
           else setTimeout(applyOnMap, 250);
         }).catch(function() {
           if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
-        });
+        }).finally(function() { finishBloggerLocationRequest(request); });
       });
       document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
@@ -2162,6 +2172,10 @@
         var errEl = document.getElementById('blg-error');
         var blgSubmitBtn = document.getElementById('btn-submit-blogger');
         errEl.textContent = '';
+        if (bloggerLocationPending) {
+          errEl.textContent = tx('loading');
+          return;
+        }
         if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         var topicsRaw = document.getElementById('blg-topics').value.trim();
         var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];

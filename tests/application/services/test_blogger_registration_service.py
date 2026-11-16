@@ -44,7 +44,10 @@ async def _seed_user(repo: InMemoryUserRepository) -> UUID:
 
 
 @pytest.mark.asyncio
-async def test_registration_edits_keep_the_saved_map_location() -> None:
+@pytest.mark.parametrize("preserve_location", [True, None])
+async def test_registration_edits_keep_the_saved_map_location(
+    preserve_location: bool | None,
+) -> None:
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
     geocoder = Mock()
@@ -86,7 +89,7 @@ async def test_registration_edits_keep_the_saved_map_location() -> None:
         user_id,
         instagram_url="https://instagram.com/new",
         price=2000,
-        preserve_location=True,
+        preserve_location=preserve_location,
         **fields,
     )
     assert changed_handle.location_geometry == point
