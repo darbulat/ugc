@@ -2738,6 +2738,7 @@ def test_miniapp_api_register_blogger_create_requires_birth_date(
     ("point", "preserve_location", "expected_city"),
     [
         (None, True, "Moscow"),
+        ("MULTIPOINT((37.6 55.7))", True, None),
         ("MULTIPOINT((37.6 55.7))", None, None),
         ("MULTIPOINT((37.6 55.7))", False, "Moscow"),
     ],
@@ -2800,7 +2801,7 @@ def test_miniapp_api_register_blogger_update_own_profile_success(
             "instagram_url": "https://instagram.com/mine",
             "city": "Moscow",
             **(
-                {"preserve_location": preserve_location}
+                {"preserve_location": preserve_location, "lat": 3, "lon": 4}
                 if preserve_location is not None
                 else {}
             ),

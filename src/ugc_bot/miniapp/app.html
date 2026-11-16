@@ -1834,9 +1834,12 @@
         showScreen('screen-agreements-' + role);
       }
 
-      function resumeAgreement(role) {
+      function resumeAgreement(role, required) {
         var profile = (window._me || {})[role + '_profile'];
-        if (!profile || profile.agreement_confirmed !== false) return false;
+        if (!profile || (!required && profile.agreement_confirmed !== false)) return false;
+        if (required) {
+          try { assertVerifiedMe(); } catch (_) { return false; }
+        }
         showAgreement(role, profile);
         return true;
       }
@@ -1963,6 +1966,7 @@
       var bloggerCityMarker = null;
       var bloggerLocationRequest = 0;
       var bloggerLocationPending = false;
+      var savedBloggerLocation = null;
       var hintElCityMap = document.getElementById('blg-city-map-hint');
       function finishBloggerLocationRequest(request) {
         if (request !== bloggerLocationRequest) return;
@@ -2204,13 +2208,27 @@
         if (countryEl && countryEl.value.trim()) payload.country = countryEl.value.trim();
         var latEl = document.getElementById('blg-lat');
         var lonEl = document.getElementById('blg-lon');
+        var actor = (window._me || {}).user_id;
+        var selectedLocation = null;
         if (latEl && lonEl && latEl.value.trim() && lonEl.value.trim()) {
           payload.lat = parseFloat(latEl.value);
           payload.lon = parseFloat(lonEl.value);
+          selectedLocation = {
+            actor: actor,
+            platform: verifiedMePlatform,
+            city: payload.city,
+            fields: {lat: payload.lat, lon: payload.lon, region: payload.region, country: payload.country}
+          };
         } else if ((window._me || {}).has_blogger_profile) {
           payload.preserve_location = true;
+          // The previous API still needs coordinates during a rolling release.
+          if (actor && savedBloggerLocation && savedBloggerLocation.actor === actor &&
+              savedBloggerLocation.platform === verifiedMePlatform && savedBloggerLocation.city === payload.city) {
+            Object.assign(payload, savedBloggerLocation.fields);
+          }
         }
         verifiedProfileRequest('/register/blogger', payload, {refreshProfile: true}).then(function(res) {
+          if (selectedLocation) savedBloggerLocation = selectedLocation;
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
               showAgreement('blogger');
@@ -2225,7 +2243,7 @@
       });
 
       document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
-        api('/blogger/instagram-verification/start', {}).then(function(res) {
+        verifiedProfileRequest('/blogger/instagram-verification/start', {}).then(function(res) {
           if (res.already_confirmed) {
             return loadMe().then(function() {
               showScreen('screen-blogger-dashboard');
@@ -2258,6 +2276,7 @@
           if (codeEl) codeEl.textContent = res.code || '';
           showScreen('screen-instagram-verification');
         }).catch(function(err) {
+          if (err.status === 403 && err.message === 'registration_agreement_required' && resumeAgreement('blogger', true)) return;
           var hint = document.querySelector('#screen-blogger-dashboard .hint');
           if (hint) hint.textContent = (err && err.message) || 'Ошибка загрузки';
         });

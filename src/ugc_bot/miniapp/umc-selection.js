@@ -156,6 +156,11 @@
       }).catch(function(){/* Keep the same key until cleanup succeeds. */}).then(function(){if(ctx.isCurrent())renderResult(data,entry);});
     }).catch(function(error) {
       if(!ctx.isCurrent())return;
+      if (error.status === 403 && error.message === 'registration_agreement_required' &&
+          deferIntake(undefined, state.intakeBack, true)) {
+        pendingView();
+        return;
+      }
       // If another window retried, the first rejection cannot settle the outcome.
       if((error.status===400 || error.status===422) && !isRetry) {
         return finishPending(owner,entry,'rejected').then(function(result){
@@ -198,11 +203,12 @@
     var current = document.querySelector('.screen.active');
     var back = current && current !== intake && current.id !== 'screen-agreements-advertiser'
       ? current.id : state.intakeBack;
-    if (bridge.resumeAgreement && bridge.resumeAgreement('advertiser')) {
-      requestedIntake = {options: options, back: back, context: binding()};
-      return;
-    }
-    showIntake(options, back);
+    if (!deferIntake(options, back, false)) showIntake(options, back);
+  }
+  function deferIntake(options, back, required) {
+    if (!bridge.resumeAgreement || !bridge.resumeAgreement('advertiser', required)) return false;
+    requestedIntake = {options: options, back: back, context: binding()};
+    return true;
   }
   function showIntake(options, back) {
     state.intakeBack = back;

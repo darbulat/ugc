@@ -41,6 +41,7 @@ class MiniAppNetwork:
             self.requests.append((path, body))
             if path == "/me":
                 data = {
+                    "user_id": body["init_data"],
                     "locale": self.locale,
                     "country": {"ru": "ru", "en": "ge", "kk": "kz"}[
                         self.locale

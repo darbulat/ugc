@@ -237,6 +237,8 @@ def _location_geometry_from_blogger_request(
     body: RegisterBloggerRequest,
 ) -> str | None:
     """Build WKT from lat/lon when both are present and in valid range."""
+    if body.preserve_location is True:
+        return None
     if body.lat is None or body.lon is None:
         return None
     if not (-90 <= body.lat <= 90 and -180 <= body.lon <= 180):

@@ -4,7 +4,7 @@ import pytest
 from playwright.sync_api import Page, Route, expect
 
 from tests.e2e.test_miniapp_design_system import MiniAppNetwork, open_app
-from tests.e2e.test_miniapp_selection_ui import SelectionNetwork
+from tests.e2e.test_miniapp_selection_ui import SelectionNetwork, fill
 from tests.e2e.test_miniapp_social_ui import SIGNED_DATA, SocialNetwork
 
 pytestmark = [
@@ -117,6 +117,28 @@ def test_order_intent_keeps_manager_option_during_consent(
     assert not errors
 
 
+def test_order_recovers_from_consent_error_with_original_request(
+    page: Page, platform: str
+) -> None:
+    network = SelectionNetwork()
+    network.advertiser_agreed = None
+    network.create_code = 403
+    network.create_error = "registration_agreement_required"
+    open_app(page, network, platform, query="?view=order")
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    fill(page)
+    page.locator("#btn-intake-create").click()
+    expect(page.locator("#screen-agreements-advertiser")).to_be_visible()
+    assert len(network.creates) == 1
+    network.create_code = 200
+    page.locator("#adv-agree-checkbox").check()
+    page.locator("#btn-confirm-adv-agreement").click()
+    expect(page.locator("#intake-uncertain")).to_be_visible()
+    page.locator("#btn-intake-retry").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert network.creates == [network.creates[0]] * 2
+
+
 def test_reopening_creator_agreement_discards_unsaved_map_pin(
     page: Page, platform: str
 ) -> None:
@@ -167,7 +189,7 @@ def test_reopening_creator_agreement_discards_unsaved_map_pin(
     assert not errors
 
 
-def test_creator_profile_waits_for_the_latest_city_lookup(
+def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
     page: Page, platform: str
 ) -> None:
     class Network(MiniAppNetwork):
@@ -180,8 +202,10 @@ def test_creator_profile_waits_for_the_latest_city_lookup(
         def route(self, route: Route) -> None:
             if route.request.url.endswith("/geocode/forward"):
                 self.held.append(route)
-            else:
-                super().route(route)
+                return
+            if route.request.url.endswith("/register/blogger"):
+                self.blogger_city = route.request.post_data_json["city"]
+            super().route(route)
 
     network = Network()
     network.blogger_registered = True
@@ -220,3 +244,16 @@ def test_creator_profile_waits_for_the_latest_city_lookup(
         3,
         4,
     )
+    page.locator("#back-from-blg-agreements").click()
+    page.locator("#back-from-blogger").click()
+    page.locator('[data-role="blogger"]').click()
+    page.locator("#back-from-blg-agreements").click()
+    page.locator("#blg-price").fill("1200")
+    page.locator("#btn-submit-blogger").click()
+    expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+    edits = [
+        body for path, body in network.requests if path == "/register/blogger"
+    ]
+    assert len(edits) == 2
+    assert edits[-1]["preserve_location"] is True
+    assert (edits[-1]["lat"], edits[-1]["lon"]) == (3, 4)
