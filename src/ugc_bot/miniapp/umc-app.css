@@ -256,7 +256,124 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 #screen-partner a, #screen-partner dd, .umc-partner-reference { overflow-wrap: anywhere; }
 #screen-partner a { color: var(--ink); text-underline-offset: 0.15em; }
 .umc-partner-kind summary { cursor: pointer; padding-block: 0.5rem; }
-.umc-partner-entry { margin-block: 0.75rem; }
+.umc-partner-overview {
+  display: grid;
+  gap: var(--space-8);
+  margin-block: var(--space-12) var(--space-20);
+  padding: var(--space-16);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-22);
+}
+.umc-partner-overview-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.screen .umc-partner-overview-header h2,
+#screen-partner .umc-partner-overview-header h2 { margin: 0; font-size: 17px; }
+.umc-partner-status {
+  padding: 4px var(--space-8);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  font-size: 12px;
+  font-weight: 600;
+}
+.umc-partner-status[data-state="active"] { background: var(--mint); color: var(--on-pastel); }
+.umc-partner-link-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-14);
+  background: var(--bg);
+}
+.umc-partner-link-row [data-partner-link] {
+  display: block;
+  align-self: center;
+  overflow: hidden;
+  padding-inline: var(--space-8);
+  color: var(--ink);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.umc-partner-link-row input { min-height: 44px; padding: 8px; }
+.umc-partner-copy.btn {
+  min-height: 44px;
+  margin: 0;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-12);
+  background: var(--lavender);
+  color: var(--on-pastel);
+  font-size: 14px;
+}
+.umc-partner-copy.btn:hover { background: var(--lavender); transform: none; }
+.umc-partner-copy-status, .umc-partner-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+.umc-partner-copy-status:empty {
+  position: absolute;
+  clip-path: inset(50%);
+}
+.umc-partner-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
+  margin: 0;
+}
+.umc-partner-metric {
+  display: grid;
+  align-content: space-between;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: var(--radius-12);
+  background: var(--bg);
+  line-height: 1.25;
+}
+.umc-partner-metric dt { color: var(--muted); font-size: 12px; }
+.umc-partner-metric dd {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.umc-partner-legacy {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px var(--space-8);
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.umc-partner-legacy strong { color: var(--ink); }
+.umc-partner-entry.btn {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px var(--space-8);
+  margin: 0;
+  padding: var(--space-8) var(--space-12);
+  text-align: start;
+}
+.umc-partner-entry-rates { color: var(--muted); font-size: 12px; font-weight: 500; }
+.umc-partner-help { border-top: 1px solid var(--line); padding-top: var(--space-8); }
+.umc-partner-help p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.umc-partner-help-links { display: flex; flex-wrap: wrap; column-gap: var(--space-12); }
+.umc-partner-help-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
 .umc-partner-rate { font-size: 3rem; font-weight: 700; line-height: 1; margin-block: 0.75rem; }
 .umc-partner-notice { padding: 0.875rem; background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem; }
 .umc-partner-notice:empty { display: none; }
@@ -268,7 +385,6 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-partner-balances dd { margin: 0.25rem 0 0; font-weight: 600; }
 .umc-partner-kind { margin-top: 1.25rem; }
 .umc-partner-badge { display: inline-block; font-size: 0.75rem; padding: 0.2rem 0.45rem; border: 1px solid var(--line); border-radius: 0.5rem; margin-inline-start: 0.5rem; }
-#partner-link-value { margin-block: 0.75rem; }
 @media (max-width: 360px) { .umc-partner-pair { grid-template-columns: 1fr; gap: 0.2rem; } }
 
 /* Own-client selection/intake: supplied lavender section and existing tokens. */

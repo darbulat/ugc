@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Protocol
 from uuid import UUID
 
@@ -73,6 +74,8 @@ class PartnerReadFacts:
     assignments: tuple[dict, ...] | None
     assignment_total: int | None
     is_admin: bool = False
+    manager_total: int = 0
+    legacy_referral_income: dict[str, Decimal] | None = None
 
 
 class PartnerViewRepository(Protocol):

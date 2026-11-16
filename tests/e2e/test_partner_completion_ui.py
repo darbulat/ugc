@@ -3,7 +3,7 @@
 import pytest
 from playwright.sync_api import expect
 
-from tests.e2e.test_miniapp_design_system import open_app
+from tests.e2e.test_miniapp_design_system import open_app, screenshot
 from tests.e2e.test_miniapp_partner_ui import SIGNED, PartnerNetwork
 
 pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
@@ -31,6 +31,70 @@ def test_home_displays_referral_link_and_clickable_both_side_rates(
     expect(home.locator("[data-partner-rate]")).to_contain_text("12%")
     home.locator("[data-partner-rate]").click()
     expect(page.locator("#screen-partner")).to_be_visible()
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_role_choice_overview_copies_own_link_and_shows_totals(page, platform):
+    network = PartnerNetwork(role="unregistered")
+    network.partner["account_status"] = "pause"
+    network.partner["network"].update(total=57, manager_total=23, has_more=True)
+    network.partner["financial"].update(
+        earnings={"referral_minor": "62550", "management_minor": "120000"},
+        legacy_referral_income_minor={"KZT": "120099", "RUB": "7500"},
+    )
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.add_init_script("""
+        window.partnerCopies = [];
+        Object.defineProperty(navigator, 'clipboard', {value: {
+          writeText(value) {
+            window.partnerCopies.push(value);
+            return Promise.resolve();
+          }
+        }});
+    """)
+    errors = open_app(page, network, platform, native=True, init_data=SIGNED)
+    page.evaluate(
+        "window.__host.wa.colorScheme='dark'; "
+        "window.__host.events.themeChanged()"
+    )
+    card = page.locator("#screen-role-choice [data-partner-home]")
+    expect(card.locator(".umc-partner-status")).to_have_text("На паузе")
+    for metric, value in (
+        ("invited", "57"),
+        ("managers", "23"),
+        ("referral", "625,50 ₽"),
+        ("management", "1 200 ₽"),
+    ):
+        expect(
+            card.locator(f'[data-partner-metric="{metric}"] dd')
+        ).to_have_text(value)
+    expect(card.locator(".umc-partner-legacy")).to_contain_text("1 200,99 KZT")
+    expect(
+        card.get_by_role("link", name="Условия программы")
+    ).to_have_attribute("href", "https://usemycontent.ru/referral/")
+    expect(
+        card.get_by_role("link", name="Работа менеджером")
+    ).to_have_attribute("href", "https://usemycontent.ru/partner")
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    screenshot(page, f"partner-role-choice-{platform}-dark")
+
+    card.get_by_role("button", name="Скопировать ссылку").click()
+    expect(card.get_by_role("status")).to_have_text("Ссылка скопирована.")
+    expect(page.locator("#screen-role-choice")).to_be_visible()
+    url = network.partner["referral"]["link"]
+    assert page.evaluate("window.partnerCopies") == [url]
+
+    card.locator("[data-partner-open]").click()
+    expect(page.locator("#screen-partner")).to_be_visible()
+    expect(
+        page.locator('#partner-overview [data-partner-metric="managers"] dd')
+    ).to_have_text("23")
+    page.locator("#btn-partner-copy").click()
+    expect(page.locator("#partner-copy-status")).to_have_text(
+        "Ссылка скопирована."
+    )
+    assert page.evaluate("window.partnerCopies") == [url, url]
     assert not errors
 
 

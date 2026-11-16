@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -179,6 +180,59 @@ async def test_separate_kinds_and_new_grade_cannot_reprice_snapshots():
         "management": None,
     }
     assert "PRIVATE CASE" not in str(result)
+
+
+@pytest.mark.asyncio
+async def test_earnings_totals_exclude_pending_and_cancelled_commissions():
+    journal = financial()
+    movements = list(journal.movements)
+    for index, (kind, amount, bucket) in enumerate(
+        (
+            ("transfer", 2500, "hold"),
+            ("reversal", 10000, "cancelled"),
+            ("transfer", 60000, "hold"),
+        )
+    ):
+        movements.append(
+            PartnerMovement(
+                UUID(int=200 + index),
+                replace(
+                    journal.movements[index].movement,
+                    operation_key=f"settle:{index}",
+                    event_id=f"settlement:{index}",
+                    movement_type=kind,
+                    amount_minor=amount,
+                    bucket_from="pending",
+                    bucket_to=bucket,
+                    source_entry_id=journal.movements[index].movement_id
+                    if kind == "reversal"
+                    else None,
+                ),
+            )
+        )
+    projection = dict(
+        journal.projection or {}, pending=2500, hold=62500, cancelled=10000
+    )
+    result = await view(
+        replace(
+            facts(),
+            financial=replace(
+                journal, movements=tuple(movements), projection=projection
+            ),
+            legacy_referral_income={
+                "RUB": Decimal("75.00"),
+                "KZT": Decimal("1200.99"),
+            },
+        )
+    )
+    assert result["financial"]["earnings"] == {
+        "referral_minor": "2500",
+        "management_minor": "60000",
+    }
+    assert result["financial"]["legacy_referral_income_minor"] == {
+        "RUB": "7500",
+        "KZT": "120099",
+    }
 
 
 @pytest.mark.asyncio

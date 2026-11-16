@@ -56,6 +56,7 @@ def fixture_view():
         "overrides": {"state": "available", "entries": []},
         "network": {
             "total": 1,
+            "manager_total": 0,
             "page": 0,
             "has_more": False,
             "members": [
@@ -83,6 +84,7 @@ def fixture_view():
             "currency": "RUB",
             "balances": balances,
             "projection": balances,
+            "earnings": {"referral_minor": "0", "management_minor": "0"},
             "groups": [
                 {
                     "kind": kind,
@@ -263,11 +265,19 @@ def test_partner_financial_state_never_invents_available_income(page, state):
             groups=[],
             history={"entries": [], "page": 0, "has_more": False},
         )
+    network.partner["financial"]["earnings"] = (
+        {"referral_minor": "0", "management_minor": "0"}
+        if state == "uninitialized"
+        else None
+    )
     open_app(page, network, query="?view=partner")
     expect(page.locator("#partner-financial-status")).not_to_be_empty()
     expect(page.locator("#partner-financial-status")).to_have_attribute(
         "data-state", state
     )
+    expect(
+        page.locator('#partner-overview [data-partner-metric="referral"] dd')
+    ).to_have_text("0 ₽" if state == "uninitialized" else "—")
     if state != "mismatch":
         assert not page.locator("#partner-balances [data-money]").count()
 
@@ -290,6 +300,10 @@ def test_partner_large_integer_money_pagination_and_copy_fallback(page):
     network = PartnerNetwork(locale="en")
     network.partner["financial"]["balances"]["pending"] = "9007199254740993"
     network.partner["network"]["has_more"] = True
+    page.add_init_script("""
+        Object.defineProperty(navigator, 'clipboard', {value: undefined});
+        document.execCommand = () => false;
+    """)
     open_app(page, network, init_data=SIGNED, query="?view=partner")
     expect(
         page.locator('#partner-balances > dl [data-bucket="pending"] dd')
@@ -297,6 +311,13 @@ def test_partner_large_integer_money_pagination_and_copy_fallback(page):
     page.locator("#btn-partner-copy").click()
     expect(page.locator("#partner-copy-status")).to_contain_text(
         "Copy it manually"
+    )
+    assert (
+        page.locator("#partner-link-value").evaluate(
+            "(input) => input.value.slice("
+            "input.selectionStart, input.selectionEnd)"
+        )
+        == network.partner["referral"]["link"]
     )
     page.locator("#partner-network button").filter(has_text="Next").click()
     expect(page.locator("#screen-partner")).to_have_attribute(

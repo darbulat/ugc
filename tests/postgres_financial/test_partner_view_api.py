@@ -2,12 +2,13 @@
 
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 from uuid import uuid4
 
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
 
 from tests.e2e.miniapp_helpers import generate_init_data
 from tests.postgres_financial.test_collaboration_persistence import (
@@ -19,10 +20,12 @@ from ugc_bot.application.services.financial_ledger_service import (
 )
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
-from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     FinancialWalletModel,
+    ReferralIncomeEntryModel,
     UserModel,
     UserReferralBindingModel,
 )
@@ -213,6 +216,106 @@ async def test_partner_history_uses_actual_snapshot_and_excludes_private_reason(
             assert result.json()["financial"]["state"] == "mismatch"
             assert result.json()["financial"]["balances"]["pending"] == "5000"
             assert result.json()["financial"]["projection"]["pending"] == "9999"
+    finally:
+        await container.session_factory.kw["bind"].dispose()
+
+
+@pytest.mark.asyncio
+async def test_overview_counts_managers_across_pages_and_reads_legacy_income(
+    collaboration_pg,
+):
+    container, config, body = await setup(
+        collaboration_pg, "client", "telegram"
+    )
+    factory, _, _, clock, data = collaboration_pg
+    app = application(container, config)
+    app.state.dispatcher["partner_view_service"].clock = clock
+    approved, pending, unrelated = (uuid4() for _ in range(3))
+    registered_at = clock.at - timedelta(days=2)
+    async with factory.begin() as db:
+        await db.execute(
+            update(UserModel)
+            .where(UserModel.user_id.in_([data["creator"], data["manager"]]))
+            .values(created_at=registered_at)
+        )
+        db.add_all(
+            UserModel(
+                user_id=user_id,
+                created_at=registered_at,
+                role_chosen_at=registered_at,
+                messenger_type=MessengerType.TELEGRAM,
+                username="synthetic",
+                status=UserStatus.ACTIVE,
+            )
+            for user_id in (approved, pending, unrelated)
+        )
+        await db.flush()
+        await db.execute(
+            insert(APPLICATIONS),
+            [
+                {
+                    "user_id": user_id,
+                    "state": state,
+                    "answers": {},
+                    "updated_at": registered_at,
+                }
+                for user_id, state in (
+                    (approved, "approved"),
+                    (pending, "submitted"),
+                    (unrelated, "approved"),
+                )
+            ],
+        )
+        db.add_all(
+            UserReferralBindingModel(
+                referrer_user_id=data["client"],
+                referred_user_id=user_id,
+                created_at=registered_at,
+            )
+            for user_id in (approved, pending, data["manager"])
+        )
+        db.add_all(
+            ReferralIncomeEntryModel(
+                entry_id=uuid4(),
+                referrer_user_id=referrer_id,
+                referred_user_id=data["creator"],
+                order_id=data["order"],
+                income_type="blogger",
+                currency=currency,
+                platform_revenue=Decimal("1000.00"),
+                commission_rate=amount / 1000,
+                commission_amount=amount,
+                created_at=registered_at,
+            )
+            for referrer_id, currency, amount in (
+                (data["client"], "KZT", Decimal("75.25")),
+                (unrelated, "RUB", Decimal("96.00")),
+            )
+        )
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://testserver",
+        ) as client:
+            response = await client.post(PATH, json=body)
+            assert response.status_code == 200, response.text
+            network = response.json()["network"]
+            assert network["total"] == 4
+            assert network["manager_total"] == 2
+            assert {
+                row["member_id"]
+                for row in network["members"]
+                if "manager" in row["roles"]
+            } == {str(approved), str(data["manager"])}
+
+            later = await client.post(PATH, json={**body, "network_page": 1})
+            assert later.status_code == 200, later.text
+            next_page = later.json()
+            assert next_page["network"]["members"] == []
+            assert next_page["network"]["manager_total"] == 2
+            assert next_page["financial"]["legacy_referral_income_minor"] == {
+                "KZT": "7525"
+            }
     finally:
         await container.session_factory.kw["bind"].dispose()
 

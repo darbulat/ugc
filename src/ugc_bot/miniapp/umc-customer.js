@@ -115,7 +115,7 @@
     document.querySelectorAll('[data-customer-copy]').forEach(function(n){n.textContent=word(n.dataset.customerCopy);});
     orders.querySelector('h1').textContent=word('orders');admin.querySelector('h1').textContent=word('admin');
     var dashboard=document.getElementById('screen-advertiser-dashboard');if(!dashboard.querySelector('[data-customer-services]')){var entry=button(word('services'),openServices);entry.dataset.customerServices='';dashboard.append(entry,button(word('help'),function(){openSupport(null);}));}
-    dashboard.querySelectorAll('[data-partner-open],[data-partner-home]').forEach(function(n){dashboard.appendChild(n);});
+    dashboard.querySelectorAll(':scope > [data-partner-open], :scope > [data-partner-home]').forEach(function(n){dashboard.appendChild(n);});
     var adminContext=bridge.createRequestContext(),adminOwner=who();
     adminContext.request('/admin/partners/context',{}).then(function(data){if(!adminContext.isCurrent()||adminOwner!==who()||!data.capabilities)return;var host=document.getElementById('screen-role-choice');if(!host.querySelector('[data-admin-tools]')){var entry=button(word('admin'),function(){show(admin);});entry.dataset.adminTools='';host.appendChild(entry);}}).catch(function(){}).finally(function(){adminContext.dispose();});
     if((window._me||{}).has_advertiser_profile){syncFollowupAfterActivity('menu');homeSummary();}
