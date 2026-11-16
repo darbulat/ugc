@@ -127,10 +127,46 @@ def test_order_recovers_from_consent_error_with_original_request(
     open_app(page, network, platform, query="?view=order")
     expect(page.locator("#form-umc-intake")).to_be_visible()
     fill(page)
-    page.locator("#btn-intake-create").click()
+    with page.expect_request(
+        lambda request: request.url.endswith("/financial/orders")
+    ) as submitted:
+        page.locator("#btn-intake-create").click()
     expect(page.locator("#screen-agreements-advertiser")).to_be_visible()
+    assert submitted.value.headers["x-umc-agreement-recovery"] == "1"
     assert len(network.creates) == 1
     network.create_code = 200
+    page.locator("#adv-agree-checkbox").check()
+    page.locator("#btn-confirm-adv-agreement").click()
+    expect(page.locator("#intake-uncertain")).to_be_visible()
+    page.locator("#btn-intake-retry").click()
+    expect(page.locator("#intake-result")).to_be_visible()
+    assert network.creates == [network.creates[0]] * 2
+
+
+def test_legacy_order_page_reopens_without_losing_the_original_request(
+    page: Page, platform: str
+) -> None:
+    network = SelectionNetwork()
+    network.advertiser_agreed = None
+    network.create_code = 401
+    network.create_error = "registration_agreement_required"
+    open_app(page, network, platform, query="?view=order")
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    page.evaluate("delete window.UMCSelection.supportsAgreementRecovery")
+    fill(page)
+    with page.expect_request(
+        lambda request: request.url.endswith("/financial/orders")
+    ) as submitted:
+        page.locator("#btn-intake-create").click()
+    expect(page.locator("#intake-uncertain")).to_be_visible()
+    expect(page.locator("#intake-error")).to_have_text(
+        "Откройте приложение заново, чтобы продолжить."
+    )
+    assert "x-umc-agreement-recovery" not in submitted.value.headers
+    network.advertiser_agreed = False
+    network.create_code = 200
+    page.reload()
+    expect(page.locator("#screen-agreements-advertiser")).to_be_visible()
     page.locator("#adv-agree-checkbox").check()
     page.locator("#btn-confirm-adv-agreement").click()
     expect(page.locator("#intake-uncertain")).to_be_visible()
@@ -189,8 +225,9 @@ def test_reopening_creator_agreement_discards_unsaved_map_pin(
     assert not errors
 
 
+@pytest.mark.parametrize("fail_refresh", [False, True])
 def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
-    page: Page, platform: str
+    page: Page, platform: str, fail_refresh: bool
 ) -> None:
     class Network(MiniAppNetwork):
         held: list[Route]
@@ -198,8 +235,15 @@ def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
         def __init__(self):
             super().__init__()
             self.held = []
+            self.fail_refresh = False
 
         def route(self, route: Route) -> None:
+            if route.request.url.endswith("/api/me") and self.fail_refresh:
+                self.fail_refresh = False
+                route.fulfill(
+                    status=503, json={"detail": "Profile refresh unavailable"}
+                )
+                return
             if route.request.url.endswith("/geocode/forward"):
                 self.held.append(route)
                 return
@@ -234,8 +278,15 @@ def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
     assert not any(path == "/register/blogger" for path, _ in network.requests)
     network.held[1].fulfill(json={"city": "New city", "lat": 3, "lon": 4})
     expect(page.locator("#blg-city")).to_have_value("New city")
+    network.fail_refresh = fail_refresh
     page.locator("#btn-submit-blogger").click()
-    expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+    if fail_refresh:
+        expect(page.locator("#blg-error")).to_have_text(
+            "Profile refresh unavailable"
+        )
+    else:
+        expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+        page.locator("#back-from-blg-agreements").click()
     payload = next(
         body for path, body in network.requests if path == "/register/blogger"
     )
@@ -244,7 +295,6 @@ def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
         3,
         4,
     )
-    page.locator("#back-from-blg-agreements").click()
     page.locator("#back-from-blogger").click()
     page.locator('[data-role="blogger"]').click()
     page.locator("#back-from-blg-agreements").click()

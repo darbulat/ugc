@@ -650,9 +650,13 @@
         if (!initData) return Promise.reject(new Error('No initData'));
         var basePayload = { init_data: initData, platform: checkedAuth ? checkedAuth.platform : window.__miniapp_platform || 'telegram' };
         var payload = typeof body === 'object' ? (checkedAuth ? Object.assign({}, body, basePayload) : Object.assign(basePayload, body)) : basePayload;
+        var headers = { 'Content-Type': 'application/json' };
+        if (path === '/financial/orders' && window.UMCSelection && window.UMCSelection.supportsAgreementRecovery) {
+          headers['X-UMC-Agreement-Recovery'] = '1';
+        }
         return fetch(base + '/miniapp/api' + path, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify(payload)
         }).then(function(r) {
           if (!r.ok) {
@@ -702,6 +706,7 @@
           return api(path, body, auth);
         }).then(function(result) {
           assertVerifiedMe(auth);
+          if (options && options.onSaved) options.onSaved();
           if (options && options.refreshProfile) {
             return loadMe(auth).then(function() { return result; });
           }
@@ -2174,8 +2179,15 @@
             Object.assign(payload, savedBloggerLocation.fields);
           }
         }
-        verifiedProfileRequest('/register/blogger', payload, {refreshProfile: true}).then(function(res) {
-          if (selectedLocation) savedBloggerLocation = selectedLocation;
+        verifiedProfileRequest('/register/blogger', payload, {
+          refreshProfile: true,
+          onSaved: function() {
+            if (!selectedLocation) return;
+            savedBloggerLocation = selectedLocation;
+            var profile = (window._me || {}).blogger_profile;
+            if (profile) profile.city = selectedLocation.city;
+          }
+        }).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
               showAgreement('blogger');

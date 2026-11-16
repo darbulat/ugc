@@ -286,10 +286,19 @@ async def test_incomplete_registration_blocks_new_intake_but_keeps_orders(
 
         new_payload = payload | {"operation_key": uuid4().hex}
         denied = await client.post(
-            f"{prefix}/financial/orders", json=new_payload
+            f"{prefix}/financial/orders",
+            json=new_payload,
+            headers={"X-UMC-Agreement-Recovery": "1"},
         )
         assert denied.status_code == 403
         assert denied.json() == {"detail": "registration_agreement_required"}
+        legacy_page = await client.post(
+            f"{prefix}/financial/orders", json=new_payload
+        )
+        assert legacy_page.status_code == 401
+        assert legacy_page.json() == {
+            "detail": "registration_agreement_required"
+        }
         confirmed = await client.post(
             f"{prefix}/register/advertiser/confirm-agreement", json=auth
         )
