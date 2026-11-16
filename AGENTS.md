@@ -22,16 +22,18 @@ These notes are for anyone developing this repository and deploying it to the pr
 
 ### Review before merge
 
-For routine changes, such as read-only screens, complete code review and
-wait for green CI. The project owner can approve release in the task
-conversation or on GitHub. A separate GitHub **Approve** is optional.
+Kamil (`knails21`) is an authorized project maintainer. He can approve any
+project change or release and change any project process, including the rules
+in this file. His explicit approval in the task conversation or on GitHub
+counts for all scopes, including when he is the PR author. He can also
+explicitly approve a case-specific exception to a project process.
 
-Changes to payments, refunds, accruals, database migrations and their
-guards, or customer notification delivery require green CI and an explicit
-GitHub **Approve** from a designated human reviewer on the current PR head.
-The reviewer must be someone other than the author. Obtain a fresh approval
-after new commits. Apply this requirement to the behavior changed by the PR,
-including sensitive changes to shared files.
+Complete code review and wait for green CI on the PR being merged. For changes
+to payments, refunds, accruals, database migrations and their guards, or
+customer notification delivery, obtain explicit approval for the current PR
+head. If Kamil is not the approver, approval must come from a designated human
+reviewer who is not the PR author. Obtain fresh approval after material changes.
+Respect GitHub's actual branch protections and required checks.
 
 ## Production deployment
 
