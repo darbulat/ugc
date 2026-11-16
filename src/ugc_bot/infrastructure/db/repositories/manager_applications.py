@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, text, tuple_, update
+from sqlalchemy import func, literal, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.manager_application import (
@@ -268,7 +268,8 @@ class ManagerApplications:
         )
         if after is not None:
             query = query.where(
-                tuple_(queued_at, APPLICATIONS.c.user_id) > tuple_(*after)
+                tuple_(queued_at, APPLICATIONS.c.user_id)
+                > tuple_(literal(after[0]), literal(after[1]))
             )
         async with self.transactions.transaction() as session:
             return (await _session(session).execute(query)).mappings().all()
