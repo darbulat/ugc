@@ -16,6 +16,9 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
 
+from tests.e2e.miniapp_helpers import generate_init_data
+from tests.helpers.factories import create_test_blogger_profile
+from tests.helpers.fakes import FakeFSMContext, FakeMessage, FakeUser
 from tests.postgres_financial.test_telegram_order_summary import (
     financial_pg_engine,
     intake_env,
@@ -30,12 +33,13 @@ from ugc_bot.application.native_principal_ports import (
 from ugc_bot.application.ports import InstagramDirectMessage
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.bot.telegram.handlers.manager_application import (
+    open_manager_application,
     review_manager_in_telegram,
     show,
 )
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
 from ugc_bot.container.creator_invite_factory import build_creator_invites
-from ugc_bot.domain.enums import UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_NOTICE_EVENTS,
     MANAGER_REVIEWERS,
@@ -57,6 +61,7 @@ from ugc_bot.infrastructure.db.repositories.manager_applications import (
 )
 from ugc_bot.instagram_webhook_app import _process_single_messaging_event
 from ugc_bot.manager_application_delivery import ManagerApplicationDelivery
+from ugc_bot.miniapp.api import router as miniapp_router
 from ugc_bot.miniapp.manager_invites import InviteRequest, manager_invite_data
 
 __all__ = ["financial_pg_engine", "intake_env"]
@@ -68,7 +73,6 @@ async def test_application_verification_review_and_directory(
     intake_env, monkeypatch, temporary_candidate_failure
 ):
     env = intake_env
-    user_id = env["admin"].user_id
     transactions = env["container"].transaction_manager
     graph = SimpleNamespace(
         get_profile_by_id=AsyncMock(
@@ -104,6 +108,8 @@ async def test_application_verification_review_and_directory(
                 )
             )
     env["config"].bot.bot_token = "123456:synthetic-review-check"
+    env["config"].bot.bot_username = "synthetic_test_bot"
+    env["config"].referral.referral_bot_username = "synthetic_test_bot"
     env["config"].webhook.webhook_base_url = "https://bot.example.test"
     sent: list[SendMessage] = []
     delayed_reviewer = {addresses[0]}
@@ -132,6 +138,46 @@ async def test_application_verification_review_and_directory(
         manager_notifier=delivery,
     )
     kafka = SimpleNamespace(publish=AsyncMock())
+    miniapp = FastAPI()
+    miniapp.include_router(miniapp_router, prefix="/miniapp")
+    miniapp.state.config = env["config"]
+    services = env["container"].build_bot_services()
+    services["manager_applications"] = service
+    miniapp.state.dispatcher = services
+    candidate_native_id = uuid4().int % 10**12 + 1
+    roles = services["user_role_service"]
+    application_chat = FakeMessage(
+        text="/manager", user=FakeUser(candidate_native_id, "test_manager", "")
+    )
+    application_chat.chat.type = "private"
+    application_state = FakeFSMContext()
+    await open_manager_application(
+        application_chat, application_state, roles, env["config"], service
+    )
+    candidate = await roles.get_user(
+        str(candidate_native_id), MessengerType.TELEGRAM
+    )
+    assert candidate is not None and not candidate.admin
+    user_id = candidate.user_id
+
+    async def manager_miniapp(path):
+        async with AsyncClient(
+            transport=ASGITransport(app=miniapp), base_url="http://testserver"
+        ) as client:
+            return await client.post(
+                "/miniapp/api" + path,
+                json={
+                    "init_data": generate_init_data(
+                        env["config"].bot.bot_token,
+                        candidate_native_id,
+                        "test_manager",
+                    )
+                },
+            )
+
+    assert (await manager_miniapp("/me")).json()["is_manager"] is False
+    directory = "/manager/invited-creators"
+    assert (await manager_miniapp(directory)).status_code == 403
     assert (await service.open(user_id))["state"] == "draft"
     answers = dict(
         name="Камиль",
@@ -290,7 +336,7 @@ async def test_application_verification_review_and_directory(
     internal = await service.open(user_id)
     assert internal["decision_note"] == "Уточните загрузку"
     candidate_chat = SimpleNamespace(answer=AsyncMock())
-    await show(candidate_chat, internal)
+    await show(candidate_chat, internal, env["config"])
     assert "на рассмотрении" in candidate_chat.answer.call_args.args[0]
     assert "Уточните загрузку" not in candidate_chat.answer.call_args.args[0]
     await service.answer(user_id, "coverage", "Казань, 10 авторов")
@@ -345,6 +391,7 @@ async def test_application_verification_review_and_directory(
         m for m in sent if m.text.startswith("<b>Instagram подтверждён ✅")
     ]
     assert len(immediate_confirmations) == int(not temporary_candidate_failure)
+    assert (await manager_miniapp(directory)).status_code == 403
     (ready,) = [m for m in sent if "готова к проверке" in m.text]
     assert ready.chat_id == addresses[0]
     approve_from_notice = ready.reply_markup.inline_keyboard[0][0]
@@ -396,19 +443,29 @@ async def test_application_verification_review_and_directory(
     (confirmation,) = [
         m for m in sent if m.text.startswith("<b>Instagram подтверждён ✅")
     ]
-    assert confirmation.chat_id == int(env["admin"].telegram_id)
+    assert confirmation.chat_id == candidate_native_id
     expected = (
         "Анкета одобрена"
         if temporary_candidate_failure
         else "Анкета передана команде"
     )
     assert expected in confirmation.text
+    if temporary_candidate_failure:
+        assert confirmation.reply_markup.inline_keyboard[0][
+            0
+        ].web_app.url.endswith("?view=manager&section=creators")
+    else:
+        assert "/manager" in confirmation.text
+        assert (
+            confirmation.reply_markup.inline_keyboard[0][0].callback_data
+            == "mgr:status"
+        )
     alerts = [message for message in sent if "Новая заявка" in message.text]
     assert sorted(message.chat_id for message in alerts) == sorted(
         addresses * 2
     )
     (welcome,) = [message for message in sent if "Вы приняты" in message.text]
-    assert welcome.chat_id == int(env["admin"].telegram_id)
+    assert welcome.chat_id == candidate_native_id
     assert "Пополняйте свою базу блогеров" in welcome.text
     assert "С сегодняшнего дня можете начинать работу" in welcome.text
     assert "Внутренний комментарий" not in welcome.text
@@ -416,9 +473,39 @@ async def test_application_verification_review_and_directory(
         "Внутренний комментарий"
     )
     buttons = welcome.reply_markup.inline_keyboard
-    assert buttons[0][0].web_app.url.endswith("?view=manager")
-    assert buttons[1][0].web_app.url.endswith("?view=partner")
-    assert buttons[2][0].url == "https://usemycontent.ru/partner"
+    directory_url = buttons[0][0].web_app.url
+    assert directory_url.endswith("?view=manager&section=creators")
+    assert buttons[1][0].web_app.url.endswith("?view=manager")
+    assert buttons[2][0].web_app.url.endswith("?view=partner")
+    assert buttons[3][0].url == "https://usemycontent.ru/partner"
+    await open_manager_application(
+        application_chat, application_state, roles, env["config"], service
+    )
+    _, reopened = application_chat.answers[-1]
+    assert reopened.inline_keyboard[0][0].web_app.url == directory_url
+    assert (await manager_miniapp("/me")).json()["is_manager"] is True
+    assert (await manager_miniapp(directory)).json()["creators"] == []
+    partner = await manager_miniapp("/partner/view")
+    assert partner.json()["referral"]["link"].endswith(
+        f"?start=ref_{candidate.referral_code}"
+    )
+    creator = await roles.set_user(
+        str(uuid4().int % 10**12 + 1), MessengerType.TELEGRAM, "New creator"
+    )
+    assert await services["referral_service"].save_pending_referral(
+        creator.user_id, candidate.referral_code
+    )
+    await create_test_blogger_profile(
+        repos["blogger_repo"], creator.user_id, agreement_confirmed_at=None
+    )
+    await services["blogger_registration_service"].confirm_blogger_agreement(
+        creator.user_id
+    )
+    listing = await manager_miniapp(directory)
+    assert listing.status_code == 200
+    assert [row["creator_id"] for row in listing.json()["creators"]] == [
+        str(creator.user_id)
+    ]
     with Session(env["pg"]) as db:
         events = db.scalars(
             select(OutboxEventModel).where(

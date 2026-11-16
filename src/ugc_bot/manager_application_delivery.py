@@ -145,7 +145,9 @@ class ManagerApplicationDelivery:
             ] != application_version(candidate["instagram_verified_at"]):
                 return None
             chat_id = candidate["telegram_id"]
-            message = instagram_verified_message(candidate["state"])
+            message = instagram_verified_message(
+                candidate["state"], self.config
+            )
         elif event.event_type == MANAGER_APPROVED:
             if candidate["state"] != "approved":
                 return None

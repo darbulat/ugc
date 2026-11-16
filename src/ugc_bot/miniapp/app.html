@@ -336,7 +336,7 @@
 
   <div id="screen-manager-orders" class="screen" data-umc-section="lilac">
     <h1>Мои заказы</h1>
-    <button type="button" class="btn btn-secondary" id="btn-invited-creators">Приглашённые креаторы</button>
+    <button type="button" class="btn btn-secondary" id="btn-invited-creators">Моя база креаторов</button>
     <ul id="manager-orders-list"></ul>
     <div class="pagination-btns">
       <button type="button" class="btn btn-secondary" id="mgr-orders-prev" style="display:none;">← Назад</button>
@@ -346,7 +346,7 @@
   </div>
 
   <div id="screen-invited-creators" class="screen" data-umc-section="lilac">
-    <h1 id="invited-creators-title">Приглашённые креаторы</h1>
+    <h1 id="invited-creators-title">Моя база креаторов</h1>
     <form id="invited-search-form" role="search">
       <label for="invited-search" id="invited-search-label">Имя, ник или город</label>
       <input id="invited-search" type="search" maxlength="120" autocomplete="off" enterkeyhint="search">
@@ -3489,7 +3489,8 @@
         updateCurrencyLabels(me.currency_symbol);
         var params = new URLSearchParams(location.search);
         var view = params.get('view');
-        if (!me.country && window.__miniapp_platform !== 'max' && !params.has('assignment') && !params.has('assignment_id') && view !== 'partner' && !(view === 'manager' && me.is_manager)) {
+        var opensCabinet = view === 'partner' || view === 'subscriptions' || (view === 'manager' && me.is_manager);
+        if (!me.country && window.__miniapp_platform !== 'max' && !params.has('assignment') && !params.has('assignment_id') && !opensCabinet) {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {

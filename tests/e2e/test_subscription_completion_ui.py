@@ -11,10 +11,14 @@ pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
 
 
 class Network(PartnerNetwork):
-    def __init__(self, admin=False):
+    def __init__(self, admin=False, manager=True):
         super().__init__()
         self.admin = admin
+        self.manager = manager
+        self.country = "ru" if manager else None
         self.commands = []
+        self.views = 0
+        self.hold_view = False
 
     def route(self, route):
         url = route.request.url
@@ -23,20 +27,28 @@ class Network(PartnerNetwork):
                 json=dict(
                     user_id=self.partner["actor_id"],
                     locale="ru",
-                    country="ru",
+                    country=self.country,
                     currency_symbol="₽",
-                    has_advertiser_profile=True,
+                    has_advertiser_profile=self.registered,
                     has_blogger_profile=False,
-                    is_manager=True,
+                    is_manager=self.manager,
                 )
             )
             return
+        if url.endswith("/config") and self.country is None:
+            route.fulfill(
+                json={"countries": [{"code": "ru", "name_native": "Россия"}]}
+            )
+            return
         if url.endswith("/subscriptions/view"):
+            self.views += 1
+            if self.hold_view:
+                return
             route.fulfill(
                 json=dict(
                     actor_id=self.partner["actor_id"],
                     can_admin=self.admin,
-                    can_manage=True,
+                    can_manage=self.manager,
                     tariffs=[
                         dict(
                             version="v1",
@@ -66,16 +78,31 @@ class Network(PartnerNetwork):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
-    page, platform
-):
+def test_partner_menu_does_not_expose_subscriptions(page, platform):
     network = Network()
     errors = open_app(
         page, network, platform, init_data=SIGNED, query="?view=partner"
     )
-    page.locator("#screen-partner [data-subscriptions-open]").click()
+    expect(page.locator("#screen-partner")).to_be_visible()
+    expect(
+        page.get_by_role("button", name="Подписка менеджера", exact=True)
+    ).to_have_count(0)
+    assert network.views == 0
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("manager", [True, False])
+def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
+    page, platform, manager
+):
+    network = Network(manager=manager)
+    errors = open_app(
+        page, network, platform, init_data=SIGNED, query="?view=subscriptions"
+    )
     screen = page.locator("#screen-subscriptions")
     expect(screen).to_contain_text("Synthetic test tariff")
+    expect(page.locator("#screen-country-select")).to_be_hidden()
     screen.locator("summary", has_text="Отменить доступ").click()
     screen.locator('input[name="reason"]').fill("Останавливаю доступ")
     screen.locator("button", has_text="Сохранить").click()
@@ -87,13 +114,42 @@ def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
     assert not errors
 
 
+@pytest.mark.parametrize(
+    ("native", "hold_view"), [(True, True), (False, False)]
+)
+def test_subscription_back_restores_country_step_before_onboarding(
+    page, native, hold_view
+):
+    network = Network(manager=False)
+    network.registered = False
+    network.hold_view = hold_view
+    errors = open_app(
+        page,
+        network,
+        "telegram",
+        native=native,
+        init_data=SIGNED,
+        query="?view=subscriptions",
+    )
+    screen = page.locator("#screen-subscriptions")
+    if hold_view:
+        expect(screen).to_contain_text("Загрузка…")
+    else:
+        expect(screen).to_contain_text("Synthetic test tariff")
+    expect(page.locator("#screen-country-select")).to_be_hidden()
+    screen.get_by_role("button", name="Назад", exact=True).click()
+    expect(page.locator("#screen-country-select")).to_be_visible()
+    expect(page.locator("#screen-role-choice")).to_be_hidden()
+    assert "view=subscriptions" not in page.url
+    assert not errors
+
+
 @pytest.mark.parametrize("price", ["12300", "9007199254740993"])
 def test_published_tariff_admin_form_preserves_exact_price(page, price):
     network = Network(admin=True)
     errors = open_app(
-        page, network, "telegram", init_data=SIGNED, query="?view=partner"
+        page, network, "telegram", init_data=SIGNED, query="?view=subscriptions"
     )
-    page.locator("#screen-partner [data-subscriptions-open]").click()
     screen = page.locator("#screen-subscriptions")
     expect(screen).to_contain_text("Оплаченные пилоты: 0")
     expect(
@@ -203,9 +259,8 @@ def test_subscription_definitive_rejection_can_reset_but_unknown_retries_exact(
 
     network.route = route
     errors = open_app(
-        page, network, platform, init_data=SIGNED, query="?view=partner"
+        page, network, platform, init_data=SIGNED, query="?view=subscriptions"
     )
-    page.locator("#screen-partner [data-subscriptions-open]").click()
     screen = page.locator("#screen-subscriptions")
     screen.locator("summary", has_text="Отменить доступ").click()
     screen.locator("input[name=reason]").fill("Synthetic cancellation")

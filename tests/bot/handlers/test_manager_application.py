@@ -120,6 +120,7 @@ async def test_manager_phone_must_belong_to_telegram_sender(config):
 
 @pytest.mark.asyncio
 async def test_manager_edits_submits_and_verifies_application(config):
+    config.webhook.webhook_base_url = "https://bot.example.test/"
     user = FakeUser(100, "candidate", "Кандидат")
     message = FakeMessage(user=user)
     message.chat.type = "private"
@@ -296,7 +297,7 @@ async def test_manager_edits_submits_and_verifies_application(config):
     assert code_text == f"<code>{code}</code>"
     assert code_keyboard.inline_keyboard[0][0].copy_text.text == code
     instruction, instruction_keyboard = message.answers[-1]
-    assert "<b>Заявка на рассмотрении.</b>" in instruction
+    assert "<b>Заявка получена.</b>" in instruction
     assert "<i>Код действует 15 минут с момента выдачи.</i>" in instruction
     assert "Бот сам сообщит в Telegram" in instruction
     assert code not in instruction
@@ -312,8 +313,8 @@ async def test_manager_edits_submits_and_verifies_application(config):
     await state.set_data({"field": "other"})
     await tap("status")
     assert await state.get_data() == {"field": "other"}
-    assert "Заявка на рассмотрении." in message.answers[-1][0]
-    assert "Instagram ожидает подтверждения." in message.answers[-1][0]
+    assert "Заявка получена." in message.answers[-1][0]
+    assert "Подтвердите Instagram" in message.answers[-1][0]
     retry_button = message.answers[-1][1].inline_keyboard[0][0]
     assert retry_button.callback_data == "mgr:instagram"
     service.instagram_challenge.assert_awaited_once_with("candidate")
@@ -326,6 +327,9 @@ async def test_manager_edits_submits_and_verifies_application(config):
     row["instagram_verified_at"] = object()
     await tap("status")
     assert "Instagram подтверждён" in message.answers[-1][0]
+    assert (
+        "Текущий статус заявки доступен в /manager." in message.answers[-1][0]
+    )
     await tap("instagram")
     assert "Instagram подтверждён" in message.answers[-1][0]
     assert service.instagram_challenge.await_count == 2
@@ -335,8 +339,20 @@ async def test_manager_edits_submits_and_verifies_application(config):
     assert "Уточните" not in message.answers[-1][0]
     row["state"] = "approved"
     await tap("status")
-    assert "/app" in message.answers[-1]
-    assert "Уточните" not in message.answers[-1]
+    text, markup = message.answers[-1]
+    assert "Кабинет менеджера открыт" in text
+    assert "Уточните" not in text
+    assert [item[0].web_app.url for item in markup.inline_keyboard] == [
+        "https://bot.example.test/miniapp/app.html?view=manager&section=creators",
+        "https://bot.example.test/miniapp/app.html?view=manager",
+        "https://bot.example.test/miniapp/app.html?view=partner",
+    ]
+    roles.get_user.return_value.telegram = "candidate"
+    await open_manager_application(message, state, roles, config, service)
+    assert message.answers[-1] == (text, markup)
+    config.webhook.webhook_base_url = ""
+    await tap("status")
+    assert "Mini App временно недоступен" in message.answers[-1]
 
 
 @pytest.mark.parametrize(

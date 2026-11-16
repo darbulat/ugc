@@ -27,6 +27,60 @@ def config():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("subscriptions", [False, True])
+async def test_app_command_launches_native_subscription_screen_on_request(
+    platform, subscriptions
+):
+    module = importlib.import_module(f"ugc_bot.bot.{platform}.handlers.start")
+    messenger = FakeMessengerClient()
+    args = " subscriptions" if subscriptions else ""
+    incoming = SimpleNamespace(chat_id="101", text=f"/app{args}")
+    if platform == "telegram":
+        await module.app_miniapp_command(
+            SimpleNamespace(chat=SimpleNamespace(type="private")),
+            config(),
+            messenger_client=messenger,
+            event_adapter=SimpleNamespace(from_message=lambda _: incoming),
+        )
+    else:
+        await module.app_miniapp_command(
+            incoming, {"config": config(), "messenger_client": messenger}
+        )
+    keyboard = messenger.sent_text[0]["keyboard"]
+    suffix = "?view=subscriptions" if subscriptions else ""
+    if platform == "telegram":
+        button = build_keyboard_markup(keyboard).inline_keyboard[0][0]
+        assert (
+            button.web_app.url
+            == "https://tg.example.test/miniapp/app.html" + suffix
+        )
+    else:
+        button = _build_inline_keyboard(keyboard)["payload"]["buttons"][0][0]
+        assert button["type"] == "open_app"
+        assert (
+            button["web_app"]
+            == "https://max.example.test/miniapp/max_app.html" + suffix
+        )
+
+
+@pytest.mark.asyncio
+async def test_telegram_subscription_command_in_group_points_to_private_chat():
+    from ugc_bot.bot.telegram.handlers.start import app_miniapp_command
+
+    messenger = FakeMessengerClient()
+    incoming = SimpleNamespace(chat_id="-1", text="/app subscriptions")
+    await app_miniapp_command(
+        SimpleNamespace(chat=SimpleNamespace(type="supergroup")),
+        config(),
+        messenger_client=messenger,
+        event_adapter=SimpleNamespace(from_message=lambda _: incoming),
+    )
+    assert messenger.sent_text[0]["keyboard"] is None
+    assert "/app subscriptions" in messenger.sent_text[0]["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize(
     "locale,label",
     [
