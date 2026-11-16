@@ -29,6 +29,9 @@ def values():
         ({"operation_key": "x" * 257}, "intake_provenance"),
         ({"policy_version": " "}, "intake_provenance"),
         ({"contact_reference": " "}, "intake_provenance"),
+        ({"image_token": UUID(int=0)}, "invalid_image_token"),
+        ({"funnel_id": UUID(int=0)}, "invalid_intake_funnel_identity"),
+        ({"targeting": {"city": "Moscow"}}, "invalid_order_targeting"),
         ({"service_mode": "pick-manager-id"}, "service_mode"),
         ({"accompaniment_ordinals": frozenset({1})}, "self_service"),
         (

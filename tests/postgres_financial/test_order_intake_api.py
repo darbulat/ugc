@@ -23,6 +23,7 @@ from tests.postgres_financial.test_order_intake import (
 )
 from ugc_bot.config import MaxBotConfig
 from ugc_bot.container import Container
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.db.models import AdvertiserProfileModel, UserModel
 from ugc_bot.miniapp.api import router
 
@@ -279,6 +280,11 @@ async def test_incomplete_registration_blocks_new_intake_but_keeps_orders(
         assert retry.json() == first.json()
         listed = await client.post(f"{prefix}/orders/list", json=auth)
         assert listed.json()["orders"][0]["order_id"] == order_id
+        invalid_filter = await client.post(
+            f"{prefix}/orders/list", json=auth | {"status": "unknown"}
+        )
+        assert invalid_filter.status_code == 422
+        assert invalid_filter.json() == {"detail": "order_status_invalid"}
         detail = await client.post(
             f"{prefix}/orders/get", json=auth | {"order_id": order_id}
         )
@@ -310,6 +316,16 @@ async def test_incomplete_registration_blocks_new_intake_but_keeps_orders(
         )
         assert created.status_code == 200, created.text
         assert created.json()["order_id"] != order_id
+
+        with Session(env["pg"]) as db, db.begin():
+            db.execute(
+                update(UserModel)
+                .where(UserModel.user_id == env["user"].user_id)
+                .values(status=UserStatus.BLOCKED)
+            )
+        forbidden = await client.post(f"{prefix}/orders/list", json=auth)
+        assert forbidden.status_code == 403
+        assert forbidden.json() == {"detail": "active_advertiser_required"}
 
 
 @pytest.mark.asyncio

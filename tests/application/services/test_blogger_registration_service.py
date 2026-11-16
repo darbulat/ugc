@@ -307,6 +307,12 @@ async def test_resolve_city_from_location_returns_result_from_geocoder() -> (
             None,
         ),
         ("Неизвестный", None, None, None),
+        (
+            "Казань",
+            (55.79, 49.12, "place", "city", "Tatarstan", "Russia"),
+            None,
+            None,
+        ),
     ],
 )
 async def test_resolve_city_identity(query, details, reverse, expected):
