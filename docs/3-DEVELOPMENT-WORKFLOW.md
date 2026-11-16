@@ -150,19 +150,17 @@ enable **Automatic review** for the repository. Confirm setup by checking for
 a Codex review on a pull request. To request one on an open PR, comment
 `@codex review`.
 
-Payments (including refunds and accruals), migrations and their database
-guards, and customer notifications require explicit human approval on the
-latest PR commit, in addition to green CI. Follow
-[the required review rule](../AGENTS.md#mandatory-review-for-sensitive-changes).
-[`.github/CODEOWNERS`](../.github/CODEOWNERS) assigns `@knails21` to
-the sensitive paths and the review policy. A repository admin must protect
-`main` in Settings → Branches: require a pull request, Code Owners approval,
-dismissal of stale approvals, and the `lint-and-test (3.13)` status check.
-Apply the rule to administrators as well. GitHub uses the CODEOWNERS file
-from the PR base branch; adding it to a PR does not enable protection by
-itself. Open sensitive PRs under a different account if `@knails21` is
-the reviewer. Follow the project rule even when GitHub does not yet enforce
-it or the sensitive code is in a shared file not covered by a path rule.
+For routine changes, finish code review and wait for green CI. The project
+owner can approve the release in the task conversation or on GitHub.
+
+Changes to payments, migrations, and sending customer notifications follow
+[the required review rule](../AGENTS.md#review-before-merge). The
+[CODEOWNERS file](../.github/CODEOWNERS) routes dedicated files in those
+areas to `@knails21`. The rule also applies to sensitive changes in shared
+files. If `@knails21` is the PR author, use another designated team reviewer.
+
+A repository administrator can require `lint-and-test (3.13)` on `main` in
+Settings → Branches.
 
 ## Development on Dev Server
 

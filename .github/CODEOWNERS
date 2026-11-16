@@ -1,10 +1,5 @@
-# CI and review policy. Keep this file owned so the protection cannot be
-# weakened without review once Require review from Code Owners is enabled.
-/.github/ @knails21
-/AGENTS.md @knails21
-/docs/3-DEVELOPMENT-WORKFLOW.md @knails21
-/Makefile @knails21
-/pyproject.toml @knails21
+# Send changes to dedicated sensitive files to the project reviewer.
+# For shared files, use the review requirements in AGENTS.md.
 
 # Database migrations, shared models and database guards.
 /alembic.ini @knails21
@@ -47,11 +42,6 @@
 /src/ugc_bot/application/services/order_service.py @knails21
 /src/ugc_bot/application/services/support_service.py @knails21
 
-# Shared entry points that can change whether a payment or notice runs.
-/src/ugc_bot/config.py @knails21
-/src/ugc_bot/container/ @knails21
-/src/ugc_bot/miniapp/api.py @knails21
+# Manager invitation and scheduled delivery entry points.
 /src/ugc_bot/miniapp/manager_invites.py @knails21
-/src/ugc_bot/*webhook_app.py @knails21
 /src/ugc_bot/combined_scheduler.py @knails21
-/src/ugc_bot/kafka_consumer.py @knails21

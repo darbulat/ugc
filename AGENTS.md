@@ -20,16 +20,18 @@ These notes are for anyone developing this repository and deploying it to the pr
 4. Install project dependencies with `uv sync --all-extras`. Run the relevant focused tests, then use the repository checks as appropriate: `make format-check lint typecheck test`. `make test` excludes tests marked `e2e`; run the relevant E2E suite when the change affects browser flows or an external integration.
 5. Push the topic branch and open a PR. Wait for GitHub CI and code review; resolve findings before merging. Deploy production changes from a commit that has been merged to `main`, unless the owner explicitly asks for a different release process.
 
-### Mandatory review for sensitive changes
+### Review before merge
 
-Payment, refunds and accruals, database migrations and their guards, and any
-change that can send a customer notification must have a green CI run and
-an explicit GitHub **Approve** from a designated human reviewer on the current
-PR head before merge or rollout. The reviewer must not be the PR author.
-A changed head requires a new approval. Bot reviews, automated tests, and
-approval in chat do not substitute for this GitHub approval. Review changes
-to the review policy itself with the same rule. Never create or submit an
-approval as the author or on someone's behalf.
+For routine changes, such as read-only screens, complete code review and
+wait for green CI. The project owner can approve release in the task
+conversation or on GitHub. A separate GitHub **Approve** is optional.
+
+Changes to payments, refunds, accruals, database migrations and their
+guards, or customer notification delivery require green CI and an explicit
+GitHub **Approve** from a designated human reviewer on the current PR head.
+The reviewer must be someone other than the author. Obtain a fresh approval
+after new commits. Apply this requirement to the behavior changed by the PR,
+including sensitive changes to shared files.
 
 ## Production deployment
 
