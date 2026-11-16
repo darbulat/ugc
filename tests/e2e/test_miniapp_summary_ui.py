@@ -158,12 +158,16 @@ def test_preview_customer_sees_contacts_in_summary_after_confirmation(page):
     network.summary["states"] = {"contact_received": 1, "awaiting_contact": 1}
     page.evaluate("window.__host.wa.MainButton.click()")
     first = contacts.get_by_role("listitem").filter(has_text="№1")
-    instagram = first.get_by_role("link", name="Instagram: @umc_e0828ce4_demo")
-    telegram = first.get_by_role("link", name="Telegram: @umc_e0828ce4_demo")
+    instagram = first.get_by_role("link", name="Instagram")
+    telegram = first.get_by_role("link", name="Telegram")
     expect(instagram).to_have_attribute(
         "href", "https://instagram.com/umc_e0828ce4_demo/"
     )
     expect(telegram).to_have_attribute("href", "https://t.me/umc_e0828ce4_demo")
+    for contact in (instagram, telegram):
+        expect(contact).to_contain_text("@umc_e0828ce4_demo")
+        expect(contact).to_have_css("border-top-width", "1px")
+        expect(contact).to_have_css("min-height", "56px")
     instagram.click()
     telegram.click()
     assert (
@@ -207,10 +211,10 @@ def test_contact_links_use_only_the_expected_social_domains(page):
     contacts = page.get_by_role("region", name="Контакты креаторов")
     expect(contacts.get_by_role("link")).to_have_count(2)
     expect(
-        contacts.get_by_role("link", name="Instagram:", exact=False)
+        contacts.get_by_role("link", name="Instagram", exact=False)
     ).to_have_attribute("href", "https://instagram.com/synthetic_creator/")
     expect(
-        contacts.get_by_role("link", name="Telegram:", exact=False)
+        contacts.get_by_role("link", name="Telegram", exact=False)
     ).to_have_attribute("href", "https://t.me/synthetic_creator")
     assert not errors
 
