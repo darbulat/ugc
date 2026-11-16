@@ -1066,6 +1066,7 @@
           btn_apply_manager: 'Подать заявку менеджера',
           mgr_orders_h1: 'Мои заказы',
           mgr_order_detail_title: 'Заказ',
+          mgr_open_order: 'Открыть заказ',
           btn_mgr_creators_in_offer: 'Креаторы в заказе',
           btn_mgr_creators_reserve: 'Креаторы в резерве',
           mgr_creators_h1: 'Креаторы',
@@ -1209,6 +1210,7 @@
           btn_apply_manager: 'Apply as a manager',
           mgr_orders_h1: 'My orders',
           mgr_order_detail_title: 'Order',
+          mgr_open_order: 'Open order',
           btn_mgr_creators_in_offer: 'Creators in order',
           btn_mgr_creators_reserve: 'Creators in reserve',
           mgr_creators_h1: 'Creators',
@@ -1348,6 +1350,7 @@
           btn_apply_manager: 'Менеджер болуға өтінім беру',
           mgr_orders_h1: 'Менің тапсырыстарым',
           mgr_order_detail_title: 'Тапсырыс',
+          mgr_open_order: 'Тапсырысты ашу',
           btn_mgr_creators_in_offer: 'Тапсырыстағы креаторлар',
           btn_mgr_creators_reserve: 'Резервтегі креаторлар',
           mgr_creators_h1: 'Креаторлар',
@@ -1487,6 +1490,7 @@
           btn_apply_manager: 'Падаць заяўку на ролю менеджара',
           mgr_orders_h1: 'Мае заказы',
           mgr_order_detail_title: 'Заказ',
+          mgr_open_order: 'Адкрыць заказ',
           btn_mgr_creators_in_offer: 'Крэатары ў заказе',
           btn_mgr_creators_reserve: 'Крэатары ў рэзерве',
           mgr_creators_h1: 'Крэатары',
@@ -1626,6 +1630,7 @@
           btn_apply_manager: 'Menejerlikka ariza berish',
           mgr_orders_h1: 'Mening buyurtmalarim',
           mgr_order_detail_title: 'Buyurtma',
+          mgr_open_order: 'Buyurtmani ochish',
           btn_mgr_creators_in_offer: 'Buyurtmadagi kreatorlar',
           btn_mgr_creators_reserve: 'Rezervdagi kreatorlar',
           mgr_creators_h1: 'Kreatorlar',
@@ -2572,6 +2577,11 @@
               li.appendChild(strong);
               var datePart = fmtDate(o.created_at);
               li.appendChild(document.createTextNode(' ' + o.status + ' \u00b7 ' + fmtPrice(o.price, o.currency_symbol) + (datePart ? ' \u00b7 ' + datePart : '')));
+              var openButton = document.createElement('button');
+              openButton.type = 'button';
+              openButton.className = 'btn';
+              openButton.textContent = tx('mgr_open_order');
+              li.appendChild(openButton);
               li.addEventListener('click', function() {
                 openManagerOrder(o.order_id, o.product_link || o.order_id, o.currency_symbol);
               });
