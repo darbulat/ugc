@@ -11,6 +11,9 @@ from tests.e2e.test_miniapp_invite_handoff_ui import ORDER, InviteNetwork
 pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
 
 
+@pytest.mark.browser_context_args(
+    viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+)
 def test_manager_filters_and_refreshes_the_order_queue(page):
     class Network(InviteNetwork):
         def route(self, route):
@@ -42,11 +45,15 @@ def test_manager_filters_and_refreshes_the_order_queue(page):
 
     network = Network()
     network.registered = False
+    network.order["product_link"] = "https://example.test/brand"
     errors = open_app(page, network)
-    page.get_by_role("button", name="Менеджер", exact=True).click()
-    page.get_by_text("Тест приглашений", exact=True).click()
+    page.get_by_role("button", name="Менеджер", exact=True).tap()
+    order = page.locator(f'[data-order-id="{ORDER}"]')
+    expect(order.get_by_role("button", name="Сводка по заказу")).to_be_visible()
+    order.get_by_role("button", name="Открыть заказ").tap()
+    expect(page.get_by_role("button", name="Добавить креатора")).to_be_visible()
     toggle = page.get_by_role("button", name="Очередь по позициям")
-    toggle.click()
+    toggle.tap()
     panel = page.locator("#mgr-position-queue")
     expect(panel.get_by_role("listitem")).to_have_count(3)
     expect(panel.get_by_text("№2 · Ручной подбор")).to_be_visible()
