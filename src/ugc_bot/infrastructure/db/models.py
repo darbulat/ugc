@@ -983,6 +983,24 @@ class UserReferralBindingModel(Base):
     )
 
 
+class ManagerCreatorFollowupModel(Base):
+    """When a manager should next contact an invited creator."""
+
+    __tablename__ = "manager_creator_followups"
+
+    manager_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    creator_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    remind_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class UserReferralPendingModel(Base):
     """Pending referral binding until creator registration."""
 

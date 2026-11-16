@@ -1,8 +1,11 @@
-"""Referrer-scoped reads for the manager's creator directory."""
+"""Referrer-scoped reads and follow-ups for the manager's creator directory."""
 
+from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -12,6 +15,7 @@ from ugc_bot.application.native_principal_ports import (
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
+    ManagerCreatorFollowupModel,
     UserModel,
     UserReferralBindingModel,
 )
@@ -19,6 +23,21 @@ from ugc_bot.infrastructure.db.repositories.bot_availability import (
     creator_directory_status,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
+
+InstagramFilter = Literal["all", "verified", "unverified", "due"]
+
+
+def _verified():
+    profile = BloggerProfileModel
+    return and_(
+        profile.confirmed.is_(True),
+        func.trim(func.coalesce(profile.instagram_user_id, "")) != "",
+    )
+
+
+def _due():
+    remind_at = ManagerCreatorFollowupModel.remind_at
+    return and_(~_verified(), or_(remind_at.is_(None), remind_at <= func.now()))
 
 
 def invited_creator_scope(query, owner_id: UUID):
@@ -53,6 +72,9 @@ def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
                 UserModel,
                 BloggerProfileModel,
                 creator_directory_status().label("status"),
+                _verified().label("instagram_verified"),
+                _due().label("followup_due"),
+                ManagerCreatorFollowupModel.remind_at,
             ),
             principal.user_id,
         )
@@ -61,6 +83,13 @@ def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
             inviter.user_id == UserReferralBindingModel.referrer_user_id,
         )
         .where(native_id == principal.external_id)
+        .outerjoin(
+            ManagerCreatorFollowupModel,
+            and_(
+                ManagerCreatorFollowupModel.manager_id == inviter.user_id,
+                ManagerCreatorFollowupModel.creator_id == UserModel.user_id,
+            ),
+        )
     )
 
 
@@ -72,8 +101,20 @@ async def invited_creator_page(
     offset: int,
     limit: int,
     q: str = "",
+    instagram: InstagramFilter = "all",
 ):
     query = _invited_creators_query(principal)
+    due_count = await session.scalar(
+        select(func.count()).select_from(
+            query.where(_due()).with_only_columns(UserModel.user_id).subquery()
+        )
+    )
+    if instagram == "verified":
+        query = query.where(_verified())
+    elif instagram == "unverified":
+        query = query.where(~_verified())
+    elif instagram == "due":
+        query = query.where(_due())
     if bot_unavailable:
         query = query.where(
             creator_directory_status() == UserStatus.BOT_BLOCKED
@@ -93,13 +134,14 @@ async def invited_creator_page(
                 BloggerProfileModel.city.icontains(term, autoescape=True),
             )
         )
-    return (
+    rows = (
         await session.execute(
             query.order_by(UserModel.created_at.desc(), UserModel.user_id)
             .offset(offset)
             .limit(limit + 1)
         )
     ).all()
+    return rows, due_count or 0
 
 
 async def invited_creator_card(
@@ -111,9 +153,42 @@ async def invited_creator_card(
     social = SocialAccountModel
     query = (
         _invited_creators_query(principal)
-        .add_columns(social.platform, social.url, social.handle)
+        .add_columns(
+            social.platform.label("social_platform"),
+            social.url.label("social_url"),
+            social.handle.label("social_handle"),
+        )
         .outerjoin(social, social.user_id == UserModel.user_id)
         .where(UserModel.user_id == creator_id)
         .order_by(social.platform)
     )
     return (await session.execute(query)).all()
+
+
+async def postpone_creator_followup(
+    session: AsyncSession,
+    principal: AuthenticatedMessengerPrincipal,
+    creator_id: UUID,
+    delay: timedelta,
+) -> datetime | None:
+    """Postpone contact for an unverified creator in the manager's own base."""
+    eligible = (
+        _invited_creators_query(principal)
+        .with_only_columns(UserModel.user_id)
+        .where(UserModel.user_id == creator_id, ~_verified())
+        .with_for_update(of=(UserReferralBindingModel, BloggerProfileModel))
+    )
+    if await session.scalar(eligible) is None:
+        return None
+    followup = ManagerCreatorFollowupModel
+    statement = insert(followup).values(
+        manager_id=principal.user_id,
+        creator_id=creator_id,
+        remind_at=func.now() + delay,
+    )
+    return await session.scalar(
+        statement.on_conflict_do_update(
+            index_elements=[followup.manager_id, followup.creator_id],
+            set_={"remind_at": statement.excluded.remind_at},
+        ).returning(followup.remind_at)
+    )

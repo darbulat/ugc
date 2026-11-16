@@ -1,9 +1,14 @@
 """Private Mini App directory for creators invited by the current manager."""
 
+import re
+from collections.abc import Sequence
+from datetime import datetime, timedelta
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import Row
 
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -14,10 +19,11 @@ from ugc_bot.domain.social import (
     SocialPlatform,
     normalize_social_url,
 )
-from ugc_bot.infrastructure.db.models import BloggerProfileModel, UserModel
 from ugc_bot.infrastructure.db.repositories.manager_creator_directory import (
+    InstagramFilter,
     invited_creator_card,
     invited_creator_page,
+    postpone_creator_followup,
 )
 from ugc_bot.miniapp.financial_principal import FinancialPrincipalResolver
 from ugc_bot.miniapp.native_caller_errors import NoStoreManagerDirectoryRoute
@@ -30,6 +36,7 @@ class DirectoryRequest(SignedMiniAppRequest):
     bot_unavailable: bool = Field(default=False, strict=True)
     page: int = Field(default=0, ge=0, le=100000, strict=True)
     q: str = Field(default="", max_length=120, strict=True)
+    instagram: InstagramFilter = "all"
 
 
 class InvitedCreator(BaseModel):
@@ -37,11 +44,16 @@ class InvitedCreator(BaseModel):
     name: str
     city: str
     status: UserStatus
+    instagram_verified: bool
+    telegram_url: str | None
+    followup_due: bool
+    remind_at: datetime | None
 
 
 class CreatorPage(BaseModel):
     creators: list[InvitedCreator]
     has_more: bool
+    followup_count: int
 
 
 class SocialLink(BaseModel):
@@ -50,18 +62,33 @@ class SocialLink(BaseModel):
 
 
 class CreatorCard(InvitedCreator):
-    instagram_verified: bool
     links: list[SocialLink]
 
 
-def _creator_fields(
-    user: UserModel, profile: BloggerProfileModel, status: UserStatus
-) -> dict:
+class FollowupRequest(SignedMiniAppRequest):
+    action: Literal["contacted", "tomorrow"]
+
+
+class FollowupResult(BaseModel):
+    remind_at: datetime
+
+
+def _creator_fields(row: Row) -> dict:
+    user, profile = row[0], row[1]
+    handle = (user.telegram or "").strip().removeprefix("@")
     return {
         "creator_id": user.user_id,
         "name": user.username.strip() or (user.telegram or "").strip(),
         "city": (profile.city or "").strip(),
-        "status": status,
+        "status": row.status,
+        "instagram_verified": row.instagram_verified,
+        "telegram_url": (
+            f"https://t.me/{handle}"
+            if re.fullmatch(r"[A-Za-z0-9_]{5,32}", handle)
+            else None
+        ),
+        "followup_due": row.followup_due,
+        "remind_at": None if row.instagram_verified else row.remind_at,
     }
 
 
@@ -75,6 +102,28 @@ def _social_link(
     return SocialLink(
         label=SOCIAL_PLATFORM_LABELS.get(platform, handle), url=url
     )
+
+
+def _creator_links(rows: Sequence[Row]) -> list[SocialLink]:
+    links = []
+    profile = rows[0][1]
+    instagram = _social_link(SocialPlatform.INSTAGRAM, profile.instagram_url)
+    if instagram:
+        links.append(instagram)
+    for row in rows:
+        if (
+            not row.social_platform
+            or row.social_platform == SocialPlatform.INSTAGRAM
+        ):
+            continue
+        try:
+            network = SocialPlatform(row.social_platform)
+        except ValueError:
+            continue
+        link = _social_link(network, row.social_url, row.social_handle)
+        if link is not None:
+            links.append(link)
+    return links
 
 
 async def _context(
@@ -126,20 +175,22 @@ def create_manager_directory_router(
             request, body, resolve_principal
         )
         async with transactions.transaction() as session:
-            rows = await invited_creator_page(
+            rows, followup_count = await invited_creator_page(
                 session,
                 principal,
                 bot_unavailable=body.bot_unavailable,
                 offset=body.page * PAGE_SIZE,
                 limit=PAGE_SIZE,
                 q=body.q,
+                instagram=body.instagram,
             )
         return CreatorPage(
             creators=[
-                InvitedCreator(**_creator_fields(user, profile, status))
-                for user, profile, status in rows[:PAGE_SIZE]
+                InvitedCreator(**_creator_fields(row))
+                for row in rows[:PAGE_SIZE]
             ],
             has_more=len(rows) > PAGE_SIZE,
+            followup_count=followup_count,
         )
 
     @router.post("/{creator_id}")
@@ -155,29 +206,25 @@ def create_manager_directory_router(
             rows = await invited_creator_card(session, principal, creator_id)
         if not rows:
             raise HTTPException(404, "creator_not_found")
-        user, profile, status, *_ = rows[0]
-        links = []
-        instagram = _social_link(
-            SocialPlatform.INSTAGRAM, profile.instagram_url
-        )
-        if instagram:
-            links.append(instagram)
-        for _, _, _, platform, url, handle in rows:
-            if not platform or platform == SocialPlatform.INSTAGRAM:
-                continue
-            try:
-                network = SocialPlatform(platform)
-            except ValueError:
-                continue
-            link = _social_link(network, url, handle)
-            if link is not None:
-                links.append(link)
         return CreatorCard(
-            **_creator_fields(user, profile, status),
-            instagram_verified=bool(
-                profile.confirmed and (profile.instagram_user_id or "").strip()
-            ),
-            links=links,
+            **_creator_fields(rows[0]),
+            links=_creator_links(rows),
         )
+
+    @router.post("/{creator_id}/followup")
+    async def followup(
+        request: Request, creator_id: UUID, body: FollowupRequest
+    ) -> FollowupResult:
+        principal, transactions = await _context(
+            request, body, resolve_principal
+        )
+        delay = timedelta(days=2 if body.action == "contacted" else 1)
+        async with transactions.transaction() as session:
+            remind_at = await postpone_creator_followup(
+                session, principal, creator_id, delay
+            )
+        if remind_at is None:
+            raise HTTPException(404, "creator_not_found")
+        return FollowupResult(remind_at=remind_at)
 
     return router
