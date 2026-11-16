@@ -124,6 +124,7 @@ CREATOR_BASE_LABELS = {
     **MAX_ACTIVITY_LABELS,
     **CREATOR_FUNNEL_LABELS,
     "telegram_available": "Telegram · доступен",
+    "telegram_ready": "Готовы к подбору в Telegram",
     "telegram_unavailable": "Telegram · бот недоступен",
     "telegram_unknown": "Telegram · нет данных о доступности",
     "max_available": "MAX · доступен",
@@ -318,7 +319,12 @@ def creator_base_filter(
         if segment in CREATOR_ACTIVITY_SEGMENTS
         else _profile_conditions()
     )
-    return and_(UserModel.status != UserStatus.DELETED, conditions[segment])
+    condition = (
+        conditions["registered"] & conditions["telegram_available"]
+        if segment == "telegram_ready"
+        else conditions[segment]
+    )
+    return and_(UserModel.status != UserStatus.DELETED, condition)
 
 
 def _new_accounts(

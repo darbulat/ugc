@@ -120,6 +120,7 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     (both, "bot_unavailable", "telegram", "1001", 5),
                     (both, "bot_available", "telegram", "1001", 3),
                     (both, "bot_unavailable", "max", "2001", 2),
+                    (pending, "bot_available", "telegram", "1004", 2),
                     (max_only, "bot_unavailable", "max", "old-max-id", 1),
                 )
             ],
@@ -258,9 +259,9 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             "registered_max_only": 1,
             "telegram_account": 4,
             "max_account": 2,
-            "telegram_available": 1,
+            "telegram_available": 2,
             "telegram_unavailable": 1,
-            "telegram_unknown": 2,
+            "telegram_unknown": 1,
             "max_available": 0,
             "max_unavailable": 1,
             "max_unknown": 1,
@@ -290,6 +291,11 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                 "all", False, False, base_segment=segment, work_period="30d"
             )
             assert listing["total"] == count, segment
+        ready = await service.list_creators(
+            "all", False, False, base_segment="telegram_ready"
+        )
+        assert ready["total"] == 1
+        assert [item["user_id"] for item in ready["items"]] == [str(both)]
         today_counts, yesterday_counts = await gather(
             service.get_creator_base("today"),
             service.get_creator_base("yesterday"),

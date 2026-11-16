@@ -37,13 +37,14 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    BOT_AVAILABLE_EVENT,
     BOT_UNAVAILABLE_EVENT,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
 @pytest.fixture
-def people_records():
+def people_records(request):
     database = os.environ.get("FINANCIAL_TEST_DATABASE_URL")
     if not database or not os.environ.get("E2E_BASE_URL"):
         pytest.skip("Requires a synthetic admin server with PostGIS")
@@ -52,6 +53,8 @@ def people_records():
         uuid4() for _ in range(6)
     ]
     now = datetime.now(timezone.utc)
+    telegram_ready_sample = getattr(request, "param", False)
+    confirmed_profiles = (creator_id, other_id) if telegram_ready_sample else ()
     token = creator_id.hex[:8]
     brand = f"Марка & Партнёры {token}"
     city = f"Казань {token}"
@@ -63,8 +66,8 @@ def people_records():
             user_id=user_id,
             username=name,
             telegram=handle,
-            telegram_id=str(other_id.int % 10**12 + 1)
-            if user_id == other_id
+            telegram_id=str(user_id.int % 10**12 + 1)
+            if user_id == other_id or user_id in confirmed_profiles
             else None,
             messenger_type=MessengerType.TELEGRAM,
             status=status,
@@ -85,14 +88,18 @@ def people_records():
     with Session(engine) as session, session.begin():
         session.add_all(users)
         session.flush()
-        session.add(
+        availability = [(other_id, BOT_UNAVAILABLE_EVENT)]
+        if telegram_ready_sample:
+            availability.append((creator_id, BOT_AVAILABLE_EVENT))
+        session.add_all(
             AuditLogModel(
-                entity_type=BOT_UNAVAILABLE_EVENT,
-                entity_id=other_id,
+                entity_type=event,
+                entity_id=user_id,
                 action=AuditAction.CREATE,
                 new_values={"platform": "telegram"},
                 changed_at=now,
             )
+            for user_id, event in availability
         )
         session.add(
             UserReferralBindingModel(
@@ -116,7 +123,17 @@ def people_records():
                 BloggerProfileModel(
                     user_id=user_id,
                     instagram_url=f"https://instagram.com/{handle}",
-                    city=f" {city.lower()} " if user_id == creator_id else city,
+                    city=(
+                        f"Томск {token}"
+                        if telegram_ready_sample and user_id == paused_id
+                        else f" {city.lower()} "
+                        if user_id == creator_id
+                        else city
+                    ),
+                    confirmed=user_id in confirmed_profiles,
+                    agreement_confirmed_at=now
+                    if user_id in confirmed_profiles
+                    else None,
                     topics={"beauty": True},
                     audience_gender=AudienceGender.ALL,
                     audience_age_min=18,
@@ -251,7 +268,9 @@ def people_records():
     finally:
         with engine.begin() as db:
             db.execute(
-                delete(AuditLogModel).where(AuditLogModel.entity_id == other_id)
+                delete(AuditLogModel).where(
+                    AuditLogModel.entity_id.in_((creator_id, other_id))
+                )
             )
             db.execute(
                 delete(OrderModel).where(OrderModel.order_id == order_id)
@@ -540,6 +559,83 @@ def test_selected_platform_audience_with_search_and_blocked_bot(
     expect(minimum).to_have_value("")
     expect(unknown).not_to_be_checked()
     expect(unknown).to_be_disabled()
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(60)
+@pytest.mark.parametrize("width", [320, 1440])
+@pytest.mark.parametrize("people_records", [True], indirect=True)
+def test_telegram_ready_combines_with_city_platform_and_followers(
+    admin_server, page, people_records, width
+):
+    from tests.e2e.test_admin_ui import _login
+
+    _, city, instagram, _, creator = people_records
+    other_city = f"томск {instagram.removeprefix('city_creator_')}"
+    page.set_viewport_size({"width": width, "height": 900})
+    _login(page, admin_server)
+    page.goto(f"{admin_server}/admin/users/creators")
+    form = page.locator(".people-filters")
+    city_filter = form.get_by_label("Город")
+    platform = form.get_by_label("Есть ссылка на площадку")
+    minimum = form.get_by_label("От N подписчиков")
+    submit = form.get_by_role("button", name="Найти")
+    ready = page.get_by_role(
+        "link", name="Готовы к подбору в Telegram", exact=True
+    )
+    remove_ready = page.get_by_role(
+        "link", name="Снять фильтр «Готовы к подбору в Telegram»"
+    )
+
+    city_filter.select_option(city.lower())
+    platform.select_option("youtube")
+    minimum.fill("1200")
+    submit.click()
+    expect(page.get_by_text("Найдено 2", exact=True)).to_be_visible()
+    ready.click()
+    expect(remove_ready).to_have_attribute("aria-current", "true")
+    expect(city_filter).to_have_value(city.lower())
+    expect(platform).to_have_value("youtube")
+    expect(minimum).to_have_value("1200")
+    expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+    expect(page.get_by_role("link", name=creator, exact=True)).to_be_visible()
+
+    for city_value, channel, threshold, count in (
+        (other_city, "youtube", "1200", 0),
+        (city.lower(), "tiktok", "1200", 0),
+        (city.lower(), "youtube", "20001", 0),
+        (city.lower(), "youtube", "20000", 1),
+        (city.lower(), "youtube", "1200", 1),
+    ):
+        city_filter.select_option(city_value)
+        platform.select_option(channel)
+        minimum.fill(threshold)
+        submit.click()
+        expect(page.get_by_text(f"Найдено {count}", exact=True)).to_be_visible()
+        expect(remove_ready).to_be_visible()
+
+    instagram_minimum = form.get_by_label("Подписчики Instagram")
+    instagram_minimum.select_option("10000")
+    submit.click()
+    expect(page.get_by_text("Найдено 0", exact=True)).to_be_visible()
+    instagram_minimum.select_option("")
+    platform.select_option("dzen")
+    unknown = form.get_by_label("Число не указано")
+    unknown.check()
+    submit.click()
+    expect(page.get_by_text("Найдено 1", exact=True)).to_be_visible()
+    expect(remove_ready).to_be_visible()
+
+    unknown.uncheck()
+    platform.select_option("youtube")
+    minimum.fill("1200")
+    submit.click()
+    remove_ready.click()
+    expect(ready).to_be_visible()
+    expect(city_filter).to_have_value(city.lower())
+    expect(platform).to_have_value("youtube")
+    expect(minimum).to_have_value("1200")
+    expect(page.get_by_text("Найдено 2", exact=True)).to_be_visible()
 
 
 @pytest.mark.e2e
