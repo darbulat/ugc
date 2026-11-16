@@ -38,6 +38,7 @@
   <script src="/miniapp/umc-order-images.js" defer></script>
   <script src="/miniapp/umc-subscriptions.js" defer></script>
   <script src="/miniapp/umc-checkout.js" defer></script>
+  <script src="/miniapp/umc-checkout-review.js" defer></script>
   <script src="/miniapp/umc-messenger-linking.js" defer></script>
   <script src="/miniapp/umc-summary.js" defer></script>
   <script src="/miniapp/umc-campaigns.js" defer></script>
@@ -52,6 +53,20 @@
   <script src="/miniapp/umc-debts.js" defer></script>
 </head>
 <body class="umc">
+  <dialog id="checkout-review" class="checkout-review" aria-labelledby="checkout-review-title">
+    <h2 id="checkout-review-title">Сверка оплаты</h2>
+    <p id="checkout-review-status" role="status">Проверяем заказ…</p>
+    <form id="checkout-review-form" hidden>
+      <label for="checkout-review-evidence">ID операции или обращения в ЮKassa</label>
+      <input id="checkout-review-evidence" type="text" required minlength="8" maxlength="2000" autocomplete="off">
+      <label class="checkout-review-confirm">
+        <input id="checkout-review-confirmed" type="checkbox" required>
+        <span>Я сверил операцию в ЮKassa и подтверждаю, что списания не было.</span>
+      </label>
+      <button class="btn" type="submit">Закрыть авторизацию</button>
+    </form>
+    <button id="checkout-review-close" class="btn btn-secondary" type="button">Закрыть окно</button>
+  </dialog>
   <main class="umc-app" id="umc-app">
     <div class="umc-brand" aria-label="UMC — use my content">
       <img src="/miniapp/design-system/assets/umc-logo.png" alt="" width="40" height="40">

@@ -140,6 +140,7 @@ def open_app(
     host: bool = True,
     init_data: str = "synthetic-test-auth",
     query: str = "",
+    start_param: str | None = None,
 ) -> list[str]:
     page.set_default_timeout(8_000)
     errors: list[str] = []
@@ -150,6 +151,9 @@ def open_app(
         script = script.replace("__PLATFORM__", json.dumps(platform))
         script = script.replace("__NATIVE__", json.dumps(native))
         script = script.replace("__INIT_DATA__", json.dumps(init_data))
+        if start_param is not None:
+            data = json.dumps({"start_param": start_param})
+            script += f"\nwindow.__host.wa.initDataUnsafe = {data};"
         page.add_init_script(script=script)
     template = "max_app.html" if platform == "max" else "app.html"
     page.goto(f"http://miniapp.test/miniapp/{template}{query}")

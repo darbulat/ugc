@@ -93,7 +93,7 @@
       {% if browser_payment_message %}<p role="alert">{{ browser_payment_message }}</p>{% endif %}
       {% if browser_payment %}
         {% set payment_state = browser_payment.state %}
-        {% if payment_state in ('creating', 'pending', 'review') %}
+        {% if payment_state in ('creating', 'pending', 'review', 'telegram_pending') %}
           <span id="browser-payment-watch" hidden
                 data-url="{{ request.url_for('browser_payment_status', order_id=order.order_id) }}"
                 data-state="{{ payment_state }}" data-link="{{ 'yes' if browser_payment.url else 'no' }}"></span>
@@ -119,6 +119,9 @@
         {% endif %}
         {% if payment_state == 'telegram_pending' %}
           <p>Проверяем предыдущую попытку оплаты в Telegram.</p>
+          {% if checkout_review_url %}
+            <a class="admin-button" href="{{ checkout_review_url }}" target="_blank" rel="noopener noreferrer">Сверить оплату в Telegram</a>
+          {% endif %}
         {% elif payment_state == 'creating' %}
           <p role="status">ЮKassa подготавливает счёт для клиента.</p>
         {% elif payment_state == 'review' %}

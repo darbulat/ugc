@@ -129,6 +129,20 @@ input[readonly] { cursor: pointer; }
 }
 .btn:hover { background: var(--ink-hover); transform: translateY(-1px); }
 .btn:disabled { opacity: .6; cursor: default; transform: none; }
+.checkout-review {
+  box-sizing: border-box;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 20px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+}
+.checkout-review::backdrop { background: #0008; }
+.checkout-review h2 { margin-top: 0; }
+.checkout-review-confirm { display: flex; align-items: start; gap: 8px; margin: 12px 0; }
+.checkout-review-confirm input { width: auto; margin: 4px 0 0; }
 .btn-secondary { margin-top: var(--space-8); background: var(--card); color: var(--ink); border-color: var(--line-strong); }
 .btn-secondary:hover { background: var(--card); border-color: var(--ink); }
 form .btn-secondary { background: var(--bg); }
