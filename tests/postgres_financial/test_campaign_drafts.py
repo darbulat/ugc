@@ -5,6 +5,10 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import func, select, update
 
+from tests.helpers.factories import (
+    create_test_blogger_profile,
+    create_test_user,
+)
 from tests.postgres_financial.test_campaign_foundation import (
     campaign_env as _campaign_env,
 )
@@ -14,9 +18,22 @@ from tests.postgres_financial.test_campaign_foundation import (
     ready,
     view,
 )
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
+)
 from ugc_bot.domain.campaign_review import SaveCampaignDraft
 from ugc_bot.domain.campaigns import CampaignConflict
-from ugc_bot.infrastructure.db.models import UserReferralBindingModel
+from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.infrastructure.db.models import (
+    BloggerProfileModel,
+    UserReferralBindingModel,
+)
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    record_bot_availability,
+)
+from ugc_bot.infrastructure.db.repositories.manager_creator_directory import (
+    invited_creator_page,
+)
 
 campaign_env = _campaign_env
 
@@ -73,6 +90,104 @@ async def preview(env, saved):
             saved["revision_digest"],
             session=db,
         )
+
+
+@pytest.mark.asyncio
+async def test_pilot_preview_matches_directory_and_excludes_blocked_creators(
+    campaign_env,
+):
+    env = campaign_env
+    await configure(env)
+    container, users = env["container"], env["users"]
+    owner, creator, other_owner = (
+        users["owner"],
+        users["creator"],
+        users["foreign"],
+    )
+    repositories = container.build_repos()
+    transactions = container.transaction_manager
+
+    for role, has_profile, status, inviter in (
+        ("no_consent", True, UserStatus.ACTIVE, owner),
+        ("deleted", True, UserStatus.DELETED, owner),
+        ("no_profile", False, UserStatus.ACTIVE, owner),
+        ("other_creator", True, UserStatus.ACTIVE, other_owner),
+    ):
+        user = users[role] = await create_test_user(
+            repositories["user_repo"],
+            external_id=str(uuid4().int % 10**12 + 1),
+            status=status,
+        )
+        if has_profile:
+            await create_test_blogger_profile(
+                repositories["blogger_repo"],
+                user.user_id,
+                instagram_url="https://instagram.com/synthetic_" + uuid4().hex,
+            )
+        async with transactions.transaction() as db:
+            if has_profile:
+                await db.execute(
+                    update(BloggerProfileModel)
+                    .where(BloggerProfileModel.user_id == user.user_id)
+                    .values(instagram_user_id="canonical-" + uuid4().hex)
+                )
+            db.add(
+                UserReferralBindingModel(
+                    referrer_user_id=inviter.user_id,
+                    referred_user_id=user.user_id,
+                )
+            )
+
+    await execute(
+        env,
+        command(env, "grant", owner_id=str(other_owner.user_id), reason="Test"),
+    )
+    settings = await view(env, "other_creator")
+    await execute(
+        env,
+        command(
+            env,
+            "consent",
+            role="other_creator",
+            policy_version=env["publication"]["version"],
+            terms_hash=settings["policy"]["terms_hash"],
+            consent_context=settings["consent_context"],
+        ),
+    )
+    saved = await save(env, draft_command(env))
+    initial = await preview(env, saved)
+    async with transactions.transaction() as db:
+        directory = await invited_creator_page(
+            db,
+            AuthenticatedMessengerPrincipal(
+                owner.user_id, "telegram", owner.telegram_id
+            ),
+            bot_unavailable=False,
+            offset=0,
+            limit=25,
+        )
+    assert {row[0].user_id for row in directory} == {
+        creator.user_id,
+        users["no_consent"].user_id,
+    }
+    assert initial["network_total"] == len(directory) == 2
+    assert initial["eligible_count"] == 1
+    assert initial["exclusions"] == {"consent_absent": 1}
+
+    assert await record_bot_availability(
+        transactions,
+        platform=MessengerType.TELEGRAM,
+        external_id=creator.telegram_id,
+        occurred_at=env["clock"].now(),
+    )
+    blocked = await preview(env, saved)
+    assert blocked["network_total"] == 2
+    assert blocked["eligible_count"] == 0
+    assert blocked["exclusions"] == {
+        "consent_absent": 1,
+        "telegram_unavailable": 1,
+    }
+    assert (await view(env))["consent"]["effective"] is False
 
 
 @pytest.mark.asyncio

@@ -13,10 +13,12 @@ from ugc_bot.infrastructure.db.campaign_review_models import (
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     UserModel,
-    UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.repositories.campaigns import mapping
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.manager_creator_directory import (
+    invited_creator_scope,
+)
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
@@ -136,14 +138,9 @@ class SqlAlchemyCampaignReviewRepository:
         await self._installed(db)
         ids = tuple(
             await db.scalars(
-                select(UserReferralBindingModel.referred_user_id)
-                .join(
-                    UserModel,
-                    UserModel.user_id
-                    == UserReferralBindingModel.referred_user_id,
-                )
-                .where(UserReferralBindingModel.referrer_user_id == owner_id)
-                .order_by(UserReferralBindingModel.referred_user_id)
+                invited_creator_scope(
+                    select(UserModel.user_id), owner_id
+                ).order_by(UserModel.user_id)
             )
         )
         publisher = await self.foundation.current(

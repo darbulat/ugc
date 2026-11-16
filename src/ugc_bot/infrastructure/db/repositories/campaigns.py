@@ -6,6 +6,7 @@ from sqlalchemy import func, insert, or_, select, text
 
 from ugc_bot.application.services.campaign_consent import binding_epoch
 from ugc_bot.domain.campaigns import CampaignConflict
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.campaign_models import (
     COMMANDS,
     POLICIES,
@@ -22,6 +23,10 @@ from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     UserModel,
     UserReferralBindingModel,
+)
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    BOT_UNAVAILABLE_EVENT,
+    latest_bot_availability,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
@@ -96,14 +101,23 @@ class SqlAlchemyCampaignRepository:
             ids.add(before["referrer_user_id"])
         users = {}
         for uid in sorted(ids, key=str):
-            stmt = select(UserModel.__table__).where(UserModel.user_id == uid)
+            stmt = select(
+                UserModel.__table__,
+                latest_bot_availability(MessengerType.TELEGRAM).label(
+                    "telegram_bot_availability"
+                ),
+            ).where(UserModel.user_id == uid)
             if lock:
                 stmt = stmt.with_for_update(read=True)
             user = await mapping(db, stmt)
             if user:
                 address = user["telegram_id"] or ""
                 user["telegram_usable"] = (
-                    address.isascii() and address.isdigit() and int(address) > 0
+                    address.isascii()
+                    and address.isdigit()
+                    and int(address) > 0
+                    and user["telegram_bot_availability"]
+                    != BOT_UNAVAILABLE_EVENT
                 )
                 users[uid] = user
         if actor_id not in users:
