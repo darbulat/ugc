@@ -90,6 +90,11 @@ CREATOR_ACTIVITY_LABELS = {
     "worked": "Работали",
     "responded": "Все отклики",
 }
+TELEGRAM_ACTIVITY_LABELS = {
+    "offered_via_telegram": "Получили оффер",
+    "responded_via_telegram": "Откликнулись",
+    "registered_via_telegram": "Завершили регистрацию",
+}
 MAX_ACTIVITY_LABELS = {
     "offered_via_max": "Получили предложение в MAX",
     "max_only_offer": "Получили хотя бы один оффер только в MAX",
@@ -97,6 +102,11 @@ MAX_ACTIVITY_LABELS = {
     "responded_via_max": "Откликнулись в MAX",
     "registered_via_max": "Завершили регистрацию через MAX",
 }
+CREATOR_ACTIVITY_SEGMENTS = (
+    CREATOR_ACTIVITY_LABELS.keys()
+    | TELEGRAM_ACTIVITY_LABELS.keys()
+    | MAX_ACTIVITY_LABELS.keys()
+)
 CREATOR_FUNNEL_LABELS = {
     "funnel_profiles": "Создали профиль креатора",
     "funnel_agreements": "Приняли условия",
@@ -107,6 +117,10 @@ CREATOR_FUNNEL_LABELS = {
 CREATOR_BASE_LABELS = {
     **{key: label for _, items in CREATOR_BASE_CARDS for key, label in items},
     **CREATOR_ACTIVITY_LABELS,
+    **{
+        key: f"Telegram · {label}"
+        for key, label in TELEGRAM_ACTIVITY_LABELS.items()
+    },
     **MAX_ACTIVITY_LABELS,
     **CREATOR_FUNNEL_LABELS,
     "telegram_available": "Telegram · доступен",
@@ -253,25 +267,31 @@ def _activity_conditions(
     telegram_offers = tracked.where(in_window(channels.telegram_sent_at))
     registration = REGISTRATION_CHANNELS.c
     user_id = UserModel.user_id
+    channel_activity = {}
+    for channel, sent in (
+        (MessengerType.TELEGRAM, telegram_offers),
+        (MessengerType.MAX, max_offers),
+    ):
+        channel_activity[f"offered_via_{channel.value}"] = user_id.in_(sent)
+        channel_activity[f"responded_via_{channel.value}"] = user_id.in_(
+            tracked.where(
+                channels.response_channel == channel,
+                in_window(channels.response_at),
+            )
+        )
+        channel_activity[f"registered_via_{channel.value}"] = user_id.in_(
+            select(registration.user_id).where(
+                registration.channel == channel,
+                in_window(registration.completed_at),
+            )
+        )
     return {
-        "offered_via_max": user_id.in_(max_offers),
+        **channel_activity,
         "max_only_offer": user_id.in_(
             max_offers.where(channels.telegram_sent_at.is_(None))
         ),
         "max_only_reached": user_id.in_(max_offers)
         & user_id.not_in(telegram_offers),
-        "responded_via_max": user_id.in_(
-            tracked.where(
-                channels.response_channel == MessengerType.MAX,
-                in_window(channels.response_at),
-            )
-        ),
-        "registered_via_max": user_id.in_(
-            select(registration.user_id).where(
-                registration.channel == MessengerType.MAX,
-                in_window(registration.completed_at),
-            )
-        ),
         "offered": UserModel.user_id.in_(
             offers.where(in_window(dispatch.created_at))
         ),
@@ -295,7 +315,7 @@ def creator_base_filter(
         )
     conditions = (
         _activity_conditions(normalized, timezone)
-        if segment in CREATOR_ACTIVITY_LABELS or segment in MAX_ACTIVITY_LABELS
+        if segment in CREATOR_ACTIVITY_SEGMENTS
         else _profile_conditions()
     )
     return and_(UserModel.status != UserStatus.DELETED, conditions[segment])

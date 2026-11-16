@@ -56,10 +56,12 @@ from ugc_bot.admin.complaints import (
 from ugc_bot.admin.creator_base import (
     CREATOR_ACTIVITY_LABELS,
     CREATOR_ACTIVITY_PERIODS,
+    CREATOR_ACTIVITY_SEGMENTS,
     CREATOR_BASE_CARDS,
     CREATOR_BASE_LABELS,
     CREATOR_FUNNEL_LABELS,
     MAX_ACTIVITY_LABELS,
+    TELEGRAM_ACTIVITY_LABELS,
     normalize_creator_period,
 )
 from ugc_bot.admin.creator_invites import register_creator_invites
@@ -859,7 +861,7 @@ async def _render_dashboard_page(
     )
     creator_base = await _get_cached_or_fetch(
         cache,
-        f"creator-base:v3:{period_key}" if cache else None,
+        f"creator-base:v4:{period_key}" if cache else None,
         _dashboard_cache_ttl(period_key),
         lambda: dashboard_service.get_creator_base(period_key),
     )
@@ -871,6 +873,7 @@ async def _render_dashboard_page(
             "creator_base": creator_base,
             "creator_base_cards": CREATOR_BASE_CARDS,
             "creator_activity_labels": CREATOR_ACTIVITY_LABELS,
+            "telegram_activity_labels": TELEGRAM_ACTIVITY_LABELS,
             "max_activity_labels": MAX_ACTIVITY_LABELS,
             "period": period_key,
             "periods": _DASHBOARD_PERIODS,
@@ -1070,8 +1073,7 @@ async def _render_creators_page(
             "work_period": work_period,
             "work_period_label": (
                 CREATOR_ACTIVITY_PERIODS[work_period]
-                if base_segment in CREATOR_ACTIVITY_LABELS
-                or base_segment in MAX_ACTIVITY_LABELS
+                if base_segment in CREATOR_ACTIVITY_SEGMENTS
                 or base_segment in CREATOR_FUNNEL_LABELS
                 else ""
             ),

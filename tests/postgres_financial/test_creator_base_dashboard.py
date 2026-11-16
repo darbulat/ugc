@@ -156,6 +156,7 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     (order, both, True, True, 2),
                     (duplicate_order, both, True, True, 1),
                     (order, tg_only, None, False, 2),
+                    (duplicate_order, tg_only, None, False, 2),
                     (order, pending, False, False, 2),
                     (order, max_only, True, False, 40),
                     (duplicate_order, older, True, True, 100),
@@ -171,21 +172,34 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     order_id=oid,
                     blogger_id=uid,
                     telegram_sent_at=now - timedelta(days=days)
-                    if (oid, uid) == (order, both)
+                    if (oid, uid) in ((order, both), (order, deleted))
+                    or uid == tg_only
                     else None,
                     max_sent_at=now - timedelta(days=days)
                     if uid in (both, max_only)
                     else None,
-                    response_channel="max"
-                    if (oid, uid) in ((order, both), (order, pending))
-                    else None,
+                    response_channel=(
+                        "telegram"
+                        if (oid, uid) == (duplicate_order, both)
+                        else "max"
+                        if (oid, uid) in ((order, both), (order, pending))
+                        else None
+                    ),
                     response_at=now - timedelta(days=days)
-                    if (oid, uid) in ((order, both), (order, pending))
+                    if (oid, uid)
+                    in (
+                        (order, both),
+                        (order, pending),
+                        (duplicate_order, both),
+                    )
                     else None,
                 )
                 for oid, uid, days in (
                     (order, both, 2),
                     (duplicate_order, both, 1),
+                    (order, tg_only, 2),
+                    (duplicate_order, tg_only, 2),
+                    (order, deleted, 1),
                     (order, pending, 2),
                     (order, max_only, 40),
                     (duplicate_order, max_only, 100),
@@ -221,6 +235,12 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
     )
     try:
         await profile_repo.record_registration_channel(
+            both, MessengerType.TELEGRAM, now, session=None
+        )
+        await profile_repo.record_registration_channel(
+            pending, MessengerType.TELEGRAM, None, session=None
+        )
+        await profile_repo.record_registration_channel(
             max_only, MessengerType.MAX, now - timedelta(days=1), session=None
         )
         await profile_repo.record_registration_channel(
@@ -248,6 +268,9 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             "accepted": 1,
             "worked": 2,
             "responded": 2,
+            "offered_via_telegram": 2,
+            "responded_via_telegram": 1,
+            "registered_via_telegram": 1,
             "offered_via_max": 1,
             "max_only_offer": 1,
             "max_only_reached": 0,
@@ -272,10 +295,16 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             service.get_creator_base("yesterday"),
         )
         assert today_counts["offered"] == 0
+        assert today_counts["offered_via_telegram"] == 0
+        assert today_counts["responded_via_telegram"] == 0
+        assert today_counts["registered_via_telegram"] == 1
         assert today_counts["funnel_accounts"] == 4
         assert today_counts["funnel_registered"] == 1
         assert yesterday_counts["offered"] == 1
         assert yesterday_counts["offered_via_max"] == 1
+        assert yesterday_counts["offered_via_telegram"] == 0
+        assert yesterday_counts["responded_via_telegram"] == 1
+        assert yesterday_counts["registered_via_telegram"] == 0
         assert yesterday_counts["funnel_accounts"] == 1
         assert yesterday_counts["funnel_registered"] == 1
         for period, cohort in (
@@ -286,6 +315,9 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                 "funnel_registered",
                 "offered",
                 "offered_via_max",
+                "offered_via_telegram",
+                "responded_via_telegram",
+                "registered_via_telegram",
                 "worked",
             ):
                 listing = await service.list_creators(

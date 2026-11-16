@@ -42,10 +42,20 @@
   </div>
   <article class="card creator-base-work">
     <h3>Участие в заказах · {{ period_labels[period] }}</h3>
-    <div class="grid dashboard-metrics">
-      {% for key in ('offered', 'accepted', 'worked', 'responded') %}
-        {{ metric(key, 'Начали работу' if key == 'worked' and period == 'yesterday' else creator_activity_labels[key]) }}
-      {% endfor %}
+    <div role="group" aria-labelledby="creator-telegram-heading">
+      <h4 id="creator-telegram-heading">Telegram</h4>
+      <div class="grid dashboard-metrics">
+        {% for key, label in telegram_activity_labels.items() %}{{ metric(key, label) }}{% endfor %}
+      </div>
+      <p class="muted creator-base-note">Считаем уникальных креаторов за выбранный период. История доступна с начала учёта каналов.</p>
+    </div>
+    <div role="group" aria-labelledby="creator-all-channels-heading">
+      <h4 id="creator-all-channels-heading">Все каналы</h4>
+      <div class="grid dashboard-metrics">
+        {% for key in ('offered', 'accepted', 'worked', 'responded') %}
+          {{ metric(key, 'Начали работу' if key == 'worked' and period == 'yesterday' else creator_activity_labels[key]) }}
+        {% endfor %}
+      </div>
     </div>
     <details class="creator-max-reach">
       <summary>Охват MAX</summary>
