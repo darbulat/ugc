@@ -205,6 +205,8 @@
     </label>
     <div id="blg-agreement-error" class="error" role="alert" aria-live="assertive"></div>
     <button type="button" class="btn" id="btn-confirm-blg-agreement" data-umc-primary="20">Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-agreement-orders" hidden>Мои заказы</button>
+    <ul id="blogger-agreement-orders-list" hidden></ul>
     <button type="button" class="btn btn-secondary" id="back-from-blg-agreements" data-umc-back>Назад</button>
   </div>
 
@@ -622,6 +624,7 @@
         if (el) {
           el.classList.add('active');
           document.dispatchEvent(new CustomEvent('umc:screen-change', { detail: { screen: id } }));
+          if (id === 'screen-blogger-dashboard') updateBloggerDashboardState(window._me);
         }
       }
 
@@ -678,8 +681,9 @@
           throw new Error('Откройте приложение заново, чтобы продолжить.');
         }
       }
-      function loadMe() {
-        var initial = getInitData(), platform = window.__miniapp_platform || 'telegram';
+      function loadMe(checkedAuth) {
+        var initial = checkedAuth ? checkedAuth.initData : getInitData();
+        var platform = checkedAuth ? checkedAuth.platform : window.__miniapp_platform || 'telegram';
         return api('/me', {}, {initData: initial, platform: platform}).then(function(data) {
           if (getInitData() !== initial || (window.__miniapp_platform || 'telegram') !== platform) {
             throw new Error('Откройте приложение заново, чтобы продолжить.');
@@ -688,6 +692,20 @@
           verifiedMePlatform = platform;
           window._me = data;
           return data;
+        });
+      }
+
+      function verifiedProfileRequest(path, body, options) {
+        var auth = {initData: verifiedMeAuth, platform: verifiedMePlatform};
+        return Promise.resolve().then(function() {
+          assertVerifiedMe(auth);
+          return api(path, body, auth);
+        }).then(function(result) {
+          assertVerifiedMe(auth);
+          if (options && options.refreshProfile) {
+            return loadMe(auth).then(function() { return result; });
+          }
+          return result;
         });
       }
 
@@ -1624,6 +1642,7 @@
         setQ('#screen-blogger-dashboard > .hint', L.blg_dashboard_hint);
         setText('btn-blogger-confirm-instagram', L.btn_confirm_instagram);
         setText('btn-blogger-orders', L.btn_blogger_orders);
+        setText('btn-blogger-agreement-orders', L.btn_blogger_orders);
         setQ('#block-blogger-orders-list h2', L.my_orders_h2);
         setText('hide-blogger-orders-list', L.btn_close);
         setText('btn-blogger-update-profile', L.btn_update_blg_profile);
@@ -1749,9 +1768,13 @@
         var prefix = role === 'advertiser' ? 'adv' : 'blg';
         if (role === 'advertiser') {
           fillAdvertiserForm(profile);
-          document.getElementById('btn-agreement-orders').hidden = !profile;
+          document.getElementById('btn-agreement-orders').hidden = !(window._me || {}).has_advertiser_profile;
         } else {
           fillBloggerForm(profile);
+          document.getElementById('btn-blogger-agreement-orders').hidden = !(window._me || {}).has_blogger_profile;
+          var orders = document.getElementById('blogger-agreement-orders-list');
+          orders.replaceChildren();
+          orders.hidden = true;
         }
         fillAgreementsLinks('agreements-' + prefix + '-links', 'agreements-' + prefix + '-fallback');
         document.getElementById(prefix + '-agree-checkbox').checked = false;
@@ -1798,7 +1821,6 @@
             }
           } else if (role === 'blogger') {
             if (me && me.has_blogger_profile) {
-              updateBloggerDashboardState(me);
               showScreen('screen-blogger-dashboard');
             } else {
               fillBloggerForm(me && me.blogger_profile);
@@ -1842,13 +1864,9 @@
         updateRegisterButtonLabels();
         showScreen('screen-register-blogger');
       });
-      document.getElementById('btn-blogger-orders').addEventListener('click', function() {
-        var block = document.getElementById('block-blogger-orders-list');
-        var ul = document.getElementById('blogger-orders-list');
-        if (!block || !ul) return;
-        block.style.display = 'block';
-        ul.innerHTML = '';
-        api('/orders/list/creator').then(function(data) {
+      function loadBloggerOrders(ul) {
+        ul.replaceChildren();
+        return verifiedProfileRequest('/orders/list/creator', {}).then(function(data) {
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
             var strong = document.createElement('strong');
@@ -1869,6 +1887,17 @@
           li.textContent = tx('orders_error');
           ul.appendChild(li);
         });
+      }
+      document.getElementById('btn-blogger-orders').addEventListener('click', function() {
+        document.getElementById('block-blogger-orders-list').style.display = 'block';
+        loadBloggerOrders(document.getElementById('blogger-orders-list'));
+      });
+      document.getElementById('btn-blogger-agreement-orders').addEventListener('click', function() {
+        var button = this;
+        var list = document.getElementById('blogger-agreement-orders-list');
+        list.hidden = false;
+        button.disabled = true;
+        loadBloggerOrders(list).finally(function() { button.disabled = false; });
       });
       document.getElementById('hide-blogger-orders-list').addEventListener('click', function() {
         var block = document.getElementById('block-blogger-orders-list');
@@ -1973,15 +2002,11 @@
         }
         var btn = document.getElementById('btn-confirm-adv-agreement');
         if (btn) btn.disabled = true;
-        var context = createRequestContext();
-        context.request('/register/advertiser/confirm-agreement', {}).then(function() {
-          return loadMe();
-        }).then(function() {
+        verifiedProfileRequest('/register/advertiser/confirm-agreement', {}, {refreshProfile: true}).then(function() {
           showScreen('screen-advertiser-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка';
         }).then(function() {
-          context.dispose();
           if (btn) btn.disabled = false;
         });
       });
@@ -2002,16 +2027,11 @@
         }
         var btn = document.getElementById('btn-confirm-blg-agreement');
         if (btn) btn.disabled = true;
-        var context = createRequestContext();
-        context.request('/register/blogger/confirm-agreement', {}).then(function() {
-          return loadMe();
-        }).then(function(me) {
-          updateBloggerDashboardState(me || window._me);
+        verifiedProfileRequest('/register/blogger/confirm-agreement', {}, {refreshProfile: true}).then(function() {
           showScreen('screen-blogger-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка';
         }).then(function() {
-          context.dispose();
           if (btn) btn.disabled = false;
         });
       });
@@ -2046,13 +2066,13 @@
         };
         var advSubmitBtn = document.getElementById('btn-submit-advertiser');
         if (advSubmitBtn) advSubmitBtn.disabled = true;
-        api('/register/advertiser', payload).then(function(res) {
+        verifiedProfileRequest('/register/advertiser', payload, {refreshProfile: true}).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
               showAgreement('advertiser');
             });
           }
-          return loadMe().then(function() { showScreen('screen-advertiser-dashboard'); });
+          showScreen('screen-advertiser-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
@@ -2097,16 +2117,13 @@
           payload.lat = parseFloat(latEl.value);
           payload.lon = parseFloat(lonEl.value);
         }
-        api('/register/blogger', payload).then(function(res) {
+        verifiedProfileRequest('/register/blogger', payload, {refreshProfile: true}).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
               showAgreement('blogger');
             });
           }
-          return loadMe().then(function(me) {
-            updateBloggerDashboardState(me || window._me);
-            showScreen('screen-blogger-dashboard');
-          });
+          showScreen('screen-blogger-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
@@ -2117,8 +2134,7 @@
       document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
         api('/blogger/instagram-verification/start', {}).then(function(res) {
           if (res.already_confirmed) {
-            return loadMe().then(function(me) {
-              updateBloggerDashboardState(me || window._me);
+            return loadMe().then(function() {
               showScreen('screen-blogger-dashboard');
             });
           }
@@ -2161,8 +2177,7 @@
         else if (url) window.open(url, '_blank');
       });
       document.getElementById('btn-instagram-verification-back').addEventListener('click', function() {
-        loadMe().then(function(me) {
-          updateBloggerDashboardState(me || window._me);
+        loadMe().then(function() {
           showScreen('screen-blogger-dashboard');
         });
       });
@@ -3121,7 +3136,6 @@
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
-          updateBloggerDashboardState(me);
           showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');

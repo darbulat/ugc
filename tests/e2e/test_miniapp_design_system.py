@@ -20,10 +20,13 @@ class MiniAppNetwork:
     def __init__(self, locale: str = "ru", registered: bool = False) -> None:
         self.locale = locale
         self.registered = registered
+        self.advertiser_agreed = True
+        self.advertiser_brand = "Previous brand"
         self.requests: list[tuple[str, dict]] = []
         self.failure = False
         self.blogger_registered = False
         self.blogger_agreement_confirmed = None
+        self.creator_orders: list[dict] = []
         self.manager = False
         self.manager_app_enabled = False
         self.order: dict = {}
@@ -43,7 +46,11 @@ class MiniAppNetwork:
                     ],
                     "currency_symbol": self.symbol,
                     "has_advertiser_profile": self.registered,
-                    "advertiser_profile": {"agreement_confirmed": True}
+                    "advertiser_profile": {
+                        "agreement_confirmed": self.advertiser_agreed,
+                        "brand": self.advertiser_brand,
+                        "phone": "89001234567",
+                    }
                     if self.registered
                     else None,
                     "has_blogger_profile": self.blogger_registered,
@@ -71,9 +78,11 @@ class MiniAppNetwork:
                         json={"detail": "Synthetic validation error"},
                     )
                     return
+                self.advertiser_brand = body["brand"]
                 data = {"needs_agreement": True}
             elif path == "/register/advertiser/confirm-agreement":
                 self.registered = True
+                self.advertiser_agreed = True
                 data = {"ok": True}
             elif path == "/register/blogger":
                 data = {"needs_agreement": True}
@@ -90,7 +99,7 @@ class MiniAppNetwork:
                     "lon": 0,
                 }
             elif path == "/orders/list/creator":
-                data = {"orders": []}
+                data = {"orders": self.creator_orders}
             elif path == "/manager/orders":
                 data = {
                     "orders": [self.order] if self.order else [],

@@ -87,8 +87,8 @@ class TestMiniAppAdvertiser:
         miniapp_page.locator("#adv-agree-checkbox").check()
         miniapp_page.locator("#btn-confirm-adv-agreement").click()
 
-        # Dashboard
-        wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
+        # The requested order brief opens once consent has been recorded.
+        wait_for_screen(miniapp_page, "screen-intake")
 
     def test_create_order(
         self,

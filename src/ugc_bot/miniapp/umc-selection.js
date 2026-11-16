@@ -23,7 +23,7 @@
   Object.keys(paymentTogether).forEach(function(locale){copy[locale].paymentTogether=paymentTogether[locale];});
   Object.keys(clientCopy).forEach(function(locale){Object.assign(copy[locale],clientCopy[locale]);});
   var state = { busy:false, policies:[], pending:null, pendingEntry:null, completedEntry:null, result:null, order:null, intakeBack:'screen-advertiser-dashboard', selectionBack:'screen-advertiser-dashboard', opened:false };
-  var context=null,owner=null;
+  var context=null,owner=null,requestedIntake=null;
   function binding(){if(!context)context=bridge.createRequestContext();return context;}
   function id(name) { return document.getElementById(name); }
   function words() { return copy[(window._me || {}).locale] || copy.ru; }
@@ -194,13 +194,28 @@
     }).catch(function(error) { if(!ctx.isCurrent())return;if(state.pending) pendingView(); if(error.intakeStorage)text('intake-error',words().storage);else failure(error,'intake-error'); }).finally(function() { if(ctx.isCurrent()){text('intake-loading',''); busy(false,intake);} });
   }
   function openIntake(options) {
-    if (state.busy || (bridge.resumeAgreement && bridge.resumeAgreement('advertiser'))) return;
+    if (state.busy) return;
     var current = document.querySelector('.screen.active');
-    if (current && current !== intake) state.intakeBack = current.id;
+    var back = current && current !== intake && current.id !== 'screen-agreements-advertiser'
+      ? current.id : state.intakeBack;
+    if (bridge.resumeAgreement && bridge.resumeAgreement('advertiser')) {
+      requestedIntake = {options: options, back: back, context: binding()};
+      return;
+    }
+    showIntake(options, back);
+  }
+  function showIntake(options, back) {
+    state.intakeBack = back;
     bridge.showScreen(intake.id);
     if (options && options.withManager) document.querySelector('[name="intake-mode"][value="with_manager"]').checked = true;
     loadPolicies();
   }
+  document.addEventListener('umc:screen-change', function(event) {
+    if (!requestedIntake || !event.detail || event.detail.screen !== 'screen-advertiser-dashboard') return;
+    var requested = requestedIntake;
+    requestedIntake = null;
+    if (requested.context.isCurrent()) showIntake(requested.options, requested.back);
+  });
   function key() { if(!window.crypto || !crypto.getRandomValues) return null; if(crypto.randomUUID) return crypto.randomUUID(); return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(n) { return n.toString(16).padStart(2,'0'); }).join(''); }
   id('form-umc-intake').addEventListener('submit',function(event) {
     event.preventDefault(); if(state.busy || state.pending || state.result || (window.UMCOrderImages && window.UMCOrderImages.busy())) return;

@@ -113,6 +113,11 @@ class SelectionNetwork(MiniAppNetwork):
                     "currency_code": "RUB",
                     "currency_symbol": "₽",
                     "has_advertiser_profile": self.registered,
+                    "advertiser_profile": {
+                        "agreement_confirmed": self.advertiser_agreed
+                    }
+                    if self.registered
+                    else None,
                     "has_blogger_profile": False,
                     "is_manager": False,
                 }

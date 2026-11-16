@@ -85,6 +85,7 @@ class SocialNetwork(MiniAppNetwork):
                     "has_blogger_profile": True,
                     "blogger_profile": {
                         "confirmed": self.me_confirmed,
+                        "agreement_confirmed": self.blogger_agreement_confirmed,
                         "work_format": "ugc_only",
                     },
                     "is_manager": False,

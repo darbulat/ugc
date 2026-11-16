@@ -557,8 +557,11 @@
   function context() {
     localize();
     var me = window._me;
-    byId('btn-edit-profile-socials').style.display = me && me.has_blogger_profile ? '' : 'none';
-    if (!me || !me.has_blogger_profile || !me.blogger_profile || !me.blogger_profile.confirmed || state.offered) return;
+    var profile = me && me.blogger_profile;
+    var eligible = me && me.has_blogger_profile && (!profile || profile.agreement_confirmed !== false);
+    byId('btn-edit-profile-socials').style.display = eligible ? '' : 'none';
+    var dashboard = byId('screen-blogger-dashboard');
+    if (!eligible || !profile || !profile.confirmed || !dashboard.classList.contains('active') || state.offered) return;
     state.offered = true;
     // Fetch after canonical confirmation; the server decides whether a prompt remains.
     load().then(function () {
