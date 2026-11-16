@@ -41,6 +41,7 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
     User,
 )
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 logger = logging.getLogger(__name__)
@@ -130,28 +131,6 @@ class VerificationLinkUnavailable:
     max_chat_id: str | None
     reason: str
     locale: str = "ru"
-
-
-def _confirmation_result(
-    user_id: UUID,
-    linked: (
-        VerificationLinkSuccess
-        | VerificationLinkConflict
-        | VerificationLinkUnavailable
-        | None
-    ),
-    registration_completed: bool,
-) -> (
-    VerificationSuccess
-    | VerificationLinkSuccess
-    | VerificationLinkConflict
-    | VerificationLinkUnavailable
-):
-    if linked is None:
-        return VerificationSuccess(user_id, registration_completed)
-    if isinstance(linked, VerificationLinkSuccess):
-        return replace(linked, registration_completed=registration_completed)
-    return linked
 
 
 @dataclass(slots=True)
@@ -253,6 +232,8 @@ class InstagramVerificationService:
         link_max_chat_id: str | None = None,
         link_username: str | None = None,
         link_phone: str | None = None,
+        *,
+        channel: MessengerType | None = None,
     ) -> InstagramVerificationCode:
         """Generate and store a new verification code."""
 
@@ -275,6 +256,7 @@ class InstagramVerificationService:
                 link_max_chat_id=link_max_chat_id,
                 link_username=link_username,
                 link_phone=link_phone,
+                request_channel=channel,
             )
             await self.verification_repo.save(verification, session=session)
             return verification
@@ -427,6 +409,7 @@ class InstagramVerificationService:
             "link_max_chat_id",
             "link_username",
             "link_phone",
+            "request_channel",
         )
         if any(
             getattr(current, key) != getattr(expected, key) for key in scope
@@ -447,9 +430,8 @@ class InstagramVerificationService:
             )
             if unavailable is not None:
                 return unavailable
-        registration_completed = (
+        first_verification = (
             sender is not None
-            and profile.agreement_confirmed_at is not None
             and not profile.confirmed
             and not (profile.instagram_user_id or "").strip()
             and not await self.blogger_repo.has_verified_identity_history(
@@ -483,9 +465,46 @@ class InstagramVerificationService:
         linked = await self._try_link_max_account(
             current, preparation, confirmed, session=session
         )
-        return _confirmation_result(
-            current.user_id, linked, registration_completed
+        return await self._finish_confirmation(
+            current,
+            linked,
+            first_verification,
+            now if profile.agreement_confirmed_at is not None else None,
+            session=session,
         )
+
+    async def _finish_confirmation(
+        self,
+        code: InstagramVerificationCode,
+        linked: VerificationLinkSuccess
+        | VerificationLinkConflict
+        | VerificationLinkUnavailable
+        | None,
+        first_verification: bool,
+        completed_at: datetime | None,
+        *,
+        session: object | None,
+    ) -> (
+        VerificationSuccess
+        | VerificationLinkSuccess
+        | VerificationLinkConflict
+        | VerificationLinkUnavailable
+    ):
+        if isinstance(
+            linked, VerificationLinkConflict | VerificationLinkUnavailable
+        ):
+            return linked
+        if first_verification and code.request_channel is not None:
+            await self.blogger_repo.record_registration_channel(
+                code.user_id,
+                code.request_channel,
+                completed_at,
+                session=session,
+            )
+        registration_completed = first_verification and completed_at is not None
+        if linked is None:
+            return VerificationSuccess(code.user_id, registration_completed)
+        return replace(linked, registration_completed=registration_completed)
 
     async def _try_link_max_account(
         self,

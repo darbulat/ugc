@@ -7,6 +7,7 @@ from uuid import uuid4
 import pytest
 
 from ugc_bot.domain.entities import InstagramVerificationCode
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.redis_verification import (
     RedisInstagramVerificationRepository,
     _deserialize,
@@ -52,12 +53,14 @@ def test_serialize_deserialize_with_link_fields() -> None:
         link_max_id="max_user_42",
         link_max_chat_id="max_chat_99",
         link_username="testuser",
+        request_channel=MessengerType.MAX,
     )
     data = _serialize(vc)
     restored = _deserialize(data)
     assert restored.link_max_id == "max_user_42"
     assert restored.link_max_chat_id == "max_chat_99"
     assert restored.link_username == "testuser"
+    assert restored.request_channel == MessengerType.MAX
 
 
 def test_deserialize_without_link_fields() -> None:
@@ -68,6 +71,7 @@ def test_deserialize_without_link_fields() -> None:
     assert restored.link_max_id is None
     assert restored.link_max_chat_id is None
     assert restored.link_username is None
+    assert restored.request_channel is None
 
 
 @pytest.mark.asyncio

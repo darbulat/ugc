@@ -34,7 +34,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.config import AppConfig, load_config
 from ugc_bot.container import Container
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import OrderStatus, UserStatus
+from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
@@ -352,14 +352,14 @@ async def _send_offer_to_blogger(
         )
         if guarded and sent is None:
             return None
-        any_sent = any_sent or bool(sent)
-        if guarded and sent:
-            break
+        if sent:
+            await offer_dispatch_service.record_offer_sent(
+                order.order_id, blogger.user_id, channel=MessengerType(label)
+            )
+            any_sent = True
+            if guarded:
+                break
 
-    if any_sent:
-        await offer_dispatch_service.record_offer_sent(
-            order.order_id, blogger.user_id
-        )
     return any_sent if guarded else None
 
 

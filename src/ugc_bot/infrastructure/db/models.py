@@ -47,6 +47,9 @@ from ugc_bot.domain.enums import (
     WorkFormat,
 )
 from ugc_bot.infrastructure.db import (
+    browser_checkout_models as _browser_checkout_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (
     checkout_models as _checkout_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db.base import Base
@@ -737,6 +740,8 @@ class InstagramVerificationCodeModel(Base):
     """Instagram verification code ORM model."""
 
     __tablename__ = "instagram_verification_codes"
+
+    request_channel: Mapped[str | None] = mapped_column(String(8))
 
     code_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),

@@ -237,11 +237,21 @@ async def test_verify_code_preserves_optional_fields() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("agreement", "had_identity", "expected_welcome"),
-    [(True, False, True), (True, True, False), (False, False, False)],
+    ("agreement", "had_identity", "expected_welcome", "channel"),
+    [
+        (True, False, True, MessengerType.MAX),
+        (True, False, True, MessengerType.TELEGRAM),
+        (True, False, True, None),
+        (True, True, False, MessengerType.MAX),
+        (False, False, False, MessengerType.MAX),
+    ],
 )
 async def test_verify_code_by_instagram_sender_success(
-    monkeypatch, agreement: bool, had_identity: bool, expected_welcome: bool
+    monkeypatch,
+    agreement: bool,
+    had_identity: bool,
+    expected_welcome: bool,
+    channel: MessengerType | None,
 ) -> None:
     """Test successful verification via Instagram webhook."""
     user_repo = InMemoryUserRepository()
@@ -274,8 +284,8 @@ async def test_verify_code_by_instagram_sender_success(
         verification_repo=verification_repo,
     )
 
-    # Generate code
-    verification = await service.generate_code(user_id)
+    verification = await service.generate_code(user_id, channel=channel)
+    assert verification.request_channel == channel
 
     # Verify via Instagram sender
     result = await service.verify_code_by_instagram_sender(
@@ -287,8 +297,26 @@ async def test_verify_code_by_instagram_sender_success(
     assert isinstance(result, VerificationSuccess) and result.user_id == user_id
     assert result.registration_completed is expected_welcome
     updated = await profile_repo.get_by_user_id(user_id)
-    assert updated is not None
-    assert updated.confirmed is True
+    assert updated is not None and updated.confirmed
+    if had_identity or channel is None:
+        assert user_id not in profile_repo.registration_channels
+        return
+    recorded_channel, registered_at = profile_repo.registration_channels[
+        user_id
+    ]
+    assert recorded_channel == channel
+    if agreement:
+        assert registered_at is not None
+    else:
+        assert registered_at is None
+        agreed_at = datetime.now(timezone.utc)
+        await profile_repo.save(
+            replace(updated, agreement_confirmed_at=agreed_at)
+        )
+        assert profile_repo.registration_channels[user_id] == (
+            channel,
+            agreed_at,
+        )
 
 
 @pytest.mark.asyncio

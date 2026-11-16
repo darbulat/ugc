@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Оплата заказа UMC</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; }
+    body { margin: 0; color: #172217; background: #f4f5f1; }
+    main { width: min(100% - 2rem, 27rem); margin: clamp(2rem, 12vh, 7rem) auto;
+      box-sizing: border-box; padding: clamp(1.25rem, 6vw, 2.25rem);
+      border: 1px solid #d8ded5; border-radius: 1rem; background: #fff; }
+    h1 { margin: 0 0 1rem; font-size: 1.55rem; }
+    p { line-height: 1.5; }
+    label { display: block; margin-bottom: .5rem; font-weight: 600; }
+    input { box-sizing: border-box; width: 100%; padding: .75rem; font: inherit;
+      border: 1px solid #8f9a8e; border-radius: .5rem; }
+    button, a { display: inline-block; margin-top: 1rem; padding: .75rem 1rem;
+      font: inherit; font-weight: 600; color: #fff; background: #244c38;
+      border: 0; border-radius: .5rem; text-decoration: none; cursor: pointer; }
+    button:disabled { opacity: .65; cursor: wait; }
+    :focus-visible { outline: 3px solid #3f8f66; outline-offset: 3px; }
+    [hidden] { display: none; }
+    #error { color: #9d221b; }
+  </style>
+  <script src="./browser-payment.js" defer></script>
+</head>
+<body>
+  <main>
+    <h1>Оплата заказа UMC</h1>
+    <p id="status" role="status">Проверяем заказ…</p>
+    <form id="payment-form" hidden>
+      <label for="email">Email для чека</label>
+      <input id="email" type="email" autocomplete="email" maxlength="254" required>
+      <button type="submit">Перейти к оплате</button>
+    </form>
+    <a id="payment-link" rel="noreferrer" hidden>Перейти в ЮKassa</a>
+    <p id="error" role="alert" hidden></p>
+  </main>
+</body>
+</html>

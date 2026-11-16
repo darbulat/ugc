@@ -96,7 +96,7 @@ async def start_verification(incoming: IncomingMessage, deps: dict) -> None:
         return
 
     verification = await instagram_verification_service.generate_code(
-        user.user_id
+        user.user_id, channel=MessengerType.MAX
     )
     await state_store.clear()
 
@@ -202,7 +202,7 @@ async def start_verification_from_profile_callback(
         return
 
     verification = await instagram_verification_service.generate_code(
-        user.user_id
+        user.user_id, channel=MessengerType.MAX
     )
     await state_store.clear()
 

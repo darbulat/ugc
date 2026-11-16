@@ -9,15 +9,19 @@ from ugc_bot.application.entitlement_ports import ClientCapture, FundedSelection
 from ugc_bot.application.services.financial_policy_service import (
     FinancialPolicyService,
 )
+from ugc_bot.domain.browser_checkout import BROWSER_PROVIDER
 from ugc_bot.domain.enums import PaymentStatus
 from ugc_bot.domain.financial import utc
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    browser_capture_matches,
+)
 from ugc_bot.infrastructure.db.entitlement_models import (
     ClientEntitlementReceiptModel,
 )
 from ugc_bot.infrastructure.db.repositories.financial_capture import (
-    PROVIDER,
     capture_id,
+    capture_source,
     intent_id,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import (
@@ -110,6 +114,15 @@ class SqlAlchemyClientEntitlementRepository:
             db, "outbox_events", "event_id", intent_id(order_id)
         )
         self._require_intent(intent, order, payment, items, identity, at)
+        if payment["provider"] == BROWSER_PROVIDER:
+            _require(
+                bool(
+                    await db.scalar(
+                        select(browser_capture_matches(order_id, identity, at))
+                    )
+                ),
+                "browser_capture_evidence_missing",
+            )
         await self._require_allocations(db, order_id, payment, items)
         policy = await SqlAlchemyFinancialPolicyRepository().load(
             order["financial_version"], session=db
@@ -123,7 +136,9 @@ class SqlAlchemyClientEntitlementRepository:
             and payload.get("selection_bases")
             == [[str(i["paid_item_id"]), i["selection_minor"]] for i in items]
             and source["event_id"]
-            == capture_id(identity["account"], payment["external_id"]),
+            == capture_id(
+                identity["account"], payment["external_id"], payment["provider"]
+            ),
             "capture_identity_mismatch",
         )
         registered_value = payload.get("client_registered_at")
@@ -163,13 +178,13 @@ class SqlAlchemyClientEntitlementRepository:
             order["financial_version"] is not None
             and payment["financial_version"] == order["financial_version"]
             and payment["status"] == PaymentStatus.PAID
-            and payment["provider"] == PROVIDER
+            and payment["provider"] == identity.get("provider")
             and payment["currency"] == "RUB"
             and payment["paid_at"] is not None
             and type(payment["captured_minor"]) is int
             and payment["captured_minor"] > 0
             and payment["amount"] * 100 == payment["captured_minor"]
-            and identity.get("captured_at_source") == "telegram.message.date",
+            and capture_source(identity, payment["provider"]) is not None,
             "confirmed_capture_required",
         )
 
@@ -186,7 +201,7 @@ class SqlAlchemyClientEntitlementRepository:
         expected = {
             "order_id": str(order["order_id"]),
             "client_id": str(order["advertiser_id"]),
-            "provider": PROVIDER,
+            "provider": payment["provider"],
             "account": identity.get("account"),
             "currency": "RUB",
             "amount_minor": sum(i[1] + i[2] for i in components),
@@ -205,19 +220,16 @@ class SqlAlchemyClientEntitlementRepository:
             and expected["amount_minor"] == payment["captured_minor"],
             "capture_intent_mismatch",
         )
+        source = capture_source(identity, payment["provider"])
         _require(
-            identity
+            source is not None
+            and identity
             == dict(
                 expected,
                 external_id=payment["external_id"],
-                telegram_payment_charge_id=identity.get(
-                    "telegram_payment_charge_id"
-                ),
                 captured_at=identity.get("captured_at"),
-                captured_at_source="telegram.message.date",
+                **source,
             )
-            and isinstance(identity.get("telegram_payment_charge_id"), str)
-            and bool(identity["telegram_payment_charge_id"].strip())
             and utc(datetime.fromisoformat(identity["captured_at"])) == at
             and at <= datetime.now(timezone.utc),
             "capture_identity_mismatch",

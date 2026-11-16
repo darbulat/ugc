@@ -1,6 +1,8 @@
 """Tests for admin dashboard routes."""
 
+import re
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -10,6 +12,8 @@ from fastapi.testclient import TestClient
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.auth import AdminAuth
 from ugc_bot.admin.dashboard_service import AdminDashboardService
+from ugc_bot.application.errors import OrderCreationError
+from ugc_bot.container import Container
 from ugc_bot.infrastructure.redis_cache import (
     serialize_admin_payload,
 )
@@ -445,6 +449,69 @@ def test_admin_order_detail_html(monkeypatch) -> None:
     )
     response = client.get(f"/admin/orders/{order_id}")
     assert response.status_code == 200
+
+
+def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
+    monkeypatch,
+) -> None:
+    from uuid import uuid4
+
+    order_id = uuid4()
+    checkout = SimpleNamespace(
+        can_create=True,
+        view=AsyncMock(return_value={"state": "available"}),
+        offer=AsyncMock(),
+    )
+    monkeypatch.setenv("YOOKASSA_BROWSER_SHOP_ID", "123")
+    monkeypatch.setattr(
+        Container, "build_browser_checkout", lambda self: checkout
+    )
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={},
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={"order_id": str(order_id), "status_label": "new"},
+    )
+    assert client.app.state.browser_checkout is checkout
+    url = f"/admin/orders/{order_id}/browser-payment"
+    form = client.get(f"/admin/orders/{order_id}")
+    assert "Создать ссылку на оплату" in form.text
+    assert "receipt_email" not in form.text
+    assert form.headers["cache-control"] == "private, no-store"
+    token = re.search(r'name="csrf_token" value="([^"]+)"', form.text)[1]
+    assert client.post(url, data={}).status_code == 403
+    checkout.offer.assert_not_awaited()
+    response = client.post(
+        url,
+        data={"csrf_token": token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    checkout.offer.assert_awaited_once_with(order_id)
+    link = f"https://bot.example.test/miniapp/browser-payment.html#{uuid4()}"
+    checkout.view.return_value = {"state": "available", "url": link}
+    assert link in client.get(f"/admin/orders/{order_id}").text
+    checkout.offer.side_effect = OrderCreationError("browser_payment_paused")
+    response = client.post(url, data={"csrf_token": token})
+    assert "Создание платёжных ссылок приостановлено" in response.text
+    checkout.offer.side_effect = LookupError("missing order")
+    response = client.post(url, data={"csrf_token": token})
+    assert response.status_code == 404
+    client.app.state.browser_checkout = None
+    assert client.post(url, data={"csrf_token": token}).status_code == 503
+    assert client.get(url).json() is None
+    client.app.state.browser_checkout = checkout
+    checkout.view.return_value = {"state": "paid", "url": None}
+    assert client.get(url).json() == {"state": "paid", "url": None}
+    paid = client.get(f"/admin/orders/{order_id}")
+    assert "Заказ оплачен." in paid.text
+    assert "Создать ссылку на оплату" not in paid.text
+    monkeypatch.setattr(
+        AdminAuth, "authenticate", AsyncMock(return_value=False)
+    )
+    assert client.get(url).status_code == 401
 
 
 def test_admin_dashboard_api(monkeypatch) -> None:

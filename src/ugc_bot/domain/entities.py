@@ -310,6 +310,7 @@ class InstagramVerificationCode:
     link_max_chat_id: str | None = None
     link_username: str | None = None
     link_phone: str | None = None
+    request_channel: MessengerType | None = None
 
 
 @dataclass(frozen=True)

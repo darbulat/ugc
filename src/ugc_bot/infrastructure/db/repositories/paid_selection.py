@@ -16,6 +16,9 @@ from ugc_bot.infrastructure.db.creator_invite_models import (
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
 )
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    remember_offer_response,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -126,6 +129,7 @@ class SqlAlchemyPaidSelectionRepository:
         *,
         session,
         invite_id=None,
+        channel=None,
     ):
         db = _session(session)
         await SqlAlchemyFinancialItemRepository().lock_order(
@@ -443,7 +447,13 @@ class SqlAlchemyPaidSelectionRepository:
             manual["manager_id"] if manual is not None else manager
         )
         await self._record_dispatch(
-            order_id, creator_id, accepted, dispatch_manager, at, session=db
+            order_id,
+            creator_id,
+            accepted,
+            dispatch_manager,
+            at,
+            session=db,
+            channel=channel,
         )
         if manager is not None and manual is None:
             await db.execute(
@@ -458,7 +468,7 @@ class SqlAlchemyPaidSelectionRepository:
 
     @staticmethod
     async def _record_dispatch(
-        order_id, creator_id, accepted, manager, at, *, session
+        order_id, creator_id, accepted, manager, at, *, session, channel
     ):
         db = session
         dispatch = (
@@ -497,6 +507,11 @@ class SqlAlchemyPaidSelectionRepository:
                     OfferDispatchModel.blogger_id == creator_id,
                 )
                 .values(**dispatch_values)
+            )
+
+        if channel is not None:
+            await db.execute(
+                remember_offer_response(order_id, creator_id, channel, at)
             )
 
     @staticmethod

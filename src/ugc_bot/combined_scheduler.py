@@ -109,6 +109,9 @@ async def _run_all(config, container: Container, bot: Bot) -> None:
     tasks: list[asyncio.Task] = []
 
     tasks.extend(_customer_tasks(config, container, bot))
+    from ugc_bot.browser_checkout_scheduler import start_reconciliation
+
+    tasks.extend(start_reconciliation(config, container))
 
     if getattr(getattr(config, "financial", None), "core_enabled", False):
         tasks.append(
