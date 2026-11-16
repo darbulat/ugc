@@ -260,6 +260,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         in response.text
     )
     assert "Участие в заказах · Сегодня" in response.text
+    for activity in ("offered", "responded", "registered"):
+        assert (
+            f"base_segment={activity}_via_telegram&amp;work_period=today"
+            in response.text
+        )
     assert response.text.count("<summary>Охват MAX</summary>") == 1
     assert "<summary>Как считаем</summary>" not in response.text
     assert "@usemycontent" in response.text and "0 ₽" in response.text

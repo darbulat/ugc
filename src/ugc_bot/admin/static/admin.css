@@ -924,6 +924,16 @@ body {
   margin-top: .75rem;
 }
 
+.creator-base-work h4 {
+  margin: .65rem 0 .3rem;
+  font-size: .875rem;
+  color: #43516a;
+}
+
+.creator-base-work .dashboard-metrics {
+  margin-top: 0;
+}
+
 .creator-base-note,
 .creator-max-reach {
   font-size: .875rem;

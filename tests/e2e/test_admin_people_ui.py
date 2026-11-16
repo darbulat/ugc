@@ -674,6 +674,9 @@ def test_dashboard_social_summary_links_and_layout(
     assert page.locator(".creator-funnel").evaluate(
         "funnel => funnel.scrollWidth <= funnel.clientWidth"
     )
+    telegram = page.get_by_role("group", name="Telegram", exact=True)
+    expect(telegram.get_by_role("link")).to_have_count(3)
+    assert telegram.evaluate("group => group.scrollWidth <= group.clientWidth")
     summary = page.get_by_role("table", name="Соцсети креаторов")
     youtube = summary.get_by_role("row").filter(has_text="YouTube")
     expect(youtube.get_by_role("link")).to_have_text(["2", "2", "0"])
@@ -731,10 +734,14 @@ def test_creator_base_opens_filtered_directory(
         "Воронка регистрации · 7 дней"
     )
     check_counts(funnel.get_by_role("link"))
-    activity = section.locator(
-        ".creator-base-work .creator-base-metric:visible"
+    activity = section.get_by_role("group", name="Все каналы").get_by_role(
+        "link"
     )
+    telegram = section.get_by_role(
+        "group", name="Telegram", exact=True
+    ).get_by_role("link")
     expect(activity).to_have_count(4)
+    expect(telegram).to_have_count(3)
     periods = page.get_by_role("navigation", name="Период аналитики")
     for label, key in (
         ("Сегодня", "today"),
@@ -752,7 +759,12 @@ def test_creator_base_opens_filtered_directory(
         expect(activity.first).to_have_attribute(
             "href", re.compile(f"work_period={key}$")
         )
+        for link in telegram.all():
+            expect(link).to_have_attribute(
+                "href", re.compile(f"work_period={key}$")
+            )
         check_counts(activity.first)
+        check_counts(telegram)
 
     periods.get_by_role("link", name="Вчера", exact=True).click()
     expect(
