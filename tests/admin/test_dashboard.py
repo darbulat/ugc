@@ -463,6 +463,7 @@ def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
         offer=AsyncMock(),
     )
     monkeypatch.setenv("YOOKASSA_BROWSER_SHOP_ID", "123")
+    monkeypatch.setenv("TELEGRAM_BOT_USERNAME", "@synthetic_bot")
     monkeypatch.setattr(
         Container, "build_browser_checkout", lambda self: checkout
     )
@@ -493,6 +494,12 @@ def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
     link = f"https://bot.example.test/miniapp/browser-payment.html#{uuid4()}"
     checkout.view.return_value = {"state": "available", "url": link}
     assert link in client.get(f"/admin/orders/{order_id}").text
+    review_link = (
+        f"https://t.me/synthetic_bot?startapp=payreview_{order_id.hex}"
+    )
+    assert review_link not in client.get(f"/admin/orders/{order_id}").text
+    checkout.view.return_value = {"state": "telegram_pending", "url": link}
+    assert review_link in client.get(f"/admin/orders/{order_id}").text
     checkout.offer.side_effect = OrderCreationError("browser_payment_paused")
     response = client.post(url, data={"csrf_token": token})
     assert "Создание платёжных ссылок приостановлено" in response.text

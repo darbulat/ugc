@@ -1231,6 +1231,7 @@ async def _render_order_detail_page(
         request.session.pop("order_closure_result", None)
     checkout = getattr(request.app.state, "browser_checkout", None)
     browser_payment = await checkout.view(order_id) if checkout else None
+    review_bot = getattr(request.app.state, "checkout_review_bot", None)
     return templates.TemplateResponse(
         request,
         "order_detail.html",
@@ -1241,6 +1242,11 @@ async def _render_order_detail_page(
             "closure_result": closure_result,
             "delay_reason_labels": _DELAY_REASON_LABELS,
             "browser_payment": browser_payment,
+            "checkout_review_url": (
+                f"https://t.me/{review_bot}?startapp=payreview_{order_id.hex}"
+                if review_bot
+                else None
+            ),
             "browser_payment_can_create": bool(
                 checkout and checkout.can_create
             ),
@@ -4136,6 +4142,7 @@ def create_admin_app() -> FastAPI:
     engine = container.get_admin_engine()
     app = FastAPI(title=config.admin.admin_site_name)
     app.add_middleware(SessionMiddleware, secret_key=config.admin.admin_secret)
+    app.state.checkout_review_bot = telegram_handle(config.bot.bot_username)
     if config.financial.yookassa_browser_shop_id:
         app.state.browser_checkout = container.build_browser_checkout()
 

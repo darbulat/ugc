@@ -185,6 +185,7 @@ jobs:
           tests/e2e/test_admin_ui.py::test_order_worklist_search_hide_and_restore
           tests/e2e/test_admin_ui.py::test_manual_order_closure_requires_and_displays_reason
           tests/e2e/test_browser_payment_ui.py
+          tests/e2e/test_checkout_review_ui.py
 
   admin-image-import:
     name: Admin image import and alert isolation
