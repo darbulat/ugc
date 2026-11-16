@@ -60,6 +60,7 @@ async def test_paid_order_notifies_once_and_activates_only_after_capture(
                     "business_order_telegram_recipients": frozenset(
                         {env["admin"].telegram_id}
                     ),
+                    "browser_paid_order_telegram_recipients": frozenset(),
                 }
             )
         }
