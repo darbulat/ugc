@@ -22,10 +22,12 @@ from ugc_bot.domain.enums import (
     PaymentStatus,
     UserStatus,
 )
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     AuditLogModel,
     BloggerProfileModel,
     InteractionModel,
+    ManagerOrderModel,
     OfferDispatchModel,
     OrderModel,
     PaymentModel,
@@ -148,7 +150,7 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     "order_id": order,
                     "blogger_id": creator,
                     "created_at": date,
-                    "accepted": True,
+                    "accepted": creator != waitlisted,
                     "in_offer": in_offer,
                 }
                 for order, creator, date, in_offer in (
@@ -158,6 +160,34 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     (old, booked, start - timedelta(days=1), True),
                     (free, complimentary_creator, boundary, True),
                     (historic, booked, boundary, True),
+                )
+            ],
+        )
+        db.execute(
+            insert(APPLICATIONS),
+            [
+                dict(
+                    user_id=booked,
+                    state="approved",
+                    answers={},
+                    updated_at=boundary,
+                ),
+                dict(
+                    user_id=waitlisted,
+                    state="submitted",
+                    answers={},
+                    updated_at=boundary,
+                ),
+            ],
+        )
+        db.execute(
+            insert(ManagerOrderModel),
+            [
+                dict(user_id=user_id, order_id=order_id, created_at=boundary)
+                for user_id, order_id in (
+                    (booked, normal),
+                    (complimentary_creator, free),
+                    (complimentary_creator, old),
                 )
             ],
         )
@@ -226,7 +256,14 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
     assert dashboard["picked_creators_count"] == 2
     assert dashboard["completed_creators_count"] == 1
     assert dashboard["completed_creators_target"] == 1000
+    assert dashboard["responded_creators_count"] == 3
+    assert dashboard["managers_count"] == 2
+    assert dashboard["managers_target"] == 100
     assert all_time["completed_creators_count"] == 2
+    assert (
+        all_time["responded_creators_count"]
+        == dashboard["responded_creators_count"]
+    )
     assert dashboard["admin_launches"] == [("usemycontent", 2)]
     assert dashboard["creator_metrics"] == {
         "profiles": 3,

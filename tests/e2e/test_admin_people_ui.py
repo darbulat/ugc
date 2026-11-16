@@ -614,7 +614,7 @@ def test_platform_audience_sort_and_layout(
 
 @pytest.mark.e2e
 @pytest.mark.timeout(60)
-@pytest.mark.parametrize("width", [320, 1440])
+@pytest.mark.parametrize("width", [320, 768, 1440])
 def test_dashboard_social_summary_links_and_layout(
     admin_server, page, people_records, width
 ):
@@ -628,8 +628,7 @@ def test_dashboard_social_summary_links_and_layout(
         "(sections) => sections.map(section => "
         "section.getAttribute('aria-labelledby'))"
     )
-    assert section_ids[:7] == [
-        "creator-goal-heading",
+    assert section_ids[:6] == [
         "attention-heading",
         "period-heading",
         "creators-heading",
@@ -637,17 +636,35 @@ def test_dashboard_social_summary_links_and_layout(
         "cohorts-heading",
         "creator-social-heading",
     ]
-    goal = page.get_by_role("region", name="Креаторы, завершившие заказ")
-    progress = goal.get_by_role("progressbar")
-    expect(progress).to_have_attribute("aria-valuemax", "1000")
-    assert progress.evaluate(
-        """(bar) => {
-          const bounds = bar.getBoundingClientRect();
-          const center = bounds.left + bounds.width / 2;
-          return bounds.left >= 0 && bounds.right <= window.innerWidth
-            && Math.abs(center - window.innerWidth / 2) < 24;
+    goal = page.get_by_role("region", name="Цели дашборда")
+    expect(goal.locator("xpath=following-sibling::*[1]")).to_have_attribute(
+        "aria-labelledby", "attention-heading"
+    )
+    for name, target in (
+        ("Завершили заказ", "1000"),
+        ("Получили назначение", "1000"),
+        ("Откликнулись на оффер", "1000"),
+        ("Менеджеры", "100"),
+    ):
+        expect(goal.get_by_role("progressbar", name=name)).to_have_attribute(
+            "aria-valuemax", target
+        )
+    layout = goal.evaluate(
+        """(goal) => {
+          const bounds = goal.getBoundingClientRect();
+          const columns = getComputedStyle(goal).gridTemplateColumns;
+          return {
+            left: bounds.left, right: bounds.right, height: bounds.height,
+            columns: columns.split(' ').length,
+            overflow: goal.scrollWidth - goal.clientWidth,
+          };
         }"""
     )
+    assert 0 <= layout["left"] < layout["right"] <= width, layout
+    assert abs((layout["left"] + layout["right"]) / 2 - width / 2) < 24, layout
+    assert layout["columns"] == {320: 1, 768: 2, 1440: 4}[width], layout
+    assert layout["height"] < (100 if width == 1440 else 200), layout
+    assert layout["overflow"] <= 0, layout
     summary = page.get_by_role("table", name="Соцсети креаторов")
     youtube = summary.get_by_role("row").filter(has_text="YouTube")
     expect(youtube.get_by_role("link")).to_have_text(["2", "2", "0"])
