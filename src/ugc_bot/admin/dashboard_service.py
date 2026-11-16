@@ -29,6 +29,7 @@ from ugc_bot.admin.business_metrics import (
     admin_launches,
     cohort_metrics,
     count_completed_creators,
+    count_managers,
     count_picked_creators,
     creator_metrics,
     order_conversion,
@@ -133,6 +134,7 @@ _ACTIVE_ORDER_STATUSES = (
 )
 
 CREATOR_GOAL_TARGET = 1000
+MANAGER_GOAL_TARGET = 100
 
 logger = logging.getLogger(__name__)
 
@@ -338,6 +340,19 @@ class AdminDashboardService:
             timings["creator_social_summary"] = (
                 time.perf_counter() - t0
             ) * 1000
+            t0 = time.perf_counter()
+            responded_creators_count = await session.scalar(
+                select(func.count())
+                .select_from(BloggerProfileModel)
+                .join(
+                    UserModel, UserModel.user_id == BloggerProfileModel.user_id
+                )
+                .where(creator_base_filter("responded", "all", self._timezone))
+            )
+            timings["responded_creators"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
+            managers_count = await count_managers(session)
+            timings["managers"] = (time.perf_counter() - t0) * 1000
         page = max(1, referrers_page)
         per_page = max(1, min(100, referrers_per_page))
         need_balance_for_filter = referrers_filter in (
@@ -455,6 +470,9 @@ class AdminDashboardService:
             "picked_creators_target": CREATOR_GOAL_TARGET,
             "completed_creators_count": completed_creators_count,
             "completed_creators_target": CREATOR_GOAL_TARGET,
+            "responded_creators_count": int(responded_creators_count or 0),
+            "managers_count": managers_count,
+            "managers_target": MANAGER_GOAL_TARGET,
             "creator_metrics": creators,
             "creator_social_summary": social_summary,
             "cohort_metrics": cohorts,

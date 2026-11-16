@@ -27,12 +27,14 @@ from ugc_bot.infrastructure.db.collaboration_models import (
     CollaborationEventModel,
     CollaborationModel,
 )
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
     BloggerProfileModel,
     InteractionModel,
     ItemAssignmentModel,
+    ManagerOrderModel,
     OfferDispatchModel,
     OrderItemModel,
     OrderModel,
@@ -104,6 +106,33 @@ async def count_completed_creators(session: AsyncSession) -> int:
     completed = legacy.union(paid).subquery()
     return int(
         await session.scalar(select(func.count()).select_from(completed)) or 0
+    )
+
+
+async def count_managers(session: AsyncSession) -> int:
+    """Count approved managers and existing managers assigned to orders."""
+    approved = (
+        select(APPLICATIONS.c.user_id)
+        .where(
+            APPLICATIONS.c.user_id == UserModel.user_id,
+            APPLICATIONS.c.state == "approved",
+        )
+        .exists()
+    )
+    assigned = (
+        select(ManagerOrderModel.user_id)
+        .where(ManagerOrderModel.user_id == UserModel.user_id)
+        .exists()
+    )
+    return int(
+        await session.scalar(
+            select(func.count())
+            .select_from(UserModel)
+            .where(
+                UserModel.status != UserStatus.DELETED, or_(approved, assigned)
+            )
+        )
+        or 0
     )
 
 
