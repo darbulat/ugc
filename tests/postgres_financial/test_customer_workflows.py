@@ -1,7 +1,10 @@
 """Real PostgreSQL request atomicity, leased delivery, activity and payment."""
 
 import asyncio
+import json
 from datetime import timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -10,6 +13,12 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.orm import Session
 
 from tests.helpers.factories import create_test_order
+from tests.helpers.fakes import (
+    FakeCallback,
+    FakeFSMContext,
+    FakeMessage,
+    FakeUser,
+)
 from tests.postgres_financial.test_order_intake import intake_env as _intake_env
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -21,8 +30,17 @@ from ugc_bot.application.notice_delivery_ports import (
 from ugc_bot.application.services.customer_workflow_delivery import (
     CustomerWorkflowDelivery,
 )
-from ugc_bot.container.customer_workflow_factory import build_customer_workflows
+from ugc_bot.bot.customer_actions import PAYMENT_SUPPORT_PREFIX, SUPPORT_REASON
+from ugc_bot.bot.telegram.handlers.order_creation import (
+    handle_customer_problem,
+    handle_customer_problem_reason,
+)
+from ugc_bot.container.customer_workflow_factory import (
+    build_customer_workflow_delivery,
+    build_customer_workflows,
+)
 from ugc_bot.domain.customer_workflows import ServiceLeadInput, SupportInput
+from ugc_bot.domain.enums import PaymentStatus
 from ugc_bot.infrastructure.db.customer_workflow_models import (
     INTENTS,
     JOBS,
@@ -240,7 +258,187 @@ async def test_support_replay_conflict_owner_and_failed_delivery(intake_env):
 
 
 @pytest.mark.asyncio
-async def test_result_lead_preserves_all_fields_and_sends_full_payload(
+@pytest.mark.parametrize("legacy", [False, True])
+async def test_telegram_payment_help_from_input_to_provider_receipt(
+    intake_env, event_adapter, messenger_client, legacy
+):
+    env = intake_env
+    owned = await order(env)
+    requester, admin = env["user"], env["admin"]
+    contact = FakeUser(int(requester.telegram_id), "client")
+    roles = SimpleNamespace(get_user=AsyncMock(return_value=requester))
+    orders = SimpleNamespace(get_order=AsyncMock(return_value=owned))
+    support = services(env)["order_support_service"]
+    state = FakeFSMContext()
+    reason = "Платёж завис 😕\nНа экране <ошибка> & «повторите»."
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id != admin.user_id)
+            .values(admin=False)
+        )
+        db.add(
+            PaymentModel(
+                order_id=owned.order_id,
+                status=PaymentStatus.PENDING,
+                provider="synthetic",
+                external_id="payment-help-regression",
+                amount=1,
+                currency="RUB",
+            )
+        )
+    await handle_customer_problem(
+        FakeCallback(
+            f"{PAYMENT_SUPPORT_PREFIX}{owned.order_id}",
+            contact,
+            FakeMessage(user=contact),
+        ),
+        state,
+        roles,
+        orders,
+        messenger_client,
+        event_adapter,
+    )
+    for text in ("   ", f"  {reason}  "):
+        await handle_customer_problem_reason(
+            FakeMessage(text=text, user=contact),
+            state,
+            roles,
+            support,
+            messenger_client,
+            event_adapter,
+        )
+        if not text.strip():
+            assert await state.get_state() == SUPPORT_REASON
+            assert rows(env, REQUESTS) == []
+
+    (request,) = rows(env, REQUESTS)
+    rid = request["request_id"]
+    number = rid.hex[:8].upper()
+    assert request["payload"]["reason"] == reason
+    assert request["payload"]["payment_state"] == "processing"
+    assert await state.get_state() is None
+    assert messenger_client.sent_text[-1]["chat_id"] == requester.telegram_id
+    assert (
+        f"Обращение №{number} сохранено"
+        in (messenger_client.sent_text[-1]["text"])
+    )
+
+    if legacy:
+        now = env["clock"].now()
+        with Session(env["pg"]) as db, db.begin():
+            db.execute(update(REQUESTS).values(expanded_at=now))
+            db.execute(
+                insert(JOBS),
+                [
+                    dict(
+                        job_id=uuid4(),
+                        request_id=rid,
+                        recipient_id=admin.user_id,
+                        part=part,
+                        text=f'{part + 1}/2\n{{"operation_key": "old JSON"}}',
+                        due_at=now,
+                        state="ready",
+                    )
+                    for part in range(2)
+                ],
+            )
+    bot = AsyncMock()
+    bot.send_message.return_value = SimpleNamespace(
+        chat=SimpleNamespace(id=int(admin.telegram_id)), message_id=123
+    )
+    delivery = build_customer_workflow_delivery(
+        env["config"], env["container"].transaction_manager, bot
+    )
+    delivery.clock = env["clock"]
+    delivery.admin_base_url = "https://admin.example.test/admin/"
+    assert await delivery.run_once() == 1
+    assert await delivery.run_once() == 0
+    bot.send_message.assert_awaited_once()
+    kwargs = bot.send_message.await_args.kwargs
+    assert kwargs["chat_id"] == int(admin.telegram_id)
+    assert kwargs["parse_mode"] is None
+    assert kwargs["text"].startswith(
+        f"Проблема с оплатой · Обращение №{number}"
+    )
+    assert f"Заказ: UMC-{owned.order_id.hex[:8].upper()}" in kwargs["text"]
+    assert f"Что произошло: {reason}" in kwargs["text"]
+    assert "Контакт клиента: @client" in kwargs["text"]
+    assert "Оплата на момент обращения: обрабатывается" in kwargs["text"]
+    assert (
+        f"https://admin.example.test/admin/orders/{owned.order_id}"
+        in (kwargs["text"])
+    )
+    assert "operation_key" not in kwargs["text"] and "1/1" not in kwargs["text"]
+    jobs = sorted(rows(env, JOBS), key=lambda row: row["part"])
+    assert jobs[0]["provider_reference"] == f"{admin.telegram_id}:123"
+    assert [job["state"] for job in jobs] == (
+        ["accepted", "obsolete"] if legacy else ["accepted"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_pending_legacy_support_can_expand_without_losing_attachments(
+    intake_env,
+):
+    env = intake_env
+    owned = await order(env)
+    references = [
+        f"https://example.test/{index}/" + "😕" * 950 for index in range(4)
+    ]
+    request = await services(env)["order_support_service"].create(
+        env["user"].user_id,
+        SupportInput(
+            order_id=owned.order_id,
+            operation_key="legacy-with-attachments",
+            reason="Помогите разобраться",
+            contact_reference="@client",
+            attachments=[
+                dict(reference=url, label="Скриншот") for url in references
+            ],
+        ),
+    )
+    rid = request["request_id"]
+    raw = f"Обращение #{rid}\n" + json.dumps(
+        request["payload"], ensure_ascii=False, indent=2
+    )
+    old_parts = [
+        raw[index : index + 1500] for index in range(0, len(raw), 1500)
+    ]
+    assert len(old_parts) == 3
+    now = env["clock"].now()
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(update(REQUESTS).values(expanded_at=now))
+        db.execute(
+            insert(JOBS),
+            [
+                dict(
+                    job_id=uuid4(),
+                    request_id=rid,
+                    recipient_id=env["admin"].user_id,
+                    part=part,
+                    text=f"{part + 1}/{len(old_parts)}\n{text}",
+                    due_at=now,
+                    state="ready",
+                )
+                for part, text in enumerate(old_parts)
+            ],
+        )
+
+    receiver = Receiver(env)
+    delivery = worker(env, receiver)
+    assert await delivery.run_once() == 4
+    assert await delivery.run_once() == 0
+    for url in references:
+        assert sum(url in message.text for message in receiver.messages) == 1
+    assert all(
+        '"attachments"' not in message.text for message in receiver.messages
+    )
+    assert {job["state"] for job in rows(env, JOBS)} == {"accepted"}
+
+
+@pytest.mark.asyncio
+async def test_result_lead_preserves_all_fields_and_sends_readable_details(
     intake_env,
 ):
     env = intake_env
@@ -276,6 +474,9 @@ async def test_result_lead_preserves_all_fields_and_sends_full_payload(
     receiver = Receiver(env)
     await worker(env, receiver).run_once()
     delivered = "".join(message.text for message in receiver.messages)
+    assert "Услуга: Оплата за результат" in delivered
+    assert "Компания: Brand" in delivered
+    assert "operation_key" not in delivered and '"parameters"' not in delivered
     for value in payload.values():
         assert value in delivered
 
