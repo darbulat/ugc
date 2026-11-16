@@ -22,7 +22,7 @@
 {% endblock %}
 {% block quick_filters %}
   {% if base_segment %}
-    <a class="people-button" href="{{ request.url_for('admin_dashboard').include_query_params(work_period=work_period) }}#creator-base">{{ base_segment_label }}{% if work_period_label %} · {{ work_period_label }}{% endif %}</a>
+    <a class="people-button" href="{{ request.url_for('admin_dashboard').include_query_params(period=("30d" if work_period == "90d" else work_period)) }}#creator-base">{{ base_segment_label }}{% if work_period_label %} · {{ work_period_label }}{% endif %}</a>
   {% endif %}
   <a class="people-button" href="{{ request.url.remove_query_params('page').include_query_params(status='bot_blocked') }}">Креаторы с недоступным ботом</a>
 {% endblock %}

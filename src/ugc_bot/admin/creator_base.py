@@ -1,6 +1,6 @@
 """Shared dashboard counts and directory filters for the creator base."""
 
-from datetime import datetime, timedelta
+from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import and_, func, or_, select
@@ -11,6 +11,7 @@ from ugc_bot.admin.business_metrics import (
     _creator_order_activity,
     _legacy_creator_picks,
 )
+from ugc_bot.admin.dashboard_periods import PeriodKey, dashboard_period_window
 from ugc_bot.admin.order_worklist import business_order_conditions
 from ugc_bot.domain.enums import (
     InteractionStatus,
@@ -37,11 +38,14 @@ from ugc_bot.infrastructure.db.repositories.bot_availability import (
 )
 
 CREATOR_ACTIVITY_PERIODS = {
+    "today": "Сегодня",
+    "yesterday": "Вчера",
     "7d": "7 дней",
     "30d": "30 дней",
     "90d": "90 дней",
     "all": "Всё время",
 }
+CreatorPeriod = PeriodKey | Literal["90d"]
 CREATOR_BASE_CARDS = (
     (
         "Регистрация",
@@ -93,10 +97,18 @@ MAX_ACTIVITY_LABELS = {
     "responded_via_max": "Откликнулись в MAX",
     "registered_via_max": "Завершили регистрацию через MAX",
 }
+CREATOR_FUNNEL_LABELS = {
+    "funnel_profiles": "Создали профиль креатора",
+    "funnel_agreements": "Приняли условия",
+    "funnel_registered": "Завершили регистрацию",
+    "funnel_no_agreement": "Ожидают принятия условий",
+    "funnel_no_instagram": "Ожидают подтверждения Instagram",
+}
 CREATOR_BASE_LABELS = {
     **{key: label for _, items in CREATOR_BASE_CARDS for key, label in items},
     **CREATOR_ACTIVITY_LABELS,
     **MAX_ACTIVITY_LABELS,
+    **CREATOR_FUNNEL_LABELS,
     "telegram_available": "Telegram · доступен",
     "telegram_unavailable": "Telegram · бот недоступен",
     "telegram_unknown": "Telegram · нет данных о доступности",
@@ -106,8 +118,26 @@ CREATOR_BASE_LABELS = {
 }
 
 
-def normalize_creator_period(period: str) -> str:
-    return period if period in CREATOR_ACTIVITY_PERIODS else "30d"
+def normalize_creator_period(period: str) -> CreatorPeriod:
+    return (
+        cast(CreatorPeriod, period)
+        if period in CREATOR_ACTIVITY_PERIODS
+        else "30d"
+    )
+
+
+def _registration_stages() -> dict[str, ColumnElement[bool]]:
+    profile = BloggerProfileModel
+    saved = profile.user_id.is_not(None)
+    agreement = profile.agreement_confirmed_at.is_not(None)
+    verified = profile.confirmed.is_(True)
+    return {
+        "funnel_profiles": saved,
+        "funnel_agreements": agreement,
+        "funnel_registered": agreement & verified,
+        "funnel_no_agreement": saved & ~agreement,
+        "funnel_no_instagram": agreement & ~verified,
+    }
 
 
 def _profile_conditions() -> dict[str, ColumnElement[bool]]:
@@ -189,21 +219,12 @@ def _current_work():
 
 
 def _activity_conditions(
-    period: str, timezone: ZoneInfo
+    period: CreatorPeriod, timezone: ZoneInfo
 ) -> dict[str, ColumnElement[bool]]:
-    now = datetime.now(timezone)
-    period = normalize_creator_period(period)
-    start = None
-    if period != "all":
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start = midnight - timedelta(days=int(period[:-1]) - 1)
+    window = dashboard_period_window(period, timezone)
 
     def in_window(column):
-        return (
-            (column < now)
-            if start is None
-            else and_(column >= start, column < now)
-        )
+        return and_(column >= window.current_start, column < window.current_end)
 
     dispatch = OfferDispatchModel
     offers = (
@@ -216,6 +237,12 @@ def _activity_conditions(
         dispatch.accepted.is_not(None), in_window(response_at)
     )
     activity = _creator_order_activity()
+    started = select(activity.c.creator).where(in_window(activity.c.at))
+    work = (
+        started
+        if period == "yesterday"
+        else started.union(select(_current_work().subquery().c.creator))
+    )
     channels = OFFER_CHANNELS.c
     tracked = (
         select(channels.blogger_id)
@@ -252,31 +279,45 @@ def _activity_conditions(
         "accepted": UserModel.user_id.in_(
             responses.where(dispatch.accepted.is_(True))
         ),
-        "worked": UserModel.user_id.in_(
-            select(activity.c.creator)
-            .where(in_window(activity.c.at))
-            .union(select(_current_work().subquery().c.creator))
-        ),
+        "worked": user_id.in_(work),
     }
 
 
 def creator_base_filter(
     segment: str, period: str, timezone: ZoneInfo
 ) -> ColumnElement[bool]:
+    normalized = normalize_creator_period(period)
+    if segment in CREATOR_FUNNEL_LABELS:
+        return and_(
+            UserModel.status != UserStatus.DELETED,
+            _new_accounts(normalized, timezone),
+            _registration_stages()[segment],
+        )
     conditions = (
-        _activity_conditions(period, timezone)
+        _activity_conditions(normalized, timezone)
         if segment in CREATOR_ACTIVITY_LABELS or segment in MAX_ACTIVITY_LABELS
         else _profile_conditions()
     )
     return and_(UserModel.status != UserStatus.DELETED, conditions[segment])
 
 
+def _new_accounts(
+    period: CreatorPeriod, timezone: ZoneInfo
+) -> ColumnElement[bool]:
+    window = dashboard_period_window(period, timezone)
+    return and_(
+        UserModel.created_at >= window.current_start,
+        UserModel.created_at < window.current_end,
+    )
+
+
 async def creator_base_counts(
     db: AsyncSession, period: str, timezone: ZoneInfo
 ) -> dict[str, int]:
+    normalized = normalize_creator_period(period)
     conditions = {
         **_profile_conditions(),
-        **_activity_conditions(period, timezone),
+        **_activity_conditions(normalized, timezone),
     }
     result = await db.execute(
         select(
@@ -289,4 +330,22 @@ async def creator_base_counts(
         .join(UserModel, UserModel.user_id == BloggerProfileModel.user_id)
         .where(UserModel.status != UserStatus.DELETED)
     )
-    return dict(result.one()._mapping)
+    funnel = await db.execute(
+        select(
+            func.count().label("funnel_accounts"),
+            *(
+                func.count().filter(condition).label(name)
+                for name, condition in _registration_stages().items()
+            ),
+        )
+        .select_from(UserModel)
+        .outerjoin(
+            BloggerProfileModel,
+            BloggerProfileModel.user_id == UserModel.user_id,
+        )
+        .where(
+            UserModel.status != UserStatus.DELETED,
+            _new_accounts(normalized, timezone),
+        )
+    )
+    return {**result.one()._mapping, **funnel.one()._mapping}

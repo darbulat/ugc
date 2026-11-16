@@ -6,7 +6,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -41,6 +41,11 @@ from ugc_bot.admin.complaints import (
 from ugc_bot.admin.creator_base import (
     creator_base_counts,
     creator_base_filter,
+)
+from ugc_bot.admin.dashboard_periods import PeriodKey as PeriodKey
+from ugc_bot.admin.dashboard_periods import PeriodWindow as PeriodWindow
+from ugc_bot.admin.dashboard_periods import (
+    dashboard_period_window as dashboard_period_window,
 )
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
@@ -125,8 +130,6 @@ if TYPE_CHECKING:
         ReferralIncomeService,
     )
 
-PeriodKey = Literal["today", "yesterday", "7d", "30d", "all"]
-
 _ACTIVE_ORDER_STATUSES = (
     OrderStatus.NEW,
     OrderStatus.PENDING_MODERATION,
@@ -137,58 +140,6 @@ CREATOR_GOAL_TARGET = 1000
 MANAGER_GOAL_TARGET = 100
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(slots=True)
-class PeriodWindow:
-    """Time window for current and previous periods."""
-
-    current_start: datetime
-    current_end: datetime
-    previous_start: datetime
-    previous_end: datetime
-
-
-def dashboard_period_window(
-    period: PeriodKey, timezone: ZoneInfo
-) -> PeriodWindow:
-    """Build time windows for current and previous periods."""
-    now = datetime.now(timezone)
-    start_of_today = datetime(
-        year=now.year,
-        month=now.month,
-        day=now.day,
-        tzinfo=timezone,
-    )
-    if period == "today":
-        current_start = start_of_today
-        current_end = now
-        previous_start = start_of_today - timedelta(days=1)
-        previous_end = now - timedelta(days=1)
-    elif period == "yesterday":
-        current_end = start_of_today
-        current_start = current_end - timedelta(days=1)
-        previous_end = current_start
-        previous_start = previous_end - timedelta(days=1)
-    elif period in ("7d", "30d"):
-        days = 7 if period == "7d" else 30
-        current_end = now
-        current_start = start_of_today - timedelta(days=days - 1)
-        previous_start = current_start - timedelta(days=days)
-        previous_end = now - timedelta(days=days)
-    elif period == "all":
-        current_start = datetime(2000, 1, 1, tzinfo=timezone)
-        current_end = now
-        previous_start = current_start
-        previous_end = current_start
-    else:
-        raise ValueError(f"Unsupported period: {period}")
-    return PeriodWindow(
-        current_start=current_start,
-        current_end=current_end,
-        previous_start=previous_start,
-        previous_end=previous_end,
-    )
 
 
 def _days_between(start: datetime, end: datetime) -> float:

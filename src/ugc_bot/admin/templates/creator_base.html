@@ -1,8 +1,5 @@
-{% macro metric(key, label, work_period='') %}
-  {% set target = request.url_for('admin_creators').include_query_params(base_segment=key) %}
-  {% if work_period %}
-    {% set target = target.include_query_params(work_period=work_period) %}
-  {% endif %}
+{% macro metric(key, label) %}
+  {% set target = request.url_for('admin_creators').include_query_params(base_segment=key, work_period=period) %}
   <a class="metric creator-base-metric" href="{{ target }}">
     <span class="metric__label">{{ label }}</span>
     <strong class="metric__value">{{ creator_base.get(key, 0) }}</strong>
@@ -13,6 +10,28 @@
     <h2 id="creators-heading">Состояние базы</h2>
     <a href="{{ request.url_for('admin_creators') }}">Открыть креаторов</a>
   </div>
+  <article class="card creator-funnel" aria-labelledby="creator-funnel-heading">
+    <h3 id="creator-funnel-heading">Воронка регистрации · {{ period_labels[period] }}</h3>
+    <div class="grid dashboard-metrics creator-funnel__steps">
+      <div>
+        <div class="metric">
+          <span class="metric__label">Впервые зашли</span>
+          <strong class="metric__value">{{ creator_base.get('funnel_accounts', 0) }}</strong>
+        </div>
+        <small class="muted">Все роли</small>
+      </div>
+      <div>{{ metric('funnel_profiles', 'Создали профиль креатора') }}</div>
+      <div>
+        {{ metric('funnel_agreements', 'Приняли условия') }}
+        {{ metric('funnel_no_agreement', 'Ожидают принятия условий') }}
+      </div>
+      <div>
+        {{ metric('funnel_registered', 'Завершили регистрацию') }}
+        {{ metric('funnel_no_instagram', 'Ожидают подтверждения Instagram') }}
+      </div>
+    </div>
+    <p class="muted creator-base-note">Новые аккаунты за выбранный период и их этап на момент просмотра. Роль креатора видна после сохранения профиля.</p>
+  </article>
   <div class="grid dashboard-metrics">
     {% for title, items in creator_base_cards %}
       <article class="card">
@@ -22,43 +41,16 @@
     {% endfor %}
   </div>
   <article class="card creator-base-work">
-    <div class="page-heading">
-      <h3>Участие в заказах</h3>
-      <nav class="creator-work-periods" aria-label="Период участия в заказах">
-        {% for key, label in creator_activity_periods.items() %}
-          <a href="{{ request.url.include_query_params(work_period=key) }}#creator-base"{% if work_period == key %} aria-current="page"{% endif %}>{{ label }}</a>
-        {% endfor %}
-      </nav>
-    </div>
+    <h3>Участие в заказах · {{ period_labels[period] }}</h3>
     <div class="grid dashboard-metrics">
-      {% for key in ('offered', 'accepted', 'worked') %}
-        {{ metric(key, creator_activity_labels[key], work_period) }}
+      {% for key in ('offered', 'accepted', 'worked', 'responded') %}
+        {{ metric(key, 'Начали работу' if key == 'worked' and period == 'yesterday' else creator_activity_labels[key]) }}
       {% endfor %}
     </div>
-    {{ metric('responded', creator_activity_labels.responded, work_period) }}
-    <details>
-      <summary>Охват MAX за выбранный период</summary>
-      {% for key, label in max_activity_labels.items() %}{{ metric(key, label, work_period) }}{% endfor %}
-      <p class="muted">Учитываем уникальных креаторов по сохранённым каналам. Оффер только в MAX — по тому же заказу нет успешной отправки в Telegram. Охват только в MAX за период — за этот период у креатора нет успешных отправок в Telegram. Канал отклика берём из первого ответа, канал регистрации — из запроса кода, которым впервые подтвердили Instagram. История до начала учёта каналов сюда не входит.</p>
-    </details>
-    <details>
-      <summary>Как считаем</summary>
-      <p class="muted">В каждом показателе креатор учитывается один раз за период. Все отклики включают принятие и отказ. «Работали» включает начавших работу за период и тех, у кого работа ещё идёт. Для старых заказов ориентируемся на принятое предложение и включение в подбор. Даты старых откликов приблизительные.</p>
-      {% if creators %}
-        <h4>Участие по общему периоду дашборда</h4>
-        <div class="metric">
-          <span class="metric__label">{{ 'Участвовали за всё время' if period == 'all' else 'Участвовали за период' }}</span>
-          <strong class="metric__value">{{ creators.get('ever_worked' if period == 'all' else 'worked_period', 0) }}</strong>
-        </div>
-        {% if period != 'all' %}
-          {% for key, label in [('first_period', 'Участвовали впервые'), ('returning_period', 'Участвовали повторно')] %}
-            <div class="metric">
-              <span class="metric__label">{{ label }}</span>
-              <strong class="metric__value">{{ creators.get(key, 0) }}</strong>
-            </div>
-          {% endfor %}
-        {% endif %}
-      {% endif %}
+    <details class="creator-max-reach">
+      <summary>Охват MAX</summary>
+      {% for key, label in max_activity_labels.items() %}{{ metric(key, label) }}{% endfor %}
+      <p class="muted creator-base-note">В каждом показателе считаем уникальных креаторов. «Только в MAX» по заказу означает, что тот же оффер не отправился в Telegram. По периоду — что у креатора не было успешных отправок в Telegram за весь выбранный период. Канал отклика берём из первого ответа, канал регистрации — из запроса кода подтверждения Instagram. По старым событиям канал мог не сохраняться.</p>
     </details>
   </article>
 </section>

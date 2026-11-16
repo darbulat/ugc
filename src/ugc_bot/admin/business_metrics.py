@@ -45,6 +45,7 @@ from ugc_bot.infrastructure.db.models import (
 # These are the shop's own requester accounts for orders launched before the
 # admin workflow began recording complimentary activations.
 _ADMIN_ORDER_ACCOUNTS = ("kamil_bakhteev", "usemycontent")
+_TEST_MANAGER_HANDLES = ("oneday_support",)
 
 
 def _legacy_creator_picks():
@@ -110,26 +111,32 @@ async def count_completed_creators(session: AsyncSession) -> int:
 
 
 async def count_managers(session: AsyncSession) -> int:
-    """Count approved managers and existing managers assigned to orders."""
-    approved = (
-        select(APPLICATIONS.c.user_id)
+    """Count approved managers and legacy managers with business assignments."""
+    applications = select(APPLICATIONS.c.user_id).where(
+        APPLICATIONS.c.user_id == UserModel.user_id
+    )
+    approved = applications.where(APPLICATIONS.c.state == "approved").exists()
+    assigned = (
+        select(ManagerOrderModel.user_id)
+        .join(OrderModel, OrderModel.order_id == ManagerOrderModel.order_id)
         .where(
-            APPLICATIONS.c.user_id == UserModel.user_id,
-            APPLICATIONS.c.state == "approved",
+            ManagerOrderModel.user_id == UserModel.user_id,
+            *business_order_conditions(),
         )
         .exists()
     )
-    assigned = (
-        select(ManagerOrderModel.user_id)
-        .where(ManagerOrderModel.user_id == UserModel.user_id)
-        .exists()
+    handle = func.lower(
+        func.ltrim(func.trim(func.coalesce(UserModel.telegram, "")), "@")
     )
     return int(
         await session.scalar(
             select(func.count())
             .select_from(UserModel)
             .where(
-                UserModel.status != UserStatus.DELETED, or_(approved, assigned)
+                UserModel.status != UserStatus.DELETED,
+                UserModel.admin.is_(False),
+                handle.not_in(_TEST_MANAGER_HANDLES),
+                or_(approved, ~applications.exists() & assigned),
             )
         )
         or 0

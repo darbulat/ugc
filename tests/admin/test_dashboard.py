@@ -85,7 +85,13 @@ def _build_admin_client(
     monkeypatch.setattr(
         AdminDashboardService,
         "get_creator_base",
-        AsyncMock(return_value={"registered": 1817}),
+        AsyncMock(
+            return_value={
+                "registered": 1817,
+                "funnel_accounts": 44,
+                "funnel_no_agreement": 3,
+            }
+        ),
     )
     app = create_admin_app()
     return TestClient(app)
@@ -246,17 +252,23 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Состояние базы" in response.text
     assert "base_segment=registered" in response.text
     assert "1817" in response.text
-    assert "base_segment=worked&amp;work_period=30d" in response.text
-    assert "work_period=90d" in response.text
+    assert "base_segment=worked&amp;work_period=today" in response.text
+    assert "work_period=90d" not in response.text
+    assert "Воронка регистрации · Сегодня" in response.text
+    assert (
+        "base_segment=funnel_no_agreement&amp;work_period=today"
+        in response.text
+    )
+    assert "Участие в заказах · Сегодня" in response.text
+    assert response.text.count("<summary>Охват MAX</summary>") == 1
+    assert "<summary>Как считаем</summary>" not in response.text
     assert "@usemycontent" in response.text and "0 ₽" in response.text
-    assert "Участвовали за период" in response.text
-    assert "Участвовали впервые" in response.text
-    assert "Участвовали повторно" in response.text
-    all_periods = client.get("/admin/dashboard?period=all")
-    assert all_periods.status_code == 200
-    assert "Участвовали за всё время" in all_periods.text
-    assert "Участвовали за период" not in all_periods.text
-    assert "Участвовали впервые" not in all_periods.text
+    yesterday = client.get("/admin/dashboard?period=yesterday&work_period=30d")
+    assert yesterday.status_code == 200
+    assert "Участие в заказах · Вчера" in yesterday.text
+    assert "base_segment=worked&amp;work_period=yesterday" in yesterday.text
+    legacy = client.get("/admin/dashboard?work_period=7d")
+    assert "Участие в заказах · 7 дней" in legacy.text
     assert "из 1 000" in response.text
     assert "progress-bar" in response.text
 

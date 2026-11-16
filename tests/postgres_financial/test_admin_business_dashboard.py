@@ -44,9 +44,15 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
     zone = ZoneInfo("Europe/Moscow")
     start = dashboard_period_window("30d", zone).current_start
     boundary = (start + timedelta(days=2, minutes=20)).astimezone(timezone.utc)
-    advertiser, booked, waitlisted, complimentary_creator = [
-        uuid4() for _ in range(4)
-    ]
+    (
+        advertiser,
+        booked,
+        waitlisted,
+        complimentary_creator,
+        tester,
+        draft,
+        test_assignment,
+    ) = [uuid4() for _ in range(7)]
     normal, free, test, old, historic = [uuid4() for _ in range(5)]
     with financial_pg_engine.begin() as db:
         db.execute(
@@ -59,6 +65,8 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     "username": str(user_id),
                     "telegram": "@UseMyContent"
                     if user_id == advertiser
+                    else " @OneDay_Support "
+                    if user_id == tester
                     else None,
                     "admin": user_id == advertiser,
                     "status": status,
@@ -69,6 +77,9 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     (booked, UserStatus.ACTIVE),
                     (waitlisted, UserStatus.BOT_BLOCKED),
                     (complimentary_creator, UserStatus.ACTIVE),
+                    (tester, UserStatus.ACTIVE),
+                    (draft, UserStatus.ACTIVE),
+                    (test_assignment, UserStatus.ACTIVE),
                 )
             ],
         )
@@ -167,17 +178,18 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
             insert(APPLICATIONS),
             [
                 dict(
-                    user_id=booked,
-                    state="approved",
+                    user_id=user_id,
+                    state=state,
                     answers={},
                     updated_at=boundary,
-                ),
-                dict(
-                    user_id=waitlisted,
-                    state="submitted",
-                    answers={},
-                    updated_at=boundary,
-                ),
+                )
+                for user_id, state in (
+                    (booked, "approved"),
+                    (waitlisted, "submitted"),
+                    (advertiser, "approved"),
+                    (tester, "approved"),
+                    (draft, "draft"),
+                )
             ],
         )
         db.execute(
@@ -188,6 +200,8 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
                     (booked, normal),
                     (complimentary_creator, free),
                     (complimentary_creator, old),
+                    (draft, normal),
+                    (test_assignment, test),
                 )
             ],
         )

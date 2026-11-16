@@ -35,7 +35,7 @@ function chartData(data) {
   return {
     registrations: {
       type: "line",
-      note: "Регистрации за каждый день выбранного периода.",
+      note: "Профили пользователей, впервые зашедших в каждый день периода.",
       series: [
         series("Креаторы", data.registrations_creators, colors[0]),
         series("Заказчики", data.registrations_advertisers, colors[1]),
@@ -209,8 +209,8 @@ function renderPeaks(charts) {
   const observations = document.querySelector(".chart-observations");
   const list = observations.querySelector(".chart-peaks");
   const labels = {
-    "Креаторы": "Регистрации креаторов",
-    "Заказчики": "Регистрации заказчиков",
+    "Креаторы": "Профили креаторов",
+    "Заказчики": "Профили заказчиков",
     "Создано": "Новые заказы",
     "Оплачено": "Оплаченные заказы",
   };
