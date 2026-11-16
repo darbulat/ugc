@@ -6,8 +6,7 @@ from datetime import datetime
 
 from ugc_bot.domain.creator_invites import instagram_handle
 
-MANAGER_FOUNDERS = ("kamilbakhteev", "darbulat")
-MANAGER_REVIEWERS = (*MANAGER_FOUNDERS, "usemycontent")
+MANAGER_NOTIFICATION_RECIPIENTS = ("kamilbakhteev", "usemycontent")
 MANAGER_PROGRAM_URL = "https://usemycontent.ru/partner"
 MANAGER_SUBMITTED = "manager.application.submitted"
 MANAGER_APPROVED = "manager.application.approved"

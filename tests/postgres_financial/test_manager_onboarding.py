@@ -93,6 +93,7 @@ async def test_application_verification_review_and_directory(
     reviewers = ("kamilbakhteev", "darbulat", "usemycontent")
     reviewer_ids = [uuid4() for _ in reviewers]
     addresses = [980031, 980032, 980033]
+    notification_addresses = [addresses[0], addresses[2]]
     with Session(env["pg"]) as db, db.begin():
         for reviewer, identity, address in zip(
             reviewers, reviewer_ids, addresses, strict=True
@@ -128,7 +129,7 @@ async def test_application_verification_review_and_directory(
             raise OSError("Synthetic temporary candidate delivery failure")
         if (
             delayed_ready
-            and method.chat_id == addresses[1]
+            and method.chat_id == notification_addresses[1]
             and "готова к проверке" in method.text
         ):
             delayed_ready = False
@@ -248,9 +249,9 @@ async def test_application_verification_review_and_directory(
     assert submitted["submitted_at"] is not None
     version = application_version(submitted["submitted_at"])
     await publisher.process_pending_events(kafka)
-    assert sorted(message.chat_id for message in sent) == addresses[1:]
+    assert [message.chat_id for message in sent] == notification_addresses[1:]
     await publisher.process_pending_events(kafka)
-    assert sorted(message.chat_id for message in sent) == addresses
+    assert sorted(message.chat_id for message in sent) == notification_addresses
     for message in sent:
         assert "Новая заявка менеджера" in message.text
         buttons = message.reply_markup.inline_keyboard
@@ -323,6 +324,8 @@ async def test_application_verification_review_and_directory(
     response = await click_review(open_button)
     assert "администраторам" in response.call_args.args[0]
     assert response.call_args.kwargs["show_alert"]
+    response = await click_review("mreview:q:0")
+    assert "администраторам" in response.call_args.args[0]
     messenger.send_text.assert_not_awaited()
     reviewer.admin = True
     response = await click_review("mreview:v:bad-id")
@@ -330,6 +333,9 @@ async def test_application_verification_review_and_directory(
     response = await click_review(f"mreview:v:{uuid4().hex}")
     assert "не найдена" in response.call_args.args[0]
     messenger.send_text.assert_not_awaited()
+    await click_review("mreview:q:0")
+    result = messenger.send_text.call_args.kwargs
+    assert "нет заявок" in result["text"] and result["keyboard"] is None
 
     await click_review(open_button)
     displayed = messenger.send_text.call_args.kwargs
@@ -418,7 +424,7 @@ async def test_application_verification_review_and_directory(
         ]
         await publisher.process_pending_events(kafka)
     ready = [m for m in sent if "готова к проверке" in m.text]
-    assert sorted(m.chat_id for m in ready) == addresses[:2]
+    assert sorted(m.chat_id for m in ready) == notification_addresses
     ready_actions = [m.reply_markup.inline_keyboard[0][0] for m in ready]
     assert all(a.text == "Принять менеджера" for a in ready_actions)
     assert ready_actions[0].callback_data == ready_actions[1].callback_data
@@ -460,6 +466,17 @@ async def test_application_verification_review_and_directory(
         _review(db, "clarify", str(user_id), "")
     assert (await service.review_card(user_id))["state"] == "clarify"
     users.get_user.side_effect = roles.get_user
+    for index in (0, 1):
+        response = await click_review("mreview:q:0", reviewer_index=index)
+        response.assert_awaited_once_with()
+        queue = messenger.send_text.call_args.kwargs
+        assert queue["chat_id"] == str(addresses[index])
+        assert queue["keyboard"].rows[0][0].callback_data == open_button
+        await click_review(open_button, reviewer_index=index)
+        card = messenger.send_text.call_args.kwargs
+        assert (
+            card["keyboard"].rows[0][0].callback_data == approval.callback_data
+        )
     approver_index = int(temporary_candidate_failure)
     response = await click_review(
         approve_from_notice.callback_data, reviewer_index=approver_index
@@ -471,6 +488,8 @@ async def test_application_verification_review_and_directory(
     )
     assert response.call_args.kwargs["show_alert"]
     assert "уже обработана" in response.call_args.args[0]
+    await click_review("mreview:q:0", reviewer_index=approver_index)
+    assert messenger.send_text.call_args.kwargs["keyboard"] is None
     with Session(env["pg"]) as db, db.begin():
         manager = db.get(UserModel, user_id)
         manager.telegram = "test_manager"
@@ -512,7 +531,7 @@ async def test_application_verification_review_and_directory(
         )
     alerts = [message for message in sent if "Новая заявка" in message.text]
     assert sorted(message.chat_id for message in alerts) == sorted(
-        addresses * 2
+        notification_addresses * 2
     )
     (welcome,) = [message for message in sent if "Вы приняты" in message.text]
     assert welcome.chat_id == candidate_native_id
@@ -562,7 +581,7 @@ async def test_application_verification_review_and_directory(
                 OutboxEventModel.event_type.in_(MANAGER_NOTICE_EVENTS)
             )
         ).all()
-        assert len(events) == 11 and all(
+        assert len(events) == 9 and all(
             event.status == "published" for event in events
         )
 

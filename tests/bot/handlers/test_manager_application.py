@@ -95,11 +95,34 @@ async def test_active_admin_opens_workspace_without_a_candidate_application(
     text, markup = message.answers[-1]
     assert "Кабинет менеджера открыт" in text
     assert [
-        item[0].web_app.url.split("?", 1)[1] for item in markup.inline_keyboard
+        item[0].web_app.url.split("?", 1)[1]
+        for item in markup.inline_keyboard[:3]
     ] == [
         "view=manager&section=creators",
         "view=manager",
         "view=partner",
+    ]
+    assert markup.inline_keyboard[3][0].callback_data == "mreview:q:0"
+
+
+def test_admin_review_queue_exposes_both_pagination_actions():
+    from ugc_bot.bot.telegram.manager_review_messages import (
+        REVIEW_PAGE_SIZE,
+        review_queue_message,
+    )
+
+    rows = [
+        {"user_id": uuid4(), "name": "", "username": f"Creator {index}"}
+        for index in range(REVIEW_PAGE_SIZE + 1)
+    ]
+
+    _, markup = review_queue_message(rows, page=1)
+
+    assert len(markup.rows[:-1]) == REVIEW_PAGE_SIZE
+    assert markup.rows[0][0].text == "Creator 0"
+    assert [button.callback_data for button in markup.rows[-1]] == [
+        "mreview:q:0",
+        "mreview:q:2",
     ]
 
 

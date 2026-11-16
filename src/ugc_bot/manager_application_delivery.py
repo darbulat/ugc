@@ -20,10 +20,10 @@ from ugc_bot.domain.enums import OutboxEventStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
     MANAGER_INSTAGRAM_VERIFIED,
+    MANAGER_NOTIFICATION_RECIPIENTS,
     MANAGER_READY_FOR_REVIEW,
     MANAGER_READY_FOR_REVIEW_V2,
     MANAGER_REVIEWABLE_STATES,
-    MANAGER_REVIEWERS,
     MANAGER_SUBMITTED,
     application_version,
 )
@@ -163,7 +163,7 @@ class ManagerApplicationDelivery:
 
     @staticmethod
     async def _reviewer_address(db, recipient):
-        if recipient not in MANAGER_REVIEWERS:
+        if recipient not in MANAGER_NOTIFICATION_RECIPIENTS:
             raise ValueError("manager_reviewer_not_configured")
         addresses = (
             await db.scalars(

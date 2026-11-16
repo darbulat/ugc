@@ -11,11 +11,10 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
-    MANAGER_FOUNDERS,
     MANAGER_INSTAGRAM_VERIFIED,
+    MANAGER_NOTIFICATION_RECIPIENTS,
     MANAGER_READY_FOR_REVIEW_V2,
     MANAGER_REVIEWABLE_STATES,
-    MANAGER_REVIEWERS,
     MANAGER_SUBMITTED,
     application_fields,
     application_version,
@@ -218,7 +217,7 @@ class ManagerApplications:
                     state="submitted",
                     submitted_at=now,
                 )
-                for reviewer in MANAGER_REVIEWERS:
+                for reviewer in MANAGER_NOTIFICATION_RECIPIENTS:
                     _enqueue_notice(
                         db,
                         user_id,
@@ -245,6 +244,25 @@ class ManagerApplications:
                 )
             )
             return result.mappings().one_or_none()
+
+    async def review_queue(self, *, offset: int, limit: int):
+        query = (
+            select(
+                APPLICATIONS.c.user_id,
+                APPLICATIONS.c.answers["name"].as_string().label("name"),
+                UserModel.username,
+            )
+            .join(UserModel, UserModel.user_id == APPLICATIONS.c.user_id)
+            .where(
+                APPLICATIONS.c.state.in_(MANAGER_REVIEWABLE_STATES),
+                APPLICATIONS.c.instagram_verified_at.is_not(None),
+            )
+            .order_by(APPLICATIONS.c.submitted_at, APPLICATIONS.c.user_id)
+            .offset(offset)
+            .limit(limit)
+        )
+        async with self.transactions.transaction() as session:
+            return (await _session(session).execute(query)).mappings().all()
 
     async def approve_in_telegram(self, user_id: UUID, actor_id: UUID, version):
         async with self.transactions.transaction() as session:
@@ -375,7 +393,7 @@ class ManagerApplications:
                     )
                 )
             if current["state"] in MANAGER_REVIEWABLE_STATES:
-                for reviewer in MANAGER_FOUNDERS:
+                for reviewer in MANAGER_NOTIFICATION_RECIPIENTS:
                     notices.append(
                         _enqueue_notice(
                             db,

@@ -14,6 +14,36 @@ from ugc_bot.domain.manager_application import (
 
 REVIEW_PREFIX = "mreview:"
 REVIEW_PREVIEW_UNITS = 550
+REVIEW_PAGE_SIZE = 10
+
+
+def review_queue_message(rows, page: int):
+    buttons = [
+        [
+            Button(
+                text=(row["name"] or row["username"] or "Менеджер")[:80],
+                callback_data=f"{REVIEW_PREFIX}v:{row['user_id'].hex}",
+            )
+        ]
+        for row in rows[:REVIEW_PAGE_SIZE]
+    ]
+    navigation = []
+    if page > 0:
+        navigation.append(
+            Button(text="Назад", callback_data=f"{REVIEW_PREFIX}q:{page - 1}")
+        )
+    if len(rows) > REVIEW_PAGE_SIZE:
+        navigation.append(
+            Button(text="Далее", callback_data=f"{REVIEW_PREFIX}q:{page + 1}")
+        )
+    if navigation:
+        buttons.append(navigation)
+    text = (
+        "Заявки менеджеров с подтверждённым Instagram"
+        if rows
+        else "На этой странице нет заявок, готовых к одобрению."
+    )
+    return text, Keyboard(KeyboardKind.INLINE, buttons) if buttons else None
 
 
 def _admin_card_url(config, user_id):
