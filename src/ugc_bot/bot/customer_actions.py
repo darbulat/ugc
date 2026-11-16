@@ -5,7 +5,10 @@ from uuid import UUID, uuid4
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.customer_intake import principal_for
 from ugc_bot.bot.texts.defaults.customer import customer_text
-from ugc_bot.domain.customer_workflows import SupportInput
+from ugc_bot.domain.customer_workflows import (
+    SupportInput,
+    customer_request_number,
+)
 
 SUPPORT_REASON = "CustomerSupport:reason"
 SUPPORT_CONTACT = "CustomerSupport:contact"
@@ -151,9 +154,8 @@ async def send_support(
             ),
         )
         return
-    number = (
-        result.get("number")
-        or str(result["request_id"]).replace("-", "")[:8].upper()
+    number = result.get("number") or customer_request_number(
+        result["request_id"]
     )
     await state.set_state(None)
     await messenger.send_text(
