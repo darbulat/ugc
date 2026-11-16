@@ -283,36 +283,67 @@ async def test_notice_pg_crash_recovery_without_resend(
         with pytest.raises(Crash):
             await worker.deliver(attempt)
     clock.at += timedelta(seconds=61)
-    assert await worker.prepare(ids[0]) is None
-    assert (
-        await work(collaboration_pg)
-    ).collaboration.notice_failed_at == clock.at
+    replacement = await worker.prepare(ids[0])
+    assert (replacement is None) == after_send
+    assert (await work(collaboration_pg)).collaboration.notice_failed_at == (
+        clock.at if after_send else None
+    )
     worker.transport = transport
     await worker.deliver(attempt)
+    if replacement is not None:
+        await worker.deliver(replacement)
     await dispatch(worker, ids[0])
-    assert len(transport.sent) == int(after_send)
+    assert len(transport.sent) == 1
     async with factory.begin() as db:
-        assert (
-            await db.scalar(
-                text(
-                    "select status from financial_notice_outcomes where "
-                    "attempt_id=:id and kind='recovery'"
-                ),
-                {"id": attempt.attempt_id},
-            )
-            == "unknown"
-        )
+        assert await db.scalar(
+            text(
+                "select status from financial_notice_outcomes where "
+                "attempt_id=:id and kind='recovery'"
+            ),
+            {"id": attempt.attempt_id},
+        ) == ("unknown" if after_send else "obsolete")
 
 
 @pytest.mark.asyncio
 async def test_notice_pg_competing_workers_serialize_one_external_send(
     collaboration_pg,
 ):
-    worker, _, transport, ids = await environment(collaboration_pg)
-    await asyncio.gather(dispatch(worker, ids[0]), dispatch(worker, ids[0]))
-    assert (
-        len(transport.sent) == 1 and (await work(collaboration_pg)).version == 4
+    worker, repository, _, ids = await environment(collaboration_pg)
+    factory = collaboration_pg[0]
+    attempts = await asyncio.gather(
+        worker.prepare(ids[0]), worker.prepare(ids[0])
     )
+    (attempt,) = [item for item in attempts if item is not None]
+    started = asyncio.Event()
+    release = asyncio.Event()
+    sent = []
+
+    class Transport:
+        async def send(self, current):
+            sent.append(current)
+            started.set()
+            await release.wait()
+            return DeliveryReceipt(
+                current.channel, "concurrent-provider-receipt"
+            )
+
+    worker.transport = Transport()
+    sending = asyncio.create_task(worker.deliver(attempt))
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        assert await worker.prepare(ids[0]) is None
+        await worker.deliver(attempt)
+    finally:
+        release.set()
+        await sending
+    assert sent == [attempt]
+    assert (await work(collaboration_pg)).version == 4
+    async with factory.begin() as db:
+        (outcome,) = await repository.list_outcomes(
+            attempt.attempt_id, session=db
+        )
+        assert outcome.status == "accepted" and outcome.applied
+        assert outcome.provider_reference == "concurrent-provider-receipt"
 
 
 @pytest.mark.asyncio

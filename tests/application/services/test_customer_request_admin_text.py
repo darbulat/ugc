@@ -34,6 +34,7 @@ def test_payment_card_uses_a_snapshot_label(state, label):
             },
         )
     )
+    assert message.split("\n\n")[1] == "Не открывается оплата"
     assert f"Оплата на момент обращения: {label}" in message
     assert "internal-deduplication-key" not in message
     assert "Вложение" not in message and "ID автора" not in message
@@ -62,12 +63,12 @@ def test_long_support_card_keeps_description_and_clickable_attachment_links():
     )
     assert len(messages) > 1
     for index, message in enumerate(messages, 1):
-        header = f"Обращение №{rid.hex[:8].upper()}"
+        header = f"💬 Обращение №{rid.hex[:8].upper()}"
         assert message.startswith(f"{header} · часть {index}/{len(messages)}")
         assert len(message.encode("utf-16-le")) // 2 < 4000
     body = "\n".join(message.split("\n\n", 1)[1] for message in messages)
     assert f"ID автора: {blogger}" in body
-    description = body.split("Что произошло: ")[1].split("Вложение (")[0]
+    description = body.split("Заказ:")[0]
     assert description.replace("\n", "") == reason
     for attachment in attachments:
         assert any(attachment["reference"] in message for message in messages)

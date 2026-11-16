@@ -50,7 +50,7 @@ def _support_lines(lines: list[str], payload: Mapping) -> None:
             ),
         )
     _field(lines, "ID автора", payload.get("blogger_id"))
-    _field(lines, "Что произошло", payload.get("reason"))
+    _field(lines, "Контакт клиента", payload.get("contact_reference"))
     attachments = payload.get("attachments")
     if isinstance(attachments, list):
         for attachment in attachments:
@@ -109,16 +109,27 @@ def customer_request_admin_pages(source: Mapping) -> list[str]:
     support = source["kind"] == "support"
     number = customer_request_number(source["request_id"])
     if support:
-        heading = f"Обращение №{number}"
-        if payload.get("topic") == "payment":
-            heading = f"Проблема с оплатой · {heading}"
+        heading = (
+            f"⚠️ Проблема с оплатой · №{number}"
+            if payload.get("topic") == "payment"
+            else f"💬 Обращение №{number}"
+        )
     else:
-        heading = f"Заявка на услугу №{number}"
+        heading = f"📩 Заявка на услугу №{number}"
     lines: list[str] = []
+    if support:
+        reason = payload.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            lines.extend((reason, ""))
+    else:
+        _service_lines(lines, payload)
+        lines.append("")
     if order_id := source["order_id"]:
         lines.append(f"Заказ: {public_order_number(order_id)}")
-    _field(lines, "Контакт клиента", payload.get("contact_reference"))
-    (_support_lines if support else _service_lines)(lines, payload)
+    if support:
+        _support_lines(lines, payload)
+    else:
+        _field(lines, "Контакт клиента", payload.get("contact_reference"))
     pages = _bodies(lines)
     if len(pages) == 1:
         return [f"{heading}\n\n{pages[0]}" if pages[0] else heading]

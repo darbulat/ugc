@@ -286,6 +286,49 @@ class CollaborationNoticeDelivery:
         )
         await self._state(job, "unknown", session, "delivery_result_unknown")
 
+    async def _ready_job(self, origin, job, session):
+        if job.state not in ("prepared", "sending"):
+            return (
+                job
+                if job.state == "ready"
+                and origin.event.status == OutboxEventStatus.PENDING
+                else None
+            )
+        if job.lease_until > self._now():
+            return None
+        if job.state == "sending":
+            await self._recover(origin, job, session)
+            return None
+        return await self._requeue_unstarted(origin, job, session)
+
+    async def _requeue_unstarted(self, origin, job, session):
+        # Only a committed transition to sending can authorize provider I/O.
+        # The attempt is immutable; requeue with a new lease and audit this one.
+        attempt = await self.repository.get_attempt(
+            job.current_attempt_id, session=session
+        )
+        await self._observation(
+            origin,
+            attempt,
+            "recovery",
+            "obsolete",
+            None,
+            "notice_preparation_expired",
+            session,
+            apply=False,
+        )
+        ready = replace(job, state="ready", lease_token=None, lease_until=None)
+        await self._state(ready, "ready", session)
+        return ready
+
+    async def _manual_retry(self, origin, job, session) -> bool:
+        if not job.current_attempt_id or origin.notice.purpose != "objection":
+            return False
+        outcomes = await self.repository.list_outcomes(
+            job.current_attempt_id, session=session
+        )
+        return any(outcome.kind == "retry" for outcome in outcomes)
+
     async def prepare(self, event_id: UUID) -> NoticeAttempt | None:
         async with self.transactions.transaction() as session:
             origin = await self.repository.origin(event_id, session=session)
@@ -313,15 +356,10 @@ class CollaborationNoticeDelivery:
                 return None
             assert origin is not None
             assert origin.notice is not None and origin.source is not None
-            if job.state in ("prepared", "sending"):
-                if job.lease_until <= self._now():
-                    await self._recover(origin, job, session)
+            job = await self._ready_job(origin, job, session)
+            if job is None:
                 return None
-            if (
-                job.state != "ready"
-                or origin.event.status != OutboxEventStatus.PENDING
-            ):
-                return None
+            manual_retry = await self._manual_retry(origin, job, session)
             now = self._now()
             locale = (
                 contact.locale
@@ -393,7 +431,7 @@ class CollaborationNoticeDelivery:
                 )
                 await self._state(job, status, session, invalid)
                 return None
-            if attempt.number > 1 and origin.notice.purpose == "objection":
+            if manual_retry:
                 # A retry is review-only even if an earlier unsupported channel
                 # could not be expressed in the lifecycle's channel vocabulary.
                 await self._observation(
@@ -429,7 +467,7 @@ class CollaborationNoticeDelivery:
             ):
                 return False
             if job.lease_until <= self._now():
-                await self._recover(origin, job, session)
+                await self._requeue_unstarted(origin, job, session)
                 return False
             if not invalid and (
                 contact.channel,

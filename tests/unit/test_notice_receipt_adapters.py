@@ -10,7 +10,14 @@ from tests.application.services.test_collaboration_notice_delivery import (
     event_id,
     setup_delivery,
 )
-from ugc_bot.application.notice_delivery_ports import DeliveryFailure
+from ugc_bot.application.notice_delivery_ports import (
+    DeliveryFailure,
+    ReceiptCard,
+    ReceiptLink,
+)
+from ugc_bot.application.services.customer_workflow_delivery import (
+    WorkflowMessage,
+)
 
 
 def adapters():
@@ -132,6 +139,36 @@ async def test_max_posts_once_to_official_endpoint_and_returns_body_mid(kind):
     assert request["headers"] == {"Authorization": "synthetic-token"}
     assert request["json"] == {"text": attempt.text}
     assert request["timeout"].total == 30
+
+
+@pytest.mark.asyncio
+async def test_max_admin_card_sends_web_links_as_buttons():
+    _, Max, _ = adapters()
+    session = MaxSession()
+    attempt = WorkflowMessage(
+        (await prepared()).attempt_id,
+        "max",
+        "202",
+        "user_id",
+        "Заявка\n\nПодробности",
+        card=ReceiptCard(
+            (ReceiptLink("Открыть заказ", "https://example.test/order"),)
+        ),
+    )
+    await Max(session, "synthetic-token").send(attempt)
+    body = session.calls[0][1]["json"]
+    assert body["text"] == attempt.text and body["disable_link_preview"]
+    (keyboard,) = body["attachments"]
+    assert keyboard["type"] == "inline_keyboard"
+    assert keyboard["payload"]["buttons"] == [
+        [
+            {
+                "type": "link",
+                "text": "Открыть заказ",
+                "url": "https://example.test/order",
+            }
+        ]
+    ]
 
 
 @pytest.mark.asyncio
