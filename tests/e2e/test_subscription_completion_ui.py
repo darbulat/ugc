@@ -28,7 +28,7 @@ class Network(PartnerNetwork):
                     locale="ru",
                     country=self.country,
                     currency_symbol="₽",
-                    has_advertiser_profile=True,
+                    has_advertiser_profile=self.registered,
                     has_blogger_profile=False,
                     is_manager=self.manager,
                 )
@@ -108,6 +108,35 @@ def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
     assert network.commands[0]["reason"] == "Останавливаю доступ"
     assert network.commands[0]["init_data"] == SIGNED
     assert "actor_id" not in network.commands[0]
+    assert not errors
+
+
+@pytest.mark.parametrize("native", [True, False])
+def test_subscription_back_restores_country_step_before_onboarding(
+    page, native
+):
+    network = Network(manager=False)
+    network.registered = False
+    errors = open_app(
+        page,
+        network,
+        "telegram",
+        native=native,
+        init_data=SIGNED,
+        query="?view=subscriptions",
+    )
+    screen = page.locator("#screen-subscriptions")
+    expect(screen).to_contain_text("Synthetic test tariff")
+    expect(page.locator("#screen-country-select")).to_be_hidden()
+    if native:
+        page.wait_for_function("window.__host.wa.BackButton.visible")
+        page.evaluate("window.__host.wa.BackButton.click()")
+    else:
+        screen.get_by_role("button", name="Назад", exact=True).click()
+    expect(page.locator("#screen-country-select")).to_be_visible()
+    expect(page.locator("#screen-role-choice")).to_be_hidden()
+    assert "view=subscriptions" not in page.url
+    assert network.views == 1
     assert not errors
 
 
