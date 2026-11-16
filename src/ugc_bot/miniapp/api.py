@@ -783,6 +783,7 @@ def _blogger_profile_to_dict(blogger, user) -> dict | None:
         "display_name": getattr(user, "username", None) or "",
         "instagram_url": blogger.instagram_url,
         "confirmed": getattr(blogger, "confirmed", False),
+        "agreement_confirmed": blogger.agreement_confirmed_at is not None,
         "birth_date": birth_str,
         "topics": topics,
         "city": blogger.city,
@@ -827,6 +828,8 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
             "city": advertiser.city or "",
             "company_activity": advertiser.company_activity or "",
             "display_name": getattr(user, "username", None) or "",
+            "agreement_confirmed": advertiser.agreement_confirmed_at
+            is not None,
         }
     blg_profile = _blogger_profile_to_dict(blogger, user)
     # Resolve currency from country
@@ -1130,7 +1133,14 @@ async def _blogger_register_update(
             status_code=400,
             detail="City could not be resolved. Try another city.",
         )
-    return {"ok": True, "user_id": str(user_id)}
+    return {
+        "ok": True,
+        "user_id": str(user_id),
+        "needs_agreement": (
+            result.profile is not None
+            and result.profile.agreement_confirmed_at is None
+        ),
+    }
 
 
 async def _blogger_register_create(
@@ -1304,6 +1314,8 @@ async def start_instagram_verification(
         raise HTTPException(
             status_code=404, detail="Blogger profile not found."
         )
+    if blogger.agreement_confirmed_at is None:
+        raise HTTPException(403, "registration_agreement_required")
     if getattr(blogger, "confirmed", False):
         return {"already_confirmed": True}
     verification_service = dispatcher["instagram_verification_service"]
@@ -1414,6 +1426,8 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             status_code=403,
             detail="Advertiser profile required. Register as advertiser first.",
         )
+    if advertiser.agreement_confirmed_at is None:
+        raise HTTPException(403, "registration_agreement_required")
     external_id = _get_external_id(
         request, body.init_data, platform=body.platform
     )

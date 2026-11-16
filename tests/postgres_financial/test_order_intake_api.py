@@ -23,7 +23,7 @@ from tests.postgres_financial.test_order_intake import (
 )
 from ugc_bot.config import MaxBotConfig
 from ugc_bot.container import Container
-from ugc_bot.infrastructure.db.models import UserModel
+from ugc_bot.infrastructure.db.models import AdvertiserProfileModel, UserModel
 from ugc_bot.miniapp.api import router
 
 
@@ -249,6 +249,58 @@ async def test_signed_client_cannot_bypass_policy_or_deadline(
         )
         assert invalid.status_code == 400
         assert invalid.json()["detail"] == "agreed_selection_due_at_required"
+
+
+@pytest.mark.asyncio
+async def test_incomplete_registration_blocks_new_intake_but_keeps_orders(
+    intake_env,
+):
+    env = intake_env
+    payload = body(env)
+    auth = {"init_data": payload["init_data"]}
+    prefix = "/miniapp/api"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app(env, env["container"])),
+        base_url="http://test",
+    ) as client:
+        first = await client.post(f"{prefix}/financial/orders", json=payload)
+        assert first.status_code == 200, first.text
+        order_id = first.json()["order_id"]
+        with Session(env["pg"]) as db, db.begin():
+            db.execute(
+                update(AdvertiserProfileModel)
+                .where(AdvertiserProfileModel.user_id == env["user"].user_id)
+                .values(agreement_confirmed_at=None)
+            )
+
+        me = await client.post(f"{prefix}/me", json=auth)
+        assert me.json()["advertiser_profile"]["agreement_confirmed"] is False
+        retry = await client.post(f"{prefix}/financial/orders", json=payload)
+        assert retry.json() == first.json()
+        listed = await client.post(f"{prefix}/orders/list", json=auth)
+        assert listed.json()["orders"][0]["order_id"] == order_id
+        detail = await client.post(
+            f"{prefix}/orders/get", json=auth | {"order_id": order_id}
+        )
+        assert detail.json()["order_id"] == order_id
+
+        new_payload = payload | {"operation_key": uuid4().hex}
+        denied = await client.post(
+            f"{prefix}/financial/orders", json=new_payload
+        )
+        assert denied.status_code == 403
+        assert denied.json() == {"detail": "registration_agreement_required"}
+        confirmed = await client.post(
+            f"{prefix}/register/advertiser/confirm-agreement", json=auth
+        )
+        assert confirmed.status_code == 200
+        me = await client.post(f"{prefix}/me", json=auth)
+        assert me.json()["advertiser_profile"]["agreement_confirmed"] is True
+        created = await client.post(
+            f"{prefix}/financial/orders", json=new_payload
+        )
+        assert created.status_code == 200, created.text
+        assert created.json()["order_id"] != order_id
 
 
 @pytest.mark.asyncio

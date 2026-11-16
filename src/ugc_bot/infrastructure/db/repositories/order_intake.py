@@ -185,13 +185,13 @@ class SqlAlchemyOrderIntakeRepository:
         ).one_or_none()
         if user is None:
             return None
-        advertiser = await db.scalar(
-            select(AdvertiserProfileModel.user_id)
-            .where(
-                AdvertiserProfileModel.user_id == client_id,
+        advertiser = (
+            await db.execute(
+                select(AdvertiserProfileModel.agreement_confirmed_at)
+                .where(AdvertiserProfileModel.user_id == client_id)
+                .with_for_update(read=True)
             )
-            .with_for_update(read=True)
-        )
+        ).one_or_none()
         currency = (
             await db.scalar(
                 select(CountryModel.currency_code).where(
@@ -210,6 +210,10 @@ class SqlAlchemyOrderIntakeRepository:
             user.max_id,
             user.admin,
             user.country,
+            agreement_confirmed=(
+                advertiser is not None
+                and advertiser.agreement_confirmed_at is not None
+            ),
         )
 
     async def lock_operation(

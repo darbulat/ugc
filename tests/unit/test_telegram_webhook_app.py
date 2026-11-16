@@ -650,8 +650,9 @@ def test_miniapp_api_confirm_blogger_agreement_user_not_found_404(
     assert response.status_code == 404
 
 
-def test_miniapp_api_instagram_verification_start_success(
-    client: TestClient,
+@pytest.mark.parametrize("agreement_confirmed", [True, False])
+def test_miniapp_api_instagram_verification_start_checks_agreement(
+    client: TestClient, agreement_confirmed: bool
 ) -> None:
     """POST instagram-verification/start returns code and instruction."""
     init_data = _make_valid_init_data("test_token", 55553)
@@ -667,6 +668,9 @@ def test_miniapp_api_instagram_verification_start_success(
     )
     blogger = BloggerProfile(
         user_id=user_id,
+        agreement_confirmed_at=(
+            datetime.now(timezone.utc) if agreement_confirmed else None
+        ),
         instagram_url="https://instagram.com/test",
         confirmed=False,
         city="Moscow",
@@ -700,6 +704,11 @@ def test_miniapp_api_instagram_verification_start_success(
         "/miniapp/api/blogger/instagram-verification/start",
         json={"init_data": init_data},
     )
+    if not agreement_confirmed:
+        assert response.status_code == 403
+        assert response.json() == {"detail": "registration_agreement_required"}
+        mock_verif.generate_code.assert_not_awaited()
+        return
     assert response.status_code == 200
     data = response.json()
     assert "code" in data
@@ -727,6 +736,7 @@ def test_miniapp_api_instagram_verification_start_already_confirmed(
     )
     blogger = BloggerProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         instagram_url="https://instagram.com/test",
         confirmed=True,
         city="Moscow",
@@ -785,8 +795,11 @@ def test_miniapp_api_instagram_verification_start_no_blogger_404(
     assert response.status_code == 404
 
 
-def test_miniapp_api_create_order_success(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("agreement_confirmed", [True, False])
+def test_miniapp_api_create_order_checks_agreement(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    agreement_confirmed: bool,
 ) -> None:
     """POST /miniapp/api/orders with valid data returns 200."""
     init_data = _make_valid_init_data("test_token", 88888)
@@ -803,6 +816,9 @@ def test_miniapp_api_create_order_success(
     )
     advertiser = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=(
+            datetime.now(timezone.utc) if agreement_confirmed else None
+        ),
         phone="+79001111111",
         brand="Brand",
         site_link=None,
@@ -858,6 +874,12 @@ def test_miniapp_api_create_order_success(
             "order_type": "ugc_only",
         },
     )
+    if not agreement_confirmed:
+        assert response.status_code == 403
+        assert response.json() == {"detail": "registration_agreement_required"}
+        mock_order_svc.create_order.assert_not_awaited()
+        mock_messenger.send_text.assert_not_awaited()
+        return
     assert response.status_code == 200
     data = response.json()
     assert data.get("ok") is True
@@ -889,6 +911,7 @@ def test_miniapp_api_create_order_excludes_referral_support_chat(
     )
     advertiser = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+79001111111",
         brand="Brand",
         site_link=None,
@@ -968,6 +991,7 @@ def test_miniapp_api_create_order_notification_error_logged(
     )
     advertiser = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+79001111111",
         brand="Brand",
         site_link=None,
@@ -1091,6 +1115,7 @@ def test_miniapp_api_create_order_invalid_bloggers_needed_400(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3233,6 +3258,7 @@ def test_miniapp_api_orders_invalid_order_type_returns_400(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3279,6 +3305,7 @@ def test_miniapp_api_create_order_invalid_geography_400(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3326,6 +3353,7 @@ def test_miniapp_api_create_order_validation_fails(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3374,6 +3402,7 @@ def test_miniapp_api_create_order_service_raises_user_not_found_404(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3426,6 +3455,7 @@ def test_miniapp_api_create_order_service_raises_order_creation_error(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3667,6 +3697,7 @@ def test_miniapp_api_create_order_barter_required(client: TestClient) -> None:
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,
@@ -3714,6 +3745,7 @@ def test_miniapp_api_create_order_service_error(
     )
     adv = AdvertiserProfile(
         user_id=user_id,
+        agreement_confirmed_at=datetime.now(timezone.utc),
         phone="+7900",
         brand="B",
         site_link=None,

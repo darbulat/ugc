@@ -198,6 +198,7 @@ class IntakeClient:
     max_id: str | None = None
     is_admin: bool = False
     country: str | None = None
+    agreement_confirmed: bool = False
 
 
 @dataclass(frozen=True, slots=True)

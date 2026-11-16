@@ -193,7 +193,14 @@
       });
     }).catch(function(error) { if(!ctx.isCurrent())return;if(state.pending) pendingView(); if(error.intakeStorage)text('intake-error',words().storage);else failure(error,'intake-error'); }).finally(function() { if(ctx.isCurrent()){text('intake-loading',''); busy(false,intake);} });
   }
-  function openIntake(options) { if(state.busy) return; var current=document.querySelector('.screen.active'); if(current && current!==intake) state.intakeBack=current.id; bridge.showScreen(intake.id);if(options&&options.withManager)document.querySelector('[name="intake-mode"][value="with_manager"]').checked=true;loadPolicies(); }
+  function openIntake(options) {
+    if (state.busy || (bridge.resumeAgreement && bridge.resumeAgreement('advertiser'))) return;
+    var current = document.querySelector('.screen.active');
+    if (current && current !== intake) state.intakeBack = current.id;
+    bridge.showScreen(intake.id);
+    if (options && options.withManager) document.querySelector('[name="intake-mode"][value="with_manager"]').checked = true;
+    loadPolicies();
+  }
   function key() { if(!window.crypto || !crypto.getRandomValues) return null; if(crypto.randomUUID) return crypto.randomUUID(); return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(n) { return n.toString(16).padStart(2,'0'); }).join(''); }
   id('form-umc-intake').addEventListener('submit',function(event) {
     event.preventDefault(); if(state.busy || state.pending || state.result || (window.UMCOrderImages && window.UMCOrderImages.busy())) return;

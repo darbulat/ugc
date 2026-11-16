@@ -194,6 +194,7 @@
     </label>
     <div id="adv-agreement-error" class="error" role="alert" aria-live="assertive"></div>
     <button type="button" class="btn" id="btn-confirm-adv-agreement" data-umc-primary="20">Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="btn-agreement-orders" hidden>Мои заказы</button>
     <button type="button" class="btn btn-secondary" id="back-from-adv-agreements" data-umc-back>Назад</button>
   </div>
 
@@ -654,6 +655,8 @@
       }
 
       function showScreen(id) {
+        if (id === 'screen-advertiser-dashboard' && resumeAgreement('advertiser')) return;
+        if (id === 'screen-blogger-dashboard' && resumeAgreement('blogger')) return;
         document.querySelectorAll('.screen').forEach(function(el) { el.classList.remove('active'); });
         var el = document.getElementById(id);
         if (el) {
@@ -1658,6 +1661,7 @@
         setQ('#screen-advertiser-dashboard > .hint', L.adv_dashboard_hint);
         setText('btn-show-create-order', L.btn_create_order);
         setText('btn-show-orders-list', L.btn_my_orders);
+        setText('btn-agreement-orders', L.btn_my_orders);
         setText('btn-adv-update-profile', L.btn_update_profile);
         setText('btn-change-role-from-adv', L.btn_change_role);
         setQ('#block-create-order h2', L.new_order_h2);
@@ -1790,6 +1794,27 @@
         setText('mgr-creators-prev', L.mgr_prev);
         setText('mgr-creators-next', L.mgr_next);
         setText('mgr-creators-back', L.btn_back);
+      }
+
+      function showAgreement(role, profile) {
+        var prefix = role === 'advertiser' ? 'adv' : 'blg';
+        if (role === 'advertiser') {
+          fillAdvertiserForm(profile);
+          document.getElementById('btn-agreement-orders').hidden = !profile;
+        } else {
+          fillBloggerForm(profile);
+        }
+        fillAgreementsLinks('agreements-' + prefix + '-links', 'agreements-' + prefix + '-fallback');
+        document.getElementById(prefix + '-agree-checkbox').checked = false;
+        document.getElementById(prefix + '-agreement-error').textContent = '';
+        showScreen('screen-agreements-' + role);
+      }
+
+      function resumeAgreement(role) {
+        var profile = (window._me || {})[role + '_profile'];
+        if (!profile || profile.agreement_confirmed !== false) return false;
+        showAgreement(role, profile);
+        return true;
       }
 
       function updateRegisterButtonLabels() {
@@ -2001,15 +2026,20 @@
         }
         var btn = document.getElementById('btn-confirm-adv-agreement');
         if (btn) btn.disabled = true;
-        api('/register/advertiser/confirm-agreement', {}).then(function() {
+        var context = createRequestContext();
+        context.request('/register/advertiser/confirm-agreement', {}).then(function() {
           return loadMe();
         }).then(function() {
           showScreen('screen-advertiser-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка';
         }).then(function() {
+          context.dispose();
           if (btn) btn.disabled = false;
         });
+      });
+      document.getElementById('btn-agreement-orders').addEventListener('click', function() {
+        if (window.UMCCustomer) window.UMCCustomer.orders();
       });
       document.getElementById('back-from-adv-agreements').addEventListener('click', function() {
         showScreen('screen-register-advertiser');
@@ -2025,7 +2055,8 @@
         }
         var btn = document.getElementById('btn-confirm-blg-agreement');
         if (btn) btn.disabled = true;
-        api('/register/blogger/confirm-agreement', {}).then(function() {
+        var context = createRequestContext();
+        context.request('/register/blogger/confirm-agreement', {}).then(function() {
           return loadMe();
         }).then(function(me) {
           updateBloggerDashboardState(me || window._me);
@@ -2033,6 +2064,7 @@
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка';
         }).then(function() {
+          context.dispose();
           if (btn) btn.disabled = false;
         });
       });
@@ -2070,10 +2102,7 @@
         api('/register/advertiser', payload).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
-              fillAgreementsLinks('agreements-adv-links', 'agreements-adv-fallback');
-              document.getElementById('adv-agree-checkbox').checked = false;
-              document.getElementById('adv-agreement-error').textContent = '';
-              showScreen('screen-agreements-advertiser');
+              showAgreement('advertiser');
             });
           }
           return loadMe().then(function() { showScreen('screen-advertiser-dashboard'); });
@@ -2124,10 +2153,7 @@
         api('/register/blogger', payload).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
-              fillAgreementsLinks('agreements-blg-links', 'agreements-blg-fallback');
-              document.getElementById('blg-agree-checkbox').checked = false;
-              document.getElementById('blg-agreement-error').textContent = '';
-              showScreen('screen-agreements-blogger');
+              showAgreement('blogger');
             });
           }
           return loadMe().then(function(me) {
@@ -3277,12 +3303,17 @@
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
         var view = new URLSearchParams(location.search).get('view');
-        var openCreatorSocials = view === 'socials' && me.blogger_profile && me.blogger_profile.confirmed;
+        var creator = me.blogger_profile;
+        var advertiser = me.advertiser_profile;
+        var openCreator = creator && (
+          (view === 'socials' && (creator.confirmed || creator.agreement_confirmed === false)) ||
+          (!view && creator.agreement_confirmed === false && advertiser && advertiser.agreement_confirmed !== false)
+        );
         if (me.is_manager && view === 'manager') {
           loadManagerOrders(0);
         } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreatorSocials)) {
+        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
           updateBloggerDashboardState(me);
           showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {
@@ -3346,7 +3377,7 @@
           }
         });
       }
-      window.__umcAppBridge = { request: api, showScreen: showScreen, createRequestContext: createRequestContext, openOrder: openOrderDetail };
+      window.__umcAppBridge = { request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       // Deferred modules subscribe to app-ready and selection events.

@@ -28,6 +28,7 @@ from ugc_bot.domain.order_intake import (
     AccompanimentLead,
     EligibleOrderPolicies,
     EligibleOrderPolicy,
+    IntakeClient,
     IntakeItem,
     OrderIntakeCommand,
     OrderIntakeReceipt,
@@ -183,10 +184,7 @@ class OrderIntakeService:
                 ):
                     raise ValueError("idempotency_payload_conflict")
                 return previous.result
-            if not self.config.new_orders_enabled:
-                raise ValueError("financial_disabled")
-            if client.country != "ru" or client.currency != "RUB":
-                raise ValueError("unpublished_currency")
+            self._require_new_order_allowed(client)
             if command.policy_version == PILOT_POLICY_VERSION:
                 # Coordinate with publication of the replacement version.
                 await self.policies.lock_version(
@@ -287,6 +285,14 @@ class OrderIntakeService:
                     session=session,
                 )
             return result
+
+    def _require_new_order_allowed(self, client: IntakeClient) -> None:
+        if not client.agreement_confirmed:
+            raise PermissionError("registration_agreement_required")
+        if not self.config.new_orders_enabled:
+            raise ValueError("financial_disabled")
+        if client.country != "ru" or client.currency != "RUB":
+            raise ValueError("unpublished_currency")
 
     async def _pilot_superseded(self, now, *, session):
         policy = await self.policies.load(
