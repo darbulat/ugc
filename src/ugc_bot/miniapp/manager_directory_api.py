@@ -22,7 +22,7 @@ from ugc_bot.domain.social import (
 from ugc_bot.infrastructure.db.repositories.manager_creator_directory import (
     InstagramFilter,
     invited_creator_card,
-    invited_creator_page,
+    invited_creator_followup_page,
     postpone_creator_followup,
 )
 from ugc_bot.miniapp.financial_principal import FinancialPrincipalResolver
@@ -175,7 +175,7 @@ def create_manager_directory_router(
             request, body, resolve_principal
         )
         async with transactions.transaction() as session:
-            rows, followup_count = await invited_creator_page(
+            rows, followup_count = await invited_creator_followup_page(
                 session,
                 principal,
                 bot_unavailable=body.bot_unavailable,

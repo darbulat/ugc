@@ -72,9 +72,6 @@ def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
                 UserModel,
                 BloggerProfileModel,
                 creator_directory_status().label("status"),
-                _verified().label("instagram_verified"),
-                _due().label("followup_due"),
-                ManagerCreatorFollowupModel.remind_at,
             ),
             principal.user_id,
         )
@@ -83,38 +80,32 @@ def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
             inviter.user_id == UserReferralBindingModel.referrer_user_id,
         )
         .where(native_id == principal.external_id)
-        .outerjoin(
-            ManagerCreatorFollowupModel,
-            and_(
-                ManagerCreatorFollowupModel.manager_id == inviter.user_id,
-                ManagerCreatorFollowupModel.creator_id == UserModel.user_id,
-            ),
-        )
     )
 
 
-async def invited_creator_page(
-    session: AsyncSession,
-    principal: AuthenticatedMessengerPrincipal,
+def _with_followups(query, manager_id: UUID):
+    followup = ManagerCreatorFollowupModel
+    return query.add_columns(
+        _verified().label("instagram_verified"),
+        _due().label("followup_due"),
+        followup.remind_at,
+    ).outerjoin(
+        followup,
+        and_(
+            followup.manager_id == manager_id,
+            followup.creator_id == UserModel.user_id,
+        ),
+    )
+
+
+def _page(
+    query,
     *,
     bot_unavailable: bool,
     offset: int,
     limit: int,
-    q: str = "",
-    instagram: InstagramFilter = "all",
+    q: str,
 ):
-    query = _invited_creators_query(principal)
-    due_count = await session.scalar(
-        select(func.count()).select_from(
-            query.where(_due()).with_only_columns(UserModel.user_id).subquery()
-        )
-    )
-    if instagram == "verified":
-        query = query.where(_verified())
-    elif instagram == "unverified":
-        query = query.where(~_verified())
-    elif instagram == "due":
-        query = query.where(_due())
     if bot_unavailable:
         query = query.where(
             creator_directory_status() == UserStatus.BOT_BLOCKED
@@ -134,13 +125,60 @@ async def invited_creator_page(
                 BloggerProfileModel.city.icontains(term, autoescape=True),
             )
         )
-    rows = (
-        await session.execute(
-            query.order_by(UserModel.created_at.desc(), UserModel.user_id)
-            .offset(offset)
-            .limit(limit + 1)
+    return (
+        query.order_by(UserModel.created_at.desc(), UserModel.user_id)
+        .offset(offset)
+        .limit(limit + 1)
+    )
+
+
+async def invited_creator_page(
+    session: AsyncSession,
+    principal: AuthenticatedMessengerPrincipal,
+    *,
+    bot_unavailable: bool,
+    offset: int,
+    limit: int,
+    q: str = "",
+):
+    query = _page(
+        _invited_creators_query(principal),
+        bot_unavailable=bot_unavailable,
+        offset=offset,
+        limit=limit,
+        q=q,
+    )
+    return (await session.execute(query)).all()
+
+
+async def invited_creator_followup_page(
+    session: AsyncSession,
+    principal: AuthenticatedMessengerPrincipal,
+    *,
+    bot_unavailable: bool,
+    offset: int,
+    limit: int,
+    q: str,
+    instagram: InstagramFilter,
+):
+    query = _with_followups(
+        _invited_creators_query(principal), principal.user_id
+    )
+    due_count = await session.scalar(
+        select(func.count()).select_from(
+            query.where(_due()).with_only_columns(UserModel.user_id).subquery()
         )
-    ).all()
+    )
+    if instagram == "verified":
+        query = query.where(_verified())
+    elif instagram == "unverified":
+        query = query.where(~_verified())
+    elif instagram == "due":
+        query = query.where(_due())
+    query = _page(
+        query, bot_unavailable=bot_unavailable, offset=offset, limit=limit, q=q
+    )
+    rows = (await session.execute(query)).all()
     return rows, due_count or 0
 
 
@@ -152,7 +190,7 @@ async def invited_creator_card(
     # The binding and links are read in the same statement.
     social = SocialAccountModel
     query = (
-        _invited_creators_query(principal)
+        _with_followups(_invited_creators_query(principal), principal.user_id)
         .add_columns(
             social.platform.label("social_platform"),
             social.url.label("social_url"),
