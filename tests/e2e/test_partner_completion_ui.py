@@ -95,6 +95,17 @@ def test_role_choice_overview_copies_own_link_and_shows_totals(page, platform):
         "Ссылка скопирована."
     )
     assert page.evaluate("window.partnerCopies") == [url, url]
+
+    page.evaluate("""() => {
+      navigator.clipboard.writeText = () => Promise.reject();
+      document.execCommand = () => false;
+    }""")
+    page.locator("#btn-partner-copy").click()
+    expect(page.locator("#partner-copy-status")).to_have_text(
+        "Ссылка выделена. Скопируйте её вручную."
+    )
+    expect(page.locator("#btn-partner-copy")).to_have_text("Копировать")
+    expect(page.locator("#partner-link-value")).to_have_value(url)
     assert not errors
 
 

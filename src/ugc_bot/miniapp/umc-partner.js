@@ -150,9 +150,11 @@
     row.append(link,input,button);
     card.append(row,status);
 
+    var copyAttempt = 0;
     button.addEventListener('click',async function () {
       if (!current()) return;
       var bound = state.bound;
+      var attempt = ++copyAttempt;
       var copied = false;
       try {
         if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -162,7 +164,7 @@
       } catch (_) {
         // Some in-app browsers deny clipboard access even in a secure context.
       }
-      if (bound !== state.bound || !button.isConnected || !current()) return;
+      if (attempt !== copyAttempt || bound !== state.bound || !button.isConnected || !current()) return;
       if (!copied) {
         input.value = url;
         input.hidden = false;
@@ -172,14 +174,12 @@
         input.setSelectionRange(0,url.length);
         try { copied = document.execCommand('copy'); } catch (_) {}
       }
-      if (copied) {
-        if (!input.hidden) {
-          input.hidden = true;
-          link.hidden = false;
-          button.focus();
-        }
-        button.textContent = c.copiedShort;
+      if (copied && !input.hidden) {
+        input.hidden = true;
+        link.hidden = false;
+        button.focus();
       }
+      button.textContent = copied ? c.copiedShort : c.copyShort;
       status.textContent = copied ? c.copied : c.manual;
     });
   }
