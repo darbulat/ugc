@@ -3298,7 +3298,8 @@
         updateCurrencyLabels(me.currency_symbol);
         var params = new URLSearchParams(location.search);
         var view = params.get('view');
-        if (!me.country && window.__miniapp_platform !== 'max' && !params.has('assignment') && !params.has('assignment_id') && view !== 'partner' && !(view === 'manager' && me.is_manager)) {
+        var opensCabinet = view === 'partner' || view === 'subscriptions' || (view === 'manager' && me.is_manager);
+        if (!me.country && window.__miniapp_platform !== 'max' && !params.has('assignment') && !params.has('assignment_id') && !opensCabinet) {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {

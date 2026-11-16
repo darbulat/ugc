@@ -15,6 +15,7 @@ class Network(PartnerNetwork):
         super().__init__()
         self.admin = admin
         self.manager = manager
+        self.country = "ru" if manager else None
         self.commands = []
         self.views = 0
 
@@ -25,12 +26,17 @@ class Network(PartnerNetwork):
                 json=dict(
                     user_id=self.partner["actor_id"],
                     locale="ru",
-                    country="ru",
+                    country=self.country,
                     currency_symbol="₽",
                     has_advertiser_profile=True,
                     has_blogger_profile=False,
                     is_manager=self.manager,
                 )
+            )
+            return
+        if url.endswith("/config") and self.country is None:
+            route.fulfill(
+                json={"countries": [{"code": "ru", "name_native": "Россия"}]}
             )
             return
         if url.endswith("/subscriptions/view"):
@@ -93,6 +99,7 @@ def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
     )
     screen = page.locator("#screen-subscriptions")
     expect(screen).to_contain_text("Synthetic test tariff")
+    expect(page.locator("#screen-country-select")).to_be_hidden()
     screen.locator("summary", has_text="Отменить доступ").click()
     screen.locator('input[name="reason"]').fill("Останавливаю доступ")
     screen.locator("button", has_text="Сохранить").click()
