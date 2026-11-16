@@ -4,6 +4,7 @@ from asyncio import gather
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import insert, select
@@ -47,6 +48,9 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
     ]
     order, duplicate_order = uuid4(), uuid4()
     now = datetime.now(timezone.utc)
+    today = now.astimezone(ZoneInfo("Europe/Moscow")).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
     with financial_pg_engine.begin() as db:
         db.execute(
             insert(UserModel),
@@ -57,6 +61,13 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
                     telegram_id=tg,
                     max_id=mx,
                     status=status,
+                    created_at=(
+                        today - timedelta(days=40)
+                        if uid == older
+                        else today - timedelta(days=1)
+                        if uid == max_only
+                        else today
+                    ),
                     messenger_type=MessengerType.TELEGRAM
                     if tg
                     else MessengerType.MAX,
@@ -242,12 +253,49 @@ async def test_creator_base_counts_follow_the_same_segments_as_directory(
             "max_only_reached": 0,
             "responded_via_max": 2,
             "registered_via_max": 1,
+            "funnel_accounts": 5,
+            "funnel_profiles": 4,
+            "funnel_agreements": 3,
+            "funnel_registered": 2,
+            "funnel_no_agreement": 1,
+            "funnel_no_instagram": 1,
         }
         for segment, count in counts.items():
+            if segment == "funnel_accounts":
+                continue
             listing = await service.list_creators(
                 "all", False, False, base_segment=segment, work_period="30d"
             )
             assert listing["total"] == count, segment
+        today_counts, yesterday_counts = await gather(
+            service.get_creator_base("today"),
+            service.get_creator_base("yesterday"),
+        )
+        assert today_counts["offered"] == 0
+        assert today_counts["funnel_accounts"] == 4
+        assert today_counts["funnel_registered"] == 1
+        assert yesterday_counts["offered"] == 1
+        assert yesterday_counts["offered_via_max"] == 1
+        assert yesterday_counts["funnel_accounts"] == 1
+        assert yesterday_counts["funnel_registered"] == 1
+        for period, cohort in (
+            ("today", today_counts),
+            ("yesterday", yesterday_counts),
+        ):
+            for segment in (
+                "funnel_registered",
+                "offered",
+                "offered_via_max",
+                "worked",
+            ):
+                listing = await service.list_creators(
+                    "all",
+                    False,
+                    False,
+                    base_segment=segment,
+                    work_period=period,
+                )
+                assert listing["total"] == cohort[segment], (period, segment)
         assert (await service.get_creator_base("7d"))["offered"] == 3
         counts_90d = await service.get_creator_base("90d")
         assert counts_90d["accepted"] == 2

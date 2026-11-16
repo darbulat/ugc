@@ -10,6 +10,6 @@
   </head>
   <body>
     {% include 'admin_nav.html' %}
-    <main class="container" id="admin-content">{% block content %}{% endblock %}</main>
+    <main class="container{% block content_class %}{% endblock %}" id="admin-content">{% block content %}{% endblock %}</main>
   </body>
 </html>

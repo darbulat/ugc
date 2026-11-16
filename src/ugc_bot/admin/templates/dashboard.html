@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Дашборд{% endblock %}
+{% block content_class %} dashboard-content{% endblock %}
 {% macro cohort_rate(rate) -%}
   <span class="metric__values">
     <strong class="metric__value">{{ ('%.1f'|format(rate.percent)|replace('.', ',') ~ '%') if rate.percent is not none else '—' }}</strong>
@@ -60,7 +61,7 @@
     </nav>
     <div class="grid dashboard-metrics dashboard-summary">
       <article class="card">
-        <h3>Регистрации</h3>
+        <h3>Новые профили</h3>
         {% if period != '7d' or not weekly %}
         {% for role, name in roles %}
           {% set data = payload.registrations[role] %}
@@ -90,7 +91,7 @@
         {% endfor %}
         {% endif %}
         {% set ratio = payload.get('imbalance', {}).get('ratio') %}
-        {% if ratio is not none %}<p class="muted">{{ ratio|string|replace('.', ',') }} регистрации креатора на регистрацию заказчика</p>{% endif %}
+        {% if ratio is not none %}<p class="muted">{{ ratio|string|replace('.', ',') }} профиля креатора на один профиль заказчика</p>{% endif %}
       </article>
       <article class="card">
         <h3>Новые заявки</h3>
@@ -160,7 +161,7 @@
       {% if payload.get('metrics_timezone') %}<span class="muted">{{ payload.metrics_timezone }}</span>{% endif %}
     </div>
     <div id="dashboard-charts" data-period="{{ period }}" class="grid">
-      {% for key, label in [('registrations', 'Регистрации'), ('orders', 'Создание и оплата заказов'), ('turnover', 'Суммы оплат')] %}
+      {% for key, label in [('registrations', 'Новые профили'), ('orders', 'Создание и оплата заказов'), ('turnover', 'Суммы оплат')] %}
       <article class="card chart-card" data-chart="{{ key }}">
         <div class="page-heading chart-heading">
           <h3>{{ label }}</h3>

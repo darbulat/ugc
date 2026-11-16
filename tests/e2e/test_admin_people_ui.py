@@ -653,18 +653,27 @@ def test_dashboard_social_summary_links_and_layout(
         """(goal) => {
           const bounds = goal.getBoundingClientRect();
           const columns = getComputedStyle(goal).gridTemplateColumns;
+          const parent = getComputedStyle(goal.parentElement);
+          const padding = parseFloat(parent.paddingLeft)
+            + parseFloat(parent.paddingRight);
           return {
             left: bounds.left, right: bounds.right, height: bounds.height,
             columns: columns.split(' ').length,
             overflow: goal.scrollWidth - goal.clientWidth,
+            width: bounds.width,
+            available: goal.parentElement.clientWidth - padding,
           };
         }"""
     )
     assert 0 <= layout["left"] < layout["right"] <= width, layout
     assert abs((layout["left"] + layout["right"]) / 2 - width / 2) < 24, layout
+    assert abs(layout["width"] - layout["available"]) < 1, layout
     assert layout["columns"] == {320: 1, 768: 2, 1440: 4}[width], layout
     assert layout["height"] < (100 if width == 1440 else 200), layout
     assert layout["overflow"] <= 0, layout
+    assert page.locator(".creator-funnel").evaluate(
+        "funnel => funnel.scrollWidth <= funnel.clientWidth"
+    )
     summary = page.get_by_role("table", name="Соцсети креаторов")
     youtube = summary.get_by_role("row").filter(has_text="YouTube")
     expect(youtube.get_by_role("link")).to_have_text(["2", "2", "0"])
@@ -691,7 +700,7 @@ def test_dashboard_social_summary_links_and_layout(
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(60)
 def test_creator_base_opens_filtered_directory(
     admin_server, page, people_records
 ):
@@ -712,41 +721,62 @@ def test_creator_base_opens_filtered_directory(
             )
             page.go_back(wait_until="domcontentloaded")
 
-    overview = section.locator(".dashboard-metrics").first.locator(
-        ".creator-base-metric"
+    overview = section.locator(
+        ":scope > .dashboard-metrics .creator-base-metric"
     )
     expect(overview).to_have_count(16)
     check_counts(overview)
+    funnel = section.locator(".creator-funnel")
+    expect(funnel.get_by_role("heading")).to_have_text(
+        "Воронка регистрации · 7 дней"
+    )
+    check_counts(funnel.get_by_role("link"))
     activity = section.locator(
         ".creator-base-work .creator-base-metric:visible"
     )
     expect(activity).to_have_count(4)
-    for period in ("7 дней", "30 дней", "90 дней", "Всё время"):
-        option = section.get_by_role("link", name=period, exact=True)
+    periods = page.get_by_role("navigation", name="Период аналитики")
+    for label, key in (
+        ("Сегодня", "today"),
+        ("Вчера", "yesterday"),
+        ("7 дней", "7d"),
+        ("30 дней", "30d"),
+        ("Все", "all"),
+    ):
+        option = periods.get_by_role("link", name=label, exact=True)
         option.click()
         expect(option).to_have_attribute("aria-current", "page")
-        check_counts(activity)
+        expect(
+            section.get_by_role("heading", name=f"Участие в заказах · {label}")
+        ).to_be_visible()
+        expect(activity.first).to_have_attribute(
+            "href", re.compile(f"work_period={key}$")
+        )
+        check_counts(activity.first)
 
-    section.get_by_role("link", name="90 дней").click()
-    section.get_by_text("Охват MAX за выбранный период", exact=True).click()
+    periods.get_by_role("link", name="Вчера", exact=True).click()
+    expect(
+        section.get_by_role("link", name=re.compile("только в MAX за период"))
+    ).to_have_count(0)
+    section.get_by_text("Охват MAX", exact=True).click()
     max_only = section.get_by_role(
         "link", name=re.compile("только в MAX за период")
     )
     count = max_only.locator(".metric__value").inner_text()
     max_only.click()
     expect(page.locator(".people-count")).to_have_text(f"Найдено {count}")
-    expect(page.locator('input[name="work_period"]')).to_have_value("90d")
+    expect(page.locator('input[name="work_period"]')).to_have_value("yesterday")
     page.go_back(wait_until="domcontentloaded")
 
     section.get_by_role(
         "link", name=re.compile("^Получили предложение [0-9]")
     ).click()
     expect(
-        page.get_by_role("link", name="Получили предложение · 90 дней")
-    ).to_be_visible()
+        page.get_by_role("link", name="Получили предложение · Вчера")
+    ).to_have_attribute("href", re.compile(r"period=yesterday#creator-base$"))
     page.locator("#people-query").fill("не существует")
     page.locator(".people-filters").get_by_role("button", name="Найти").click()
-    expect(page.locator('input[name="work_period"]')).to_have_value("90d")
+    expect(page.locator('input[name="work_period"]')).to_have_value("yesterday")
     expect(page.locator(".people-count")).to_contain_text("Найдено 0")
     page.get_by_role("link", name="Сбросить").click()
     expect(page.locator('input[name="base_segment"]')).to_have_count(0)

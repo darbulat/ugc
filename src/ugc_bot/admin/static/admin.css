@@ -202,12 +202,14 @@ body {
   background: #2563eb;
 }
 
+.dashboard-content {
+  max-width: none;
+}
+
 .dashboard-goal {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: .75rem 1.25rem;
-  max-width: 62rem;
-  margin-inline: auto;
   padding: .75rem 1rem;
 }
 
@@ -892,21 +894,56 @@ body {
   text-decoration: underline;
 }
 
+.creator-funnel {
+  margin-bottom: .75rem;
+}
+
+.creator-funnel__steps {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.creator-funnel__steps > div {
+  padding: .65rem .75rem;
+  border-radius: .4rem;
+  background: #f5f7fb;
+}
+
+@media (max-width: 56rem) {
+  .creator-funnel__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 32rem) {
+  .creator-funnel__steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .creator-base-work {
   margin-top: .75rem;
 }
 
-.creator-work-periods {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .4rem .8rem;
+.creator-base-note,
+.creator-max-reach {
+  font-size: .875rem;
 }
 
-.creator-work-periods [aria-current="page"] {
-  font-weight: 700;
-  text-decoration: underline;
+.creator-base-note {
+  margin: .5rem 0 0;
 }
 
-.creator-base-work .creator-base-metric {
-  min-width: 0;
+.creator-max-reach {
+  margin-top: .65rem;
+  padding-top: .55rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.creator-max-reach summary {
+  color: #43516a;
+  cursor: pointer;
+}
+
+.creator-max-reach[open] summary {
+  margin-bottom: .5rem;
 }

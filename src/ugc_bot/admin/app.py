@@ -58,6 +58,7 @@ from ugc_bot.admin.creator_base import (
     CREATOR_ACTIVITY_PERIODS,
     CREATOR_BASE_CARDS,
     CREATOR_BASE_LABELS,
+    CREATOR_FUNNEL_LABELS,
     MAX_ACTIVITY_LABELS,
     normalize_creator_period,
 )
@@ -803,7 +804,7 @@ def _dashboard_cache_key(
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
     return (
-        f"dashboard:v14:{period_key}:{referrers_filter or 'all'}:"
+        f"dashboard:v15:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -822,7 +823,6 @@ async def _render_dashboard_page(
     referrers_order: str,
     referrers_filter: str,
     timings: str,
-    work_period: str,
 ):
     """Render dashboard HTML page."""
     if not await auth.authenticate(request):
@@ -857,12 +857,11 @@ async def _render_dashboard_page(
         referrers_filter=referrers_filter or None,
         include_timings=include_timings,
     )
-    work_period = normalize_creator_period(work_period)
     creator_base = await _get_cached_or_fetch(
         cache,
-        f"creator-base:v2:{work_period}" if cache else None,
-        _dashboard_cache_ttl(work_period),
-        lambda: dashboard_service.get_creator_base(work_period),
+        f"creator-base:v3:{period_key}" if cache else None,
+        _dashboard_cache_ttl(period_key),
+        lambda: dashboard_service.get_creator_base(period_key),
     )
     return templates.TemplateResponse(
         request,
@@ -872,9 +871,7 @@ async def _render_dashboard_page(
             "creator_base": creator_base,
             "creator_base_cards": CREATOR_BASE_CARDS,
             "creator_activity_labels": CREATOR_ACTIVITY_LABELS,
-            "creator_activity_periods": CREATOR_ACTIVITY_PERIODS,
             "max_activity_labels": MAX_ACTIVITY_LABELS,
-            "work_period": work_period,
             "period": period_key,
             "periods": _DASHBOARD_PERIODS,
             "period_labels": _PERIOD_LABELS,
@@ -1075,6 +1072,7 @@ async def _render_creators_page(
                 CREATOR_ACTIVITY_PERIODS[work_period]
                 if base_segment in CREATOR_ACTIVITY_LABELS
                 or base_segment in MAX_ACTIVITY_LABELS
+                or base_segment in CREATOR_FUNNEL_LABELS
                 else ""
             ),
         },
@@ -1608,14 +1606,14 @@ def _register_dashboard_html_routes(
     @app.get("/admin/dashboard", response_class=HTMLResponse)
     async def admin_dashboard(
         request: Request,
-        period: str = "today",
+        period: str | None = None,
         referrers_page: int = 1,
         referrers_per_page: int = 25,
         referrers_sort: str = "",
         referrers_order: str = "desc",
         referrers_filter: str = "all",
         timings: str = "",
-        work_period: str = "30d",
+        work_period: str = "",
     ):
         return await _render_dashboard_page(
             request,
@@ -1623,14 +1621,15 @@ def _register_dashboard_html_routes(
             dashboard_service,
             templates,
             cache,
-            period,
+            period
+            or ("30d" if work_period == "90d" else work_period)
+            or "today",
             referrers_page,
             referrers_per_page,
             referrers_sort,
             referrers_order,
             referrers_filter,
             timings,
-            work_period,
         )
 
     @app.get("/admin/referrers", response_class=HTMLResponse)
