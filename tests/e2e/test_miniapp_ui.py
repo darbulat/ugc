@@ -281,6 +281,10 @@ class TestMiniAppBlogger:
         wait_for_screen(miniapp_page, "screen-agreements-blogger")
         expect(miniapp_page.locator("#blg-agree-checkbox")).not_to_be_checked()
         expect(miniapp_page.locator("#screen-blogger-dashboard")).to_be_hidden()
+        miniapp_page.locator("#back-from-blg-agreements").click()
+        miniapp_page.locator("#blg-price").fill("9500")
+        miniapp_page.locator("#btn-submit-blogger").click()
+        wait_for_screen(miniapp_page, "screen-agreements-blogger")
         miniapp_page.locator("#blg-agree-checkbox").check()
         miniapp_page.locator("#btn-confirm-blg-agreement").click()
 

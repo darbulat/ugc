@@ -56,6 +56,23 @@ def test_resumed_agreement_prefills_the_latest_saved_profile(
     assert not errors
 
 
+def test_agreement_order_history_cannot_open_for_a_switched_account(
+    page: Page, platform: str
+) -> None:
+    network = MiniAppNetwork(registered=True)
+    network.advertiser_agreed = False
+    open_app(page, network, platform)
+    expect(page.locator("#screen-agreements-advertiser")).to_be_visible()
+    page.evaluate("window.__host.wa.initData = 'different-account'")
+    page.locator("#btn-agreement-orders").click()
+    expect(page.locator("#adv-agreement-error")).not_to_be_empty()
+    expect(page.locator("#screen-customer-orders")).to_be_hidden()
+    assert not any(
+        path == "/orders/list" and body["init_data"] == "different-account"
+        for path, body in network.requests
+    )
+
+
 def test_pending_creator_can_read_orders_and_gets_social_prompt_after_consent(
     page: Page, platform: str
 ) -> None:

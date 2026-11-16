@@ -409,6 +409,16 @@ class BloggerRegistrationService:
                 geom_wkt = location_geometry
                 profile_region = region
                 profile_country = (country or "").strip()
+            elif (
+                existing_profile is not None
+                and existing_profile.location_geometry is not None
+                and city_clean == existing_profile.city
+                and region in (None, existing_profile.region)
+                and country in (None, existing_profile.country)
+            ):
+                geom_wkt = existing_profile.location_geometry
+                profile_region = existing_profile.region
+                profile_country = existing_profile.country
             else:
                 (
                     geom_wkt,
@@ -597,8 +607,16 @@ class BloggerRegistrationService:
             else:
                 new_country = profile.country or ""
             new_geometry = location_geometry
-            if new_geometry is None and (
-                city is not None or region is not None
+            location_unchanged = (
+                profile.location_geometry is not None
+                and new_city == profile.city
+                and new_region == profile.region
+                and new_country == profile.country
+            )
+            if (
+                new_geometry is None
+                and (city is not None or region is not None)
+                and not location_unchanged
             ):
                 # Resolve by city name only; geocoder returns region/country.
                 (

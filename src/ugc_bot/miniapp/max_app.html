@@ -774,6 +774,9 @@
           set('blg-instagram', igUser);
         }
         set('blg-city', profile.city);
+        ['blg-region', 'blg-country', 'blg-lat', 'blg-lon'].forEach(function(id) {
+          document.getElementById(id).value = '';
+        });
         set('blg-audience-geo', profile.audience_geo);
         set('blg-age-min', profile.audience_age_min);
         set('blg-age-max', profile.audience_age_max);
@@ -2011,6 +2014,12 @@
         });
       });
       document.getElementById('btn-agreement-orders').addEventListener('click', function() {
+        var error = document.getElementById('adv-agreement-error');
+        error.textContent = '';
+        try { assertVerifiedMe(); } catch (err) {
+          error.textContent = err.message;
+          return;
+        }
         if (window.UMCCustomer) window.UMCCustomer.orders();
       });
       document.getElementById('back-from-adv-agreements').addEventListener('click', function() {
