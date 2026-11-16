@@ -81,6 +81,7 @@ Deploy only affected services:
 - **Admin-only change:** `admin` is a separate service. Build it from the clean release context, then run `docker compose ... up -d --no-deps admin`. Confirm `ugc-admin-1` is running and healthy before finishing. This was the procedure used for the paid-order admin update.
 - **Webhook app:** use the zero-downtime sequence for `app` and `app_2` from the repo script after confirming the live Compose service/image mapping. Keep at least one healthy instance serving traffic while updating the other.
 - **Other workers/services:** identify all services using the changed code/image and update only those required. Do not assume that rebuilding `app` updates workers already running an older image.
+- When introducing a new manager outbox event format, update `outbox_processor` before `instagram_webhook` and the Telegram app replicas. For rollback, restore the producers first and keep the newer worker until its pending and processing events have drained.
 
 Before deployment, inspect Compose project/config labels and the affected service names without dumping the full resolved configuration, which may contain secrets. If the release contains migrations, confirm they are backward-compatible with the old and new app versions, take the configured backup, and run the migration once using the repository migration service before or during rollout as the migration requires. Do not ignore a migration failure.
 

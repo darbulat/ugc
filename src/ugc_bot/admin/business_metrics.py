@@ -17,7 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.admin.order_summary import use_financial_positions
 from ugc_bot.admin.order_worklist import business_order_conditions
-from ugc_bot.domain.enums import OrderStatus, PaymentStatus, UserStatus
+from ugc_bot.domain.enums import (
+    InteractionStatus,
+    OrderStatus,
+    PaymentStatus,
+    UserStatus,
+)
 from ugc_bot.infrastructure.db.collaboration_models import (
     CollaborationEventModel,
     CollaborationModel,
@@ -26,6 +31,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
     BloggerProfileModel,
+    InteractionModel,
     ItemAssignmentModel,
     OfferDispatchModel,
     OrderItemModel,
@@ -64,6 +70,41 @@ async def count_picked_creators(session: AsyncSession) -> int:
     picks = _legacy_creator_picks().union(paid_assignments).subquery()
     result = await session.execute(select(func.count()).select_from(picks))
     return int(result.scalar() or 0)
+
+
+async def count_completed_creators(session: AsyncSession) -> int:
+    """Count distinct creators with a confirmed completion across orders."""
+    legacy = (
+        _legacy_creator_picks()
+        .join(
+            InteractionModel,
+            and_(
+                InteractionModel.order_id == OfferDispatchModel.order_id,
+                InteractionModel.blogger_id == OfferDispatchModel.blogger_id,
+                InteractionModel.advertiser_id == OrderModel.advertiser_id,
+            ),
+        )
+        .where(InteractionModel.status == InteractionStatus.OK)
+    )
+    paid = (
+        select(CollaborationModel.creator_id)
+        .join(
+            CollaborationEventModel,
+            CollaborationEventModel.assignment_id
+            == CollaborationModel.assignment_id,
+        )
+        .join(OrderModel, OrderModel.order_id == CollaborationModel.order_id)
+        .where(
+            CollaborationEventModel.event_type
+            == "financial.collaboration.success_final",
+            use_financial_positions(),
+            *business_order_conditions(),
+        )
+    )
+    completed = legacy.union(paid).subquery()
+    return int(
+        await session.scalar(select(func.count()).select_from(completed)) or 0
+    )
 
 
 def _creator_order_activity():

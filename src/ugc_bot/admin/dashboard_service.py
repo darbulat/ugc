@@ -28,6 +28,7 @@ from sqlalchemy.sql import ColumnElement
 from ugc_bot.admin.business_metrics import (
     admin_launches,
     cohort_metrics,
+    count_completed_creators,
     count_picked_creators,
     creator_metrics,
     order_conversion,
@@ -131,7 +132,7 @@ _ACTIVE_ORDER_STATUSES = (
     OrderStatus.ACTIVE,
 )
 
-PICKED_CREATORS_TARGET = 1000
+CREATOR_GOAL_TARGET = 1000
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +303,9 @@ class AdminDashboardService:
             t0 = time.perf_counter()
             picked_creators_count = await count_picked_creators(session)
             timings["picked_creators"] = (time.perf_counter() - t0) * 1000
+            t0 = time.perf_counter()
+            completed_creators_count = await count_completed_creators(session)
+            timings["completed_creators"] = (time.perf_counter() - t0) * 1000
             creators = await creator_metrics(
                 session, window.current_start, window.current_end
             )
@@ -448,7 +452,9 @@ class AdminDashboardService:
             ),
             "creators_by_city": creators_by_city,
             "picked_creators_count": picked_creators_count,
-            "picked_creators_target": PICKED_CREATORS_TARGET,
+            "picked_creators_target": CREATOR_GOAL_TARGET,
+            "completed_creators_count": completed_creators_count,
+            "completed_creators_target": CREATOR_GOAL_TARGET,
             "creator_metrics": creators,
             "creator_social_summary": social_summary,
             "cohort_metrics": cohorts,

@@ -1,6 +1,7 @@
 """Telegram application entry, private contact sharing and submission."""
 
 import asyncio
+from datetime import datetime, timezone
 from itertools import count
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -61,6 +62,78 @@ async def test_manager_application_uses_private_telegram_profile(config):
     assert (
         message.answers[-1][1].inline_keyboard[1][0].text
         == "Как устроена работа"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handle", ["kamilbakhteev", "darbulat"])
+async def test_active_admin_opens_workspace_without_a_candidate_application(
+    config, handle
+):
+    config.webhook.webhook_base_url = "https://bot.example.test"
+    state = FakeFSMContext()
+    await state.set_state(ManagerForm.answer)
+    message = FakeMessage(text="/manager", user=FakeUser(100, handle, "Admin"))
+    message.chat.type = "private"
+    roles = SimpleNamespace(
+        get_user=AsyncMock(
+            return_value=SimpleNamespace(
+                user_id=uuid4(),
+                telegram=handle,
+                admin=True,
+                status=UserStatus.ACTIVE,
+            )
+        ),
+        set_user=AsyncMock(),
+    )
+    applications = SimpleNamespace(open=AsyncMock())
+
+    await open_manager_application(message, state, roles, config, applications)
+
+    assert await state.get_state() is None
+    applications.open.assert_not_awaited()
+    roles.set_user.assert_not_awaited()
+    text, markup = message.answers[-1]
+    assert "Кабинет менеджера открыт" in text
+    assert [
+        item[0].web_app.url.split("?", 1)[1]
+        for item in markup.inline_keyboard[:3]
+    ] == [
+        "view=manager&section=creators",
+        "view=manager",
+        "view=partner",
+    ]
+    assert markup.inline_keyboard[3][0].callback_data == "mreview:q"
+
+
+def test_admin_review_queue_exposes_both_pagination_actions():
+    from ugc_bot.bot.telegram.manager_review_messages import (
+        REVIEW_PAGE_SIZE,
+        review_queue_cursor,
+        review_queue_message,
+    )
+
+    queued_at = datetime(2026, 11, 16, 12, 0, 0, 123456, tzinfo=timezone.utc)
+    rows = [
+        {
+            "user_id": uuid4(),
+            "name": "",
+            "username": f"Creator {index}",
+            "queued_at": queued_at,
+        }
+        for index in range(REVIEW_PAGE_SIZE + 1)
+    ]
+
+    _, markup = review_queue_message(rows, after=(queued_at, uuid4()))
+
+    assert len(markup.rows[:-1]) == REVIEW_PAGE_SIZE
+    assert markup.rows[0][0].text == "Creator 0"
+    first, next_page = [button.callback_data for button in markup.rows[-1]]
+    assert first == "mreview:q"
+    assert len(next_page.encode()) <= 64
+    assert review_queue_cursor(next_page.removeprefix("mreview:q:")) == (
+        queued_at,
+        rows[REVIEW_PAGE_SIZE - 1]["user_id"],
     )
 
 

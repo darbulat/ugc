@@ -5,7 +5,7 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import insert
+from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from ugc_bot.admin.dashboard_service import (
@@ -16,6 +16,7 @@ from ugc_bot.admin.dashboard_service import (
 from ugc_bot.domain.enums import (
     AudienceGender,
     AuditAction,
+    InteractionStatus,
     MessengerType,
     OrderStatus,
     PaymentStatus,
@@ -24,6 +25,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.models import (
     AuditLogModel,
     BloggerProfileModel,
+    InteractionModel,
     OfferDispatchModel,
     OrderModel,
     PaymentModel,
@@ -160,6 +162,26 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
             ],
         )
         db.execute(
+            insert(InteractionModel),
+            [
+                dict(
+                    order_id=order,
+                    blogger_id=creator,
+                    advertiser_id=advertiser,
+                    status=status,
+                    created_at=boundary,
+                    updated_at=boundary,
+                )
+                for order, creator, status in (
+                    (normal, booked, InteractionStatus.OK),
+                    (old, booked, InteractionStatus.OK),
+                    (normal, waitlisted, InteractionStatus.PENDING),
+                    (test, waitlisted, InteractionStatus.OK),
+                    (free, complimentary_creator, InteractionStatus.PENDING),
+                )
+            ],
+        )
+        db.execute(
             insert(PayoutRequestModel).values(
                 user_id=booked,
                 amount=123.45,
@@ -176,6 +198,13 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
         )
         charts = await service.get_dashboard_charts("30d")
         dashboard = await service.get_dashboard("30d")
+        with financial_pg_engine.begin() as db:
+            db.execute(
+                update(InteractionModel)
+                .where(InteractionModel.order_id == free)
+                .values(status=InteractionStatus.OK)
+            )
+        all_time = await service.get_dashboard("all")
     finally:
         await engine.dispose()
 
@@ -195,6 +224,9 @@ async def test_dashboard_calendar_conversion_creator_activity_and_payouts(
     }
     assert dashboard["previous_conversion"]["paid"] == 0
     assert dashboard["picked_creators_count"] == 2
+    assert dashboard["completed_creators_count"] == 1
+    assert dashboard["completed_creators_target"] == 1000
+    assert all_time["completed_creators_count"] == 2
     assert dashboard["admin_launches"] == [("usemycontent", 2)]
     assert dashboard["creator_metrics"] == {
         "profiles": 3,
