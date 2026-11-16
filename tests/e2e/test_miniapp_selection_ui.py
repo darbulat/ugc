@@ -230,6 +230,40 @@ def test_accompaniment_payment_terms_are_shown_before_checkout(
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_platform_checkboxes_align_with_clickable_labels_on_mobile(
+    page, platform
+):
+    page.set_viewport_size({"width": 320, "height": 740})
+    open_app(page, SelectionNetwork(), platform, init_data=SIGNED)
+    page.locator("#btn-show-create-order").click()
+    page.evaluate(
+        "() => { window.__host.wa.colorScheme = 'dark'; "
+        "window.__host.events.themeChanged(); }"
+    )
+
+    platforms = page.get_by_role("group", name="Площадки (хотя бы одна)")
+    expect(platforms.get_by_role("checkbox")).to_have_count(5)
+    for row in platforms.locator("label").all():
+        checkbox = row.get_by_role("checkbox")
+        text = row.locator("span")
+        checkbox_box = checkbox.bounding_box()
+        text_box = text.bounding_box()
+        row_box = row.bounding_box()
+        assert (
+            checkbox_box is not None
+            and text_box is not None
+            and row_box is not None
+        )
+        assert checkbox_box["x"] + checkbox_box["width"] < text_box["x"]
+        assert checkbox_box["y"] + checkbox_box["height"] / 2 == pytest.approx(
+            text_box["y"] + text_box["height"] / 2, abs=1
+        )
+        assert row_box["height"] >= 44
+        text.click()
+        expect(checkbox).to_be_checked()
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz"])
 def test_actual_intake_uses_server_policy_and_persisted_quote(
     page, platform, locale

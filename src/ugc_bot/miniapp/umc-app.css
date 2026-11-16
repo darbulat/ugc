@@ -389,6 +389,8 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-selection .umc-selection-modes label,
 .umc-selection .umc-selection-choice { display: flex; align-items: center; gap: var(--space-12); margin: var(--space-12) 0; cursor: pointer; }
 .umc-selection input[type="radio"], .umc-selection input[type="checkbox"] { width: 20px; height: 20px; flex: none; margin: 0; accent-color: var(--ink); }
+.umc-selection .umc-selection-platform { min-height: 44px; margin: 0; }
+.umc-selection input[data-intake-platform] { min-height: 0; padding: 0; }
 .umc-selection-position-grid { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: var(--space-8); }
 .umc-selection-position-grid label { display: flex; flex-direction: column; align-items: center; gap: var(--space-6); margin: 0; padding: var(--space-8) 0; background: var(--card); border-radius: var(--radius-12); cursor: pointer; }
 .umc-selection-notice { padding: var(--space-16); border-left: 3px solid var(--ink); background: var(--card); line-height: 1.5; }
