@@ -165,11 +165,7 @@ form .btn-secondary { background: var(--bg); }
 .themed-link, .payment-link a, .agreements-links a, .instagram-instruction a { color: var(--ink); text-underline-offset: 3px; }
 .pagination-btns { display: flex; gap: var(--space-8); margin-top: var(--space-12); }
 .pagination-btns .btn { flex: 1; margin-top: 0; }
-.instagram-input-group { display: flex; align-items: stretch; min-width: 0; margin-top: 4px; border: 1px solid transparent; border-radius: var(--radius-12); background: var(--bg); }
-.instagram-input-group:focus-within { border-color: var(--ink); outline: 2px solid var(--focus); outline-offset: 3px; }
-.instagram-prefix { display: flex; align-items: center; padding-left: 14px; color: var(--muted); font-size: 14px; white-space: nowrap; }
-.instagram-input-group input { flex: 1; min-width: 0; padding-left: 0; border: none; }
-.umc .instagram-input-group input:focus-visible { outline: none; }
+.umc-field-hint { margin: var(--space-6) 0 0; font-size: 14px; }
 .date-row { display: flex; gap: var(--space-8); }
 .date-row select { min-width: 0; padding-left: 8px; padding-right: 4px; }
 .date-row select:nth-child(1) { flex: .7; }
@@ -205,7 +201,6 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
   .screen > h1 { margin-left: -16px; margin-right: -16px; padding-left: var(--space-16); padding-right: var(--space-16); }
   form, #creator-detail-body { padding: var(--space-16); }
   .umc-brand { padding-left: var(--space-16); }
-  .instagram-prefix { font-size: 12px; padding-left: 10px; }
   .country-grid { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {

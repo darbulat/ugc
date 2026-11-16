@@ -470,10 +470,15 @@ def test_creator_registration_city_search_and_empty_orders(
     expect(page.locator("#screen-role-choice")).to_be_visible()
     page.locator('[data-role="blogger"]').click()
     page.locator("#blg-name").fill("Synthetic creator")
-    page.locator("#blg-instagram").fill("synthetic_creator")
+    page.locator("#blg-instagram").fill(
+        "https://www.instagram.com/synthetic_creator/?igsh=abc&utm_source=qr"
+    )
+    expect(page.locator("#blg-instagram")).to_have_value(
+        "https://instagram.com/synthetic_creator"
+    )
     page.locator("#blg-birth-year").select_option("1995")
     page.locator("#blg-topics").fill("beauty, fashion")
-    page.locator("#blg-audience-geo").fill("Synthetic country")
+    page.locator("#blg-audience-geo").fill("Россия, Казань")
     page.locator("#blg-price").fill("10000")
     page.locator("#btn-blogger-city-map").click()
     page.locator("#blg-city-search").fill("Synthetic city")
@@ -482,8 +487,15 @@ def test_creator_registration_city_search_and_empty_orders(
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"
     )
-    page.locator("#btn-blogger-city-map").click()
+    page.locator("#btn-blogger-city-confirm").click()
     screenshot(page, f"telegram-{locale}-creator-form-320")
+    page.locator("#blg-instagram").fill(
+        "https://instagram.com.fake.test/creator"
+    )
+    page.locator("#btn-submit-blogger").click()
+    expect(page.locator("#blg-error")).not_to_be_empty()
+    assert not any(path == "/register/blogger" for path, _ in network.requests)
+    page.locator("#blg-instagram").fill("@synthetic_creator")
     page.locator("#btn-submit-blogger").click()
     expect(page.locator("#screen-agreements-blogger")).to_be_visible()
     page.locator("#blg-agree-checkbox").check()
@@ -498,6 +510,7 @@ def test_creator_registration_city_search_and_empty_orders(
     )
     assert created["instagram_url"] == "https://instagram.com/synthetic_creator"
     assert created["city"] == "Synthetic city" and created["price"] == 10000
+    assert created["audience_geo"] == "Россия, Казань"
     screenshot(page, f"telegram-{locale}-creator-dashboard-320")
     assert not errors
 

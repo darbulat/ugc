@@ -113,13 +113,10 @@
   <div id="screen-register-blogger" class="screen" data-umc-section="peach">
     <h1>Регистрация креатора</h1>
     <form id="form-blogger">
-      <label id="lbl-blg-name" for="blg-name">Имя / ник (как к вам обращаться) *</label>
-      <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Не ссылка на Instagram">
-      <label id="lbl-blg-instagram" for="blg-instagram">Ссылка на Instagram *</label>
-      <div class="instagram-input-group">
-        <span class="instagram-prefix">https://instagram.com/</span>
-        <input type="text" id="blg-instagram" name="instagram_username" required placeholder="username" pattern="[A-Za-z0-9._]+" title="Только буквы, цифры, точки и подчёркивания">
-      </div>
+      <label id="lbl-blg-name" for="blg-name">Имя (как к вам обращаться) *</label>
+      <input type="text" id="blg-name" name="display_name" required maxlength="50" placeholder="Например, Анна">
+      <label id="lbl-blg-instagram" for="blg-instagram">Профиль Instagram *</label>
+      <input type="text" id="blg-instagram" name="instagram_username" required inputmode="url" autocapitalize="none" spellcheck="false" placeholder="instagram.com/username">
       <label id="lbl-blg-birthdate">Дата рождения *</label>
       <div class="date-row">
         <select id="blg-birth-day" name="birth_day" required aria-label="День"></select>
@@ -128,15 +125,16 @@
       </div>
       <label id="lbl-blg-topics" for="blg-topics">Тематики (через запятую, от 1 до 10) *</label>
       <input type="text" id="blg-topics" name="topics" required placeholder="красота, мода, путешествия">
-      <label id="lbl-blg-city-field" for="blg-city">Город *</label>
+      <label id="lbl-blg-city-field" for="blg-city">Ваш город *</label>
       <input type="text" id="blg-city" name="city" required readonly placeholder="Выберите на карте или найдите город">
       <input type="hidden" id="blg-region" name="region">
       <input type="hidden" id="blg-country" name="country">
       <input type="hidden" id="blg-lat" name="lat">
       <input type="hidden" id="blg-lon" name="lon">
-      <button type="button" class="btn btn-secondary" id="btn-blogger-city-map">Выбрать на карте</button>
+      <button type="button" class="btn" id="btn-blogger-city-confirm" data-umc-primary="25" hidden>Подтвердить город</button>
+      <button type="button" class="btn btn-secondary" id="btn-blogger-city-map" aria-controls="block-blogger-city-map" aria-expanded="false">Выбрать на карте</button>
       <div id="block-blogger-city-map" style="display: none;">
-        <p class="hint" id="blg-city-map-hint">Нажмите на карту или найдите город</p>
+        <p class="hint" id="blg-city-map-hint" role="status">Нажмите на карту или найдите город</p>
         <div class="city-search-row" style="display: flex; gap: 8px; margin-bottom: 8px;">
           <input type="text" id="blg-city-search" placeholder="Поиск по городу" style="flex: 1; margin-top: 0;">
           <button type="button" class="btn btn-secondary" id="btn-blogger-city-search" style="margin-top: 0; width: auto; flex-shrink: 0;">Найти</button>
@@ -144,19 +142,22 @@
         <div id="blogger-city-map"></div>
       </div>
       <label id="lbl-blg-audience-geo" for="blg-audience-geo">География аудитории *</label>
-      <input type="text" id="blg-audience-geo" name="audience_geo" required placeholder="РФ, СНГ и т.д.">
+      <input type="text" id="blg-audience-geo" name="audience_geo" required placeholder="Например, Россия, Казань" aria-describedby="blg-geo-hint">
+      <p id="blg-geo-hint" class="hint umc-field-hint"></p>
       <label id="lbl-blg-age-min" for="blg-age-min">Возраст аудитории (от)</label>
-      <input type="number" id="blg-age-min" name="audience_age_min" value="18" min="1">
+      <input type="number" id="blg-age-min" name="audience_age_min" value="18" min="1" aria-describedby="blg-age-hint">
       <label id="lbl-blg-age-max" for="blg-age-max">Возраст аудитории (до)</label>
-      <input type="number" id="blg-age-max" name="audience_age_max" value="35" min="1">
+      <input type="number" id="blg-age-max" name="audience_age_max" value="35" min="1" aria-describedby="blg-age-hint">
+      <p id="blg-age-hint" class="hint umc-field-hint"></p>
       <label id="lbl-blg-audience-gender" for="blg-audience-gender">Пол аудитории</label>
       <select id="blg-audience-gender" name="audience_gender">
         <option value="all">Вся</option>
         <option value="m">Мужская</option>
         <option value="f">Женская</option>
       </select>
-      <label id="lbl-blg-price" for="blg-price">Цена за интеграцию (₽) *</label>
-      <input type="number" id="blg-price" name="price" required min="1" step="1">
+      <label id="lbl-blg-price" for="blg-price">Ориентир за 1 Reels (₽) *</label>
+      <input type="number" id="blg-price" name="price" required min="1" step="1" aria-describedby="blg-price-hint">
+      <p id="blg-price-hint" class="hint umc-field-hint"></p>
       <label id="lbl-blg-barter" for="blg-barter">Готов к бартеру</label>
       <select id="blg-barter" name="barter">
         <option value="false">Нет</option>
@@ -519,7 +520,8 @@
       <label for="intake-product" data-intake-copy="product"></label>
       <input id="intake-product" type="url" required maxlength="2048">
       <label for="intake-brief" data-intake-copy="brief"></label>
-      <textarea id="intake-brief" required maxlength="4000"></textarea>
+      <textarea id="intake-brief" required maxlength="4000" aria-describedby="intake-brief-hint"></textarea>
+      <p id="intake-brief-hint" class="hint umc-field-hint" data-intake-copy="briefHint"></p>
       <label for="intake-count" data-intake-copy="count"></label>
       <input id="intake-count" type="number" min="10" max="200" step="1" value="10" inputmode="numeric" list="intake-count-presets" required>
       <datalist id="intake-count-presets"><option value="10"><option value="20"><option value="30"><option value="50"><option value="100"><option value="200"></datalist>
@@ -590,6 +592,7 @@
     <button id="btn-selection-back" type="button" class="btn btn-secondary" data-umc-back data-intake-copy="back"></button>
   </section>
   </main>
+  <script src="/miniapp/umc-creator-form.js"></script>
   <script>
     (function() {
       function _getWebApp() {
@@ -767,11 +770,10 @@
         };
         set('blg-name', profile.display_name);
         if (profile.instagram_url) {
-          var igUser = profile.instagram_url.replace(/^https?:\/\/(www\.)?instagram\.com\//, '').replace(/\/+$/, '');
-          set('blg-instagram', igUser);
+          set('blg-instagram', window.UMCCreatorForm.instagramUrl(profile.instagram_url) || profile.instagram_url);
         }
-        set('blg-city', profile.city);
-        resetBloggerLocationDraft();
+        document.getElementById('blg-city').value = profile.city || '';
+        bloggerLocation.reset();
         set('blg-audience-geo', profile.audience_geo);
         set('blg-age-min', profile.audience_age_min);
         set('blg-age-max', profile.audience_age_max);
@@ -957,7 +959,7 @@
           agree_checkbox_label: 'Я подтверждаю согласие с документами платформы',
           btn_map_pick: 'Выбрать на карте',
           btn_search: 'Найти',
-          price_label: 'Цена за интеграцию ({s}) *',
+          price_label: "Ориентир за 1 Reels ({s}) *",
           budget_label: 'Бюджет ({s}) *',
           months: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
           // Advertiser form labels
@@ -969,28 +971,34 @@
           lbl_adv_activity: 'Чем занимается компания',
           ph_adv_name: 'Иван',
           // Blogger form labels
-          lbl_blg_name: 'Имя / ник (как к вам обращаться) *',
-          lbl_blg_instagram: 'Ссылка на Instagram *',
+          blg_geo_hint: "Укажите страну и город, где больше всего подписчиков. Если город не выделяется, достаточно страны.",
+          blg_age_hint: "Укажите основной возрастной диапазон по статистике всего аккаунта.",
+          blg_price_hint: "Стоимость создания одного короткого ролика. Размещение и итоговую цену согласуете в заказе.",
+          blg_instagram_error: "Введите @ник или ссылку на профиль Instagram.",
+          city_confirm: "Подтвердить город",
+          city_confirm_required: "Подтвердите найденный город.",
+          lbl_blg_name: "Имя (как к вам обращаться) *",
+          lbl_blg_instagram: "Профиль Instagram *",
           lbl_blg_birthdate: 'Дата рождения *',
           lbl_blg_topics: 'Тематики (через запятую, от 1 до 10) *',
-          lbl_blg_city: 'Город *',
+          lbl_blg_city: "Ваш город *",
           lbl_blg_audience_geo: 'География аудитории *',
           lbl_blg_age_min: 'Возраст аудитории (от)',
           lbl_blg_age_max: 'Возраст аудитории (до)',
-          lbl_blg_audience_gender: 'Пол аудитории',
+          lbl_blg_audience_gender: "Распределение аудитории по полу",
           lbl_blg_barter: 'Готов к бартеру',
           lbl_blg_work_format: 'Формат работы',
           lbl_blg_blogger_gender: 'Ваш пол',
-          ph_blg_name: 'Не ссылка на Instagram',
+          ph_blg_name: "Например, Анна",
           ph_blg_topics: 'красота, мода, путешествия',
           ph_blg_city: 'Выберите на карте или найдите город',
-          ph_blg_audience_geo: 'РФ, СНГ и т.д.',
+          ph_blg_audience_geo: "Например, Россия, Казань",
           ph_blg_city_search: 'Поиск по городу',
           ph_blg_city_map_hint: 'Нажмите на карту или найдите город',
           // Blogger select options
-          opt_gender_all: 'Вся',
-          opt_gender_m: 'Мужская',
-          opt_gender_f: 'Женская',
+          opt_gender_all: "Примерно поровну",
+          opt_gender_m: "В основном мужчины",
+          opt_gender_f: "В основном женщины",
           opt_barter_no: 'Нет',
           opt_barter_yes: 'Да',
           opt_work_ugc_only: 'Только UGC',
@@ -1098,7 +1106,7 @@
           agree_checkbox_label: 'I confirm agreement with platform documents',
           btn_map_pick: 'Pick on map',
           btn_search: 'Search',
-          price_label: 'Price ({s}) *',
+          price_label: "Estimated rate for 1 Reel ({s}) *",
           budget_label: 'Budget ({s}) *',
           months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
           // Advertiser form labels
@@ -1110,28 +1118,34 @@
           lbl_adv_activity: 'Company activity',
           ph_adv_name: 'John',
           // Blogger form labels
-          lbl_blg_name: 'Name / nickname (how to address you) *',
-          lbl_blg_instagram: 'Instagram link *',
+          blg_geo_hint: "Enter the country and city where most followers live. The country is enough if no city stands out.",
+          blg_age_hint: "Enter the main age range from the statistics for your whole account.",
+          blg_price_hint: "The cost of creating one short video. Agree on posting and the final price for each order.",
+          blg_instagram_error: "Enter an @username or an Instagram profile link.",
+          city_confirm: "Confirm city",
+          city_confirm_required: "Confirm the city found.",
+          lbl_blg_name: "Name (how should we address you?) *",
+          lbl_blg_instagram: "Instagram profile *",
           lbl_blg_birthdate: 'Date of birth *',
           lbl_blg_topics: 'Topics (comma-separated, 1 to 10) *',
-          lbl_blg_city: 'City *',
+          lbl_blg_city: "Your city *",
           lbl_blg_audience_geo: 'Audience geography *',
           lbl_blg_age_min: 'Audience age (min)',
           lbl_blg_age_max: 'Audience age (max)',
-          lbl_blg_audience_gender: 'Audience gender',
+          lbl_blg_audience_gender: "Audience gender breakdown",
           lbl_blg_barter: 'Open to barter',
           lbl_blg_work_format: 'Work format',
           lbl_blg_blogger_gender: 'Your gender',
-          ph_blg_name: 'Not an Instagram link',
+          ph_blg_name: "e.g. Anna",
           ph_blg_topics: 'beauty, fashion, travel',
           ph_blg_city: 'Pick on map or find a city',
-          ph_blg_audience_geo: 'Russia, CIS, etc.',
+          ph_blg_audience_geo: "e.g. United Kingdom, London",
           ph_blg_city_search: 'Search by city',
           ph_blg_city_map_hint: 'Tap the map or find a city',
           // Blogger select options
-          opt_gender_all: 'All',
-          opt_gender_m: 'Male',
-          opt_gender_f: 'Female',
+          opt_gender_all: "About equal",
+          opt_gender_m: "Mostly men",
+          opt_gender_f: "Mostly women",
           opt_barter_no: 'No',
           opt_barter_yes: 'Yes',
           opt_work_ugc_only: 'UGC only',
@@ -1239,7 +1253,7 @@
           agree_checkbox_label: 'Платформа құжаттарымен келісімді растаймын',
           btn_map_pick: 'Картадан таңдау',
           btn_search: 'Іздеу',
-          price_label: 'Интеграция бағасы ({s}) *',
+          price_label: "1 Reels үшін шамамен баға ({s}) *",
           budget_label: 'Бюджет ({s}) *',
           months: ['Қаңтар','Ақпан','Наурыз','Сәуір','Мамыр','Маусым','Шілде','Тамыз','Қыркүйек','Қазан','Қараша','Желтоқсан'],
           lbl_adv_name: 'Аты-жөні / сізге қалай жүгіну керек',
@@ -1249,27 +1263,33 @@
           lbl_adv_city: 'Қала',
           lbl_adv_activity: 'Компания қандай қызмет атқарады',
           ph_adv_name: 'Иван',
-          lbl_blg_name: 'Аты-жөні / ник (сізге қалай жүгіну керек) *',
-          lbl_blg_instagram: 'Instagram сілтемесі *',
+          blg_geo_hint: "Жазылушылар ең көп ел мен қаланы көрсетіңіз. Бір қала ерекшеленбесе, елді көрсету жеткілікті.",
+          blg_age_hint: "Бүкіл аккаунт статистикасындағы негізгі жас аралығын көрсетіңіз.",
+          blg_price_hint: "Бір қысқа бейне жасау құны. Жариялау мен соңғы бағаны тапсырыс бойынша келісесіз.",
+          blg_instagram_error: "@атты немесе Instagram профиліне сілтемені енгізіңіз.",
+          city_confirm: "Қаланы растау",
+          city_confirm_required: "Табылған қаланы растаңыз.",
+          lbl_blg_name: "Есіміңіз (сізге қалай жүгінейік?) *",
+          lbl_blg_instagram: "Instagram профилі *",
           lbl_blg_birthdate: 'Туған күні *',
           lbl_blg_topics: 'Тақырыптар (үтірмен, 1-ден 10-ға дейін) *',
-          lbl_blg_city: 'Қала *',
+          lbl_blg_city: "Сіздің қалаңыз *",
           lbl_blg_audience_geo: 'Аудитория географиясы *',
           lbl_blg_age_min: 'Аудитория жасы (бастап)',
           lbl_blg_age_max: 'Аудитория жасы (дейін)',
-          lbl_blg_audience_gender: 'Аудитория жынысы',
+          lbl_blg_audience_gender: "Аудиторияның жыныс бойынша бөлінісі",
           lbl_blg_barter: 'Бартерге дайын',
           lbl_blg_work_format: 'Жұмыс форматы',
           lbl_blg_blogger_gender: 'Сіздің жынысыңыз',
-          ph_blg_name: 'Instagram сілтемесі емес',
+          ph_blg_name: "Мысалы, Айдана",
           ph_blg_topics: 'сұлулық, сән, саяхат',
           ph_blg_city: 'Картадан таңдаңыз немесе қаланы табыңыз',
-          ph_blg_audience_geo: 'ҚР, ТМД т.б.',
+          ph_blg_audience_geo: "Мысалы, Қазақстан, Алматы",
           ph_blg_city_search: 'Қала бойынша іздеу',
           ph_blg_city_map_hint: 'Картаға басыңыз немесе қаланы табыңыз',
-          opt_gender_all: 'Барлығы',
-          opt_gender_m: 'Ер',
-          opt_gender_f: 'Әйел',
+          opt_gender_all: "Шамамен тең",
+          opt_gender_m: "Көбіне ерлер",
+          opt_gender_f: "Көбіне әйелдер",
           opt_barter_no: 'Жоқ',
           opt_barter_yes: 'Иә',
           opt_work_ugc_only: 'Тек UGC',
@@ -1376,7 +1396,7 @@
           agree_checkbox_label: 'Я пацвярджаю згоду з дакументамі платформы',
           btn_map_pick: 'Выбраць на карце',
           btn_search: 'Знайсці',
-          price_label: 'Цана за інтэграцыю ({s}) *',
+          price_label: "Арыенцір за 1 Reels ({s}) *",
           budget_label: 'Бюджэт ({s}) *',
           months: ['Студзень','Люты','Сакавік','Красавік','Май','Чэрвень','Ліпень','Жнівень','Верасень','Кастрычнік','Лістапад','Снежань'],
           lbl_adv_name: 'Імя / як да вас зварочвацца',
@@ -1386,27 +1406,33 @@
           lbl_adv_city: 'Горад',
           lbl_adv_activity: 'Чым займаецца кампанія',
           ph_adv_name: 'Іван',
-          lbl_blg_name: 'Імя / нік (як да вас зварочвацца) *',
-          lbl_blg_instagram: 'Спасылка на Instagram *',
+          blg_geo_hint: "Укажыце краіну і горад, дзе найбольш падпісчыкаў. Калі горад не вылучаецца, дастаткова краіны.",
+          blg_age_hint: "Укажыце асноўны ўзроставы дыяпазон са статыстыкі ўсяго акаўнта.",
+          blg_price_hint: "Кошт стварэння аднаго кароткага відэа. Размяшчэнне і канчатковую цану ўзгадніце па заказе.",
+          blg_instagram_error: "Увядзіце @нік або спасылку на профіль Instagram.",
+          city_confirm: "Пацвердзіць горад",
+          city_confirm_required: "Пацвердзіце знойдзены горад.",
+          lbl_blg_name: "Імя (як да вас звяртацца?) *",
+          lbl_blg_instagram: "Профіль Instagram *",
           lbl_blg_birthdate: 'Дата нараджэння *',
           lbl_blg_topics: 'Тэматыкі (праз коску, ад 1 да 10) *',
-          lbl_blg_city: 'Горад *',
+          lbl_blg_city: "Ваш горад *",
           lbl_blg_audience_geo: 'Геаграфія аўдыторыі *',
           lbl_blg_age_min: 'Узрост аўдыторыі (ад)',
           lbl_blg_age_max: 'Узрост аўдыторыі (да)',
-          lbl_blg_audience_gender: 'Пол аўдыторыі',
+          lbl_blg_audience_gender: "Размеркаванне аўдыторыі паводле полу",
           lbl_blg_barter: 'Гатовы да бартэру',
           lbl_blg_work_format: 'Формат працы',
           lbl_blg_blogger_gender: 'Ваш пол',
-          ph_blg_name: 'Не спасылка на Instagram',
+          ph_blg_name: "Напрыклад, Ганна",
           ph_blg_topics: 'прыгажосць, мода, падарожжи',
           ph_blg_city: 'Выберыце на карце або знайдзіце горад',
-          ph_blg_audience_geo: 'РБ, СНД і г.д.',
+          ph_blg_audience_geo: "Напрыклад, Беларусь, Мінск",
           ph_blg_city_search: 'Пошук па горадзе',
           ph_blg_city_map_hint: 'Націсніце на карту або знайдзіце горад',
-          opt_gender_all: 'Уся',
-          opt_gender_m: 'Мужчынская',
-          opt_gender_f: 'Жаночая',
+          opt_gender_all: "Прыкладна пароўну",
+          opt_gender_m: "Пераважна мужчыны",
+          opt_gender_f: "Пераважна жанчыны",
           opt_barter_no: 'Не',
           opt_barter_yes: 'Так',
           opt_work_ugc_only: 'Толькі UGC',
@@ -1513,7 +1539,7 @@
           agree_checkbox_label: 'Platforma hujjatlariga rozi ekanligimni tasdiqlayman',
           btn_map_pick: 'Xaritadan tanlash',
           btn_search: 'Qidirish',
-          price_label: 'Integratsiya narxi ({s}) *',
+          price_label: "1 Reels uchun taxminiy narx ({s}) *",
           budget_label: 'Byudjet ({s}) *',
           months: ['Yanvar','Fevral','Mart','Aprel','May','Iyun','Iyul','Avgust','Sentabr','Oktabr','Noyabr','Dekabr'],
           lbl_adv_name: 'Ism / sizga qanday murojaat qilish',
@@ -1523,27 +1549,33 @@
           lbl_adv_city: 'Shahar',
           lbl_adv_activity: 'Kompaniya qanday faoliyat bilan shug\'ullanadi',
           ph_adv_name: 'Ivan',
-          lbl_blg_name: 'Ism / nik (sizga qanday murojaat qilish) *',
-          lbl_blg_instagram: 'Instagram havolasi *',
+          blg_geo_hint: "Obunachilar eng ko‘p bo‘lgan mamlakat va shaharni kiriting. Shahar ajralib turmasa, mamlakat yetarli.",
+          blg_age_hint: "Butun akkaunt statistikasidagi asosiy yosh oralig‘ini kiriting.",
+          blg_price_hint: "Bitta qisqa video yaratish narxi. Joylashtirish va yakuniy narxni buyurtma bo‘yicha kelishasiz.",
+          blg_instagram_error: "@nomni yoki Instagram profiliga havolani kiriting.",
+          city_confirm: "Shaharni tasdiqlash",
+          city_confirm_required: "Topilgan shaharni tasdiqlang.",
+          lbl_blg_name: "Ism (sizga qanday murojaat qilaylik?) *",
+          lbl_blg_instagram: "Instagram profili *",
           lbl_blg_birthdate: 'Tug\'ilgan sana *',
           lbl_blg_topics: 'Mavzular (vergul bilan, 1 dan 10 gacha) *',
-          lbl_blg_city: 'Shahar *',
+          lbl_blg_city: "Shahringiz *",
           lbl_blg_audience_geo: 'Auditoriya geografiyasi *',
           lbl_blg_age_min: 'Auditoriya yoshi (dan)',
           lbl_blg_age_max: 'Auditoriya yoshi (gacha)',
-          lbl_blg_audience_gender: 'Auditoriya jinsi',
+          lbl_blg_audience_gender: "Auditoriyaning jins bo‘yicha taqsimoti",
           lbl_blg_barter: 'Barterga tayyor',
           lbl_blg_work_format: 'Ish formati',
           lbl_blg_blogger_gender: 'Sizning jinsingiz',
-          ph_blg_name: 'Instagram havolasi emas',
+          ph_blg_name: "Masalan, Laylo",
           ph_blg_topics: 'go\'zallik, moda, sayohat',
           ph_blg_city: 'Xaritadan tanlang yoki shaharni toping',
-          ph_blg_audience_geo: 'O\'zbekiston, MDH va boshqalar',
+          ph_blg_audience_geo: "Masalan, O‘zbekiston, Toshkent",
           ph_blg_city_search: 'Shahar bo\'yicha qidirish',
           ph_blg_city_map_hint: 'Xaritaga bosing yoki shaharni toping',
-          opt_gender_all: 'Barchasi',
-          opt_gender_m: 'Erkak',
-          opt_gender_f: 'Ayol',
+          opt_gender_all: "Taxminan teng",
+          opt_gender_m: "Asosan erkaklar",
+          opt_gender_f: "Asosan ayollar",
           opt_barter_no: 'Yo\'q',
           opt_barter_yes: 'Ha',
           opt_work_ugc_only: 'Faqat UGC',
@@ -1684,6 +1716,10 @@
         // Blogger form labels
         setText('lbl-blg-name', L.lbl_blg_name);
         setText('lbl-blg-instagram', L.lbl_blg_instagram);
+        setText('blg-geo-hint', L.blg_geo_hint);
+        setText('blg-age-hint', L.blg_age_hint);
+        setText('blg-price-hint', L.blg_price_hint);
+        setText('btn-blogger-city-confirm', L.city_confirm);
         setText('lbl-blg-birthdate', L.lbl_blg_birthdate);
         setText('lbl-blg-topics', L.lbl_blg_topics);
         setText('lbl-blg-city-field', L.lbl_blg_city);
@@ -1905,120 +1941,13 @@
         if (block) block.style.display = 'none';
       });
 
-      var bloggerCityMapInited = false;
-      var bloggerCityMapInstance = null;
-      var bloggerCityMarker = null;
-      var bloggerLocationRequest = 0;
-      var bloggerLocationPending = false;
       var savedBloggerLocation = null;
-      var hintElCityMap = document.getElementById('blg-city-map-hint');
-      function finishBloggerLocationRequest(request) {
-        if (request !== bloggerLocationRequest) return;
-        bloggerLocationPending = false;
-        var error = document.getElementById('blg-error');
-        if (error.textContent === tx('loading')) error.textContent = '';
-      }
-
-      function resetBloggerLocationDraft() {
-        finishBloggerLocationRequest(++bloggerLocationRequest);
-        ['blg-region', 'blg-country', 'blg-lat', 'blg-lon', 'blg-city-search'].forEach(function(id) {
-          document.getElementById(id).value = '';
-        });
-        if (bloggerCityMarker && bloggerCityMapInstance) {
-          bloggerCityMapInstance.removeLayer(bloggerCityMarker);
-          bloggerCityMarker = null;
-        }
-        hintElCityMap.textContent = tx('ph_blg_city_map_hint');
-      }
-
-      function initBloggerCityMap() {
-        if (!window.L) return;
-        var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        }).addTo(map);
-        bloggerCityMapInstance = map;
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            function(pos) {
-              var lat = pos.coords.latitude;
-              var lon = pos.coords.longitude;
-              if (bloggerCityMapInstance) bloggerCityMapInstance.setView([lat, lon], 12);
-            },
-            function() { /* leave default center */ },
-            { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
-          );
-        }
-        map.on('click', function(e) {
-          var request = ++bloggerLocationRequest;
-          bloggerLocationPending = true;
-          var lat = e.latlng.lat;
-          var lon = e.latlng.lng;
-          if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
-          else bloggerCityMarker = L.marker(e.latlng).addTo(map);
-          api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
-            if (request !== bloggerLocationRequest) return;
-            document.getElementById('blg-city').value = data.city || '';
-            document.getElementById('blg-region').value = data.region || '';
-            document.getElementById('blg-country').value = data.country || '';
-            document.getElementById('blg-lat').value = String(lat);
-            document.getElementById('blg-lon').value = String(lon);
-            if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
-          }).catch(function() {
-            if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_error');
-          }).finally(function() { finishBloggerLocationRequest(request); });
-        });
-      }
-      document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
-        var block = document.getElementById('block-blogger-city-map');
-        var mapEl = document.getElementById('blogger-city-map');
-        if (!block || !mapEl) return;
-        block.style.display = block.style.display === 'none' ? 'block' : 'none';
-        if (block.style.display === 'block' && !bloggerCityMapInited) {
-          bloggerCityMapInited = true;
-          setTimeout(initBloggerCityMap, 100);
-        }
-      });
-      document.getElementById('btn-blogger-city-search').addEventListener('click', function() {
-        var block = document.getElementById('block-blogger-city-map');
-        var query = document.getElementById('blg-city-search').value.trim();
-        if (!query) {
-          if (hintElCityMap) hintElCityMap.textContent = tx('city_enter');
-          return;
-        }
-        if (block) block.style.display = 'block';
-        if (!bloggerCityMapInited) {
-          bloggerCityMapInited = true;
-          setTimeout(initBloggerCityMap, 100);
-        }
-        var request = ++bloggerLocationRequest;
-        bloggerLocationPending = true;
-        api('/geocode/forward', { city: query }).then(function(data) {
-          if (request !== bloggerLocationRequest) return;
-          document.getElementById('blg-city').value = data.city || '';
-          document.getElementById('blg-region').value = data.region || '';
-          document.getElementById('blg-country').value = data.country || '';
-          document.getElementById('blg-lat').value = String(data.lat);
-          document.getElementById('blg-lon').value = String(data.lon);
-          if (hintElCityMap) hintElCityMap.textContent = tx('city_selected') + (data.city || '');
-          function applyOnMap() {
-            if (request === bloggerLocationRequest && bloggerCityMapInstance) {
-              bloggerCityMapInstance.setView([data.lat, data.lon], 12);
-              if (bloggerCityMarker) bloggerCityMarker.setLatLng([data.lat, data.lon]);
-              else bloggerCityMarker = L.marker([data.lat, data.lon]).addTo(bloggerCityMapInstance);
-            }
-          }
-          if (bloggerCityMapInstance) applyOnMap();
-          else setTimeout(applyOnMap, 250);
-        }).catch(function() {
-          if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
-        }).finally(function() { finishBloggerLocationRequest(request); });
-      });
-      document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          document.getElementById('btn-blogger-city-search').click();
-        }
+      var bloggerLocation = window.UMCCreatorForm.bindCity(api, tx);
+      var bloggerInstagram = document.getElementById('blg-instagram');
+      bloggerInstagram.addEventListener('input', function() {
+        if (!/instagram\.com\//i.test(bloggerInstagram.value)) return;
+        var url = window.UMCCreatorForm.instagramUrl(bloggerInstagram.value);
+        if (url) bloggerInstagram.value = url;
       });
 
       document.getElementById('btn-confirm-adv-agreement').addEventListener('click', function() {
@@ -2120,8 +2049,20 @@
         var errEl = document.getElementById('blg-error');
         var blgSubmitBtn = document.getElementById('btn-submit-blogger');
         errEl.textContent = '';
-        if (bloggerLocationPending) {
+        if (bloggerLocation.pending) {
           errEl.textContent = tx('loading');
+          return;
+        }
+        var instagramUrl = window.UMCCreatorForm.instagramUrl(bloggerInstagram.value);
+        if (!instagramUrl) {
+          errEl.textContent = tx('blg_instagram_error');
+          bloggerInstagram.focus();
+          return;
+        }
+        var city = document.getElementById('blg-city').value.trim();
+        if (!city || bloggerLocation.needsConfirmation) {
+          errEl.textContent = tx(city ? 'city_confirm_required' : 'city_enter');
+          document.getElementById(city ? 'btn-blogger-city-confirm' : 'btn-blogger-city-map').focus();
           return;
         }
         if (blgSubmitBtn) blgSubmitBtn.disabled = true;
@@ -2135,10 +2076,10 @@
         var countryEl = document.getElementById('blg-country');
         var payload = {
           display_name: document.getElementById('blg-name').value.trim(),
-          instagram_url: 'https://instagram.com/' + document.getElementById('blg-instagram').value.trim(),
+          instagram_url: instagramUrl,
           birth_date: birthDateStr,
           topics: topicsList,
-          city: document.getElementById('blg-city').value.trim(),
+          city: city,
           audience_geo: document.getElementById('blg-audience-geo').value.trim(),
           audience_age_min: parseInt(document.getElementById('blg-age-min').value, 10) || 18,
           audience_age_max: parseInt(document.getElementById('blg-age-max').value, 10) || 35,
