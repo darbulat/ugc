@@ -21,10 +21,26 @@ from ugc_bot.infrastructure.db.repositories.bot_availability import (
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
+def invited_creator_scope(query, owner_id: UUID):
+    """The direct, non-deleted creator memberships shown in the directory."""
+    binding = UserReferralBindingModel
+    return (
+        query.select_from(binding)
+        .join(UserModel, UserModel.user_id == binding.referred_user_id)
+        .join(
+            BloggerProfileModel,
+            BloggerProfileModel.user_id == UserModel.user_id,
+        )
+        .where(
+            binding.referrer_user_id == owner_id,
+            UserModel.user_id != owner_id,
+            UserModel.status != UserStatus.DELETED,
+        )
+    )
+
+
 def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
     """Scope both list and detail to the current native account's referrals."""
-    binding = UserReferralBindingModel
-    creator = BloggerProfileModel
     inviter = aliased(UserModel)
     native_id = (
         inviter.telegram_id
@@ -32,17 +48,19 @@ def _invited_creators_query(principal: AuthenticatedMessengerPrincipal):
         else inviter.max_id
     )
     return (
-        select(UserModel, creator, creator_directory_status().label("status"))
-        .select_from(binding)
-        .join(inviter, inviter.user_id == binding.referrer_user_id)
-        .join(UserModel, UserModel.user_id == binding.referred_user_id)
-        .join(creator, creator.user_id == UserModel.user_id)
-        .where(
-            inviter.user_id == principal.user_id,
-            native_id == principal.external_id,
-            UserModel.user_id != inviter.user_id,
-            UserModel.status != UserStatus.DELETED,
+        invited_creator_scope(
+            select(
+                UserModel,
+                BloggerProfileModel,
+                creator_directory_status().label("status"),
+            ),
+            principal.user_id,
         )
+        .join(
+            inviter,
+            inviter.user_id == UserReferralBindingModel.referrer_user_id,
+        )
+        .where(native_id == principal.external_id)
     )
 
 

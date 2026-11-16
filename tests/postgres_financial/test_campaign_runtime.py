@@ -27,7 +27,11 @@ from ugc_bot.application.notice_delivery_ports import (
 )
 from ugc_bot.domain.campaign_moderation import ReviewCampaign, SubmitCampaign
 from ugc_bot.domain.campaign_review import SaveCampaignDraft
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import UserReferralBindingModel
+from ugc_bot.infrastructure.db.repositories.bot_availability import (
+    record_bot_availability,
+)
 
 
 @pytest_asyncio.fixture
@@ -230,13 +234,27 @@ async def test_unknown_send_never_retried_and_optout_before_prepare_skips(
 
 
 @pytest.mark.asyncio
-async def test_optout_before_start_skips_without_provider_call(campaign_env):
+@pytest.mark.parametrize("change", ["optout", "telegram_blocked"])
+async def test_recipient_becomes_unavailable_before_start_skips_provider_call(
+    campaign_env, change
+):
     env = campaign_env
     services, transport, submit = await approved(env)
-    await execute(env, command(env, "unsubscribe", role="creator", expected=1))
+    transactions = env["container"].transaction_manager
+    if change == "optout":
+        await execute(
+            env, command(env, "unsubscribe", role="creator", expected=1)
+        )
+    else:
+        assert await record_bot_availability(
+            transactions,
+            platform=MessengerType.TELEGRAM,
+            external_id=env["users"]["creator"].telegram_id,
+            occurred_at=env["clock"].now(),
+        )
     assert await services["campaign_delivery_service"].run_once() == 0
     assert not transport.calls
-    async with env["container"].transaction_manager.transaction() as db:
+    async with transactions.transaction() as db:
         report = await services["campaign_response_service"].report(
             env["users"]["owner"].user_id,
             submit.campaign_id,

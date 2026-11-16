@@ -193,6 +193,67 @@ def enter(page, network, platform="telegram", native=False):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("publisher", [True, False])
+def test_manager_opens_campaign_preview_from_own_creator_directory(
+    page, platform, publisher
+):
+    network = WorkbenchNetwork()
+    network.manager = True
+    network.blogger_registered = False
+    network.settings["publisher"].update(
+        active=publisher, version=int(publisher)
+    )
+    network.drafts = [draft()]
+    errors = open_app(page, network, platform, native=True)
+    directory_requests = []
+
+    def list_creators(route):
+        directory_requests.append(route.request.post_data_json)
+        route.fulfill(
+            json={
+                "creators": [
+                    {
+                        "creator_id": CAMPAIGN,
+                        "name": "Мария",
+                        "city": "",
+                        "status": "active",
+                    }
+                ],
+                "has_more": False,
+            }
+        )
+
+    page.route("**/manager/invited-creators", list_creators)
+    page.get_by_role("button", name="Менеджер", exact=True).click()
+    page.get_by_role("button", name="Моя база креаторов").click()
+    directory = page.locator("#screen-invited-creators")
+    creator = directory.get_by_role("button", name="Мария")
+    expect(creator).to_be_visible()
+    shortcut = directory.get_by_role("button", name="Мои рассылки")
+    if publisher:
+        shortcut.click()
+        page.locator("[data-campaign-draft-open]").click()
+        page.locator("#campaign-draft-preview").click()
+        expect(page.locator("#campaign-preview-eligible")).to_have_text("3")
+        page.evaluate("window.__host.wa.BackButton.click()")
+        expect(page.locator("#campaign-workbench-list")).to_be_visible()
+        page.evaluate("window.__host.wa.BackButton.click()")
+        expect(creator).to_be_visible()
+        assert len(directory_requests) == 2
+    else:
+        expect(shortcut).to_be_hidden()
+        assert len(directory_requests) == 1
+        assert not any(
+            "/campaigns/owned/" in path for path, _ in network.requests
+        )
+    assert all(
+        request["platform"] == platform for request in directory_requests
+    )
+    assert not any(path.endswith("/submit") for path, _ in network.requests)
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_owner_creates_saved_revision_before_real_aggregate_preview(
     page, platform
 ):
