@@ -26,6 +26,10 @@ RESULT_REQUIRED = (
 )
 
 
+def customer_request_number(request_id: UUID | str) -> str:
+    return str(request_id).replace("-", "")[:8].upper()
+
+
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

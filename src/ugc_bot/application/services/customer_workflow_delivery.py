@@ -7,6 +7,7 @@ from urllib.parse import urlencode, urlsplit
 from uuid import UUID
 
 from ugc_bot.application.customer_offer_texts import offer_text
+from ugc_bot.application.customer_request_admin_text import message_units
 from ugc_bot.application.customer_workflow_ports import (
     CustomerWorkflowRepository,
 )
@@ -21,6 +22,7 @@ from ugc_bot.application.order_summary_admin_text import (
     order_summary_admin_text,
 )
 from ugc_bot.application.ports import TransactionManager
+from ugc_bot.application.services.business_order_card import order_card_url
 from ugc_bot.domain.financial import utc
 
 
@@ -73,12 +75,8 @@ class CustomerWorkflowDelivery:
             text = current["text"]
             if is_order_summary_review(current):
                 text = order_summary_admin_text(current)
-                order_id = current["order_id"]
-                if self.admin_base_url and order_id:
-                    base = self.admin_base_url.rstrip("/")
-                    if not urlsplit(base).path:
-                        base += "/admin"
-                    text += f"\nКарточка заказа: {base}/orders/{order_id}"
+            if current.get("order_id") and not current["part"]:
+                text = self._with_admin_order_link(text, current["order_id"])
         else:
             stage, locale = current["stage"], current["language"]
             defaults = FOLLOWUP_TEXTS.get(locale, FOLLOWUP_TEXTS["ru"])
@@ -114,6 +112,19 @@ class CustomerWorkflowDelivery:
             url,
             label,
         )
+
+    def _with_admin_order_link(self, text: str, order_id: UUID) -> str:
+        base = order_card_url(self.admin_base_url)
+        if not base:
+            return text
+        parsed = urlsplit(base)
+        if parsed.query or parsed.fragment:
+            return text
+        base = base.rstrip("/")
+        if not parsed.path.strip("/"):
+            base += "/admin"
+        linked = f"{text}\n\nКарточка заказа: {base}/orders/{order_id}"
+        return linked if message_units(linked) <= 4000 else text
 
     async def _retry_rate_limit(self, job: dict, delay: int) -> None:
         async with self.transactions.transaction() as session:

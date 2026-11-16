@@ -2,7 +2,7 @@
 
 leases never surround provider I/O."""
 
-import json
+import re
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4, uuid5
 
@@ -18,8 +18,12 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from ugc_bot.application.customer_request_admin_text import (
+    customer_request_admin_pages,
+)
 from ugc_bot.application.order_summary_admin_text import (
     is_order_summary_review,
     order_summary_admin_text,
@@ -63,6 +67,7 @@ from ugc_bot.infrastructure.db.repositories.financial_items import (
 )
 
 _CUSTOMER_CANCELLED = "customer_cancelled_unpaid_order"
+_LEGACY_ADMIN_PART = re.compile(r"\d+/([1-9]\d*)\n")
 
 
 class SqlAlchemyCustomerWorkflowRepository:
@@ -602,61 +607,46 @@ class SqlAlchemyCustomerWorkflowRepository:
             .all()
         )
         for source in sources:
-            summary_review = is_order_summary_review(source)
-            body = (
-                order_summary_admin_text(source)
-                if summary_review
-                else (
-                    (
-                        "Обращение"
-                        if source["kind"] == "support"
-                        else "Заявка на услугу"
-                    )
-                    + f" #{source['request_id']}\n"
-                    + json.dumps(
-                        source["payload"], ensure_ascii=False, indent=2
-                    )
-                )
-            )
-            chunks = (
-                [body]
-                if summary_review
-                else [
-                    body[index : index + 1500]
-                    for index in range(0, len(body), 1500)
-                ]
+            pages = (
+                [order_summary_admin_text(source)]
+                if is_order_summary_review(source)
+                else customer_request_admin_pages(source)
             )
             for admin in admins:
-                for part, chunk in enumerate(chunks):
-                    await db.execute(
-                        insert(JOBS)
-                        .values(
-                            job_id=uuid5(
-                                source["request_id"], f"{admin}:{part}"
-                            ),
-                            request_id=source["request_id"],
-                            recipient_id=admin,
-                            part=part,
-                            text=(
-                                chunk
-                                if summary_review
-                                else f"{part + 1}/{len(chunks)}\n{chunk}"
-                            ),
-                            due_at=at,
-                            state="ready",
-                        )
-                        .on_conflict_do_nothing(
-                            index_elements=[
-                                "request_id",
-                                "recipient_id",
-                                "part",
-                            ]
-                        )
-                    )
+                await self._enqueue_admin_pages(
+                    db, source["request_id"], admin, pages, at
+                )
             await db.execute(
                 update(REQUESTS)
                 .where(REQUESTS.c.request_id == source["request_id"])
                 .values(expanded_at=at)
+            )
+
+    async def _enqueue_admin_pages(
+        self,
+        db: AsyncSession,
+        request_id: UUID,
+        admin: UUID,
+        pages: list[str],
+        at: datetime,
+        *,
+        start: int = 0,
+    ) -> None:
+        for part, text in enumerate(pages[start:], start):
+            await db.execute(
+                insert(JOBS)
+                .values(
+                    job_id=uuid5(request_id, f"{admin}:{part}"),
+                    request_id=request_id,
+                    recipient_id=admin,
+                    part=part,
+                    text=text,
+                    due_at=at,
+                    state="ready",
+                )
+                .on_conflict_do_nothing(
+                    index_elements=["request_id", "recipient_id", "part"]
+                )
             )
 
     async def claim(
@@ -794,7 +784,7 @@ class SqlAlchemyCustomerWorkflowRepository:
             return False
         return True
 
-    async def _admin_request(self, db, job, user):
+    async def _admin_request(self, db, job, user, at):
         if not user["admin"]:
             return None
         source = (
@@ -808,10 +798,26 @@ class SqlAlchemyCustomerWorkflowRepository:
             .mappings()
             .one()
         )
-        # Earlier releases could split the raw summary payload into parts.
-        if job["part"] and is_order_summary_review(source):
-            return None
-        return source
+        part, text = job["part"], job["text"]
+        if is_order_summary_review(source):
+            return None if part else dict(source, text=text)
+        legacy = _LEGACY_ADMIN_PART.match(text or "")
+        if legacy is None:
+            return dict(source, text=text)
+        # Old workers saved raw JSON in numbered chunks. Rebuild unsent parts
+        # from the request and keep the same delivery keys and receipts.
+        pages = customer_request_admin_pages(source)
+        old_total = int(legacy[1])
+        if len(pages) > old_total:
+            await self._enqueue_admin_pages(
+                db,
+                source["request_id"],
+                job["recipient_id"],
+                pages,
+                at,
+                start=old_total,
+            )
+        return dict(source, text=pages[part]) if part < len(pages) else None
 
     async def eligible(
         self,
@@ -866,9 +872,10 @@ class SqlAlchemyCustomerWorkflowRepository:
             return None
         result = dict(job)
         if job["request_id"]:
-            source = await self._admin_request(db, job, user)
+            source = await self._admin_request(db, job, user, at)
             if source is None:
                 return None
+            result["text"] = source["text"]
             result["payload"] = source["payload"]
             result["kind"] = source["kind"]
             result["order_id"] = source["order_id"]
