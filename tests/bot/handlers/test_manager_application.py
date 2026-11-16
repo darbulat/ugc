@@ -65,6 +65,45 @@ async def test_manager_application_uses_private_telegram_profile(config):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("handle", ["kamilbakhteev", "darbulat"])
+async def test_active_admin_opens_workspace_without_a_candidate_application(
+    config, handle
+):
+    config.webhook.webhook_base_url = "https://bot.example.test"
+    state = FakeFSMContext()
+    await state.set_state(ManagerForm.answer)
+    message = FakeMessage(text="/manager", user=FakeUser(100, handle, "Admin"))
+    message.chat.type = "private"
+    roles = SimpleNamespace(
+        get_user=AsyncMock(
+            return_value=SimpleNamespace(
+                user_id=uuid4(),
+                telegram=handle,
+                admin=True,
+                status=UserStatus.ACTIVE,
+            )
+        ),
+        set_user=AsyncMock(),
+    )
+    applications = SimpleNamespace(open=AsyncMock())
+
+    await open_manager_application(message, state, roles, config, applications)
+
+    assert await state.get_state() is None
+    applications.open.assert_not_awaited()
+    roles.set_user.assert_not_awaited()
+    text, markup = message.answers[-1]
+    assert "Кабинет менеджера открыт" in text
+    assert [
+        item[0].web_app.url.split("?", 1)[1] for item in markup.inline_keyboard
+    ] == [
+        "view=manager&section=creators",
+        "view=manager",
+        "view=partner",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_manager_phone_must_belong_to_telegram_sender(config):
     state = FakeFSMContext()
     await state.set_data({"field": "phone"})

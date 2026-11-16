@@ -11,8 +11,9 @@ from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
+    MANAGER_FOUNDERS,
     MANAGER_INSTAGRAM_VERIFIED,
-    MANAGER_READY_FOR_REVIEW,
+    MANAGER_READY_FOR_REVIEW_V2,
     MANAGER_REVIEWABLE_STATES,
     MANAGER_REVIEWERS,
     MANAGER_SUBMITTED,
@@ -374,19 +375,21 @@ class ManagerApplications:
                     )
                 )
             if current["state"] in MANAGER_REVIEWABLE_STATES:
-                notices.append(
-                    _enqueue_notice(
-                        db,
-                        row.user_id,
-                        MANAGER_READY_FOR_REVIEW,
-                        verified_at,
-                        {
-                            "submission": application_version(
-                                current["submitted_at"]
-                            )
-                        },
+                for reviewer in MANAGER_FOUNDERS:
+                    notices.append(
+                        _enqueue_notice(
+                            db,
+                            row.user_id,
+                            MANAGER_READY_FOR_REVIEW_V2,
+                            verified_at,
+                            {
+                                "reviewer": reviewer,
+                                "submission": application_version(
+                                    current["submitted_at"]
+                                ),
+                            },
+                        )
                     )
-                )
         if notices and self.deliver_verification_notices is not None:
             await self.deliver_verification_notices(notices)
         return True

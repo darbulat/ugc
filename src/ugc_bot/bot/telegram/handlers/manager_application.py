@@ -78,6 +78,22 @@ def keyboard(rows):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def show_workspace(message, config, title):
+    workspace = manager_workspace_keyboard(config)
+    body = (
+        "В базе появятся креаторы, пришедшие по вашей личной ссылке."
+        if workspace.rows
+        else "Mini App временно недоступен. Повторите /manager позже."
+    )
+    await message.answer(
+        f"<b>{title}</b>\n\n{body}",
+        reply_markup=build_keyboard_markup(workspace)
+        if workspace.rows
+        else None,
+        parse_mode="HTML",
+    )
+
+
 async def show(message, row, config):
     status = {
         "submitted": (
@@ -92,18 +108,8 @@ async def show(message, row, config):
         ),
     }.get(row["state"], f"<b>Работа менеджера в UMC</b>\n\n{escape(INTRO)}")
     if row["state"] == "approved":
-        workspace = manager_workspace_keyboard(config)
-        await message.answer(
-            "<b>Заявка одобрена. Кабинет менеджера открыт.</b>\n\n"
-            + (
-                "В базе появятся креаторы, пришедшие по вашей личной ссылке."
-                if workspace.rows
-                else "Mini App временно недоступен. Повторите /manager позже."
-            ),
-            reply_markup=build_keyboard_markup(workspace)
-            if workspace.rows
-            else None,
-            parse_mode="HTML",
+        await show_workspace(
+            message, config, "Заявка одобрена. Кабинет менеджера открыт."
         )
         return
     actions = []
@@ -144,9 +150,19 @@ async def show(message, row, config):
 async def open_manager_application(
     message, state, user_role_service, config, manager_applications=None
 ):
-    if message.chat.type != "private" or manager_applications is None:
+    if message.chat.type != "private":
         return
     user = await _user(user_role_service, message.from_user.id)
+    if (
+        user is not None
+        and getattr(user, "admin", False)
+        and user.status == UserStatus.ACTIVE
+    ):
+        await state.clear()
+        await show_workspace(message, config, "Кабинет менеджера открыт.")
+        return
+    if manager_applications is None:
+        return
     if user is None or (
         message.from_user.username
         and user.telegram != message.from_user.username

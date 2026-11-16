@@ -6,13 +6,14 @@ from datetime import datetime
 
 from ugc_bot.domain.creator_invites import instagram_handle
 
-MANAGER_DUTY_REVIEWER = "kamilbakhteev"
-MANAGER_REVIEWERS = (MANAGER_DUTY_REVIEWER, "usemycontent")
+MANAGER_FOUNDERS = ("kamilbakhteev", "darbulat")
+MANAGER_REVIEWERS = (*MANAGER_FOUNDERS, "usemycontent")
 MANAGER_PROGRAM_URL = "https://usemycontent.ru/partner"
 MANAGER_SUBMITTED = "manager.application.submitted"
 MANAGER_APPROVED = "manager.application.approved"
 MANAGER_INSTAGRAM_VERIFIED = "manager.application.instagram_verified"
 MANAGER_READY_FOR_REVIEW = "manager.application.ready_for_review"
+MANAGER_READY_FOR_REVIEW_V2 = "manager.application.ready_for_review.v2"
 MANAGER_REVIEWABLE_STATES = frozenset({"submitted", "clarify"})
 MANAGER_NOTICE_EVENTS = frozenset(
     {
@@ -20,6 +21,7 @@ MANAGER_NOTICE_EVENTS = frozenset(
         MANAGER_APPROVED,
         MANAGER_INSTAGRAM_VERIFIED,
         MANAGER_READY_FOR_REVIEW,
+        MANAGER_READY_FOR_REVIEW_V2,
     }
 )
 MANAGER_STATES = {

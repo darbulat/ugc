@@ -42,7 +42,7 @@ from ugc_bot.container.creator_invite_factory import build_creator_invites
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_NOTICE_EVENTS,
-    MANAGER_REVIEWERS,
+    MANAGER_READY_FOR_REVIEW,
     MAX_WRITTEN_LENGTH,
     application_fields,
     application_version,
@@ -90,11 +90,12 @@ async def test_application_verification_review_and_directory(
         graph,
         deliver_verification_notices=send_verification_notices,
     )
-    reviewer_ids = [uuid4(), uuid4()]
-    addresses = [980031, 980032]
+    reviewers = ("kamilbakhteev", "darbulat", "usemycontent")
+    reviewer_ids = [uuid4() for _ in reviewers]
+    addresses = [980031, 980032, 980033]
     with Session(env["pg"]) as db, db.begin():
         for reviewer, identity, address in zip(
-            MANAGER_REVIEWERS, reviewer_ids, addresses, strict=True
+            reviewers, reviewer_ids, addresses, strict=True
         ):
             db.add(
                 UserModel(
@@ -113,17 +114,25 @@ async def test_application_verification_review_and_directory(
     env["config"].webhook.webhook_base_url = "https://bot.example.test"
     sent: list[SendMessage] = []
     delayed_reviewer = {addresses[0]}
-    delayed_confirmation = temporary_candidate_failure
+    delayed_confirmation = 2 if temporary_candidate_failure else 0
+    delayed_ready = temporary_candidate_failure
 
     async def collect(_session, bot, method, timeout=None):
         assert bot.token == "123456:synthetic-review-check"
         assert isinstance(method, SendMessage)
-        nonlocal delayed_confirmation
+        nonlocal delayed_confirmation, delayed_ready
         if delayed_confirmation and method.text.startswith(
             "<b>Instagram подтверждён"
         ):
-            delayed_confirmation = False
+            delayed_confirmation -= 1
             raise OSError("Synthetic temporary candidate delivery failure")
+        if (
+            delayed_ready
+            and method.chat_id == addresses[1]
+            and "готова к проверке" in method.text
+        ):
+            delayed_ready = False
+            raise OSError("Synthetic temporary reviewer delivery failure")
         if method.chat_id in delayed_reviewer:
             delayed_reviewer.remove(method.chat_id)
             raise OSError("Synthetic temporary Telegram outage")
@@ -160,7 +169,7 @@ async def test_application_verification_review_and_directory(
     assert candidate is not None and not candidate.admin
     user_id = candidate.user_id
 
-    async def manager_miniapp(path):
+    async def manager_miniapp(path, native_id=candidate_native_id):
         async with AsyncClient(
             transport=ASGITransport(app=miniapp), base_url="http://testserver"
         ) as client:
@@ -169,7 +178,7 @@ async def test_application_verification_review_and_directory(
                 json={
                     "init_data": generate_init_data(
                         env["config"].bot.bot_token,
-                        candidate_native_id,
+                        native_id,
                         "test_manager",
                     )
                 },
@@ -178,6 +187,16 @@ async def test_application_verification_review_and_directory(
     assert (await manager_miniapp("/me")).json()["is_manager"] is False
     directory = "/manager/invited-creators"
     assert (await manager_miniapp(directory)).status_code == 403
+    orders = []
+    for address in addresses[:2]:
+        assert (await manager_miniapp("/me", address)).json()[
+            "is_manager"
+        ] is True
+        assert (await manager_miniapp(directory, address)).status_code == 200
+        response = await manager_miniapp("/manager/orders", address)
+        assert response.status_code == 200
+        orders.append(response.json())
+    assert orders[0] == orders[1]
     assert (await service.open(user_id))["state"] == "draft"
     answers = dict(
         name="Камиль",
@@ -229,7 +248,7 @@ async def test_application_verification_review_and_directory(
     assert submitted["submitted_at"] is not None
     version = application_version(submitted["submitted_at"])
     await publisher.process_pending_events(kafka)
-    assert [message.chat_id for message in sent] == [addresses[1]]
+    assert sorted(message.chat_id for message in sent) == addresses[1:]
     await publisher.process_pending_events(kafka)
     assert sorted(message.chat_id for message in sent) == addresses
     for message in sent:
@@ -281,12 +300,13 @@ async def test_application_verification_review_and_directory(
     users = SimpleNamespace(get_user=AsyncMock(return_value=reviewer))
     messenger = SimpleNamespace(send_text=AsyncMock())
 
-    async def click_review(data, *, chat_type="private", chat_id=addresses[0]):
+    async def click_review(data, *, chat_type="private", reviewer_index=0):
+        address = addresses[reviewer_index]
         callback = SimpleNamespace(
             message=SimpleNamespace(
-                chat=SimpleNamespace(id=chat_id, type=chat_type)
+                chat=SimpleNamespace(id=address, type=chat_type)
             ),
-            from_user=SimpleNamespace(id=addresses[0]),
+            from_user=SimpleNamespace(id=address),
             data=data,
             answer=AsyncMock(),
         )
@@ -392,12 +412,36 @@ async def test_application_verification_review_and_directory(
     ]
     assert len(immediate_confirmations) == int(not temporary_candidate_failure)
     assert (await manager_miniapp(directory)).status_code == 403
-    (ready,) = [m for m in sent if "готова к проверке" in m.text]
-    assert ready.chat_id == addresses[0]
-    approve_from_notice = ready.reply_markup.inline_keyboard[0][0]
-    assert approve_from_notice.text == "Принять менеджера"
+    if temporary_candidate_failure:
+        assert [m.chat_id for m in sent if "готова к проверке" in m.text] == [
+            addresses[0]
+        ]
+        await publisher.process_pending_events(kafka)
+    ready = [m for m in sent if "готова к проверке" in m.text]
+    assert sorted(m.chat_id for m in ready) == addresses[:2]
+    ready_actions = [m.reply_markup.inline_keyboard[0][0] for m in ready]
+    assert all(a.text == "Принять менеджера" for a in ready_actions)
+    assert ready_actions[0].callback_data == ready_actions[1].callback_data
+    approve_from_notice = ready_actions[0]
 
     submitted = await service.review_card(user_id)
+    legacy_event_id = uuid4()
+    with Session(env["pg"]) as db, db.begin():
+        db.add(
+            OutboxEventModel(
+                event_id=legacy_event_id,
+                aggregate_id=str(user_id),
+                aggregate_type="manager_application",
+                event_type=MANAGER_READY_FOR_REVIEW,
+                created_at=datetime.now(timezone.utc),
+                payload={
+                    "submission": application_version(submitted["submitted_at"])
+                },
+            )
+        )
+    await delivery.deliver_verification_notices(transactions, [legacy_event_id])
+    assert sent[-1].chat_id == addresses[0]
+    assert sent[-1].reply_markup.inline_keyboard[0][0] == approve_from_notice
     with pytest.raises(ValueError, match="обновилась"):
         await service.approve_in_telegram(user_id, reviewer_ids[0], version)
     with pytest.raises(ValueError, match="администраторам"):
@@ -415,10 +459,16 @@ async def test_application_verification_review_and_directory(
         _review(db, "note", str(user_id), "Внутренний комментарий")
         _review(db, "clarify", str(user_id), "")
     assert (await service.review_card(user_id))["state"] == "clarify"
-    response = await click_review(approve_from_notice.callback_data)
+    users.get_user.side_effect = roles.get_user
+    approver_index = int(temporary_candidate_failure)
+    response = await click_review(
+        approve_from_notice.callback_data, reviewer_index=approver_index
+    )
     response.assert_awaited_once_with("Менеджер принят.")
     assert "Одобрен" in messenger.send_text.call_args.kwargs["text"]
-    response = await click_review(approval.callback_data)
+    response = await click_review(
+        approval.callback_data, reviewer_index=1 - approver_index
+    )
     assert response.call_args.kwargs["show_alert"]
     assert "уже обработана" in response.call_args.args[0]
     with Session(env["pg"]) as db, db.begin():
@@ -512,7 +562,7 @@ async def test_application_verification_review_and_directory(
                 OutboxEventModel.event_type.in_(MANAGER_NOTICE_EVENTS)
             )
         ).all()
-        assert len(events) == 7 and all(
+        assert len(events) == 11 and all(
             event.status == "published" for event in events
         )
 
