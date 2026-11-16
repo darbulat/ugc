@@ -19,11 +19,11 @@ from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OutboxEventStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
-    MANAGER_DUTY_REVIEWER,
     MANAGER_INSTAGRAM_VERIFIED,
+    MANAGER_NOTIFICATION_RECIPIENTS,
     MANAGER_READY_FOR_REVIEW,
+    MANAGER_READY_FOR_REVIEW_V2,
     MANAGER_REVIEWABLE_STATES,
-    MANAGER_REVIEWERS,
     MANAGER_SUBMITTED,
     application_version,
 )
@@ -65,6 +65,7 @@ class ManagerApplicationDelivery:
                                 (
                                     MANAGER_INSTAGRAM_VERIFIED,
                                     MANAGER_READY_FOR_REVIEW,
+                                    MANAGER_READY_FOR_REVIEW_V2,
                                 )
                             ),
                         )
@@ -119,26 +120,29 @@ class ManagerApplicationDelivery:
             ) from exc
 
     async def _notice(self, db, event, candidate):
-        if event.event_type in {MANAGER_SUBMITTED, MANAGER_READY_FOR_REVIEW}:
+        if event.event_type in {
+            MANAGER_SUBMITTED,
+            MANAGER_READY_FOR_REVIEW,
+            MANAGER_READY_FOR_REVIEW_V2,
+        }:
             if event.payload["submission"] != application_version(
                 candidate["submitted_at"]
             ):
                 return None
-            if event.event_type == MANAGER_READY_FOR_REVIEW:
-                if (
-                    not candidate["instagram_verified_at"]
-                    or candidate["state"] not in MANAGER_REVIEWABLE_STATES
-                ):
-                    return None
-                chat_id = await self._reviewer_address(
-                    db, MANAGER_DUTY_REVIEWER
-                )
-                message = review_message(self.config, candidate, ready=True)
-            else:
-                chat_id = await self._reviewer_address(
-                    db, event.payload["reviewer"]
-                )
-                message = review_message(self.config, candidate)
+            ready = event.event_type != MANAGER_SUBMITTED
+            if ready and (
+                not candidate["instagram_verified_at"]
+                or candidate["state"] not in MANAGER_REVIEWABLE_STATES
+            ):
+                return None
+            # Keep the original recipient for legacy queued notices.
+            reviewer = (
+                "kamilbakhteev"
+                if event.event_type == MANAGER_READY_FOR_REVIEW
+                else event.payload["reviewer"]
+            )
+            chat_id = await self._reviewer_address(db, reviewer)
+            message = review_message(self.config, candidate, ready=ready)
         elif event.event_type == MANAGER_INSTAGRAM_VERIFIED:
             if not candidate["instagram_verified_at"] or event.payload[
                 "verification"
@@ -159,7 +163,7 @@ class ManagerApplicationDelivery:
 
     @staticmethod
     async def _reviewer_address(db, recipient):
-        if recipient not in MANAGER_REVIEWERS:
+        if recipient not in MANAGER_NOTIFICATION_RECIPIENTS:
             raise ValueError("manager_reviewer_not_configured")
         addresses = (
             await db.scalars(

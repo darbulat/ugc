@@ -6,15 +6,15 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, literal, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 
 from ugc_bot.domain.manager_application import (
     MANAGER_APPROVED,
     MANAGER_INSTAGRAM_VERIFIED,
-    MANAGER_READY_FOR_REVIEW,
+    MANAGER_NOTIFICATION_RECIPIENTS,
+    MANAGER_READY_FOR_REVIEW_V2,
     MANAGER_REVIEWABLE_STATES,
-    MANAGER_REVIEWERS,
     MANAGER_SUBMITTED,
     application_fields,
     application_version,
@@ -217,7 +217,7 @@ class ManagerApplications:
                     state="submitted",
                     submitted_at=now,
                 )
-                for reviewer in MANAGER_REVIEWERS:
+                for reviewer in MANAGER_NOTIFICATION_RECIPIENTS:
                     _enqueue_notice(
                         db,
                         user_id,
@@ -244,6 +244,35 @@ class ManagerApplications:
                 )
             )
             return result.mappings().one_or_none()
+
+    async def review_queue(
+        self, *, after: tuple[datetime, UUID] | None, limit: int
+    ):
+        queued_at = func.coalesce(
+            APPLICATIONS.c.submitted_at, APPLICATIONS.c.updated_at
+        )
+        query = (
+            select(
+                APPLICATIONS.c.user_id,
+                APPLICATIONS.c.answers["name"].as_string().label("name"),
+                UserModel.username,
+                queued_at.label("queued_at"),
+            )
+            .join(UserModel, UserModel.user_id == APPLICATIONS.c.user_id)
+            .where(
+                APPLICATIONS.c.state.in_(MANAGER_REVIEWABLE_STATES),
+                APPLICATIONS.c.instagram_verified_at.is_not(None),
+            )
+            .order_by(queued_at, APPLICATIONS.c.user_id)
+            .limit(limit)
+        )
+        if after is not None:
+            query = query.where(
+                tuple_(queued_at, APPLICATIONS.c.user_id)
+                > tuple_(literal(after[0]), literal(after[1]))
+            )
+        async with self.transactions.transaction() as session:
+            return (await _session(session).execute(query)).mappings().all()
 
     async def approve_in_telegram(self, user_id: UUID, actor_id: UUID, version):
         async with self.transactions.transaction() as session:
@@ -374,19 +403,21 @@ class ManagerApplications:
                     )
                 )
             if current["state"] in MANAGER_REVIEWABLE_STATES:
-                notices.append(
-                    _enqueue_notice(
-                        db,
-                        row.user_id,
-                        MANAGER_READY_FOR_REVIEW,
-                        verified_at,
-                        {
-                            "submission": application_version(
-                                current["submitted_at"]
-                            )
-                        },
+                for reviewer in MANAGER_NOTIFICATION_RECIPIENTS:
+                    notices.append(
+                        _enqueue_notice(
+                            db,
+                            row.user_id,
+                            MANAGER_READY_FOR_REVIEW_V2,
+                            verified_at,
+                            {
+                                "reviewer": reviewer,
+                                "submission": application_version(
+                                    current["submitted_at"]
+                                ),
+                            },
+                        )
                     )
-                )
         if notices and self.deliver_verification_notices is not None:
             await self.deliver_verification_notices(notices)
         return True

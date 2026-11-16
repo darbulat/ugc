@@ -27,9 +27,12 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_ROLE_CREATOR,
 )
 from ugc_bot.bot.telegram.manager_review_messages import (
+    REVIEW_PAGE_SIZE,
     REVIEW_PREFIX,
     manager_workspace_keyboard,
     review_message,
+    review_queue_cursor,
+    review_queue_message,
 )
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.domain.manager_application import (
@@ -78,6 +81,30 @@ def keyboard(rows):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def show_workspace(message, config, title, *, can_review=False):
+    workspace = manager_workspace_keyboard(config)
+    body = (
+        "В базе появятся креаторы, пришедшие по вашей личной ссылке."
+        if workspace.rows
+        else "Mini App временно недоступен. Повторите /manager позже."
+    )
+    markup = build_keyboard_markup(workspace)
+    if can_review:
+        markup.inline_keyboard.append(
+            [
+                InlineKeyboardButton(
+                    text="Заявки менеджеров",
+                    callback_data=f"{REVIEW_PREFIX}q",
+                )
+            ]
+        )
+    await message.answer(
+        f"<b>{title}</b>\n\n{body}",
+        reply_markup=markup if markup.inline_keyboard else None,
+        parse_mode="HTML",
+    )
+
+
 async def show(message, row, config):
     status = {
         "submitted": (
@@ -92,18 +119,8 @@ async def show(message, row, config):
         ),
     }.get(row["state"], f"<b>Работа менеджера в UMC</b>\n\n{escape(INTRO)}")
     if row["state"] == "approved":
-        workspace = manager_workspace_keyboard(config)
-        await message.answer(
-            "<b>Заявка одобрена. Кабинет менеджера открыт.</b>\n\n"
-            + (
-                "В базе появятся креаторы, пришедшие по вашей личной ссылке."
-                if workspace.rows
-                else "Mini App временно недоступен. Повторите /manager позже."
-            ),
-            reply_markup=build_keyboard_markup(workspace)
-            if workspace.rows
-            else None,
-            parse_mode="HTML",
+        await show_workspace(
+            message, config, "Заявка одобрена. Кабинет менеджера открыт."
         )
         return
     actions = []
@@ -144,9 +161,24 @@ async def show(message, row, config):
 async def open_manager_application(
     message, state, user_role_service, config, manager_applications=None
 ):
-    if message.chat.type != "private" or manager_applications is None:
+    if message.chat.type != "private":
         return
     user = await _user(user_role_service, message.from_user.id)
+    if (
+        user is not None
+        and getattr(user, "admin", False)
+        and user.status == UserStatus.ACTIVE
+    ):
+        await state.clear()
+        await show_workspace(
+            message,
+            config,
+            "Кабинет менеджера открыт.",
+            can_review=manager_applications is not None,
+        )
+        return
+    if manager_applications is None:
+        return
     if user is None or (
         message.from_user.username
         and user.telegram != message.from_user.username
@@ -250,6 +282,23 @@ async def review_manager_in_telegram(
     action, _, payload = callback.data.removeprefix(REVIEW_PREFIX).partition(
         ":"
     )
+    if action == "q":
+        try:
+            after = review_queue_cursor(payload)
+        except (ValueError, OverflowError):
+            await callback.answer(
+                "Откройте список заявок заново.", show_alert=True
+            )
+            return
+        rows = await manager_applications.review_queue(
+            after=after, limit=REVIEW_PAGE_SIZE + 1
+        )
+        text, markup = review_queue_message(rows, after=after)
+        await callback.answer()
+        await messenger_client.send_text(
+            chat_id=str(message.chat.id), text=text, keyboard=markup
+        )
+        return
     identity, _, version = payload.partition(":")
     try:
         user_id = UUID(hex=identity)
