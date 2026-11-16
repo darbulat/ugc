@@ -33,6 +33,22 @@
     section.hidden = true;
     id('summary-creator-contacts-list').replaceChildren();
   }
+  function contactLine(platform, value) {
+    var instagram = platform === 'Instagram';
+    var profile = instagram
+      ? /^(?:@|https:\/\/(?:www\.)?instagram\.com\/)?([a-z0-9._]{1,64})\/?$/i.exec(value)
+      : /^(?:@|https:\/\/t\.me\/)?([a-z][a-z0-9_]{4,31})\/?$/i.exec(value);
+    var label = platform + ': ' + value;
+    if (!profile || profile[1] === '.' || profile[1] === '..') return node('p', label);
+    var line = node('p', '');
+    var link = node('a', label);
+    link.href = instagram ? 'https://instagram.com/' + profile[1] + '/' : 'https://t.me/' + profile[1];
+    link.className = 'themed-link';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    line.appendChild(link);
+    return line;
+  }
   function renderContacts(data, copy) {
     var section = id('summary-creator-contacts');
     if (!section || data.role !== 'client' || !Array.isArray(data.creator_contacts)) return;
@@ -41,8 +57,8 @@
       if (!Number.isSafeInteger(contact.ordinal) || contact.ordinal < 1) continue;
       var row = node('li', '');
       row.appendChild(node('strong', '№' + contact.ordinal));
-      if (contact.instagram) row.appendChild(node('p', 'Instagram: ' + contact.instagram));
-      if (contact.telegram) row.appendChild(node('p', 'Telegram: ' + contact.telegram));
+      if (contact.instagram) row.appendChild(contactLine('Instagram', contact.instagram));
+      if (contact.telegram) row.appendChild(contactLine('Telegram', contact.telegram));
       if (!contact.instagram && !contact.telegram) row.appendChild(node('p', copy[3]));
       list.appendChild(row);
     }
