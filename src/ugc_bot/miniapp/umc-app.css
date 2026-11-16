@@ -314,6 +314,7 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-summary-contact-list{list-style:none;margin:0;padding:0}
 .umc-summary-contact-list li{padding:12px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .umc-summary-contact-list p{margin:4px 0 0}
+.umc-summary-contact-list a{display:block;min-height:44px;padding:10px 0}
 .umc .umc-summary dd{margin:0;font-weight:600;flex-shrink:0}
 .umc .umc-summary dt{overflow-wrap:anywhere}
 
