@@ -20,6 +20,19 @@ These notes are for anyone developing this repository and deploying it to the pr
 4. Install project dependencies with `uv sync --all-extras`. Run the relevant focused tests, then use the repository checks as appropriate: `make format-check lint typecheck test`. `make test` excludes tests marked `e2e`; run the relevant E2E suite when the change affects browser flows or an external integration.
 5. Push the topic branch and open a PR. Wait for GitHub CI and code review; resolve findings before merging. Deploy production changes from a commit that has been merged to `main`, unless the owner explicitly asks for a different release process.
 
+### Review before merge
+
+For routine changes, such as read-only screens, complete code review and
+wait for green CI. The project owner can approve release in the task
+conversation or on GitHub. A separate GitHub **Approve** is optional.
+
+Changes to payments, refunds, accruals, database migrations and their
+guards, or customer notification delivery require green CI and an explicit
+GitHub **Approve** from a designated human reviewer on the current PR head.
+The reviewer must be someone other than the author. Obtain a fresh approval
+after new commits. Apply this requirement to the behavior changed by the PR,
+including sensitive changes to shared files.
+
 ## Production deployment
 
 The repository README documents `make deploy-apps` and `scripts/deploy_apps_zero_downtime.sh` for rolling `app` then `app_2`; the script builds once and waits for each instance to become healthy. That procedure assumes its Compose files and build context match the live server. The current server checkout is dirty, so do not run the script from `/opt/myapp/ugc` against its default `.` build context.

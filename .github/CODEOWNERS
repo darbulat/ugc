@@ -1,0 +1,47 @@
+# Send changes to dedicated sensitive files to the project reviewer.
+# For shared files, use the review requirements in AGENTS.md.
+
+# Database migrations, shared models and database guards.
+/alembic.ini @knails21
+/src/ugc_bot/infrastructure/db/migrations/ @knails21
+/src/ugc_bot/infrastructure/db/models.py @knails21
+/src/ugc_bot/infrastructure/db/*schema.py @knails21
+/src/ugc_bot/infrastructure/db/*models.py @knails21
+
+# Payments, settlement, and the code that grants or reverses entitlements.
+/src/ugc_bot/**/*payment* @knails21
+/src/ugc_bot/**/*checkout* @knails21
+/src/ugc_bot/**/*invoice* @knails21
+/src/ugc_bot/**/*financial* @knails21
+/src/ugc_bot/**/*refund* @knails21
+/src/ugc_bot/**/*ledger* @knails21
+/src/ugc_bot/**/*payout* @knails21
+/src/ugc_bot/**/*earning* @knails21
+/src/ugc_bot/**/*maturity* @knails21
+/src/ugc_bot/**/*entitlement* @knails21
+/src/ugc_bot/**/*correction* @knails21
+/src/ugc_bot/**/*referral* @knails21
+/src/ugc_bot/**/*paid_selection* @knails21
+/src/ugc_bot/**/*subscription* @knails21
+/src/ugc_bot/**/*obligation* @knails21
+/src/ugc_bot/**/*order_intake* @knails21
+
+# Customer notification producers, delivery, schedules, and message copy.
+/src/ugc_bot/**/*notice* @knails21
+/src/ugc_bot/**/*notification* @knails21
+/src/ugc_bot/**/*order_summary* @knails21
+/src/ugc_bot/**/*followup* @knails21
+/src/ugc_bot/**/*reminder* @knails21
+/src/ugc_bot/**/*outbox* @knails21
+/src/ugc_bot/**/*creator_invite* @knails21
+/src/ugc_bot/**/*invite_handoff* @knails21
+/src/ugc_bot/**/*order_creation* @knails21
+/src/ugc_bot/**/*order_support* @knails21
+/src/ugc_bot/**/*offer_dispatch* @knails21
+/src/ugc_bot/bot/texts/ @knails21
+/src/ugc_bot/application/services/order_service.py @knails21
+/src/ugc_bot/application/services/support_service.py @knails21
+
+# Manager invitation and scheduled delivery entry points.
+/src/ugc_bot/miniapp/manager_invites.py @knails21
+/src/ugc_bot/combined_scheduler.py @knails21

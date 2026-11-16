@@ -3,6 +3,7 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Literal
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -12,6 +13,10 @@ from starlette.requests import Request
 
 from ugc_bot.admin.auth import admin_login_redirect
 from ugc_bot.domain.order_display import public_order_number
+from ugc_bot.infrastructure.db.repositories.order_position_queue import (
+    STAGES,
+    queue_rows,
+)
 from ugc_bot.infrastructure.db.repositories.order_review import (
     list_positions,
     referral_entries,
@@ -58,19 +63,34 @@ def _reason(row, at):
     return "Проверить доставку контакта"
 
 
-def _load_review(engine, order_id, manager_id, unassigned, page, *, at):
+def _load_review(
+    engine, order_id, manager_id, unassigned, page, *, at, stage="attention"
+):
     per_page = 50
     with Session(engine) as db:
         if db.get_bind().dialect.name != "postgresql":
             return [], False
-        rows = list_positions(
-            db,
-            at,
-            order_id,
-            manager_id,
-            unassigned,
-            (page - 1) * per_page,
-            per_page + 1,
+        rows = (
+            list_positions(
+                db,
+                at,
+                order_id,
+                manager_id,
+                unassigned,
+                (page - 1) * per_page,
+                per_page + 1,
+            )
+            if stage == "attention"
+            else queue_rows(
+                db,
+                at,
+                order_id,
+                stage=stage,
+                manager_id=manager_id,
+                unassigned=unassigned,
+                offset=(page - 1) * per_page,
+                limit=per_page + 1,
+            )
         )
         groups = {}
         for row in rows[:per_page]:
@@ -125,6 +145,9 @@ def register_order_review(app, auth, engine, templates, require_action_token):
         manager_id: UUID | None = None,
         unassigned: bool = False,
         page: int = 1,
+        stage: Literal[
+            "attention", "all", "waiting", "manual", "received"
+        ] = "attention",
     ):
         if not await auth.authenticate(request):
             return admin_login_redirect(request)
@@ -138,6 +161,7 @@ def register_order_review(app, auth, engine, templates, require_action_token):
             unassigned,
             page,
             at=datetime.now(timezone.utc),
+            stage=stage,
         )
         return templates.TemplateResponse(
             request,
@@ -151,6 +175,8 @@ def register_order_review(app, auth, engine, templates, require_action_token):
                 "has_more": has_more,
                 "message": request.session.pop("order_review_message", None),
                 "money_states": MONEY_STATES,
+                "stage": stage,
+                "stages": STAGES,
             },
         )
 
