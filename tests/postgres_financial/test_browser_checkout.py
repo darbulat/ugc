@@ -34,7 +34,10 @@ from ugc_bot.infrastructure.db.models import (
     OutboxEventModel,
     PaymentModel,
 )
-from ugc_bot.infrastructure.db.order_notice_models import ORDER_NOTICE_EVENTS
+from ugc_bot.infrastructure.db.order_notice_models import (
+    ORDER_NOTICE_DELIVERIES,
+    ORDER_NOTICE_EVENTS,
+)
 from ugc_bot.infrastructure.db.repositories.browser_checkout import (
     SqlBrowserCheckout,
 )
@@ -82,6 +85,72 @@ async def due(env):
             .where(BROWSER_ATTEMPTS.c.order_id == env["order"].order_id)
             .values(next_check_at=datetime.now(timezone.utc))
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("previously_expanded", [False, True])
+async def test_browser_paid_notice_targets_only_configured_recipients(
+    checkout_env,
+    previously_expanded,
+):
+    env = checkout_env
+    order_id = env["order"].order_id
+    now = datetime.now(timezone.utc)
+    gateway = AsyncMock()
+    invoice_id = f"in-{uuid4()}"
+    gateway.observe.return_value = BrowserInvoice(
+        invoice_id,
+        "paid",
+        payment=BrowserPayment(invoice_id, str(uuid4()), SHOP, 1740000, now),
+    )
+    checkout = service(env, gateway)
+    token = await offer(checkout, order_id)
+    await checkout.start(token, "buyer@example.test")
+    assert (await checkout.buyer_view(token))["state"] == "paid"
+
+    all_recipients = ("123", "456", "789")
+    browser_recipients = frozenset(("123", "456"))
+    repository = SqlAlchemyOrderNoticeRepository(browser_recipients)
+    if previously_expanded:
+        old_repository = SqlAlchemyOrderNoticeRepository()
+        async with env["transactions"].transaction() as session:
+            for _ in range(100):
+                leased = await old_repository.claim(
+                    now, all_recipients, session=session
+                )
+                assert leased is not None
+                if leased.order_id == order_id and leased.recipient == "789":
+                    break
+            else:
+                pytest.fail("Expected an existing lease for the old recipient")
+            assert not await repository.begin(leased, now, session=session)
+    async with env["transactions"].transaction() as session:
+        await repository.claim(now, all_recipients, session=session)
+        orders = await session.execute(
+            select(
+                ORDER_NOTICE_DELIVERIES.c.event_kind,
+                ORDER_NOTICE_DELIVERIES.c.recipient,
+                ORDER_NOTICE_DELIVERIES.c.state,
+                ORDER_NOTICE_DELIVERIES.c.last_error,
+            ).where(ORDER_NOTICE_DELIVERIES.c.order_id == order_id)
+        )
+        rows = {
+            (event, recipient): (state, error)
+            for event, recipient, state, error in orders
+        }
+    for kind in ("created", "paid"):
+        assert {
+            recipient
+            for (event, recipient), (state, _) in rows.items()
+            if event == kind and state != "failed"
+        } == browser_recipients
+        if previously_expanded:
+            assert rows[kind, "789"] == (
+                "failed",
+                "order_notice_recipient_ineligible",
+            )
+        else:
+            assert (kind, "789") not in rows
 
 
 @pytest.mark.asyncio

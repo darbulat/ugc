@@ -87,6 +87,21 @@ def test_load_config_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.db.database_url == "postgresql://test"
 
 
+def test_browser_paid_notice_recipients_are_a_subset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BOT_TOKEN", "token")
+    monkeypatch.setenv("BUSINESS_ORDER_TELEGRAM_RECIPIENTS", '["12","34","56"]')
+    monkeypatch.setenv("BROWSER_PAID_ORDER_TELEGRAM_RECIPIENTS", '["12","34"]')
+    config = load_config()
+    assert config.admin.browser_paid_order_telegram_recipients == {"12", "34"}
+    assert config.admin.business_order_telegram_recipients == {"12", "34", "56"}
+
+    monkeypatch.setenv("BROWSER_PAID_ORDER_TELEGRAM_RECIPIENTS", '["78"]')
+    with pytest.raises(ValueError, match="must be business order recipients"):
+        load_config()
+
+
 def test_log_config_normalizes_log_level() -> None:
     """LogConfig normalizes log_level (strip and upper)."""
     config = AppConfig.model_validate(

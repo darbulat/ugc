@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import case, or_, select, update
+from sqlalchemy import case, exists, false, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,9 @@ from ugc_bot.application.order_notice_ports import (
     OrderNoticeJob,
     OrderNoticeKind,
 )
+from ugc_bot.domain.browser_checkout import BROWSER_PROVIDER
+from ugc_bot.domain.enums import PaymentStatus
+from ugc_bot.infrastructure.db.models import PaymentModel
 from ugc_bot.infrastructure.db.order_notice_models import (
     ORDER_NOTICE_DELIVERIES as deliveries,
 )
@@ -20,7 +23,20 @@ from ugc_bot.infrastructure.db.order_notice_models import (
 )
 
 
+def _browser_paid(order_notices):
+    return exists().where(
+        PaymentModel.order_id == order_notices.c.order_id,
+        PaymentModel.provider == BROWSER_PROVIDER,
+        PaymentModel.status == PaymentStatus.PAID,
+    )
+
+
 class SqlAlchemyOrderNoticeRepository:
+    def __init__(
+        self, browser_paid_recipients: frozenset[str] | None = None
+    ) -> None:
+        self.browser_paid_recipients = browser_paid_recipients
+
     async def enqueue(
         self, order_id: UUID, event_kind: OrderNoticeKind, *, session: object
     ) -> None:
@@ -68,10 +84,28 @@ class SqlAlchemyOrderNoticeRepository:
                 lease_until=now + timedelta(seconds=30),
             )
         )
+        browser_recipients = self.browser_paid_recipients
+        browser_paid_event = false()
+        if browser_recipients is not None:
+            browser_paid_event = _browser_paid(events)
+            # A delayed "created" card can also include the paid status.
+            await session.execute(
+                update(deliveries)
+                .where(
+                    deliveries.c.state.in_(("pending", "leased")),
+                    _browser_paid(deliveries),
+                    deliveries.c.recipient.not_in(browser_recipients),
+                )
+                .values(
+                    state="failed",
+                    last_error="order_notice_recipient_ineligible",
+                    lease_until=None,
+                )
+            )
         pending = (
             (
                 await session.execute(
-                    select(events)
+                    select(events, browser_paid_event.label("browser_paid"))
                     .where(events.c.expanded.is_(False))
                     .order_by(events.c.created_at)
                     .limit(100)
@@ -81,10 +115,13 @@ class SqlAlchemyOrderNoticeRepository:
             .mappings()
             .all()
         )
+        admin_addresses = {
+            value.strip() for value in admin_recipients if value.strip()
+        }
         for event in pending:
-            addresses = {
-                value.strip() for value in admin_recipients if value.strip()
-            }
+            addresses = admin_addresses
+            if event["browser_paid"] and browser_recipients is not None:
+                addresses = admin_addresses.intersection(browser_recipients)
             if not addresses:
                 continue
             for address in sorted(addresses):
@@ -155,16 +192,20 @@ class SqlAlchemyOrderNoticeRepository:
         self, job: OrderNoticeJob, now: datetime, *, session: object
     ) -> bool:
         session = cast(AsyncSession, session)
+        statement = update(deliveries).where(
+            deliveries.c.job_id == job.job_id,
+            deliveries.c.state == "leased",
+            deliveries.c.attempt == job.attempt,
+            deliveries.c.lease_until > now,
+        )
+        browser_recipients = self.browser_paid_recipients
+        if (
+            browser_recipients is not None
+            and job.recipient not in browser_recipients
+        ):
+            statement = statement.where(~_browser_paid(deliveries))
         result = await session.execute(
-            update(deliveries)
-            .where(
-                deliveries.c.job_id == job.job_id,
-                deliveries.c.state == "leased",
-                deliveries.c.attempt == job.attempt,
-                deliveries.c.lease_until > now,
-            )
-            .values(state="sending")
-            .returning(deliveries.c.job_id)
+            statement.values(state="sending").returning(deliveries.c.job_id)
         )
         return result.scalar_one_or_none() is not None
 

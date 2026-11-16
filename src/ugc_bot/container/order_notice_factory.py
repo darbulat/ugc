@@ -172,7 +172,9 @@ def build_order_notice_delivery(
     eligible_count_loader: Callable[[UUID], Awaitable[int]] | None = None,
 ) -> OrderNoticeDelivery:
     roles = UserRoleService(user_repo=repos["user_repo"])
-    repository = SqlAlchemyOrderNoticeRepository()
+    repository = SqlAlchemyOrderNoticeRepository(
+        config.admin.browser_paid_order_telegram_recipients
+    )
 
     recipient_ids = config.admin.business_order_telegram_recipients
 

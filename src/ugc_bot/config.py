@@ -55,6 +55,7 @@ _FLAT_KEYS = {
         "ADMIN_SITE_NAME",
         "ADMIN_BASE_URL",
         "BUSINESS_ORDER_TELEGRAM_RECIPIENTS",
+        "BROWSER_PAID_ORDER_TELEGRAM_RECIPIENTS",
         "ADMIN_DASHBOARD_TIMEZONE",
         "ADMIN_DELAY_ACTIVE_DAYS",
         "ADMIN_NO_RESPONSES_HOURS",
@@ -302,17 +303,36 @@ class AdminConfig(BaseSettings):
     business_order_telegram_recipients: frozenset[str] = Field(
         default_factory=frozenset, alias="BUSINESS_ORDER_TELEGRAM_RECIPIENTS"
     )
+    browser_paid_order_telegram_recipients: frozenset[str] | None = Field(
+        default=None, alias="BROWSER_PAID_ORDER_TELEGRAM_RECIPIENTS"
+    )
 
-    @field_validator("business_order_telegram_recipients")
+    @field_validator(
+        "business_order_telegram_recipients",
+        "browser_paid_order_telegram_recipients",
+    )
     @classmethod
     def validate_business_order_telegram_recipients(
-        cls, ids: frozenset[str]
-    ) -> frozenset[str]:
-        if any(not re.fullmatch(r"[1-9][0-9]{0,15}", value) for value in ids):
+        cls, ids: frozenset[str] | None
+    ) -> frozenset[str] | None:
+        if ids and any(
+            not re.fullmatch(r"[1-9][0-9]{0,15}", value) for value in ids
+        ):
             raise ValueError(
                 "Business order recipients must be private Telegram user IDs"
             )
         return ids
+
+    @model_validator(mode="after")
+    def validate_browser_paid_order_recipients(self) -> Self:
+        selected = self.browser_paid_order_telegram_recipients
+        if selected is not None and not selected.issubset(
+            self.business_order_telegram_recipients
+        ):
+            raise ValueError(
+                "Browser payment recipients must be business order recipients"
+            )
+        return self
 
     admin_dashboard_timezone: str = Field(
         default="Europe/Moscow", alias="ADMIN_DASHBOARD_TIMEZONE"
