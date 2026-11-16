@@ -11,6 +11,13 @@
     be:['Зводка па заказе','Назад','Абнавіць','Загружаем зводку…','Не ўдалося загрузіць зводку. Паспрабуйце абнавіць.','Зводка недаступна гэтаму акаўнту.','Заказ або прызначэнне не знойдзены.','Адкрыйце праграму зноў.','Няправільная спасылка на зводку.','Усяго пазіцый','Дастаўка кантактаў пацверджана','Статусы супрацоўніцтва','Раней сабраныя водгукі','Увесь заказ','Вашы прызначэнні','Пакуль няма пазіцый для зводкі.','Даныя на','Прызначана','Не прызначана','Умовы працы яшчэ не захаваны','У працы','Заяўлены поспех','Ёсць пярэчанне','Поспех пацверджаны','Тэрмін пацверджання мінуў','Тэрмін утрымання скончыўся','Невядома','Чакаецца водгук','Адзначана «ўсё прайшло добра»','Не дамовіліся','Паведамлена пра праблему','Невядомы статус водгуку'],
     uz:['Buyurtma xulosasi','Orqaga','Yangilash','Xulosa yuklanmoqda…','Xulosa yuklanmadi. Yangilab ko‘ring.','Bu hisob uchun xulosa mavjud emas.','Buyurtma yoki topshiriq topilmadi.','Ilovani qayta oching.','Xulosa havolasi noto‘g‘ri.','Jami pozitsiyalar','Kontakt yetkazilishi tasdiqlangan','Hamkorlik holatlari','Avval yig‘ilgan fikrlar','Butun buyurtma','Sizning topshiriqlaringiz','Xulosa uchun pozitsiyalar hali yo‘q.','Ma’lumot vaqti','Tayinlangan','Tayinlanmagan','Ish shartlari hali saqlanmagan','Jarayonda','Muvaffaqiyat bildirildi','E’tiroz bor','Muvaffaqiyat tasdiqlandi','Tasdiqlash muddati o‘tdi','Ushlab turish muddati tugadi','Noma’lum','Fikr kutilmoqda','“Hammasi yaxshi o‘tdi” deb belgilangan','Kelishilmagan','Muammo bildirilgan','Fikr holati noma’lum']
   };
+  var contactLabels = {
+    ru: ['Тестовый заказ', 'Контакты креаторов', 'Контакты появятся после подтверждения.', 'Ожидает контакта'],
+    en: ['Test order', 'Creator contacts', 'Contacts will appear after confirmation.', 'Awaiting contact'],
+    kk: ['Сынақ тапсырысы', 'Креаторлардың байланыстары', 'Байланыстар растаудан кейін көрсетіледі.', 'Байланыс күтілуде'],
+    be: ['Тэставы заказ', 'Кантакты крэатараў', 'Кантакты з’явяцца пасля пацвярджэння.', 'Чакаем кантакт'],
+    uz: ['Sinov buyurtmasi', 'Kreatorlar kontaktlari', 'Kontaktlar tasdiqlangandan keyin ko‘rinadi.', 'Kontakt kutilmoqda']
+  };
   var state={order:null,request:0,busy:false,opened:false,back:'screen-role-choice'};
   function id(value){return document.getElementById(value);}
   function words(){var raw=labels[(window._me||{}).locale]||labels.ru, out=Object.create(null); keys.forEach(function(k,i){out[k]=raw[i];});return out;}
@@ -20,32 +27,59 @@
   function count(value){return Number.isSafeInteger(value) && value>=0;}
   function localize(){var c=words();text('summary-title',c.title);text('btn-summary-back',c.back);text('btn-summary-refresh',c.refresh);text('summary-total-label',c.total);}
   function busy(value){state.busy=value;screen.setAttribute('aria-busy',String(value));id('btn-summary-refresh').disabled=value; text('summary-loading',value?words().loading:'');}
+  function clearContacts() {
+    var section = id('summary-creator-contacts');
+    if (!section) return;
+    section.hidden = true;
+    id('summary-creator-contacts-list').replaceChildren();
+  }
+  function renderContacts(data, copy) {
+    var section = id('summary-creator-contacts');
+    if (!section || data.role !== 'client' || !Array.isArray(data.creator_contacts)) return;
+    var list = id('summary-creator-contacts-list');
+    for (var contact of data.creator_contacts) {
+      if (!Number.isSafeInteger(contact.ordinal) || contact.ordinal < 1) continue;
+      var row = node('li', '');
+      row.appendChild(node('strong', '№' + contact.ordinal));
+      if (contact.instagram) row.appendChild(node('p', 'Instagram: ' + contact.instagram));
+      if (contact.telegram) row.appendChild(node('p', 'Telegram: ' + contact.telegram));
+      if (!contact.instagram && !contact.telegram) row.appendChild(node('p', copy[3]));
+      list.appendChild(row);
+    }
+    text('summary-creator-contacts-title', copy[1]);
+    text('summary-creator-contacts-empty', copy[2]);
+    id('summary-creator-contacts-empty').hidden = list.childElementCount > 0;
+    section.hidden = false;
+  }
   function render(data){
     var c=words(), states=data.states;
-    if(data.order_id!==state.order || !count(data.total) || !states || typeof states!=='object' || Array.isArray(states) || ['client','manager'].indexOf(data.role)<0 || ['financial_positions','legacy_feedback'].indexOf(data.source)<0) throw new Error('invalid_summary');
+    var preview = data.source === 'invite_preview';
+    var contactCopy = contactLabels[(window._me || {}).locale] || contactLabels.ru;
+    if(data.order_id!==state.order || !count(data.total) || !states || typeof states!=='object' || Array.isArray(states) || ['client','manager'].indexOf(data.role)<0 || ['financial_positions','legacy_feedback','invite_preview'].indexOf(data.source)<0) throw new Error('invalid_summary');
     var total=0;Object.keys(states).forEach(function(key){if(!count(states[key])) throw new Error('invalid_count');total+=states[key];});
     if(total!==data.total || (data.contact_accepted!==null && (!count(data.contact_accepted)||data.contact_accepted>data.total))) throw new Error('invalid_summary');
     if(data.public_number)text('summary-order',data.public_number);
-    text('summary-total',data.total);text('summary-role',c[data.role]);text('summary-source',data.source==='financial_positions'?c.financial:c.legacy);
+    text('summary-total',data.total);text('summary-role',c[data.role]);text('summary-source',preview?contactCopy[0]:data.source==='financial_positions'?c.financial:c.legacy);
     id('summary-contacts').hidden=data.contact_accepted===null; text('summary-contacts',data.contact_accepted===null?'':c.contacts+': '+data.contact_accepted);
-    var parent=id('summary-states');parent.replaceChildren();
-    Object.keys(states).forEach(function(key){var row=document.createElement('div');row.dataset.summaryState=key;row.appendChild(node('dt',c[key]||c.unknown));row.appendChild(node('dd',states[key]));parent.appendChild(row);});
+    var parent=id('summary-states');parent.replaceChildren();parent.hidden=preview;
+    if(!preview)Object.keys(states).forEach(function(key){var row=document.createElement('div');row.dataset.summaryState=key;row.appendChild(node('dt',c[key]||c.unknown));row.appendChild(node('dd',states[key]));parent.appendChild(row);});
     text('summary-empty',data.total===0?c.empty:'');
+    renderContacts(data, contactCopy);
     var at=new Date(data.as_of);text('summary-asof',c.asOf+': '+(!isNaN(at.getTime())?at.toISOString().replace('T',' ').slice(0,16)+' UTC':c.unknown));
     id('summary-content').hidden=false;
   }
   function load(){
-    if(!state.order || state.busy)return;localize();var request=++state.request;text('summary-error','');id('summary-content').hidden=true;busy(true);
+    if(!state.order || state.busy)return;localize();var request=++state.request;text('summary-error','');id('summary-content').hidden=true;clearContacts();busy(true);
     bridge.request('/orders/'+state.order+'/campaign-summary',{}).then(function(data){if(request===state.request)render(data);}).catch(function(error){if(request!==state.request)return;var c=words();text('summary-error',error.status===401?c.session:error.status===403?c.forbidden:error.status===404?c.missing:c.error);}).finally(function(){if(request===state.request)busy(false);});
   }
   function open(order){
     var current=document.querySelector('.screen.active');if(current && current!==screen)state.back=current.id;
-    state.request++;busy(false);localize();id('summary-content').hidden=true;bridge.showScreen(screen.id);state.opened=true;
+    state.request++;busy(false);localize();id('summary-content').hidden=true;clearContacts();bridge.showScreen(screen.id);state.opened=true;
     if(!validId(order)){state.order=null;text('summary-error',words().invalid);return;}
     state.order=order.toLowerCase();text('summary-order','UMC-'+state.order.replace(/-/g,'').slice(0,8).toUpperCase());var url=new URL(location.href);url.searchParams.set('summary',state.order);history.replaceState(null,'',url.href);load();
   }
   id('btn-summary-refresh').addEventListener('click',load);
-  id('btn-summary-back').addEventListener('click',function(){state.request++;busy(false);var url=new URL(location.href);url.searchParams.delete('summary');history.replaceState(null,'',url.href);bridge.showScreen(state.back);});
+  id('btn-summary-back').addEventListener('click',function(){state.request++;busy(false);clearContacts();var url=new URL(location.href);url.searchParams.delete('summary');history.replaceState(null,'',url.href);bridge.showScreen(state.back);});
   function entries(){['orders-list','manager-orders-list'].forEach(function(name){var list=id(name);if(!list)return;list.querySelectorAll('[data-order-id]').forEach(function(row){if(!validId(row.dataset.orderId)||row.querySelector('[data-summary-open]'))return;var button=node('button',words().title);button.className='btn btn-secondary';button.type='button';button.dataset.summaryOpen='';button.addEventListener('click',function(event){event.preventDefault();event.stopPropagation();open(row.dataset.orderId);});row.appendChild(button);});});}
   ['orders-list','manager-orders-list'].forEach(function(name){var list=id(name);if(list)new MutationObserver(entries).observe(list,{childList:true,subtree:true});});
   function ready(){localize();entries();if(state.opened)return;var params=new URLSearchParams(location.search), values=params.getAll('summary');if(!values.length||['assignment','assignment_id','selection','checkout','campaign'].some(function(key){return params.has(key);})||params.get('view')==='partner')return;open(values.length===1?values[0]:null);}

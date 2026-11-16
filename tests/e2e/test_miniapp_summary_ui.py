@@ -55,7 +55,8 @@ class SummaryNetwork(SelectionNetwork):
                 }
             )
             return
-        if path == f"/miniapp/api/orders/{ORDER}/campaign-summary":
+        order_id = self.summary["order_id"]
+        if path == f"/miniapp/api/orders/{order_id}/campaign-summary":
             self.requests.append((path, route.request.post_data_json))
             route.fulfill(
                 status=self.summary_code,
@@ -125,6 +126,45 @@ def test_legacy_summary_and_refresh_failure_do_not_keep_old_counts(
     page.locator("#btn-summary-refresh").click()
     expect(page.locator("#summary-error")).not_to_be_empty()
     expect(page.locator("#summary-content")).to_be_hidden()
+    assert not errors
+
+
+@pytest.mark.browser_context_args(viewport={"width": 390, "height": 844})
+def test_preview_customer_sees_contacts_in_summary_after_confirmation(page):
+    order_id = "e0828ce4-f2c3-429e-afb1-f97e27fdb3b8"
+    network = SummaryNetwork()
+    network.order.update(order_id=order_id, financial_version=None, price=0)
+    network.summary.update(
+        order_id=order_id,
+        source="invite_preview",
+        total=2,
+        states={"awaiting_contact": 2},
+        contact_accepted=None,
+        creator_contacts=[
+            {"ordinal": ordinal, "instagram": None, "telegram": None}
+            for ordinal in (1, 2)
+        ],
+    )
+    errors = open_app(page, network, native=True, init_data=SIGNED)
+    page.locator("#btn-show-orders-list").click()
+    page.locator("#orders-list [data-summary-open]").click()
+    expect(page.locator("#summary-order")).to_have_text("UMC-E0828CE4")
+    contacts = page.get_by_role("region", name="Контакты креаторов")
+    expect(contacts.get_by_text("Ожидает контакта")).to_have_count(2)
+    network.summary["creator_contacts"][0].update(
+        instagram="@umc_e0828ce4_demo", telegram="@umc_e0828ce4_demo"
+    )
+    network.summary["states"] = {"contact_received": 1, "awaiting_contact": 1}
+    page.evaluate("window.__host.wa.MainButton.click()")
+    first = contacts.get_by_role("listitem").filter(has_text="№1")
+    expect(first.get_by_text("Instagram: @umc_e0828ce4_demo")).to_be_visible()
+    expect(first.get_by_text("Telegram: @umc_e0828ce4_demo")).to_be_visible()
+    expect(contacts.get_by_text("Ожидает контакта")).to_have_count(1)
+
+    network.summary_code = 403
+    page.evaluate("window.__host.wa.MainButton.click()")
+    expect(page.locator("#summary-error")).not_to_be_empty()
+    expect(page.locator("#summary-creator-contacts-list")).to_be_empty()
     assert not errors
 
 

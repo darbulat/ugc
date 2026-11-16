@@ -22,6 +22,9 @@ from tests.postgres_financial.test_work_entitlement_runtime import (
     finish_work,
     start_flow,
 )
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
+)
 from ugc_bot.application.services.campaign_summary_service import (
     CampaignSummaryService,
 )
@@ -112,13 +115,31 @@ async def test_summary_revoked_manager_cannot_read_old_order(
 async def test_actual_contact_receipt_is_not_work_success(delivery_env):
     env = delivery_env
     summary = service(env)
-    before = await summary.view(env["order"], env["client"])
+    external = identity(env, env["client"])
+    principal = AuthenticatedMessengerPrincipal(
+        env["client"], "telegram", external
+    )
+    with Session(env["pg"]) as db, db.begin():
+        db.get(UserModel, env["creator"]).telegram = "synthetic_contact"
+    before = await summary.view(
+        env["order"], env["client"], principal=principal
+    )
     assert before["contact_accepted"] == 0
+    assert before["creator_contacts"] == []
     assert before["states"] == {"not_configured": 1, "unassigned": 1}
     await env["worker"].run_once()
-    after = await summary.view(env["order"], env["client"])
+    with Session(env["pg"]) as db, db.begin():
+        db.get(UserModel, env["creator"]).telegram = "synthetic_changed"
+    after = await summary.view(env["order"], env["client"], principal=principal)
     assert after["contact_accepted"] == 1
     assert after["states"] == before["states"]
+    assert after["creator_contacts"] == [
+        {
+            "ordinal": 1,
+            "instagram": f"https://instagram.com/{env['creator'].hex}",
+            "telegram": "@synthetic_contact",
+        }
+    ]
 
 
 @pytest.mark.asyncio

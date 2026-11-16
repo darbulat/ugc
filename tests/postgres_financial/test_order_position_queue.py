@@ -2,8 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -19,21 +20,33 @@ from tests.postgres_financial.test_telegram_order_summary import (
 )
 from tests.postgres_financial.test_telegram_order_summary import paid_order
 from ugc_bot.admin.order_review import _load_review
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
+)
+from ugc_bot.application.services.campaign_summary_service import (
+    CampaignSummaryService,
+)
 from ugc_bot.container.creator_invite_factory import build_creator_invites
 from ugc_bot.infrastructure.db.models import (
     ManagerOrderModel,
     OrderItemModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.repositories.campaign_summary import (
+    SqlAlchemyCampaignSummaryRepository,
+)
 from ugc_bot.infrastructure.db.repositories.creator_invites import create_invite
 from ugc_bot.infrastructure.db.repositories.order_position_queue import (
     queue_rows,
 )
+from ugc_bot.miniapp.campaign_summary_api import create_campaign_summary_router
 from ugc_bot.miniapp.manager_position_queue import (
     create_manager_position_queue_router,
 )
 
 __all__ = ["financial_pg_engine", "intake_env"]
+
+PREVIEW_ORDER = UUID("e0828ce4-f2c3-429e-afb1-f97e27fdb3b8")
 
 
 def link_to_manager(db, env, order, at):
@@ -55,17 +68,23 @@ async def test_preview_stages_and_order_scoped_manager_endpoint(
     intake_env, monkeypatch
 ):
     env = intake_env
-    engine, oid = env["pg"], uuid4()
+    engine, oid = env["pg"], PREVIEW_ORDER
     now = datetime.now(timezone.utc)
+    manager_external_id = str(uuid4().int % 10**12 + 1)
     with Session(engine) as db, db.begin():
         db.get(UserModel, env["user"].user_id).telegram = "queue_owner"
+        db.get(
+            UserModel, env["admin"].user_id
+        ).telegram_id = manager_external_id
         provision(db, oid, "queue_owner")
         one, two = link_to_manager(db, env, oid, now)
         assert not queue_rows(db, now)
         baseline = queue_rows(db, now, oid, stage="manual")
         assert [row["ordinal"] for row in baseline] == [1, 2]
         assert all(row["preview"] for row in baseline)
-        create_invite(db, oid, one, None, "@queue_wait", now)
+        create_invite(
+            db, oid, one, None, "@queue_wait", now, telegram="@queue_wait"
+        )
         create_invite(
             db,
             oid,
@@ -93,9 +112,28 @@ async def test_preview_stages_and_order_scoped_manager_endpoint(
 
     app = FastAPI()
     app.state.dispatcher = {
-        "container": SimpleNamespace(get_admin_engine=lambda: engine)
+        "container": SimpleNamespace(get_admin_engine=lambda: engine),
+        "campaign_summary_service": CampaignSummaryService(
+            SqlAlchemyCampaignSummaryRepository(),
+            env["container"].transaction_manager,
+            env["clock"],
+        ),
     }
     app.include_router(create_manager_position_queue_router(resolve))
+
+    async def resolve_summary(request, data, *, platform):
+        if data == "manager":
+            return AuthenticatedMessengerPrincipal(
+                env["admin"].user_id, platform, manager_external_id
+            )
+        if data == "customer":
+            user = env["user"]
+            return AuthenticatedMessengerPrincipal(
+                user.user_id, platform, user.telegram_id
+            )
+        raise HTTPException(401, "financial_session_invalid")
+
+    app.include_router(create_campaign_summary_router(resolve_summary))
     path = f"/manager/orders/{oid}/position-queue"
     with TestClient(app) as web:
         assert web.post(path, json={"init_data": "invalid"}).status_code == 401
@@ -133,6 +171,28 @@ async def test_preview_stages_and_order_scoped_manager_endpoint(
             ]
         }
         assert "queue_ready" not in result.text
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as web:
+        path = f"/orders/{oid}/campaign-summary"
+        owner_summary = await web.post(path, json={"init_data": "customer"})
+        assert owner_summary.status_code == 200, owner_summary.text
+        assert owner_summary.headers["cache-control"] == "no-store"
+        assert owner_summary.json()["source"] == "invite_preview"
+        assert owner_summary.json()["creator_contacts"] == [
+            {"ordinal": 1, "instagram": None, "telegram": None},
+            {
+                "ordinal": 2,
+                "instagram": "@queue_ready",
+                "telegram": "@queue_ready",
+            },
+        ]
+        manager_summary = await web.post(path, json={"init_data": "manager"})
+        assert manager_summary.status_code == 200, manager_summary.text
+        assert "creator_contacts" not in manager_summary.json()
+        assert (
+            await web.post(path, json={"init_data": "invalid"})
+        ).status_code == 401
 
     from ugc_bot.admin.app import create_admin_app
 
@@ -189,7 +249,22 @@ async def test_paid_position_waits_for_receipt_and_expired_invite_is_manual(
         assert not rows[1]["preview"]
     service = build_creator_invites(summary.transactions)
     service.clock = env["clock"]
+    campaign = CampaignSummaryService(
+        SqlAlchemyCampaignSummaryRepository(),
+        summary.transactions,
+        env["clock"],
+    )
+    before = await campaign.view(oid, client.user_id, principal=client)
+    assert before["creator_contacts"] == []
     await service.acknowledge_staff_contact(client, identity)
+    after = await campaign.view(oid, client.user_id, principal=client)
+    assert after["creator_contacts"] == [
+        {
+            "ordinal": 2,
+            "instagram": "@queue_delivered",
+            "telegram": "@queue_delivered",
+        }
+    ]
     with Session(engine) as db:
         rows = queue_rows(db, at, oid, stage="received")
         assert [row["paid_item_id"] for row in rows] == [two]
