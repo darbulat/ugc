@@ -692,7 +692,7 @@ class SqlAlchemyCustomerWorkflowRepository:
                         if include_followups
                         else JOBS.c.request_id.is_not(None),
                     )
-                    .order_by(JOBS.c.due_at, JOBS.c.job_id)
+                    .order_by(JOBS.c.due_at, JOBS.c.part, JOBS.c.job_id)
                     .limit(1)
                     .with_for_update(skip_locked=True)
                 )
@@ -819,6 +819,25 @@ class SqlAlchemyCustomerWorkflowRepository:
             )
         return dict(source, text=pages[part]) if part < len(pages) else None
 
+    async def _admin_context(self, db, job, user, at):
+        source = await self._admin_request(db, job, user, at)
+        if source is None:
+            return None
+        result = {
+            key: source[key] for key in ("text", "payload", "kind", "order_id")
+        }
+        if (
+            user["messenger_type"] == "telegram"
+            and not job["part"]
+            and not is_order_summary_review(source)
+        ):
+            result["requester_telegram_id"] = await db.scalar(
+                select(UserModel.telegram_id).where(
+                    UserModel.user_id == source["user_id"]
+                )
+            )
+        return result
+
     async def eligible(
         self,
         job: dict,
@@ -872,13 +891,10 @@ class SqlAlchemyCustomerWorkflowRepository:
             return None
         result = dict(job)
         if job["request_id"]:
-            source = await self._admin_request(db, job, user, at)
-            if source is None:
+            context = await self._admin_context(db, job, user, at)
+            if context is None:
                 return None
-            result["text"] = source["text"]
-            result["payload"] = source["payload"]
-            result["kind"] = source["kind"]
-            result["order_id"] = source["order_id"]
+            result.update(context)
             channel = str(user["messenger_type"])
         else:
             series = await self._followup(job, at, session=session)

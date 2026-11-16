@@ -352,22 +352,34 @@ async def test_telegram_payment_help_from_input_to_provider_receipt(
     )
     delivery.clock = env["clock"]
     delivery.admin_base_url = "https://admin.example.test/admin/"
-    assert await delivery.run_once() == 1
+    runs = await asyncio.gather(delivery.run_once(), delivery.run_once())
+    assert sum(runs) == 1
     assert await delivery.run_once() == 0
     bot.send_message.assert_awaited_once()
     kwargs = bot.send_message.await_args.kwargs
     assert kwargs["chat_id"] == int(admin.telegram_id)
     assert kwargs["parse_mode"] is None
     assert kwargs["text"].startswith(
-        f"Проблема с оплатой · Обращение №{number}"
+        f"⚠️ Проблема с оплатой · №{number}\n\n{reason}\n\n"
     )
     assert f"Заказ: UMC-{owned.order_id.hex[:8].upper()}" in kwargs["text"]
-    assert f"Что произошло: {reason}" in kwargs["text"]
     assert "Контакт клиента: @client" in kwargs["text"]
     assert "Оплата на момент обращения: обрабатывается" in kwargs["text"]
+    (heading,) = kwargs["entities"]
+    assert heading.type == "bold" and heading.offset == 0
     assert (
-        f"https://admin.example.test/admin/orders/{owned.order_id}"
-        in (kwargs["text"])
+        heading.length
+        == len(kwargs["text"].splitlines()[0].encode("utf-16-le")) // 2
+    )
+    assert kwargs["link_preview_options"].is_disabled
+    (order_row, profile_row) = kwargs["reply_markup"].inline_keyboard
+    assert (order_row[0].text, order_row[0].url) == (
+        "Открыть заказ",
+        f"https://admin.example.test/admin/orders/{owned.order_id}",
+    )
+    assert (profile_row[0].text, profile_row[0].url) == (
+        "Профиль клиента",
+        f"tg://user?id={requester.telegram_id}",
     )
     assert "operation_key" not in kwargs["text"] and "1/1" not in kwargs["text"]
     jobs = sorted(rows(env, JOBS), key=lambda row: row["part"])

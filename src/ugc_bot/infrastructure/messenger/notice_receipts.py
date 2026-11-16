@@ -21,12 +21,19 @@ from aiogram.exceptions import (
     TelegramRetryAfter,
     TelegramUnauthorizedError,
 )
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+    MessageEntity,
+    WebAppInfo,
+)
 
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
     DeliveryReceipt,
     NoticeReceiptTransport,
+    ReceiptCard,
     ReceiptMessage,
 )
 
@@ -93,8 +100,38 @@ def _retry_after_seconds(value: str | None) -> int | None:
     return delay if 0 <= delay <= 31_536_000 else None
 
 
-class _TelegramAction(TypedDict, total=False):
+def _card(message: ReceiptMessage) -> ReceiptCard | None:
+    card = getattr(message, "card", None)
+    return card if isinstance(card, ReceiptCard) else None
+
+
+class _TelegramOptions(TypedDict, total=False):
     reply_markup: InlineKeyboardMarkup
+    link_preview_options: LinkPreviewOptions
+    entities: list[MessageEntity]
+
+
+def _telegram_card(text: str, card: ReceiptCard) -> _TelegramOptions:
+    heading = text.partition("\n")[0]
+    options: _TelegramOptions = {
+        "link_preview_options": LinkPreviewOptions(is_disabled=True),
+    }
+    if heading:
+        options["entities"] = [
+            MessageEntity(
+                type="bold",
+                offset=0,
+                length=len(heading.encode("utf-16-le")) // 2,
+            )
+        ]
+    if card.links:
+        options["reply_markup"] = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=link.label, url=link.url)]
+                for link in card.links
+            ]
+        )
+    return options
 
 
 @dataclass(slots=True)
@@ -105,7 +142,8 @@ class TelegramNoticeReceipts:
     async def send(self, attempt: ReceiptMessage) -> DeliveryReceipt:
         address = _address(attempt, "telegram")
         action = _action(attempt)
-        kwargs: _TelegramAction = {}
+        card = _card(attempt)
+        kwargs = _telegram_card(attempt.text, card) if card is not None else {}
         if action is not None:
             if address < 0:
                 raise DeliveryFailure(
@@ -156,6 +194,26 @@ class TelegramNoticeReceipts:
         return DeliveryReceipt("telegram", f"{chat_id}:{mid}")
 
 
+def _max_message_body(attempt: ReceiptMessage) -> dict[str, object]:
+    body: dict[str, object] = {"text": attempt.text}
+    buttons: list[list[dict[str, str]]] = []
+    if (action := _action(attempt)) is not None:
+        url, label = action
+        buttons.append([{"type": "open_app", "text": label, "web_app": url}])
+    if (card := _card(attempt)) is not None:
+        body["disable_link_preview"] = True
+        buttons.extend(
+            [{"type": "link", "text": link.label, "url": link.url}]
+            for link in card.links
+            if link.url.startswith("https://")
+        )
+    if buttons:
+        body["attachments"] = [
+            {"type": "inline_keyboard", "payload": {"buttons": buttons}}
+        ]
+    return body
+
+
 @dataclass(slots=True)
 class MaxNoticeReceipts:
     session: aiohttp.ClientSession
@@ -163,30 +221,11 @@ class MaxNoticeReceipts:
 
     async def send(self, attempt: ReceiptMessage) -> DeliveryReceipt:
         address = _address(attempt, "max")
-        action = _action(attempt)
+        request_body = _max_message_body(attempt)
         if not self.token:
             raise DeliveryFailure(
                 "max_receipt_transport_unavailable", uncertain=False
             )
-        request_body: dict[str, object] = {"text": attempt.text}
-        if action is not None:
-            url, label = action
-            request_body["attachments"] = [
-                {
-                    "type": "inline_keyboard",
-                    "payload": {
-                        "buttons": [
-                            [
-                                {
-                                    "type": "open_app",
-                                    "text": label,
-                                    "web_app": url,
-                                }
-                            ]
-                        ]
-                    },
-                }
-            ]
         try:
             async with self.session.post(
                 "https://platform-api2.max.ru/messages",

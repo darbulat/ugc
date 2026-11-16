@@ -30,6 +30,19 @@ class DeliveryReceipt:
     reference: str
 
 
+@dataclass(frozen=True, slots=True)
+class ReceiptLink:
+    label: str
+    url: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReceiptCard:
+    """Optional styling and link buttons for a plain-text message."""
+
+    links: tuple[ReceiptLink, ...] = ()
+
+
 class DeliveryFailure(Exception):
     """Safe error code, with uncertainty when the provider may have accepted."""
 
