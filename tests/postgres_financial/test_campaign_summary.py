@@ -22,6 +22,7 @@ from tests.postgres_financial.test_work_entitlement_runtime import (
     finish_work,
     start_flow,
 )
+from ugc_bot.admin.business_metrics import count_completed_creators
 from ugc_bot.application.services.campaign_summary_service import (
     CampaignSummaryService,
 )
@@ -65,6 +66,8 @@ async def test_summary_uses_current_scope_and_immutable_work_result(
         assert client["role"] == "client"
         assert client["total"] == 2
         assert client["states"] == {"assigned": 1, "unassigned": 1}
+        async with env["factory"]() as db:
+            assert await count_completed_creators(db) == 0
         assert client["contact_accepted"] == 0
         manager = await summary.view(env["order"], flow["manager"])
         assert manager["total"] == 1
@@ -76,6 +79,8 @@ async def test_summary_uses_current_scope_and_immutable_work_result(
         await finish_work(env, flow)
         final = await summary.view(env["order"], env["client"])
         assert final["states"] == {"success_final": 1, "unassigned": 1}
+        async with env["factory"]() as db:
+            assert await count_completed_creators(db) == 1
         assert final["contact_accepted"] == 0
 
         # A mutable state column cannot invent a paid/publication outcome.

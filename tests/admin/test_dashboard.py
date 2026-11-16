@@ -183,7 +183,8 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             },
             "admin_launches": [("usemycontent", 3)],
             "picked_creators_count": 100,
-            "picked_creators_target": 1000,
+            "completed_creators_count": 37,
+            "completed_creators_target": 1000,
         },
         creators=[],
         advertisers=[],
@@ -207,9 +208,16 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert 'href="/admin/order-model/list"' in response.text
     assert 'href="/admin/orders?period=today"' in response.text
     assert "139 000,00" in response.text and "250,10" in response.text
-    assert response.text.index("Динамика за период") < response.text.index(
-        "Требует внимания"
+    assert (
+        response.text.index("Креаторы, завершившие заказ")
+        < response.text.index("Требует внимания")
+        < response.text.index("Динамика за период")
     )
+    assert (
+        'aria-valuenow="37" aria-valuemin="0" aria-valuemax="1000"'
+        in response.text
+    )
+    assert "Креаторы, получившие назначение · 100" in response.text
     for key, label, count in (
         ("no_manager", "Без менеджера", 3),
         ("inactive", "Давно без активности", 0),
@@ -236,7 +244,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Участвовали за всё время" in all_periods.text
     assert "Участвовали за период" not in all_periods.text
     assert "Участвовали впервые" not in all_periods.text
-    assert "100 / 1000" in response.text
+    assert "из 1 000" in response.text
     assert "progress-bar" in response.text
 
 
