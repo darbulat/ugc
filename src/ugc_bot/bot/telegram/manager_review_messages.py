@@ -104,7 +104,25 @@ def review_message(config, row, *, full=False, ready=False):
     return "\n\n".join(lines), Keyboard(KeyboardKind.INLINE, buttons)
 
 
-def instagram_verified_message(state):
+def manager_workspace_keyboard(config) -> Keyboard:
+    base = (config.webhook.webhook_base_url or "").strip().rstrip("/")
+    links = (
+        ("Моя база креаторов", "view=manager&section=creators"),
+        ("Мои заказы", "view=manager"),
+        ("Моя ссылка для приглашений", "view=partner"),
+    )
+    return Keyboard(
+        KeyboardKind.INLINE,
+        [
+            [Button(text=label, web_app_url=f"{base}/miniapp/app.html?{query}")]
+            for label, query in links
+        ]
+        if base
+        else [],
+    )
+
+
+def instagram_verified_message(state, config):
     text = "<b>Instagram подтверждён ✅</b>\n\n"
     if state == "draft":
         return (
@@ -122,9 +140,10 @@ def instagram_verified_message(state):
             ),
         )
     if state == "approved":
+        workspace = manager_workspace_keyboard(config)
         return (
-            text + "Анкета одобрена. Кабинет менеджера доступен через /app.",
-            None,
+            text + "Анкета одобрена. Теперь вам доступен кабинет менеджера.",
+            workspace if workspace.rows else None,
         )
     if state == "declined":
         return (
@@ -134,7 +153,10 @@ def instagram_verified_message(state):
     return (
         text
         + "Анкета передана команде. Сообщим в этом чате, когда примем решение.",
-        None,
+        Keyboard(
+            KeyboardKind.INLINE,
+            [[Button(text="Проверить статус", callback_data="mgr:status")]],
+        ),
     )
 
 
@@ -143,37 +165,19 @@ def manager_welcome(config):
         "<b>Вы приняты в команду менеджеров UMC</b>\n\n"
         "С сегодняшнего дня можете начинать работу.\n\n"
         "<b>С чего начать</b>\n"
-        "1. Откройте кабинет менеджера. Там появятся назначенные заказы "
+        "1. Откройте «Мои заказы». Там появятся назначенные заказы "
         "с брифом и откликами.\n"
         "2. Согласуйте работу с блогерами, следите за сроками "
         "и отмечайте результат в заказе.\n"
-        "3. Пополняйте свою базу блогеров. В реферальной программе "
-        "скопируйте личную ссылку и приглашайте авторов, "
-        "с которыми готовы работать.\n\n"
+        "3. Пополняйте свою базу блогеров. Скопируйте личную ссылку "
+        "для приглашений. Авторы, которые перейдут по ней и заполнят анкету, "
+        "появятся в разделе «Моя база креаторов».\n\n"
         "<b>Два способа заработать</b>\n"
         "• Сопровождать заказы и получать оплату за работу с блогерами.\n"
         "• Приглашать блогеров по личной ссылке и получать вознаграждение "
         "по условиям реферальной программы."
     )
-    base = config.webhook.webhook_base_url.strip().rstrip("/")
-    buttons = []
-    if base:
-        buttons.extend(
-            [
-                [
-                    Button(
-                        text="Кабинет менеджера",
-                        web_app_url=f"{base}/miniapp/app.html?view=manager",
-                    )
-                ],
-                [
-                    Button(
-                        text="Реферальная программа",
-                        web_app_url=f"{base}/miniapp/app.html?view=partner",
-                    )
-                ],
-            ]
-        )
+    buttons = manager_workspace_keyboard(config).rows
     buttons.append(
         [
             Button(

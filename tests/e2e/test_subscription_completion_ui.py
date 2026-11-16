@@ -11,10 +11,12 @@ pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
 
 
 class Network(PartnerNetwork):
-    def __init__(self, admin=False):
+    def __init__(self, admin=False, manager=True):
         super().__init__()
         self.admin = admin
+        self.manager = manager
         self.commands = []
+        self.views = 0
 
     def route(self, route):
         url = route.request.url
@@ -27,16 +29,17 @@ class Network(PartnerNetwork):
                     currency_symbol="₽",
                     has_advertiser_profile=True,
                     has_blogger_profile=False,
-                    is_manager=True,
+                    is_manager=self.manager,
                 )
             )
             return
         if url.endswith("/subscriptions/view"):
+            self.views += 1
             route.fulfill(
                 json=dict(
                     actor_id=self.partner["actor_id"],
                     can_admin=self.admin,
-                    can_manage=True,
+                    can_manage=self.manager,
                     tariffs=[
                         dict(
                             version="v1",
@@ -66,14 +69,28 @@ class Network(PartnerNetwork):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
-    page, platform
-):
+def test_partner_menu_does_not_expose_subscriptions(page, platform):
     network = Network()
     errors = open_app(
         page, network, platform, init_data=SIGNED, query="?view=partner"
     )
-    page.locator("#screen-partner [data-subscriptions-open]").click()
+    expect(page.locator("#screen-partner")).to_be_visible()
+    expect(
+        page.get_by_role("button", name="Подписка менеджера", exact=True)
+    ).to_have_count(0)
+    assert network.views == 0
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("manager", [True, False])
+def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
+    page, platform, manager
+):
+    network = Network(manager=manager)
+    errors = open_app(
+        page, network, platform, init_data=SIGNED, query="?view=subscriptions"
+    )
     screen = page.locator("#screen-subscriptions")
     expect(screen).to_contain_text("Synthetic test tariff")
     screen.locator("summary", has_text="Отменить доступ").click()
@@ -91,9 +108,8 @@ def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
 def test_published_tariff_admin_form_preserves_exact_price(page, price):
     network = Network(admin=True)
     errors = open_app(
-        page, network, "telegram", init_data=SIGNED, query="?view=partner"
+        page, network, "telegram", init_data=SIGNED, query="?view=subscriptions"
     )
-    page.locator("#screen-partner [data-subscriptions-open]").click()
     screen = page.locator("#screen-subscriptions")
     expect(screen).to_contain_text("Оплаченные пилоты: 0")
     expect(
@@ -203,9 +219,8 @@ def test_subscription_definitive_rejection_can_reset_but_unknown_retries_exact(
 
     network.route = route
     errors = open_app(
-        page, network, platform, init_data=SIGNED, query="?view=partner"
+        page, network, platform, init_data=SIGNED, query="?view=subscriptions"
     )
-    page.locator("#screen-partner [data-subscriptions-open]").click()
     screen = page.locator("#screen-subscriptions")
     screen.locator("summary", has_text="Отменить доступ").click()
     screen.locator("input[name=reason]").fill("Synthetic cancellation")

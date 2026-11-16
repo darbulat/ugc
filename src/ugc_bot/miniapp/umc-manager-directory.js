@@ -3,18 +3,18 @@
 
   var copy = {
     ru: {
-      title: 'Приглашённые креаторы', blocked: 'Бот недоступен', card: 'Креатор',
+      title: 'Моя база креаторов', blocked: 'Бот недоступен', card: 'Креатор',
       search: 'Имя, ник или город', noMatches: 'Креаторы по этому запросу не найдены.',
-      loading: 'Загружаем…', empty: 'У вас пока нет приглашённых креаторов.',
+      loading: 'Загружаем…', empty: 'База пока пуста. Поделитесь личной ссылкой из партнёрской программы. Здесь появятся креаторы, которые заполнят анкету по вашей ссылке.',
       emptyBlocked: 'Среди ваших креаторов нет тех, у кого бот недоступен.',
       error: 'Не удалось загрузить данные. Вернитесь назад и попробуйте ещё раз.',
       missing: 'Эта карточка больше недоступна.', verified: 'Instagram подтверждён',
       prev: '← Назад', next: 'Далее →', home: 'К кабинету менеджера', back: 'К списку'
     },
     en: {
-      title: 'Invited creators', blocked: 'Bot unavailable', card: 'Creator',
+      title: 'My creators', blocked: 'Bot unavailable', card: 'Creator',
       search: 'Name, handle or city', noMatches: 'No creators match your search.',
-      loading: 'Loading…', empty: 'You have no invited creators yet.',
+      loading: 'Loading…', empty: 'Share your personal link from the partner program. Creators who complete their profile through your link will appear here.',
       emptyBlocked: 'None of your creators have an unavailable bot.',
       error: 'Could not load data. Go back and try again.',
       missing: 'This profile is no longer available.', verified: 'Instagram verified',
@@ -169,14 +169,24 @@
     });
   }
 
-  byId('btn-invited-creators').addEventListener('click', function () {
+  function openDirectory() {
     if (!(window._me || {}).is_manager) return;
     clear();
     context = window.__umcAppBridge.createRequestContext();
+    if (!context.isCurrent()) return;
     page = 0;
     searchInput.value = '';
     byId('invited-bot-filter').checked = false;
     showList();
+  }
+
+  byId('btn-invited-creators').addEventListener('click', openDirectory);
+  document.addEventListener('umc:app-ready', function () {
+    var params = new URLSearchParams(location.search);
+    if (params.get('view') === 'manager' && params.get('section') === 'creators' &&
+        byId('screen-manager-orders').classList.contains('active')) {
+      openDirectory();
+    }
   });
   searchInput.addEventListener('input', function (event) {
     if (!context || event.isComposing) return;

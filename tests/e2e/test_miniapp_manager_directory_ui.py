@@ -27,6 +27,7 @@ class ManagerDirectoryNetwork(MiniAppNetwork):
     def __init__(self):
         super().__init__()
         self.manager = True
+        self.creators = [ACTIVE, BLOCKED]
 
     def route(self, route):
         path = urlparse(route.request.url).path.removeprefix("/miniapp/api")
@@ -36,9 +37,13 @@ class ManagerDirectoryNetwork(MiniAppNetwork):
         body = route.request.post_data_json
         self.requests.append((path, body))
         if path == PATH:
-            creators = (
-                [BLOCKED] if body["bot_unavailable"] else [ACTIVE, BLOCKED]
-            )
+            creators = self.creators
+            if body["bot_unavailable"]:
+                creators = [
+                    creator
+                    for creator in creators
+                    if creator["status"] == "bot_blocked"
+                ]
             query = body.get("q", "").lower()
             creators = [
                 creator
@@ -72,7 +77,7 @@ def test_invited_creator_filter_and_card_return(page, platform, native):
     network = ManagerDirectoryNetwork()
     errors = open_app(page, network, platform, native=native)
     page.get_by_role("button", name="Менеджер", exact=True).click()
-    page.get_by_role("button", name="Приглашённые креаторы").click()
+    page.get_by_role("button", name="Моя база креаторов").click()
 
     listing = page.locator("#screen-invited-creators")
     active = listing.get_by_role("button", name="Мария", exact=True)
@@ -124,4 +129,40 @@ def test_invited_creator_filter_and_card_return(page, platform, native):
         body.get("q") == "казань" and body["bot_unavailable"]
         for _, body in directory_calls
     )
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("approved", [True, False])
+def test_manager_notification_opens_only_the_approved_managers_base(
+    page, platform, approved
+):
+    network = ManagerDirectoryNetwork()
+    network.manager = approved
+    network.creators = []
+    errors = open_app(
+        page,
+        network,
+        platform,
+        native=True,
+        query="?view=manager&section=creators",
+    )
+    listing = page.locator("#screen-invited-creators")
+    if approved:
+        expect(
+            listing.get_by_role("heading", name="Моя база креаторов")
+        ).to_be_visible()
+        expect(listing.get_by_role("status")).to_contain_text("личной ссылкой")
+        assert any(path == PATH for path, _ in network.requests)
+        page.evaluate("window.__host.wa.BackButton.click()")
+        expect(page.locator("#screen-manager-orders")).to_be_visible()
+        expect(
+            page.get_by_role("button", name="Подписка менеджера")
+        ).to_have_count(0)
+    else:
+        expect(page.locator("#screen-role-choice")).to_be_visible()
+        expect(listing).to_be_hidden()
+        assert not any(
+            path.startswith("/manager/") for path, _ in network.requests
+        )
     assert not errors

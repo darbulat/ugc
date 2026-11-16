@@ -23,8 +23,12 @@
   function load(){if(busy||!bound||!bound.isCurrent())return;var b=bound,g=generation;busy=true;render();b.request('/subscriptions/view',{}).then(function(d){if(current(b,g))data=d;}).catch(function(){if(current(b,g))data=null;}).finally(function(){if(current(b,g)){busy=false;render();if(!data)screen.appendChild(node('p',c().error,'error'));}});}
   function send(){if(busy||!pending||!bound||!bound.isCurrent())return;var b=bound,g=generation,p=pending;busy=true;render();b.request(p.path,p.values).then(function(){if(!current(b,g))return;pending=null;definitive=false;sessionStorage.removeItem(key());}).catch(function(error){if(current(b,g))definitive=[400,401,403,404,409,422].indexOf(error.status)>=0;/* Unknown outcomes retain the exact command. */}).finally(function(){if(current(b,g)){busy=false;if(pending)render();else load();}});}
   function open(){var previous=document.querySelector('.screen.active');if(previous&&previous!==screen)back=previous.id;invalidate();bound=bridge.createRequestContext();if(!bound.isCurrent())return;try{pending=JSON.parse(sessionStorage.getItem(key())||'null');}catch(_){pending=null;}bridge.showScreen(screen.id);load();}
-  ['screen-manager-orders','screen-partner'].forEach(function(id){var host=document.getElementById(id);if(!host)return;var b=button(c().title,open);b.dataset.subscriptionsOpen='';host.appendChild(b);});
-  document.addEventListener('umc:app-ready',function(){document.querySelectorAll('[data-subscriptions-open]').forEach(function(b){b.textContent=c().title;});});
+  document.addEventListener('umc:app-ready', function () {
+    // Existing subscriptions and admin operations are available by direct link.
+    if (new URLSearchParams(location.search).get('view') === 'subscriptions') {
+      open();
+    }
+  });
   document.addEventListener('umc:screen-change',function(e){if(bound&&e.detail&&e.detail.screen!==screen.id)invalidate();});
   window.addEventListener('pagehide',invalidate);
 })();

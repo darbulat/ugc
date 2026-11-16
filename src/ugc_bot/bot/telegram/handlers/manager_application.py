@@ -28,6 +28,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
 )
 from ugc_bot.bot.telegram.manager_review_messages import (
     REVIEW_PREFIX,
+    manager_workspace_keyboard,
     review_message,
 )
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -40,6 +41,9 @@ from ugc_bot.domain.manager_application import (
     WRITTEN_FIELDS,
     application_fields,
     missing_application_fields,
+)
+from ugc_bot.infrastructure.messenger.telegram.client import (
+    build_keyboard_markup,
 )
 
 router = Router()
@@ -74,21 +78,33 @@ def keyboard(rows):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def show(message, row):
+async def show(message, row, config):
     status = {
-        "submitted": "<b>Заявка на рассмотрении.</b>",
-        "clarify": "<b>Заявка на рассмотрении.</b>",
-        "approved": (
-            "<b>Вы в списке менеджеров.</b>\n\nНазначенные заказы доступны "
-            "в разделе «Менеджер» Mini App. Откройте приложение через /app."
+        "submitted": (
+            "<b>Заявка на рассмотрении.</b>"
+            if row["instagram_verified_at"]
+            else "<b>Заявка получена.</b>"
         ),
+        "clarify": "<b>Заявка на рассмотрении.</b>",
         "declined": (
             "<b>Заявка отклонена.</b>\n\n"
             "Можно обновить ответы и подать её повторно."
         ),
     }.get(row["state"], f"<b>Работа менеджера в UMC</b>\n\n{escape(INTRO)}")
     if row["state"] == "approved":
-        await message.answer(status, parse_mode="HTML")
+        workspace = manager_workspace_keyboard(config)
+        await message.answer(
+            "<b>Заявка одобрена. Кабинет менеджера открыт.</b>\n\n"
+            + (
+                "В базе появятся креаторы, пришедшие по вашей личной ссылке."
+                if workspace.rows
+                else "Mini App временно недоступен. Повторите /manager позже."
+            ),
+            reply_markup=build_keyboard_markup(workspace)
+            if workspace.rows
+            else None,
+            parse_mode="HTML",
+        )
         return
     actions = []
     if row["state"] != "submitted":
@@ -99,8 +115,12 @@ async def show(message, row):
         actions.append([button("Подтвердить Instagram", "instagram")])
     if row["instagram_verified_at"]:
         status += "\n\n<b>Instagram подтверждён.</b>"
+        if row["state"] in {"submitted", "clarify"}:
+            status += " Сообщим в этом чате, когда примем решение."
     elif row["state"] == "submitted":
-        status += "\n\nInstagram ожидает подтверждения."
+        status += (
+            "\n\nПодтвердите Instagram, чтобы команда могла рассмотреть анкету."
+        )
     if row["state"] == "submitted":
         actions.append([button("Проверить статус", "status")])
     if row["state"] == "draft" and not row.get("answers"):
@@ -138,20 +158,20 @@ async def open_manager_application(
             telegram_username=message.from_user.username,
         )
     await show_application(
-        message, state, await manager_applications.open(user.user_id)
+        message, state, await manager_applications.open(user.user_id), config
     )
 
 
-async def show_application(message, state, row):
+async def show_application(message, state, row, config):
     await state.clear()
     if row["state"] in {"draft", "clarify", "declined"}:
         await state.set_state(ManagerForm.welcome)
-    await show(message, row)
+    await show(message, row, config)
 
 
 @router.message(active_manager_form, CommandStart(magic=~F.args))
 async def resume_manager_application(
-    message, state, user_role_service, manager_applications=None
+    message, state, user_role_service, config, manager_applications=None
 ):
     if message.chat.type != "private" or manager_applications is None:
         return
@@ -166,9 +186,15 @@ async def resume_manager_application(
     if await state.get_state() == ManagerForm.answer.state:
         field = (await state.get_data()).get("field")
         fields = application_fields(row["answers"])
-        await ask(message, state, row, field=field if field in fields else None)
+        await ask(
+            message,
+            state,
+            row,
+            config,
+            field=field if field in fields else None,
+        )
     else:
-        await show_application(message, state, row)
+        await show_application(message, state, row, config)
 
 
 @router.callback_query(
@@ -269,10 +295,10 @@ def question_text(field, work_format=None):
     return "\n\n".join([f"<b>{heading}</b>", *paragraphs])
 
 
-async def ask(message, state, row, field=None):
+async def ask(message, state, row, config, field=None):
     if row["state"] in {"submitted", "approved"}:
         await state.clear()
-        await show(message, row)
+        await show(message, row, config)
         return
     answers = row["answers"]
     fields = application_fields(answers)
@@ -298,16 +324,16 @@ async def ask(message, state, row, field=None):
 
 async def send_instagram_challenge(message, service, row, config):
     if row["instagram_verified_at"]:
-        await show(message, row)
+        await show(message, row, config)
         return
     target = config.instagram.admin_instagram_username.strip().lstrip("@")
     if not target:
-        await show(message, row)
+        await show(message, row, config)
         await message.answer("Проверка Instagram временно недоступна.")
         return
     code = await service.instagram_challenge(row["user_id"])
     if not code:
-        await show(message, await service.open(row["user_id"]))
+        await show(message, await service.open(row["user_id"]), config)
         return
     await message.answer(
         f"<code>{escape(code)}</code>",
@@ -324,9 +350,7 @@ async def send_instagram_challenge(message, service, row, config):
         parse_mode="HTML",
     )
     status = (
-        "<b>Заявка на рассмотрении.</b>\n\n"
-        if row["state"] == "submitted"
-        else ""
+        "<b>Заявка получена.</b>\n\n" if row["state"] == "submitted" else ""
     )
     await message.answer(
         status + "<b>Подтвердите Instagram</b>\n\n"
@@ -355,7 +379,7 @@ async def after_answer(message, state, service, row, config):
         await state.clear()
         await send_instagram_challenge(message, service, row, config)
         return
-    await ask(message, state, row)
+    await ask(message, state, row, config)
 
 
 async def find_city(message, state, query, blogger_registration_service):
@@ -438,11 +462,11 @@ async def _action(  # noqa: C901
     field, separator, index = action.partition(":")
     fields = application_fields(row["answers"])
     if action == "open":
-        await show_application(message, state, row)
+        await show_application(message, state, row, config)
     elif action == "status":
-        await show(message, row)
+        await show(message, row, config)
     elif action in {"next", "submit"}:
-        await ask(message, state, row)
+        await ask(message, state, row, config)
     elif action == "edit" and row["state"] not in {"submitted", "approved"}:
         await message.answer(
             "Что изменить?",
@@ -454,7 +478,7 @@ async def _action(  # noqa: C901
             ),
         )
     elif field == "field" and index in fields:
-        await ask(message, state, row, field=index)
+        await ask(message, state, row, config, field=index)
     elif field == "city":
         await select_city(message, state, service, row, config, index)
     elif separator and field in BUTTON_CHOICES:
@@ -504,7 +528,12 @@ async def manager_application_answer(
         return
     field = (await state.get_data()).get("field")
     if field in {"reliability", "coverage"}:
-        await ask(message, state, await manager_applications.open(user.user_id))
+        await ask(
+            message,
+            state,
+            await manager_applications.open(user.user_id),
+            config,
+        )
         return
     if field not in FIELDS:
         await state.clear()

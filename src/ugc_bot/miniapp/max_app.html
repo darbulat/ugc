@@ -332,7 +332,7 @@
 
   <div id="screen-manager-orders" class="screen" data-umc-section="lilac">
     <h1>Мои заказы</h1>
-    <button type="button" class="btn btn-secondary" id="btn-invited-creators">Приглашённые креаторы</button>
+    <button type="button" class="btn btn-secondary" id="btn-invited-creators">Моя база креаторов</button>
     <ul id="manager-orders-list"></ul>
     <div class="pagination-btns">
       <button type="button" class="btn btn-secondary" id="mgr-orders-prev" style="display:none;">← Назад</button>
@@ -342,7 +342,7 @@
   </div>
 
   <div id="screen-invited-creators" class="screen" data-umc-section="lilac">
-    <h1 id="invited-creators-title">Приглашённые креаторы</h1>
+    <h1 id="invited-creators-title">Моя база креаторов</h1>
     <form id="invited-search-form" role="search">
       <label for="invited-search" id="invited-search-label">Имя, ник или город</label>
       <input id="invited-search" type="search" maxlength="120" autocomplete="off" enterkeyhint="search">
@@ -3204,7 +3204,9 @@
           (view === 'socials' && (creator.confirmed || creator.agreement_confirmed === false)) ||
           (!view && creator.agreement_confirmed === false && advertiser && advertiser.agreement_confirmed !== false)
         );
-        if (me.has_advertiser_profile && !me.has_blogger_profile) {
+        if (me.is_manager && view === 'manager') {
+          loadManagerOrders(0);
+        } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
         } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
           showScreen('screen-blogger-dashboard');
@@ -3294,7 +3296,9 @@
         applyLocale();
         fillBirthDateSelects();
         updateCurrencyLabels(me.currency_symbol);
-        if (!me.country && window.__miniapp_platform !== 'max' && !new URLSearchParams(location.search).has('assignment') && !new URLSearchParams(location.search).has('assignment_id') && new URLSearchParams(location.search).get('view') !== 'partner') {
+        var params = new URLSearchParams(location.search);
+        var view = params.get('view');
+        if (!me.country && window.__miniapp_platform !== 'max' && !params.has('assignment') && !params.has('assignment_id') && view !== 'partner' && !(view === 'manager' && me.is_manager)) {
           var countries = (cfg && cfg.countries) || [];
           if (countries.length > 0) {
             showCountrySelector(countries, function() {
