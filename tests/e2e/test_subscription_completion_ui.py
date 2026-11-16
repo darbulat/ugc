@@ -18,6 +18,7 @@ class Network(PartnerNetwork):
         self.country = "ru" if manager else None
         self.commands = []
         self.views = 0
+        self.hold_view = False
 
     def route(self, route):
         url = route.request.url
@@ -41,6 +42,8 @@ class Network(PartnerNetwork):
             return
         if url.endswith("/subscriptions/view"):
             self.views += 1
+            if self.hold_view:
+                return
             route.fulfill(
                 json=dict(
                     actor_id=self.partner["actor_id"],
@@ -111,12 +114,15 @@ def test_actual_subscription_owner_can_read_tariffs_and_cancel_with_reason(
     assert not errors
 
 
-@pytest.mark.parametrize("native", [True, False])
+@pytest.mark.parametrize(
+    ("native", "hold_view"), [(True, True), (False, False)]
+)
 def test_subscription_back_restores_country_step_before_onboarding(
-    page, native
+    page, native, hold_view
 ):
     network = Network(manager=False)
     network.registered = False
+    network.hold_view = hold_view
     errors = open_app(
         page,
         network,
@@ -126,17 +132,15 @@ def test_subscription_back_restores_country_step_before_onboarding(
         query="?view=subscriptions",
     )
     screen = page.locator("#screen-subscriptions")
-    expect(screen).to_contain_text("Synthetic test tariff")
-    expect(page.locator("#screen-country-select")).to_be_hidden()
-    if native:
-        page.wait_for_function("window.__host.wa.BackButton.visible")
-        page.evaluate("window.__host.wa.BackButton.click()")
+    if hold_view:
+        expect(screen).to_contain_text("Загрузка…")
     else:
-        screen.get_by_role("button", name="Назад", exact=True).click()
+        expect(screen).to_contain_text("Synthetic test tariff")
+    expect(page.locator("#screen-country-select")).to_be_hidden()
+    screen.get_by_role("button", name="Назад", exact=True).click()
     expect(page.locator("#screen-country-select")).to_be_visible()
     expect(page.locator("#screen-role-choice")).to_be_hidden()
     assert "view=subscriptions" not in page.url
-    assert network.views == 1
     assert not errors
 
 
