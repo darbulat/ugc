@@ -23,6 +23,8 @@
     :focus-visible { outline: 3px solid #3f8f66; outline-offset: 3px; }
     [hidden] { display: none; }
     #error { color: #9d221b; }
+    #payment-help { padding-inline: 0; color: #244c38; background: none;
+      text-decoration: underline; }
   </style>
   <script src="./browser-payment.js" defer></script>
 </head>
@@ -37,6 +39,7 @@
     </form>
     <a id="payment-link" rel="noreferrer" hidden>Перейти в ЮKassa</a>
     <p id="error" role="alert" hidden></p>
+    <a id="payment-help" href="https://t.me/usemycontent" target="_blank" rel="noopener noreferrer">Не получилось оплатить</a>
   </main>
 </body>
 </html>

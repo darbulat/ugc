@@ -1571,7 +1571,7 @@ def _register_browser_checkout_action(app: FastAPI, auth: AdminAuth) -> None:
                 status_code=503, detail="Оплата в браузере недоступна"
             )
         try:
-            await checkout.offer(order_id)
+            await checkout.switch_to_browser(order_id)
         except LookupError:
             raise HTTPException(
                 status_code=404, detail="Заказ не найден"
@@ -1580,6 +1580,10 @@ def _register_browser_checkout_action(app: FastAPI, auth: AdminAuth) -> None:
             request.session["browser_payment_message"] = {
                 "browser_payment_paused": (
                     "Создание платёжных ссылок приостановлено."
+                ),
+                "telegram_payment_pending": (
+                    "Сверьте предыдущую попытку оплаты в Telegram, "
+                    "затем переключите заказ на оплату в браузере."
                 ),
             }.get(str(exc), "Для этого заказа сейчас нельзя создать ссылку.")
         destination = request.url_for("admin_order_detail", order_id=order_id)
