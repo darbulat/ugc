@@ -23,7 +23,7 @@
     be:{assigned:'Прызначана',in_progress:'У працы',success_claimed:'Заяўлены поспех',disputed:'Ёсць пярэчанне',success_final:'Поспех пацверджаны',unconfirmed_expired:'Тэрмін пацверджання мінуў',available:'Утрыманне скончылася'},
     uz:{assigned:'Tayinlangan',in_progress:'Jarayonda',success_claimed:'Muvaffaqiyat bildirildi',disputed:'E’tiroz bor',success_final:'Muvaffaqiyat tasdiqlandi',unconfirmed_expired:'Tasdiqlash muddati o‘tdi',available:'Ushlab turish tugadi'}
   };
-  var state = { busy:false, opened:false, returnScreen:'screen-role-choice', network_page:0, history_page:0, assignment_page:0, link:null, bound:null, actor:null, data:null };
+  var state = { busy:false, opened:false, returnScreen:'screen-role-choice', network_page:0, history_page:0, assignment_page:0, bound:null, actor:null, data:null, requestId:0 };
   function id(value) { return document.getElementById(value); }
   function words() { return Object.assign({}, copy.ru, copy[(window._me || {}).locale] || {}); }
   function text(key, value) { id(key).textContent = value == null ? '' : String(value); }
@@ -37,8 +37,8 @@
   Object.assign(copy.be,{manual_adjustment:'Ручное даналічэнне',manualRate:'Стаўка не ўжываецца'});
   Object.assign(copy.uz,{manual_adjustment:'Qo‘lda qo‘shimcha hisoblash',manualRate:'Stavka qo‘llanilmaydi'});
   function percentage(value) { return typeof value === 'number' ? String(value / 100) + '%' : words().unknown; }
-  function localize() { var c = words(); ['link','grade','network','finance','history','assignments','overrides'].forEach(function (key) { text('partner-' + key + '-title', c[key]); }); text('partner-title',c.title); text('partner-rules',c.rules); text('btn-partner-copy',c.copy); text('btn-partner-reload',c.reload); text('btn-partner-back',c.back); id('partner-link-value').setAttribute('aria-label',c.link); document.querySelectorAll('[data-partner-open]').forEach(function (button) { button.textContent = c.entry; }); }
-  function busy(value) { state.busy = value; screen.setAttribute('aria-busy',String(value)); text('partner-loading',value ? words().loading : ''); screen.querySelectorAll('button:not([data-payouts-open])').forEach(function (button) { button.disabled = value; }); id('btn-partner-copy').disabled = value || !state.link; }
+  function localize() { var c = words(); ['grade','network','finance','history','assignments','overrides'].forEach(function (key) { text('partner-' + key + '-title', c[key]); }); text('partner-title',c.title); text('partner-rules',c.rules); text('btn-partner-reload',c.reload); text('btn-partner-back',c.back); }
+  function busy(value) { state.busy = value; screen.setAttribute('aria-busy',String(value)); text('partner-loading',value ? words().loading : ''); screen.querySelectorAll('button:not([data-payouts-open])').forEach(function (button) { button.disabled = value; }); }
   function definition(parent, key, value) { var row = node('div','', 'umc-partner-pair'); row.appendChild(node('dt',key)); row.appendChild(node('dd',value)); parent.appendChild(row); }
   function listEmpty(parent, message) { parent.appendChild(node('p',message,'hint')); }
   function pages(parent, key, page, more) { var c = words(); var controls = node('div','','pagination-btns'); [[c.previous,page-1,page>0],[c.more,page+1,more]].forEach(function (item) { if (!item[2]) return; var button = node('button',item[0],'btn btn-secondary'); button.type='button'; button.addEventListener('click',function () { state[key]=item[1]; load(); }); controls.appendChild(button); }); parent.appendChild(controls); }
@@ -47,16 +47,17 @@
   function finance(data) { var c=words(), parent=id('partner-balances'), history=id('partner-history'); parent.replaceChildren(); history.replaceChildren(); id('partner-financial-status').dataset.state=data.state; text('partner-financial-status',c[data.state] || c.unavailable); if (data.balances) { balances(parent,data.balances,data.currency); data.groups.forEach(function (group) { var section=node('details','','umc-partner-kind'); section.appendChild(node('summary',c[group.kind] || group.kind)); balances(section,group.balances,data.currency); parent.appendChild(section); }); } if (!data.history.entries.length) listEmpty(history,c.emptyHistory); data.history.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.kind] || entry.kind) + ' · ' + money(entry.amount_minor,data.currency))); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); var details=node('dl'); definition(details,c.snapshot,date(entry.snapshot_at)); definition(details,c.base,money(entry.base_minor,data.currency)); definition(details,c.rate,entry.kind === 'manual_adjustment' ? c.manualRate : entry.kind === 'management' ? c.fixed : percentage(entry.rate_bps) + ' · ' + (c[entry.rate_source] || entry.rate_source)); definition(details,c.policy,entry.policy_version); definition(details,c[entry.movement_type] || entry.movement_type,(entry.bucket_from ? c[entry.bucket_from] + ' → ' : '') + (c[entry.bucket_to] || '') + ' · ' + date(entry.effective_at)); row.appendChild(details); history.appendChild(row); }); pages(history,'history_page',data.history.page,data.history.has_more); }
   function overrides(data) { var c=words(), parent=id('partner-overrides'); parent.replaceChildren(); if (data.state !== 'available') { listEmpty(parent,c.unavailable); return; } if (!data.entries.length) listEmpty(parent,c.noOverrides); data.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.side] || entry.side) + ' ' + percentage(entry.rate_bps))); row.appendChild(node('p',c.policy + ': ' + entry.policy_version)); row.appendChild(node('p',date(entry.effective_from) + ' — ' + date(entry.effective_until),'hint')); parent.appendChild(row); }); }
   function assignments(data) { var c=words(), parent=id('partner-assignments'); parent.replaceChildren(); if (data.state !== 'available') { listEmpty(parent,c.unavailable); return; } if (!data.entries.length) listEmpty(parent,c.emptyAssignments); data.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); row.appendChild(node('p',((workStates[(window._me || {}).locale] || workStates.ru)[entry.state] || c.unknown) + ' · ' + c.due + ': ' + date(entry.due_at),'hint')); if (window.UMCCollaboration) { var button=node('button',c.openWork,'btn btn-secondary'); button.type='button'; button.addEventListener('click',function () { window.UMCCollaboration.open(entry.assignment_id); }); row.appendChild(button); } parent.appendChild(row); }); pages(parent,'assignment_page',data.page,data.has_more); }
-  function render(data) { var c=words(); state.link=safeUrl(data.referral.link); id('partner-link').hidden=!state.link; id('partner-link-value').hidden=!state.link; id('btn-partner-copy').hidden=!state.link; if (state.link) { id('partner-link').href=state.link; text('partner-link',state.link); id('partner-link-value').value=state.link; } text('partner-link-unavailable',state.link ? '' : c.noLink); text('partner-paused',data.writes_paused ? c.paused : ''); text('partner-status',c[data.account_status] || data.account_status); text('partner-grade-value',percentage(data.grade.tier_rate_bps)); text('partner-grade-count',c.verified + ': ' + data.grade.verified_creators); text('partner-grade-next',data.grade.next_threshold == null ? c.top : c.next + ': ' + data.grade.remaining + ' (' + data.grade.next_threshold + ')'); network(data.network); finance(data.financial); overrides(data.overrides); assignments(data.assignments); id('partner-content').hidden=false; }
+  function render(data) { var c=words(); renderOverview(id('partner-overview'),data,c); text('partner-paused',data.writes_paused ? c.paused : ''); text('partner-grade-value',percentage(data.grade.tier_rate_bps)); text('partner-grade-count',c.verified + ': ' + data.grade.verified_creators); text('partner-grade-next',data.grade.next_threshold == null ? c.top : c.next + ': ' + data.grade.remaining + ' (' + data.grade.next_threshold + ')'); network(data.network); finance(data.financial); overrides(data.overrides); assignments(data.assignments); id('partner-content').hidden=false; }
 
   Object.assign(copy.ru, {activeOrders:'Активные заказы', completedWorks:'Завершённые работы', waiting:'Что ожидается', successful:'Успешно завершено', beforeAdjustments:'До корректировок; выплата зависит от состояния журнала', awaiting_confirmation:'Успех не подтверждён', awaiting_counterparty:'Ожидается ответ второй стороны', confirmation_notice_pending:'Ожидается доставка запроса подтверждения', expiry_processing:'Срок подтверждения истёк; отмена обрабатывается', dispute_review:'Требуется рассмотрение спора', financial_processing:'Подтверждено; финансовая обработка', selection_completion:'Ожидается закрытие подбора и окончание периода возврата', assessment_pending:'Уточняется основание начисления'});
   Object.assign(copy.en, {activeOrders:'Active orders', completedWorks:'Completed works', waiting:'Pending requirements', successful:'Successfully completed', beforeAdjustments:'Before adjustments; payout depends on journal status', awaiting_confirmation:'Success has not been confirmed', awaiting_counterparty:'Awaiting the other party', confirmation_notice_pending:'Awaiting confirmation notice delivery', expiry_processing:'Confirmation expired; cancellation is being processed', dispute_review:'Dispute requires review', financial_processing:'Confirmed; financial processing', selection_completion:'Awaiting selection closure and refund period', assessment_pending:'Earning basis is being assessed'});
   var homes=[];
   function clearPrivate() {
     if(state.bound) state.bound.dispose();
-    state.bound=null; state.actor=null; state.data=null; state.link=null; adminState={pending:null,review:null,busy:false};
+    state.bound=null; state.actor=null; state.data=null; adminState={pending:null,review:null,busy:false};
     id('partner-content').hidden=true;
-    homes.forEach(function(card){card.replaceChildren(node('p',words().session,'hint'));});
+    id('partner-overview').replaceChildren();
+    showHomes(null, words().session);
     var admin=id('partner-override-admin'); if(admin) admin.remove();
   }
   function current() {
@@ -67,19 +68,210 @@
     if(!state.bound) state.bound=bridge.createRequestContext();
     return current();
   }
-  function home(data) {
-    if(!current()) return;
-    var c=words(), rates=data.current_rates||{client_bps:1000,creator_bps:data.grade.tier_rate_bps,overrides:[]};
-    state.actor=data.actor_id;
-    homes.forEach(function(card){
-      card.replaceChildren();
-      var url=safeUrl(data.referral.link);
-      if(url){var link=node('a',url,'umc-partner-reference');link.href=url;link.dataset.partnerLink='';card.appendChild(link);}
-      else card.appendChild(node('p',c.noLink,'hint'));
-      var rate=node('button',c.creator+': '+percentage(rates.creator_bps)+' · '+c.client+': '+percentage(rates.client_bps),'btn btn-secondary');
-      rate.type='button'; rate.dataset.partnerRate=''; rate.addEventListener('click',open);card.appendChild(rate);
-      (rates.overrides||[]).forEach(function(entry){card.appendChild(node('p',(c[entry.side]||entry.side)+': '+percentage(entry.rate_bps)+' · '+c.override+' · '+entry.policy_version,'hint'));});
+  var overviewCopy = {
+    ru: {
+      copyShort:'Копировать', copiedShort:'Скопировано', openCabinet:'Открыть кабинет',
+      account:'Статус аккаунта', invited:'Приглашённые', managers:'Подключённые менеджеры',
+      referralEarned:'Доход за приглашения', managementEarned:'Доход за сопровождение',
+      legacy:'Начислено по прежним заказам', earningsUnavailable:'Начисления уточняются',
+      how:'Делитесь ссылкой и получайте процент с оплаченных заказов приглашённых клиентов и авторов.',
+      terms:'Условия программы', managerProgram:'Работа менеджером'
+    },
+    en: {
+      copyShort:'Copy', copiedShort:'Copied', openCabinet:'Open cabinet',
+      account:'Account status', invited:'Invited users', managers:'Connected managers',
+      referralEarned:'Referral earnings', managementEarned:'Management earnings',
+      legacy:'Earned on earlier orders', earningsUnavailable:'Earnings unavailable',
+      how:'Invite clients and creators with your link and earn a share of their paid orders under the program terms.',
+      terms:'Program terms', managerProgram:'Work as a manager'
+    },
+    kk: {
+      copyShort:'Көшіру', copiedShort:'Көшірілді', openCabinet:'Кабинетті ашу',
+      account:'Аккаунт күйі', invited:'Шақырылғандар', managers:'Қосылған менеджерлер',
+      referralEarned:'Шақырудан табыс', managementEarned:'Сүйемелдеуден табыс',
+      legacy:'Бұрынғы тапсырыстардан табыс', earningsUnavailable:'Табыс нақтылануда',
+      how:'Клиенттер мен авторларды сілтемеңіз арқылы шақырыңыз. Бағдарлама шарттарына сай олардың ақылы тапсырыстарынан пайыз аласыз.',
+      terms:'Бағдарлама шарттары', managerProgram:'Менеджер жұмысы'
+    },
+    be: {
+      copyShort:'Скапіяваць', copiedShort:'Скапіявана', openCabinet:'Адкрыць кабінет',
+      account:'Статус акаўнта', invited:'Запрошаныя', managers:'Падключаныя менеджары',
+      referralEarned:'Даход за запрашэнні', managementEarned:'Даход за суправаджэнне',
+      legacy:'Налічана за ранейшыя заказы', earningsUnavailable:'Налічэнні ўдакладняюцца',
+      how:'Запрашайце кліентаў і аўтараў па сваёй спасылцы і атрымлівайце працэнт з іх аплачаных заказаў паводле ўмоў праграмы.',
+      terms:'Умовы праграмы', managerProgram:'Праца менеджарам'
+    },
+    uz: {
+      copyShort:'Nusxalash', copiedShort:'Nusxalandi', openCabinet:'Kabinetni ochish',
+      account:'Hisob holati', invited:'Taklif qilinganlar', managers:'Ulangan menejerlar',
+      referralEarned:'Takliflar uchun', managementEarned:'Hamrohlik uchun',
+      legacy:'Avvalgi buyurtmalardan daromad', earningsUnavailable:'Daromad aniqlanmoqda',
+      how:'Mijozlar va ijodkorlarni havolangiz orqali taklif qiling. Dastur shartlariga ko‘ra ularning to‘langan buyurtmalaridan foiz oling.',
+      terms:'Dastur shartlari', managerProgram:'Menejer bo‘lib ishlash'
+    }
+  };
+  Object.keys(overviewCopy).forEach(function (lang) { Object.assign(copy[lang], overviewCopy[lang]); });
+
+  function externalLink(url, label) {
+    var link = node('a',label);
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    return link;
+  }
+
+  function linkControls(card, url, c, cabinet) {
+    if (!url) {
+      card.appendChild(node('p',c.noLink,'umc-partner-note'));
+      return;
+    }
+
+    var row = node('div','','umc-partner-link-row');
+    var link = externalLink(url,url);
+    link.dataset.partnerLink = '';
+    link.title = url;
+    var input = node('input');
+    input.type = 'text';
+    input.readOnly = true;
+    input.hidden = true;
+    input.setAttribute('aria-label',c.link);
+    var button = node('button',c.copyShort,'btn umc-partner-copy');
+    button.type = 'button';
+    button.dataset.partnerCopy = '';
+    button.setAttribute('aria-label',c.copy);
+    var status = node('p','','umc-partner-copy-status');
+    status.setAttribute('role','status');
+    if (cabinet) {
+      link.id = 'partner-link';
+      input.id = 'partner-link-value';
+      button.id = 'btn-partner-copy';
+      status.id = 'partner-copy-status';
+    }
+    row.append(link,input,button);
+    card.append(row,status);
+
+    var copyAttempt = 0;
+    button.addEventListener('click',async function () {
+      if (!current()) return;
+      var bound = state.bound;
+      var attempt = ++copyAttempt;
+      var copied = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url);
+          copied = true;
+        }
+      } catch (_) {
+        // Some in-app browsers deny clipboard access even in a secure context.
+      }
+      if (attempt !== copyAttempt || bound !== state.bound || !button.isConnected || !current()) return;
+      if (!copied) {
+        input.value = url;
+        input.hidden = false;
+        link.hidden = true;
+        input.focus();
+        input.select();
+        input.setSelectionRange(0,url.length);
+        try { copied = document.execCommand('copy'); } catch (_) {}
+      }
+      if (copied && !input.hidden) {
+        input.hidden = true;
+        link.hidden = false;
+        button.focus();
+      }
+      button.textContent = copied ? c.copiedShort : c.copyShort;
+      status.textContent = copied ? c.copied : c.manual;
     });
+  }
+
+  function summaryMoney(value, currency) {
+    if (value == null) return '—';
+    return money(value,currency === 'RUB' ? '₽' : currency).replace(',00\u00a0','\u00a0');
+  }
+
+  function metric(parent, key, label, value) {
+    var item = node('div','','umc-partner-metric');
+    item.dataset.partnerMetric = key;
+    item.append(node('dt',label),node('dd',value == null ? '—' : value));
+    parent.appendChild(item);
+  }
+
+  function renderOverview(card, data, c, message) {
+    var cabinet = card.id === 'partner-overview';
+    var header = node('div','','umc-partner-overview-header');
+    header.appendChild(node('h2',cabinet ? c.link : c.entry));
+    card.replaceChildren(header);
+    if (data) {
+      var status = node('span',c[data.account_status] || c.unknown,'umc-partner-status');
+      status.dataset.state = data.account_status;
+      status.title = c.account;
+      if (cabinet) status.id = 'partner-status';
+      header.appendChild(status);
+      linkControls(card,safeUrl(data.referral.link),c,cabinet);
+
+      var financial = data.financial;
+      var earnings = financial.earnings || {};
+      var stats = node('dl','','umc-partner-metrics');
+      metric(stats,'invited',c.invited,data.network.total);
+      metric(stats,'managers',c.managers,data.network.manager_total);
+      metric(stats,'referral',c.referralEarned,summaryMoney(earnings.referral_minor,financial.currency));
+      metric(stats,'management',c.managementEarned,summaryMoney(earnings.management_minor,financial.currency));
+      card.appendChild(stats);
+
+      if (financial.state === 'mismatch' || financial.state === 'unavailable') {
+        card.appendChild(node('p',c.earningsUnavailable,'umc-partner-note'));
+      }
+      var legacy = Object.entries(financial.legacy_referral_income_minor || {});
+      if (legacy.length) {
+        var earlier = node('p','','umc-partner-legacy');
+        var amounts = legacy.map(function (entry) { return summaryMoney(entry[1],entry[0]); });
+        earlier.append(node('span',c.legacy),node('strong',amounts.join(' · ')));
+        card.appendChild(earlier);
+      }
+    } else {
+      var loading = node('p',message,'umc-partner-note');
+      loading.setAttribute('role','status');
+      card.appendChild(loading);
+    }
+
+    if (!cabinet) {
+      var entry = node('button',c.openCabinet,'btn btn-secondary umc-partner-entry');
+      entry.type = 'button';
+      entry.dataset.partnerOpen = '';
+      var rates = data && (data.current_rates || {
+        client_bps:data.standards ? data.standards.client_first_year_bps : 1000,
+        creator_bps:data.grade.tier_rate_bps
+      });
+      if (rates) {
+        entry.dataset.partnerRate = '';
+        entry.appendChild(node('span',c.creator + ' ' + percentage(rates.creator_bps) + ' · ' + c.client + ' ' + percentage(rates.client_bps),'umc-partner-entry-rates'));
+      }
+      entry.addEventListener('click',open);
+      card.appendChild(entry);
+      if (rates && rates.overrides) {
+        rates.overrides.forEach(function (rate) {
+          var terms = (c[rate.side] || rate.side) + ' ' + percentage(rate.rate_bps);
+          card.appendChild(node('p',terms + ' · ' + c.override + ' · ' + rate.policy_version,'umc-partner-note'));
+        });
+      }
+    }
+
+    if (data) {
+      var help = node('div','','umc-partner-help');
+      var links = node('div','','umc-partner-help-links');
+      links.append(
+        externalLink('https://usemycontent.ru/referral/',c.terms),
+        externalLink('https://usemycontent.ru/partner',c.managerProgram)
+      );
+      help.append(node('p',c.how),links);
+      card.appendChild(help);
+    }
+  }
+
+  function showHomes(data, message) {
+    var c = words();
+    if (data) state.actor = data.actor_id;
+    homes.forEach(function (card) { renderOverview(card,data,c,message); });
   }
   function partnerDetails(data) {
     var c=words(), rows=id('partner-network').querySelectorAll('.umc-partner-row');
@@ -190,13 +382,66 @@
     }).catch(function(error){if(bound===state.bound&&current()){if(error.status===401||error.status===403)clearPrivate();else adminStatus(words().error);}}).finally(function(){adminState.busy=false;});
   }
 
-  function load() { if (state.busy || !bind()) return; var bound=state.bound; localize(); text('partner-error',''); text('partner-copy-status',''); id('partner-content').hidden=true; busy(true); bound.request('/partner/view',{network_page:state.network_page,history_page:state.history_page,assignment_page:state.assignment_page}).then(function(data){if(bound!==state.bound||!current())return;state.data=data;render(data);home(data);partnerDetails(data);renderAdmin(data);}).catch(function (error) { text('partner-error',error.status===401 ? words().session : error.status===403 ? words().forbidden : words().error); state.link=null; }).finally(function () { busy(false); }); }
-  function open() { if (state.busy) return; var current=document.querySelector('.screen.active'); if (current && current!==screen) state.returnScreen=current.id; var url=new URL(location.href); url.searchParams.set('view','partner'); history.replaceState(null,'',url.href); bridge.showScreen(screen.id); state.opened=true; load(); }
-  ['screen-role-choice','screen-advertiser-dashboard','screen-blogger-dashboard','screen-manager-orders'].forEach(function (name) { var parent=id(name); if (!parent) return; var button=node('button',words().entry,'btn btn-secondary umc-partner-entry'); button.type='button'; button.dataset.partnerOpen=''; button.addEventListener('click',open); var heading=parent.querySelector('h1'); heading.insertAdjacentElement('afterend',button); var card=node('section','','umc-partner-notice');card.dataset.partnerHome='';button.insertAdjacentElement('afterend',card);homes.push(card); });
-  id('btn-partner-copy').addEventListener('click',function () { if (!state.link || state.busy) return; var pending=navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(state.link) : Promise.reject(); pending.then(function () { text('partner-copy-status',words().copied); }).catch(function () { var input=id('partner-link-value'); input.focus(); input.select(); text('partner-copy-status',words().manual); }); });
+  function viewRequest(bound) {
+    return bound.request('/partner/view',{
+      network_page:state.network_page,
+      history_page:state.history_page,
+      assignment_page:state.assignment_page
+    });
+  }
+
+  function load() {
+    if (state.busy || !bind()) return;
+    var bound = state.bound;
+    state.requestId++;
+    localize();
+    text('partner-error','');
+    id('partner-content').hidden = true;
+    busy(true);
+    viewRequest(bound).then(function (data) {
+      if (bound !== state.bound || !current()) return;
+      state.data = data;
+      render(data);
+      showHomes(data);
+      partnerDetails(data);
+      renderAdmin(data);
+    }).catch(function (error) {
+      if (bound !== state.bound) return;
+      if (error.status === 401 || error.status === 403) clearPrivate();
+      text('partner-error',error.status === 401 ? words().session : error.status === 403 ? words().forbidden : words().error);
+    }).finally(function () { busy(false); });
+  }
+
+  function open() { if (state.busy) return; var active=document.querySelector('.screen.active'); if (active && active!==screen) state.returnScreen=active.id; var url=new URL(location.href); url.searchParams.set('view','partner'); history.replaceState(null,'',url.href); bridge.showScreen(screen.id); state.opened=true; load(); }
+  ['screen-role-choice','screen-advertiser-dashboard','screen-blogger-dashboard','screen-manager-orders'].forEach(function (name) {
+    var parent = id(name);
+    if (!parent) return;
+    var card = node('section','','umc-partner-overview');
+    card.dataset.partnerHome = '';
+    parent.querySelector('h1').insertAdjacentElement('afterend',card);
+    homes.push(card);
+  });
   id('btn-partner-reload').addEventListener('click',load);
   id('btn-partner-back').addEventListener('click',function () { if (state.busy) return; var url=new URL(location.href); url.searchParams.delete('view'); history.replaceState(null,'',url.href); bridge.showScreen(state.returnScreen); });
-  function ready() { localize(); if(!bind())return;var bound=state.bound;bound.request('/partner/view',{network_page:0,history_page:0,assignment_page:0}).then(function(data){if(bound===state.bound&&current())home(data);}).catch(function(error){if(error.status===401||error.status===403)clearPrivate();}); var params=new URLSearchParams(location.search); if (!state.opened && params.get('view')==='partner' && !params.has('assignment') && !params.has('assignment_id')) open(); }
+  function ready() {
+    localize();
+    if (state.busy || !bind()) return;
+    var bound = state.bound;
+    showHomes(null,words().loading);
+    var params = new URLSearchParams(location.search);
+    if (!state.opened && params.get('view') === 'partner' && !params.has('assignment') && !params.has('assignment_id')) {
+      open();
+      return;
+    }
+    var requestId = ++state.requestId;
+    viewRequest(bound).then(function (data) {
+      if (bound === state.bound && requestId === state.requestId && current()) showHomes(data);
+    }).catch(function (error) {
+      if (bound !== state.bound || requestId !== state.requestId) return;
+      if (error.status === 401 || error.status === 403) clearPrivate();
+      else showHomes(null,words().error);
+    });
+  }
   document.addEventListener('visibilitychange',function(){if(state.bound)current();}); window.addEventListener('focus',function(){if(state.bound)current();});
   document.addEventListener('umc:app-ready',ready); if (window.__umcAppReady) ready();
 })();

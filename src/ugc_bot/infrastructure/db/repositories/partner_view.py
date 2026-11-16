@@ -19,6 +19,7 @@ from ugc_bot.application.services.financial_reconciliation_service import (
 )
 from ugc_bot.infrastructure.db import models as m
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.repositories.partner_pending import (
     network_work_counts,
@@ -45,7 +46,7 @@ async def _installed(db, names):
     )
 
 
-def _network(actor_id, at):
+def _network(actor_id, at, *, has_manager_applications):
     users, binding, creator, client = (
         m.UserModel.__table__,
         m.UserReferralBindingModel.__table__,
@@ -57,6 +58,16 @@ def _network(actor_id, at):
         .where(m.ManagerOrderModel.user_id == users.c.user_id)
         .exists()
     )
+    if has_manager_applications:
+        manager = or_(
+            manager,
+            select(APPLICATIONS.c.user_id)
+            .where(
+                APPLICATIONS.c.user_id == users.c.user_id,
+                APPLICATIONS.c.state == "approved",
+            )
+            .exists(),
+        )
     return (
         select(
             users.c.user_id,
@@ -238,6 +249,19 @@ async def _work_counts(db, ids):
     if ids and await _installed(db, ("financial_collaborations",)):
         return await network_work_counts(db, ids)
     return None
+
+
+async def _legacy_referral_income(db, actor_id, at):
+    if not await _installed(db, ("referral_income_entries",)):
+        return None
+    entry = m.ReferralIncomeEntryModel
+    rows = await db.execute(
+        select(entry.currency, func.sum(entry.commission_amount))
+        .where(entry.referrer_user_id == actor_id, entry.created_at <= at)
+        .group_by(entry.currency)
+        .order_by(entry.currency)
+    )
+    return dict(rows.all())
 
 
 async def _financial(db, actor_id, at):
@@ -472,18 +496,25 @@ class SqlAlchemyPartnerViewRepository:
         )
         if actor is None:
             return None
-        network = _network(actor_id, at).subquery()
-        total = await db.scalar(select(func.count()).select_from(network))
-        count = await db.scalar(
-            select(
-                func.count(
-                    func.distinct(func.trim(network.c.instagram_user_id))
-                )
-            ).where(
-                network.c.confirmed.is_(True),
-                func.trim(network.c.instagram_user_id) != "",
+        network = _network(
+            actor_id,
+            at,
+            has_manager_applications=await _installed(db, (APPLICATIONS.name,)),
+        ).subquery()
+        total, manager_total, count = (
+            await db.execute(
+                select(
+                    func.count(),
+                    func.count().filter(network.c.is_manager),
+                    func.count(
+                        func.distinct(func.trim(network.c.instagram_user_id))
+                    ).filter(
+                        network.c.confirmed.is_(True),
+                        func.trim(network.c.instagram_user_id) != "",
+                    ),
+                ).select_from(network)
             )
-        )
+        ).one()
         rows = (
             (
                 await db.execute(
@@ -498,6 +529,7 @@ class SqlAlchemyPartnerViewRepository:
         )
         members = await _members(db, rows)
         financial = await _financial(db, actor_id, at)
+        legacy_income = await _legacy_referral_income(db, actor_id, at)
         overrides = await _overrides(db, actor_id, at)
         assignments, assignment_total = await _assignments(
             db, actor_id, assignment_page
@@ -514,4 +546,6 @@ class SqlAlchemyPartnerViewRepository:
             assignments,
             assignment_total,
             bool(actor["admin"]),
+            manager_total=manager_total,
+            legacy_referral_income=legacy_income,
         )

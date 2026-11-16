@@ -27,6 +27,42 @@ def _minor(balances):
     return {key: str(value) for key, value in balances.items()}
 
 
+def _group_balances(obligations, replay):
+    groups = []
+    earnings = {"referral_minor": 0, "management_minor": 0}
+    kinds = KINDS + (
+        ("manual_adjustment",)
+        if any(o.kind == "manual_adjustment" for o in obligations)
+        else ()
+    )
+    for kind in kinds:
+        own = [o for o in obligations if o.kind == kind]
+        balances = {
+            key: sum(
+                replay.by_obligation.get(o.obligation_id, {}).get(key, 0)
+                for o in own
+            )
+            for key in BUCKETS
+        }
+        groups.append(
+            {
+                "kind": kind,
+                "balances": _minor(balances),
+                "obligations_count": len(own),
+            }
+        )
+        accrued = (
+            sum(o.amount_minor for o in own)
+            - balances["pending"]
+            - balances["cancelled"]
+        )
+        if kind in ("client_referral", "creator_referral"):
+            earnings["referral_minor"] += accrued
+        elif kind == "management":
+            earnings["management_minor"] += accrued
+    return groups, earnings
+
+
 def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
     empty: dict[str, Any] = {
         "state": "unavailable",
@@ -34,6 +70,7 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
         "balances": None,
         "projection": None,
         "groups": [],
+        "earnings": None,
         "pending": {"entries": [], "total": 0},
         "management_summary": None,
         "history": {"entries": [], "page": page, "has_more": False},
@@ -45,7 +82,11 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
         and not facts.movements
         and facts.projection is None
     ):
-        return {**empty, "state": "uninitialized"}
+        return {
+            **empty,
+            "state": "uninitialized",
+            "earnings": {"referral_minor": "0", "management_minor": "0"},
+        }
     entries = tuple(row.movement for row in facts.movements)
     bases = tuple(
         ObligationBasis(o.obligation_id, actor_id, "RUB", o.amount_minor)
@@ -106,28 +147,7 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
             and basis.assignment_id is not None
         ):
             successful.add(basis.assignment_id)
-    groups = []
-    kinds = KINDS + (
-        ("manual_adjustment",)
-        if any(o.kind == "manual_adjustment" for o in facts.obligations)
-        else ()
-    )
-    for kind in kinds:
-        own = [o for o in facts.obligations if o.kind == kind]
-        balances = {
-            key: sum(
-                replay.by_obligation.get(o.obligation_id, {}).get(key, 0)
-                for o in own
-            )
-            for key in BUCKETS
-        }
-        groups.append(
-            {
-                "kind": kind,
-                "balances": _minor(balances),
-                "obligations_count": len(own),
-            }
-        )
+    groups, earnings = _group_balances(facts.obligations, replay)
     history = []
     rows = tuple(reversed(facts.movements))
     for row in rows[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]:
@@ -168,6 +188,7 @@ def _financial(facts: PartnerFinancialFacts | None, actor_id, page):
         if facts.projection is not None
         else None,
         "groups": groups,
+        "earnings": _minor(earnings) if ready else None,
         "pending": {
             "entries": pending[page * PAGE_SIZE : (page + 1) * PAGE_SIZE],
             "total": len(pending),
@@ -253,6 +274,15 @@ class PartnerViewService:
             if count >= minimum
         )
         next_threshold = next((n for n in (100, 200, 400) if n > count), None)
+        financial = _financial(facts.financial, actor_id, history_page)
+        financial["legacy_referral_income_minor"] = (
+            {
+                currency: str(int(amount * 100))
+                for currency, amount in facts.legacy_referral_income.items()
+            }
+            if facts.legacy_referral_income is not None
+            else None
+        )
         return {
             "actor_id": str(actor_id),
             "as_of": at,
@@ -293,11 +323,12 @@ class PartnerViewService:
             "network": {
                 "members": facts.network_members,
                 "total": facts.network_total,
+                "manager_total": facts.manager_total,
                 "page": network_page,
                 "has_more": facts.network_total
                 > (network_page + 1) * PAGE_SIZE,
             },
-            "financial": _financial(facts.financial, actor_id, history_page),
+            "financial": financial,
             "overrides": {
                 "state": "available"
                 if facts.overrides is not None
