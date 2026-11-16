@@ -21,6 +21,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     FinancialPolicyVersionModel,
 )
+from ugc_bot.infrastructure.db.order_notice_models import ORDER_NOTICE_EVENTS
 
 
 class Clock:
@@ -319,6 +320,7 @@ async def test_intake_receipt_rejects_forged_quote_before_atomic_commit(
 async def test_resumed_intake_with_unavailable_image_rolls_back(intake_env):
     env = intake_env
     intake = service(env)
+    assert intake.orders.order_notices is not None
     source = command(env, service_mode="with_manager", image_token=uuid4())
     profile = update(AdvertiserProfileModel).where(
         AdvertiserProfileModel.user_id == env["user"].user_id
@@ -343,6 +345,15 @@ async def test_resumed_intake_with_unavailable_image_rolls_back(intake_env):
         "accompaniment_lead_outbox",
     ):
         assert scoped_rows(env, table, source.order_id) == []
+    with Session(env["pg"]) as db:
+        assert (
+            db.scalar(
+                select(ORDER_NOTICE_EVENTS.c.order_id).where(
+                    ORDER_NOTICE_EVENTS.c.order_id == source.order_id
+                )
+            )
+            is None
+        )
 
 
 @pytest.mark.asyncio
