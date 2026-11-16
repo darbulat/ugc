@@ -814,9 +814,7 @@
           set('blg-instagram', igUser);
         }
         set('blg-city', profile.city);
-        ['blg-region', 'blg-country', 'blg-lat', 'blg-lon'].forEach(function(id) {
-          document.getElementById(id).value = '';
-        });
+        resetBloggerLocationDraft();
         set('blg-audience-geo', profile.audience_geo);
         set('blg-age-min', profile.audience_age_min);
         set('blg-age-max', profile.audience_age_max);
@@ -1963,7 +1961,20 @@
       var bloggerCityMapInited = false;
       var bloggerCityMapInstance = null;
       var bloggerCityMarker = null;
+      var bloggerLocationRequest = 0;
       var hintElCityMap = document.getElementById('blg-city-map-hint');
+      function resetBloggerLocationDraft() {
+        bloggerLocationRequest++;
+        ['blg-region', 'blg-country', 'blg-lat', 'blg-lon', 'blg-city-search'].forEach(function(id) {
+          document.getElementById(id).value = '';
+        });
+        if (bloggerCityMarker && bloggerCityMapInstance) {
+          bloggerCityMapInstance.removeLayer(bloggerCityMarker);
+          bloggerCityMarker = null;
+        }
+        hintElCityMap.textContent = tx('ph_blg_city_map_hint');
+      }
+
       function initBloggerCityMap() {
         if (!window.L) return;
         var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
@@ -1983,11 +1994,13 @@
           );
         }
         map.on('click', function(e) {
+          var request = ++bloggerLocationRequest;
           var lat = e.latlng.lat;
           var lon = e.latlng.lng;
           if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
           else bloggerCityMarker = L.marker(e.latlng).addTo(map);
           api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+            if (request !== bloggerLocationRequest) return;
             document.getElementById('blg-city').value = data.city || '';
             document.getElementById('blg-region').value = data.region || '';
             document.getElementById('blg-country').value = data.country || '';
@@ -1995,7 +2008,7 @@
             document.getElementById('blg-lon').value = String(lon);
             if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
           }).catch(function() {
-            if (hintElCityMap) hintElCityMap.textContent = tx('city_error');
+            if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_error');
           });
         });
       }
@@ -2021,7 +2034,9 @@
           bloggerCityMapInited = true;
           setTimeout(initBloggerCityMap, 100);
         }
+        var request = ++bloggerLocationRequest;
         api('/geocode/forward', { city: query }).then(function(data) {
+          if (request !== bloggerLocationRequest) return;
           document.getElementById('blg-city').value = data.city || '';
           document.getElementById('blg-region').value = data.region || '';
           document.getElementById('blg-country').value = data.country || '';
@@ -2029,7 +2044,7 @@
           document.getElementById('blg-lon').value = String(data.lon);
           if (hintElCityMap) hintElCityMap.textContent = tx('city_selected') + (data.city || '');
           function applyOnMap() {
-            if (bloggerCityMapInstance) {
+            if (request === bloggerLocationRequest && bloggerCityMapInstance) {
               bloggerCityMapInstance.setView([data.lat, data.lon], 12);
               if (bloggerCityMarker) bloggerCityMarker.setLatLng([data.lat, data.lon]);
               else bloggerCityMarker = L.marker([data.lat, data.lon]).addTo(bloggerCityMapInstance);
@@ -2038,7 +2053,7 @@
           if (bloggerCityMapInstance) applyOnMap();
           else setTimeout(applyOnMap, 250);
         }).catch(function() {
-          if (hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
+          if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
         });
       });
       document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
@@ -2178,6 +2193,8 @@
         if (latEl && lonEl && latEl.value.trim() && lonEl.value.trim()) {
           payload.lat = parseFloat(latEl.value);
           payload.lon = parseFloat(lonEl.value);
+        } else if ((window._me || {}).has_blogger_profile) {
+          payload.preserve_location = true;
         }
         verifiedProfileRequest('/register/blogger', payload, {refreshProfile: true}).then(function(res) {
           if (res.needs_agreement) {

@@ -229,6 +229,7 @@ class RegisterBloggerRequest(BaseModel):
     country: str | None = None
     lat: float | None = None  # from map picker; skip geocoder when set
     lon: float | None = None
+    preserve_location: bool = False
 
 
 def _location_geometry_from_blogger_request(
@@ -1110,12 +1111,13 @@ async def _blogger_register_update(
     location_geometry: str | None = None,
 ) -> dict:
     """Update existing blogger profile. Raises HTTPException on error."""
+    preserve_location = body.preserve_location and location_geometry is None
     result = await svc.update_blogger_profile(
         user_id,
         instagram_url=instagram_url,
-        city=body.city,
-        region=body.region,
-        country=body.country,
+        city=None if preserve_location else body.city,
+        region=None if preserve_location else body.region,
+        country=None if preserve_location else body.country,
         topics=topics_dict,
         audience_gender=audience_gender,
         audience_age_min=body.audience_age_min,
@@ -1176,6 +1178,7 @@ async def _blogger_register_create(
         region=body.region,
         country=body.country,
         location_geometry=location_geometry,
+        preserve_location=body.preserve_location,
     )
     return {"ok": True, "user_id": str(user_id), "needs_agreement": True}
 

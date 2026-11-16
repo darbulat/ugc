@@ -26,6 +26,7 @@ class MiniAppNetwork:
         self.failure = False
         self.blogger_registered = False
         self.blogger_agreement_confirmed = None
+        self.blogger_city = ""
         self.creator_orders: list[dict] = []
         self.manager = False
         self.manager_app_enabled = False
@@ -57,6 +58,7 @@ class MiniAppNetwork:
                     "blogger_profile": {
                         "confirmed": False,
                         "agreement_confirmed": self.blogger_agreement_confirmed,
+                        "city": self.blogger_city,
                     }
                     if self.blogger_registered
                     else None,

@@ -1,7 +1,7 @@
 """Tests for blogger registration service."""
 
 from datetime import date, datetime, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
@@ -47,7 +47,11 @@ async def _seed_user(repo: InMemoryUserRepository) -> UUID:
 async def test_registration_edits_keep_the_saved_map_location() -> None:
     user_repo = InMemoryUserRepository()
     user_id = await _seed_user(user_repo)
-    geocoder = AsyncMock()
+    geocoder = Mock()
+    geocoder.geocode_with_details = AsyncMock(
+        return_value=(55.8, 37.7, "place", "city", "Another region", "Russia")
+    )
+    geocoder.accepts_as_place_or_region.return_value = True
     service = BloggerRegistrationService(
         user_repo=user_repo,
         blogger_repo=InMemoryBloggerProfileRepository(),
@@ -74,9 +78,7 @@ async def test_registration_edits_keep_the_saved_map_location() -> None:
         location_geometry=point,
         **fields,
     )
-    result = await service.update_blogger_profile(
-        user_id, city=fields["city"], price=2000
-    )
+    result = await service.update_blogger_profile(user_id, price=2000)
     assert result.profile is not None
     assert result.profile.price == 2000
     assert result.profile.location_geometry == point
@@ -84,12 +86,17 @@ async def test_registration_edits_keep_the_saved_map_location() -> None:
         user_id,
         instagram_url="https://instagram.com/new",
         price=2000,
+        preserve_location=True,
         **fields,
     )
     assert changed_handle.location_geometry == point
     assert changed_handle.region == "Moscow region"
     assert changed_handle.country == "Russia"
     geocoder.geocode_with_details.assert_not_awaited()
+    result = await service.update_blogger_profile(user_id, city="Moscow")
+    assert result.profile is not None
+    assert result.profile.location_geometry == "MULTIPOINT((37.7 55.8))"
+    geocoder.geocode_with_details.assert_awaited_once()
 
 
 @pytest.mark.asyncio

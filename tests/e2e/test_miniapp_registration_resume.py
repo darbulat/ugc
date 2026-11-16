@@ -115,3 +115,53 @@ def test_order_intent_keeps_manager_option_during_consent(
         page.locator('[name="intake-mode"][value="with_manager"]')
     ).to_be_checked()
     assert not errors
+
+
+def test_reopening_creator_agreement_discards_unsaved_map_pin(
+    page: Page, platform: str
+) -> None:
+    page.add_init_script("""
+      window.L = {
+        map() {
+          return {
+            setView() { return this; },
+            on() { return this; },
+            removeLayer(marker) { marker.element.remove(); }
+          };
+        },
+        tileLayer() { return { addTo() {} }; },
+        marker() {
+          const element = document.createElement('span');
+          element.dataset.testMapPin = '';
+          return {
+            element,
+            addTo() {
+              document.getElementById('blogger-city-map').append(element);
+              return this;
+            },
+            setLatLng() {}
+          };
+        }
+      };
+    """)
+    network = MiniAppNetwork()
+    network.blogger_registered = True
+    network.blogger_agreement_confirmed = False
+    network.blogger_city = "Saved city"
+    errors = open_app(page, network, platform)
+    page.locator("#back-from-blg-agreements").click()
+    page.locator("#btn-blogger-city-map").click()
+    page.locator("#blg-city-search").fill("Draft city")
+    page.locator("#btn-blogger-city-search").click()
+    expect(page.locator("#blg-city")).to_have_value("Synthetic city")
+    expect(page.locator("[data-test-map-pin]")).to_have_count(1)
+    page.locator("#back-from-blogger").click()
+    page.locator('[data-role="blogger"]').click()
+    page.locator("#back-from-blg-agreements").click()
+    expect(page.locator("#blg-city")).to_have_value("Saved city")
+    expect(page.locator("#blg-lat")).to_have_value("")
+    expect(page.locator("[data-test-map-pin]")).to_have_count(0)
+    expect(page.locator("#blg-city-map-hint")).to_have_text(
+        "Нажмите на карту или найдите город"
+    )
+    assert not errors
