@@ -245,27 +245,27 @@ async def test_failed_then_admin_retry_receipt_never_clears_failure():
 
 
 @pytest.mark.asyncio
-async def test_prepared_expiry_is_unknown_without_resend():
+async def test_prepared_expiry_recovers_and_sends_once():
     env = await setup_delivery()
     worker, repository, work_repo, scope, clock, _, _, transport = env
     attempt = await worker.prepare(event_id(work_repo))
     assert attempt.attempt_id in repository.attempts
     clock.at += timedelta(seconds=61)
     await worker.run_once()
-    assert not transport.sent
+    (sent,) = transport.sent
+    assert sent.attempt_id != attempt.attempt_id
+    work = work_repo.records[scope.assignment_id].collaboration
     assert (
-        work_repo.records[scope.assignment_id].collaboration.notice_failed_at
-        == clock.at
+        work.notice_failed_at is None and work.notice_delivered_at == clock.at
     )
     assert any(
-        item.kind == "recovery" and item.status == "unknown"
+        item.kind == "recovery"
+        and item.status == "obsolete"
+        and item.reason == "notice_preparation_expired"
         for item in repository.outcomes.values()
     )
     await worker.run_once()
-    assert len(repository.attempts) == 1
-    assert (
-        await advance(env)
-    ).collaboration.state == CollaborationState.SUCCESS_CLAIMED
+    assert len(repository.attempts) == 2 and transport.sent == [sent]
 
 
 @pytest.mark.asyncio
@@ -548,7 +548,8 @@ async def test_manual_retry_authorization_and_immutable_audit():
 
     env = await setup_delivery()
     worker, repository, work_repo, scope, clock, _, admin, _ = env
-    await worker.prepare(event_id(work_repo))
+    attempt = await worker.prepare(event_id(work_repo))
+    assert await worker._begin_dispatch(attempt)
     clock.at += timedelta(seconds=61)
     await worker.run_once()
     with pytest.raises(PermissionError, match="admin"):
@@ -625,7 +626,7 @@ async def test_changed_contact_during_send_blocks_silence():
 
 
 @pytest.mark.asyncio
-async def test_stale_dispatch_handle_cannot_resend_after_unknown_recovery():
+async def test_original_attempt_cannot_send_after_replacement():
     (
         worker,
         repository,
@@ -640,7 +641,8 @@ async def test_stale_dispatch_handle_cannot_resend_after_unknown_recovery():
     clock.at += timedelta(seconds=61)
     await worker.run_once()
     await worker.deliver(attempt)
-    assert not transport.sent and len(repository.attempts) == 1
+    assert len(transport.sent) == 1 and len(repository.attempts) == 2
+    assert transport.sent[0].attempt_id != attempt.attempt_id
 
 
 @pytest.mark.asyncio
@@ -980,7 +982,7 @@ async def test_elapsed_deadline_blocks_send_without_extension():
 
 
 @pytest.mark.asyncio
-async def test_direct_dispatch_of_expired_lease_recovers_unknown_without_io():
+async def test_direct_dispatch_of_expired_preparation_requeues_without_io():
     (
         worker,
         repository,
@@ -997,9 +999,11 @@ async def test_direct_dispatch_of_expired_lease_recovers_unknown_without_io():
     assert not transport.sent
     assert (
         work_repo.records[scope.assignment_id].collaboration.notice_failed_at
-        == clock.at
+        is None
     )
-    assert list(repository.outcomes.values())[0].status == "unknown"
+    assert list(repository.outcomes.values())[0].status == "obsolete"
+    await worker.run_once()
+    assert len(transport.sent) == 1
 
 
 @pytest.mark.asyncio

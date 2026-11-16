@@ -1,5 +1,6 @@
 """Receipt-aware durable workflow delivery with a fresh pre-transport check."""
 
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol
@@ -16,6 +17,8 @@ from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
     NoticeReceiptTransport,
+    ReceiptCard,
+    ReceiptLink,
 )
 from ugc_bot.application.order_summary_admin_text import (
     is_order_summary_review,
@@ -24,6 +27,15 @@ from ugc_bot.application.order_summary_admin_text import (
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.application.services.business_order_card import order_card_url
 from ugc_bot.domain.financial import utc
+
+_DESTINATION_FIELDS = (
+    "channel",
+    "address",
+    "address_kind",
+    "language",
+    "order_id",
+    "requester_telegram_id",
+)
 
 
 def _is_rate_limit(exc: DeliveryFailure) -> bool:
@@ -43,6 +55,7 @@ class WorkflowMessage:
     text: str
     action_url: str | None = None
     action_label: str | None = None
+    card: ReceiptCard | None = None
 
 
 @dataclass
@@ -71,12 +84,17 @@ class CustomerWorkflowDelivery:
 
     async def _message(self, current: dict) -> WorkflowMessage:
         url, label = None, None
+        card = None
         if current["request_id"]:
             text = current["text"]
             if is_order_summary_review(current):
                 text = order_summary_admin_text(current)
-            if current.get("order_id") and not current["part"]:
-                text = self._with_admin_order_link(text, current["order_id"])
+                if current.get("order_id"):
+                    text = self._with_admin_order_link(
+                        text, current["order_id"]
+                    )
+            elif current.get("kind") in ("support", "service"):
+                text, card = self._admin_card(current)
         else:
             stage, locale = current["stage"], current["language"]
             defaults = FOLLOWUP_TEXTS.get(locale, FOLLOWUP_TEXTS["ru"])
@@ -111,20 +129,48 @@ class CustomerWorkflowDelivery:
             text,
             url,
             label,
+            card,
         )
 
-    def _with_admin_order_link(self, text: str, order_id: UUID) -> str:
+    def _admin_order_url(self, order_id: UUID) -> str | None:
         base = order_card_url(self.admin_base_url)
         if not base:
-            return text
+            return None
         parsed = urlsplit(base)
         if parsed.query or parsed.fragment:
-            return text
+            return None
         base = base.rstrip("/")
         if not parsed.path.strip("/"):
             base += "/admin"
-        linked = f"{text}\n\nКарточка заказа: {base}/orders/{order_id}"
-        return linked if message_units(linked) <= 4000 else text
+        return f"{base}/orders/{order_id}"
+
+    def _with_admin_order_link(self, text: str, order_id: UUID) -> str:
+        if url := self._admin_order_url(order_id):
+            linked = f"{text}\n\nКарточка заказа: {url}"
+            if message_units(linked) <= 4000:
+                return linked
+        return text
+
+    def _admin_card(self, current: dict) -> tuple[str, ReceiptCard]:
+        text = current["text"]
+        links = []
+        if not current["part"]:
+            if order_id := current.get("order_id"):
+                url = self._admin_order_url(order_id)
+                if url and url.startswith("https://") and len(url) <= 2048:
+                    links.append(ReceiptLink("Открыть заказ", url))
+                else:
+                    text = self._with_admin_order_link(text, order_id)
+            requester = current.get("requester_telegram_id")
+            if (
+                current["channel"] == "telegram"
+                and isinstance(requester, str)
+                and re.fullmatch(r"[1-9][0-9]{0,15}", requester)
+            ):
+                links.append(
+                    ReceiptLink("Профиль клиента", f"tg://user?id={requester}")
+                )
+        return text, ReceiptCard(tuple(links))
 
     async def _retry_rate_limit(self, job: dict, delay: int) -> None:
         async with self.transactions.transaction() as session:
@@ -179,13 +225,7 @@ class CustomerWorkflowDelivery:
                 return False
             if any(
                 refreshed.get(key) != current.get(key)
-                for key in (
-                    "channel",
-                    "address",
-                    "address_kind",
-                    "language",
-                    "order_id",
-                )
+                for key in _DESTINATION_FIELDS
             ):
                 await self.repository.retry_preparation(
                     job, utc(self.clock.now()), session=session
@@ -200,13 +240,7 @@ class CustomerWorkflowDelivery:
                 return False
             if any(
                 started.get(key) != current.get(key)
-                for key in (
-                    "channel",
-                    "address",
-                    "address_kind",
-                    "language",
-                    "order_id",
-                )
+                for key in _DESTINATION_FIELDS
             ):
                 await self.repository.retry_before_transport(
                     job, utc(self.clock.now()), session=session
