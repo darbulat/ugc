@@ -13,6 +13,7 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeUser,
 )
+from ugc_bot.bot.customer_actions import PAYMENT_SUPPORT_PREFIX
 from ugc_bot.bot.telegram.handlers.my_orders import (
     _render_page,
     cancel_order_callback,
@@ -43,13 +44,18 @@ async def test_only_new_orders_show_cancel_and_payment_help(order_repo):
     text, keyboard = await _render_page(
         orders, 1, response_service, cancellation=cancellation
     )
-    callbacks = {b.callback_data for row in keyboard.rows for b in row}
+    buttons = [button for row in keyboard.rows for button in row]
+    callbacks = {
+        button.callback_data for button in buttons if button.callback_data
+    }
     assert "Отменён" in text
     assert callbacks == {
         f"pay_order:{orders[0].order_id}",
         f"{CANCEL_ORDER_PREFIX}{orders[0].order_id}",
-        payment_help_button(orders[0].order_id, "ru").callback_data,
     }
+    assert [button.url for button in buttons if button.url] == [
+        payment_help_button(orders[0].order_id, "ru").url
+    ]
 
 
 @pytest.mark.asyncio
@@ -104,7 +110,7 @@ async def test_payment_help_reuses_order_and_telegram_contact(
     state = FakeFSMContext()
     await handle_customer_problem(
         FakeCallback(
-            payment_help_button(order_id, "ru").callback_data,
+            f"{PAYMENT_SUPPORT_PREFIX}{order_id}",
             user,
             FakeMessage(user=user),
         ),

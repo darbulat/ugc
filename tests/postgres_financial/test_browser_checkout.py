@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import insert, select, update
+from sqlalchemy.exc import IntegrityError
 
 from tests.helpers.correction_approval_pg import ApprovalRuntime
 from tests.postgres_financial.test_checkout_runtime import (
@@ -27,6 +28,7 @@ from ugc_bot.domain.browser_checkout import (
 from ugc_bot.domain.checkout import NativePaidReceipt
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import BROWSER_ATTEMPTS
+from ugc_bot.infrastructure.db.checkout_models import AUTHORIZATIONS
 from ugc_bot.infrastructure.db.models import (
     OrderModel,
     OutboxEventModel,
@@ -39,6 +41,7 @@ from ugc_bot.infrastructure.db.repositories.browser_checkout import (
 from ugc_bot.infrastructure.db.repositories.entitlements import (
     SqlAlchemyClientEntitlementRepository,
 )
+from ugc_bot.infrastructure.db.repositories.financial_capture import intent_id
 from ugc_bot.infrastructure.db.repositories.order_notices import (
     SqlAlchemyOrderNoticeRepository,
 )
@@ -194,6 +197,9 @@ async def test_existing_telegram_authorization_blocks_browser_creation(
     await env["checkout"].authorize(oid, actor.external_id, "q", 1740000, "RUB")
     assert (await checkout.buyer_view(token))["state"] == "telegram_pending"
     with pytest.raises(OrderCreationError, match="telegram_payment_pending"):
+        await checkout.switch_to_browser(oid)
+    assert (await checkout.view(oid))["telegram_disabled"] is False
+    with pytest.raises(OrderCreationError, match="telegram_payment_pending"):
         await checkout.start(token, "buyer@example.com")
     receipt = NativePaidReceipt(
         actor.external_id,
@@ -220,6 +226,53 @@ async def test_existing_telegram_authorization_blocks_browser_creation(
     ).run_once()
     assert await checkout.buyer_view(token) == {"state": "paid", "url": None}
     gateway.observe.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_switch_keeps_link_and_blocks_telegram_before_browser_starts(
+    checkout_env,
+):
+    env = checkout_env
+    oid, actor = env["order"].order_id, env["actor"]
+    await env["checkout"].request_invoice(oid, actor, "native")
+    gateway = AsyncMock()
+    checkout = service(env, gateway)
+    token = await offer(checkout, oid)
+    assert (await env["checkout"].status(oid, actor))["can_open"]
+
+    await asyncio.gather(
+        checkout.switch_to_browser(oid), checkout.switch_to_browser(oid)
+    )
+    admin_view = await checkout.view(oid)
+    assert admin_view["telegram_disabled"] and admin_view["url"].endswith(
+        str(token)
+    )
+    assert (await checkout.buyer_view(token))["state"] == "available"
+    gateway.observe.assert_not_awaited()
+    native = await env["checkout"].status(oid, actor)
+    assert native["reason"] == "browser_payment_active"
+    assert not native["can_open"] and native["invoice_url"] is None
+    with pytest.raises(ValueError, match="browser_payment_active"):
+        await env["checkout"].authorize(
+            oid, actor.external_id, "old-link", 1740000, "RUB"
+        )
+    # Old app versions on a rolling deployment cannot insert an approval.
+    with pytest.raises(IntegrityError, match="browser_payment_active"):
+        async with env["transactions"].transaction() as session:
+            await session.execute(
+                insert(AUTHORIZATIONS).values(
+                    authorization_id=uuid4(),
+                    order_id=oid,
+                    account=env["config"].bot.telegram_payment_account_id,
+                    query_id="old-instance",
+                    payer_external_id=actor.external_id,
+                    client_id=actor.user_id,
+                    amount_minor=1740000,
+                    currency="RUB",
+                    intent_id=intent_id(oid),
+                    approved_at=datetime.now(timezone.utc),
+                )
+            )
 
 
 @pytest.mark.asyncio

@@ -460,7 +460,7 @@ def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
     checkout = SimpleNamespace(
         can_create=True,
         view=AsyncMock(return_value={"state": "available"}),
-        offer=AsyncMock(),
+        switch_to_browser=AsyncMock(),
     )
     monkeypatch.setenv("YOOKASSA_BROWSER_SHOP_ID", "123")
     monkeypatch.setenv("TELEGRAM_BOT_USERNAME", "@synthetic_bot")
@@ -478,32 +478,43 @@ def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
     assert client.app.state.browser_checkout is checkout
     url = f"/admin/orders/{order_id}/browser-payment"
     form = client.get(f"/admin/orders/{order_id}")
-    assert "Создать ссылку на оплату" in form.text
+    assert "Переключить на оплату в браузере" in form.text
     assert "receipt_email" not in form.text
     assert form.headers["cache-control"] == "private, no-store"
     token = re.search(r'name="csrf_token" value="([^"]+)"', form.text)[1]
     assert client.post(url, data={}).status_code == 403
-    checkout.offer.assert_not_awaited()
+    checkout.switch_to_browser.assert_not_awaited()
     response = client.post(
         url,
         data={"csrf_token": token},
         follow_redirects=False,
     )
     assert response.status_code == 303
-    checkout.offer.assert_awaited_once_with(order_id)
+    checkout.switch_to_browser.assert_awaited_once_with(order_id)
     link = f"https://bot.example.test/miniapp/browser-payment.html#{uuid4()}"
-    checkout.view.return_value = {"state": "available", "url": link}
-    assert link in client.get(f"/admin/orders/{order_id}").text
+    checkout.view.return_value = {
+        "state": "available",
+        "url": link,
+        "telegram_disabled": True,
+    }
+    detail = client.get(f"/admin/orders/{order_id}").text
+    assert link in detail
+    assert "Скопировать сообщение клиенту" in detail
+    assert "Переключить на оплату в браузере" not in detail
     review_link = (
         f"https://t.me/synthetic_bot?startapp=payreview_{order_id.hex}"
     )
     assert review_link not in client.get(f"/admin/orders/{order_id}").text
     checkout.view.return_value = {"state": "telegram_pending", "url": link}
-    assert review_link in client.get(f"/admin/orders/{order_id}").text
-    checkout.offer.side_effect = OrderCreationError("browser_payment_paused")
+    detail = client.get(f"/admin/orders/{order_id}").text
+    assert review_link in detail
+    assert link not in detail
+    checkout.switch_to_browser.side_effect = OrderCreationError(
+        "browser_payment_paused"
+    )
     response = client.post(url, data={"csrf_token": token})
     assert "Создание платёжных ссылок приостановлено" in response.text
-    checkout.offer.side_effect = LookupError("missing order")
+    checkout.switch_to_browser.side_effect = LookupError("missing order")
     response = client.post(url, data={"csrf_token": token})
     assert response.status_code == 404
     client.app.state.browser_checkout = None
@@ -514,7 +525,7 @@ def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
     assert client.get(url).json() == {"state": "paid", "url": None}
     paid = client.get(f"/admin/orders/{order_id}")
     assert "Заказ оплачен." in paid.text
-    assert "Создать ссылку на оплату" not in paid.text
+    assert "Переключить на оплату в браузере" not in paid.text
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)
     )

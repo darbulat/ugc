@@ -741,13 +741,13 @@ async def _render_page(
                         order.order_id, locale, f" №{creation_number}"
                     )
                 )
-                buttons_rows.append(
-                    [
-                        payment_help_button(
-                            order.order_id, locale, f" №{creation_number}"
-                        )
-                    ]
-                )
+            buttons_rows.append(
+                [
+                    payment_help_button(
+                        order.order_id, locale, f" №{creation_number}"
+                    )
+                ]
+            )
 
     btn_back = t.get("btn_back_arrow", "⬅️ Назад")
     btn_forward = t.get("btn_forward_arrow", "Вперед ➡️")

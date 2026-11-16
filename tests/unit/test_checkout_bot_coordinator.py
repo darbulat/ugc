@@ -7,7 +7,6 @@ from uuid import uuid4
 import pytest
 
 from tests.application.services.test_checkout_service import setup
-from ugc_bot.bot.customer_actions import PAYMENT_SUPPORT_PREFIX
 from ugc_bot.bot.telegram.handlers.checkout import send_checkout_if_v1
 from ugc_bot.domain.enums import MessengerType
 
@@ -89,5 +88,6 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         }
         assert expected[case] in message["text"]
         [[button]] = message["keyboard"].rows
-        assert button.callback_data == f"{PAYMENT_SUPPORT_PREFIX}{order_id}"
-        assert button.url is None
+        assert button.url.startswith("https://t.me/usemycontent?text=")
+        assert order_id.hex[:8].upper() in button.url
+        assert button.callback_data is None

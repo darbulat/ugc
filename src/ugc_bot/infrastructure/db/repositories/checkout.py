@@ -14,7 +14,7 @@ from ugc_bot.domain.checkout import CheckoutActor, PreparedInvoice
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus, UserStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     browser_capture_matches,
-    browser_payment_active,
+    telegram_payment_blocked,
 )
 from ugc_bot.infrastructure.db.checkout_models import (
     ATTEMPTS,
@@ -140,7 +140,7 @@ class SqlCheckoutRepository:
         current = await self._checkout(order_id, db, lock=True)
         intent = await db.get(OutboxEventModel, intent_id(order_id))
         if not self._original_client(order, current, intent) or await db.scalar(
-            select(browser_payment_active(order_id))
+            select(telegram_payment_blocked(order_id))
         ):
             return await self._snapshot(order, db)
         payload_hash = digest(
@@ -382,7 +382,7 @@ class SqlCheckoutRepository:
             else "not_requested"
         )
         browser_active = bool(
-            await db.scalar(select(browser_payment_active(order.order_id)))
+            await db.scalar(select(telegram_payment_blocked(order.order_id)))
         )
         if current and state == "creating" and current.lease_until <= now():
             state = "unknown"
@@ -604,7 +604,7 @@ class SqlCheckoutRepository:
         return value
 
     async def _native_authorization_checkout(self, order_id, db):
-        if await db.scalar(select(browser_payment_active(order_id))):
+        if await db.scalar(select(telegram_payment_blocked(order_id))):
             raise ValueError("browser_payment_active")
         return await self._checkout(order_id, db, lock=True)
 

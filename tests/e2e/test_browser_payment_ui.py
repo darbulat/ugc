@@ -42,6 +42,9 @@ def test_public_browser_payment_page(page, state):
 
     page.route("**/*", response)
     page.goto(f"{UMC}/miniapp/browser-payment.html#{token}")
+    expect(
+        page.get_by_role("link", name="Не получилось оплатить")
+    ).to_have_attribute("href", "https://t.me/usemycontent")
     email = page.get_by_role("textbox", name="Email для чека")
     if state == "available":
         email.fill("buyer@example.test")

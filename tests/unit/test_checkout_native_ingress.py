@@ -227,12 +227,9 @@ async def test_bot_v1_deep_link_uses_shared_checkout_without_second_invoice(
         messenger.send_text.await_args.kwargs["keyboard"].rows[0][0].url
         == "https://t.me/$actual_stored"
     )
-    assert (
-        messenger.send_text.await_args.kwargs["keyboard"]
-        .rows[1][0]
-        .callback_data
-        == f"customer:payment_help:{order_id}"
-    )
+    help_button = messenger.send_text.await_args.kwargs["keyboard"].rows[1][0]
+    assert help_button.url.startswith("https://t.me/usemycontent?text=")
+    assert order_id.hex[:8].upper() in help_button.url
     payments.validate_order_for_invoice.assert_not_awaited()
     messenger.send_invoice.assert_not_awaited()
 

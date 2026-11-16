@@ -12,13 +12,15 @@
   };
   var browserPayment={ru:'Для заказа открыт счёт в браузере. За ссылкой обратитесь в поддержку.',en:'A browser invoice is open for this order. Contact support for the link.',kk:'Бұл тапсырысқа браузерде төлеуге арналған шот ашылды. Сілтеме алу үшін қолдауға жазыңыз.',be:'Для заказу адкрыты рахунак у браўзеры. Па спасылку звярніцеся ў падтрымку.',uz:'Buyurtma uchun brauzerda to‘lash hisobi ochilgan. Havola uchun yordam xizmatiga murojaat qiling.'};
   var orderUnavailable={ru:'Заказ больше недоступен для оплаты.',en:'This order is no longer available for payment.',kk:'Бұл тапсырысқа енді төлем жасау мүмкін емес.',be:'Гэта замова больш недаступная для аплаты.',uz:'Bu buyurtma uchun endi to‘lov qilib bo‘lmaydi.'};
+  var paymentHelp={ru:'Не получилось оплатить',en:'Get payment help',kk:'Төлем бойынша көмек',be:'Дапамога з аплатай',uz:'To‘lov bo‘yicha yordam'};
   var state={order:null,data:null,busy:false,pending:null,generation:0,timer:null,poll:0,nativeOpen:false};
   function words(){return copy[(window._me||{}).locale]||copy.ru;}
   function node(tag,id){var element=document.createElement(tag);if(id) element.id=id;return element;}
   var panel=node('article','umc-checkout');panel.className='umc-checkout';
   var linkAccount=node('button','umc-checkout-link-account');linkAccount.type='button';linkAccount.className='btn btn-secondary';linkAccount.hidden=true;
   var title=node('h2'),amount=node('p'),status=node('p','umc-checkout-status'),error=node('p','umc-checkout-error'),action=node('button','umc-checkout-action'),refresh=node('button','umc-checkout-refresh');
-  status.setAttribute('role','status');status.setAttribute('aria-live','polite');error.className='error';action.className='btn';refresh.className='btn btn-secondary';action.type=refresh.type='button';panel.append(title,amount,status,error,action,linkAccount,refresh);
+  var help=node('a','umc-checkout-help');help.href='https://t.me/usemycontent';help.target='_blank';help.rel='noopener noreferrer';help.className='btn btn-secondary';
+  status.setAttribute('role','status');status.setAttribute('aria-live','polite');error.className='error';action.className='btn';refresh.className='btn btn-secondary';action.type=refresh.type='button';panel.append(title,amount,status,error,action,linkAccount,refresh,help);
   function platform(){return window.__miniapp_platform||'telegram';}
   function host(){return platform()==='max'?window.WebApp:(window.Telegram||{}).WebApp;}
   function visible(){return panel.isConnected&&!document.hidden&&!!panel.closest('.screen.active')&&!panel.parentElement.hidden;}
@@ -35,6 +37,9 @@
     sessionStorage.setItem(storageKey(),JSON.stringify(value));state.pending=value;return value;
   }
   function render(){
+    var locale=(window._me||{}).locale;
+    help.textContent=paymentHelp[locale]||paymentHelp.ru;
+    help.hidden=state.data?.capture_state==='confirmed';
     var c=words(),d=state.data||{};linkAccount.textContent=({ru:'Связать Telegram',en:'Link Telegram',kk:'Telegram байланыстыру',be:'Звязаць Telegram',uz:'Telegram hisobini bog‘lash'})[(window._me||{}).locale]||'Link Telegram';linkAccount.hidden=platform()!=='max'||!state.data||safeHandoff(d.telegram_handoff);linkAccount.disabled=state.busy;title.textContent=c.title;refresh.textContent=c.refresh;action.hidden=true;action.disabled=state.busy||state.nativeOpen;refresh.disabled=state.busy;
     amount.textContent=Number.isSafeInteger(d.amount_minor)&&d.amount_minor>0?c.source+': '+(d.amount_minor/100).toLocaleString((window._me||{}).locale||'ru',{minimumFractionDigits:2,maximumFractionDigits:2})+' '+d.currency:'';
     status.dataset.state=d.capture_state==='confirmed'?'confirmed':d.invoice_state||'unknown';

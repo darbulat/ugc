@@ -131,28 +131,39 @@
         {% elif payment_state == 'paid' %}
           <p role="status">Заказ оплачен.</p>
         {% endif %}
-        {% if browser_payment.url and payment_state != 'paid' %}
+        {% if browser_payment_can_create and not browser_payment.telegram_disabled and payment_state in ('available', 'canceled', 'failed', 'pending') %}
+          <form class="order-detail__closure" method="post" action="{{ request.url_for('create_browser_payment', order_id=order.order_id).include_query_params(return_to=back_url) }}">
+            <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+            <p>Оплата в Telegram для этого заказа закроется. Ссылка останется привязана к заказу.</p>
+            <button class="admin-button admin-button--primary" type="submit">Переключить на оплату в браузере</button>
+          </form>
+        {% elif browser_payment.url and payment_state not in ('paid', 'telegram_pending') %}
           <label for="browser-payment-url">Ссылка для клиента</label>
           <input id="browser-payment-url" type="url" value="{{ browser_payment.url }}" readonly size="48">
           <button class="admin-button" type="button" id="copy-browser-payment">Скопировать ссылку</button>
+          <button class="admin-button" type="button" id="copy-browser-message">Скопировать сообщение клиенту</button>
+          <textarea id="browser-payment-message" rows="5" readonly hidden>Добрый день! Заказ №{{ (order.order_id|string)[:8]|upper }} можно оплатить через ЮKassa в браузере.
+{{ browser_payment.url }}
+
+Откройте ссылку в браузере и введите email для чека. После оплаты статус заказа обновится автоматически.</textarea>
           <span id="browser-copy-feedback" role="status"></span>
           <script>
-            document.getElementById('copy-browser-payment').addEventListener('click', async function () {
-              const input = document.getElementById('browser-payment-url');
-              try {
-                await navigator.clipboard.writeText(input.value);
-                document.getElementById('browser-copy-feedback').textContent = 'Ссылка скопирована';
-              } catch {
-                input.focus();
-                input.select();
-              }
-            });
+            function copyBrowserPayment(buttonId, inputId, label) {
+              document.getElementById(buttonId).addEventListener('click', async function () {
+                const input = document.getElementById(inputId);
+                try {
+                  await navigator.clipboard.writeText(input.value);
+                  document.getElementById('browser-copy-feedback').textContent = label;
+                } catch {
+                  input.hidden = false;
+                  input.focus();
+                  input.select();
+                }
+              });
+            }
+            copyBrowserPayment('copy-browser-payment', 'browser-payment-url', 'Ссылка скопирована');
+            copyBrowserPayment('copy-browser-message', 'browser-payment-message', 'Сообщение скопировано');
           </script>
-        {% elif browser_payment_can_create and payment_state in ('available', 'telegram_pending', 'canceled', 'failed') %}
-          <form class="order-detail__closure" method="post" action="{{ request.url_for('create_browser_payment', order_id=order.order_id).include_query_params(return_to=back_url) }}">
-            <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
-            <button class="admin-button admin-button--primary" type="submit">Создать ссылку на оплату</button>
-          </form>
         {% endif %}
       {% endif %}
     </section>
