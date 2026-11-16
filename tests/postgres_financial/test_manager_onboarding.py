@@ -455,6 +455,7 @@ async def test_application_verification_review_and_directory(
             0
         ].web_app.url.endswith("?view=manager&section=creators")
     else:
+        assert "/manager" in confirmation.text
         assert (
             confirmation.reply_markup.inline_keyboard[0][0].callback_data
             == "mgr:status"

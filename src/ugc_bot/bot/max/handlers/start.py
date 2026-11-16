@@ -414,10 +414,17 @@ async def app_miniapp_command(incoming: IncomingMessage, deps: dict) -> None:
 
     parsed = urlparse(webhook_url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
-    keyboard = miniapp_open_inline_keyboard(base_url, platform="max")
+    subscriptions = (incoming.text or "").split()[1:] == ["subscriptions"]
+    keyboard = miniapp_open_inline_keyboard(
+        base_url, platform="max", subscriptions=subscriptions
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Откройте приложение для регистрации и работы с заказами:",
+        text=(
+            "Откройте настройки подписки."
+            if subscriptions
+            else "Откройте приложение для регистрации и работы с заказами:"
+        ),
         keyboard=keyboard,
     )
 

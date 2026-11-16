@@ -152,7 +152,7 @@ def instagram_verified_message(state, config):
         )
     return (
         text
-        + "Анкета передана команде. Сообщим в этом чате, когда примем решение.",
+        + "Анкета передана команде. Проверяйте статус заявки через /manager.",
         Keyboard(
             KeyboardKind.INLINE,
             [[Button(text="Проверить статус", callback_data="mgr:status")]],

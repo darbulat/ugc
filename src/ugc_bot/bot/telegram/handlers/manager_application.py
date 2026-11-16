@@ -116,7 +116,7 @@ async def show(message, row, config):
     if row["instagram_verified_at"]:
         status += "\n\n<b>Instagram подтверждён.</b>"
         if row["state"] in {"submitted", "clarify"}:
-            status += " Сообщим в этом чате, когда примем решение."
+            status += " Текущий статус заявки доступен в /manager."
     elif row["state"] == "submitted":
         status += (
             "\n\nПодтвердите Instagram, чтобы команда могла рассмотреть анкету."

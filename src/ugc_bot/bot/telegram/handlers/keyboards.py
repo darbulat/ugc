@@ -79,6 +79,7 @@ def miniapp_open_inline_keyboard(
     miniapp_url: str,
     *,
     platform: str = "",
+    subscriptions: bool = False,
 ) -> Keyboard:
     """Inline keyboard with single button to open Mini App."""
     if not (miniapp_url or miniapp_url.strip()):
@@ -87,12 +88,16 @@ def miniapp_open_inline_keyboard(
         url = miniapp_url.strip().rstrip("/") + "/miniapp/max_app.html"
     else:
         url = miniapp_url.strip().rstrip("/") + "/miniapp/app.html"
+    if subscriptions:
+        url += "?view=subscriptions"
     return Keyboard(
         kind=KeyboardKind.INLINE,
         rows=[
             [
                 Button(
-                    text=MINIAPP_OPEN_BUTTON_TEXT,
+                    text="Управление подпиской"
+                    if subscriptions
+                    else MINIAPP_OPEN_BUTTON_TEXT,
                     web_app_url=url,
                 )
             ]

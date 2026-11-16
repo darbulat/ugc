@@ -93,6 +93,13 @@ async def app_miniapp_command(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
+    subscriptions = (incoming.text or "").split()[1:] == ["subscriptions"]
+    if subscriptions and message.chat.type != "private":
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text="Отправьте /app subscriptions в личном чате с ботом.",
+        )
+        return
     base_url = getattr(config.webhook, "webhook_base_url", None) or ""
     if not base_url:
         await messenger_client.send_text(
@@ -100,7 +107,9 @@ async def app_miniapp_command(
             text="Mini App временно недоступен.",
         )
         return
-    keyboard = miniapp_open_inline_keyboard(base_url)
+    keyboard = miniapp_open_inline_keyboard(
+        base_url, subscriptions=subscriptions
+    )
     if not keyboard.rows:
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
@@ -109,7 +118,11 @@ async def app_miniapp_command(
         return
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text="Откройте приложение для регистрации и создания заказов.",
+        text=(
+            "Откройте настройки подписки."
+            if subscriptions
+            else "Откройте приложение для регистрации и создания заказов."
+        ),
         keyboard=keyboard,
     )
 

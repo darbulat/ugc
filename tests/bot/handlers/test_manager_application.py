@@ -327,7 +327,9 @@ async def test_manager_edits_submits_and_verifies_application(config):
     row["instagram_verified_at"] = object()
     await tap("status")
     assert "Instagram подтверждён" in message.answers[-1][0]
-    assert "Сообщим в этом чате" in message.answers[-1][0]
+    assert (
+        "Текущий статус заявки доступен в /manager." in message.answers[-1][0]
+    )
     await tap("instagram")
     assert "Instagram подтверждён" in message.answers[-1][0]
     assert service.instagram_challenge.await_count == 2
