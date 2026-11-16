@@ -620,7 +620,13 @@
       <p id="summary-role" class="hint"></p><h2 id="summary-source"></h2>
       <div class="umc-summary-total"><span id="summary-total-label"></span><strong id="summary-total"></strong></div>
       <p id="summary-contacts"></p><dl id="summary-states"></dl>
-      <p id="summary-empty" class="hint"></p><p id="summary-asof" class="hint"></p>
+      <p id="summary-empty" class="hint"></p>
+      <section id="summary-creator-contacts" aria-labelledby="summary-creator-contacts-title" hidden>
+        <h2 id="summary-creator-contacts-title"></h2>
+        <p id="summary-creator-contacts-empty" class="hint" hidden></p>
+        <ul id="summary-creator-contacts-list" class="umc-summary-contact-list"></ul>
+      </section>
+      <p id="summary-asof" class="hint"></p>
     </div>
     <button id="btn-summary-refresh" type="button" class="btn btn-secondary" data-umc-primary="1"></button>
     <button id="btn-summary-back" type="button" class="btn btn-secondary" data-umc-back></button>

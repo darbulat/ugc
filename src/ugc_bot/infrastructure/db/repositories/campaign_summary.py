@@ -22,7 +22,17 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS
+from ugc_bot.infrastructure.db.repositories.campaign_summary_contacts import (
+    confirmed_contacts,
+    contact_position,
+)
+from ugc_bot.infrastructure.db.repositories.creator_invites import (
+    invitations_available,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.invite_preview import (
+    preview_positions,
+)
 from ugc_bot.infrastructure.db.selection_delivery_models import (
     ACCEPTED,
     OUTCOMES,
@@ -92,13 +102,52 @@ class SqlAlchemyCampaignSummaryRepository:
         ):
             raise LookupError("summary_not_found")
         role = "client" if is_client else "manager"
+        include_contacts = (
+            is_client
+            and principal is not None
+            and principal.platform == "telegram"
+        )
         if order["financial_version"]:
-            result = await self._financial(db, order, actor_id, role)
+            result = await self._financial(
+                db, order, actor_id, role, include_contacts=include_contacts
+            )
         else:
-            result = await self._legacy(db, order, actor_id, role)
+            result = (
+                await self._preview(db, order_id, actor_id)
+                if include_contacts and order["complimentary"]
+                else None
+            )
+            if result is None:
+                result = await self._legacy(db, order, actor_id, role)
         return dict(result, order_id=order_id, role=role)
 
-    async def _financial(self, db, order, actor_id, role):
+    @staticmethod
+    async def _preview(db, order_id, actor_id):
+        if not await invitations_available(db):
+            return None
+        try:
+            rows = await preview_positions(db, order_id, actor_id)
+        except PermissionError:
+            return None
+        positions = [
+            contact_position(row.ordinal, row.instagram, row.telegram)
+            for row in rows
+        ]
+        counts = Counter(
+            "contact_received"
+            if row["instagram"] or row["telegram"]
+            else "awaiting_contact"
+            for row in positions
+        )
+        return dict(
+            source="invite_preview",
+            total=len(positions),
+            states=dict(counts),
+            contact_accepted=None,
+            creator_contacts=positions,
+        )
+
+    async def _financial(self, db, order, actor_id, role, *, include_contacts):
         installed = await db.scalar(
             text(
                 "SELECT to_regclass('financial_collaboration_events') "
@@ -180,12 +229,17 @@ class SqlAlchemyCampaignSummaryRepository:
                 event = latest.get(assignment["assignment_id"])
                 state = self._work_state(order, item, assignment, work, event)
             counts[state] += 1
-        return dict(
+        result = dict(
             source="financial_positions",
             total=len(items),
             states=dict(sorted(counts.items())),
             contact_accepted=contact_count,
         )
+        if include_contacts:
+            result["creator_contacts"] = await confirmed_contacts(
+                db, order, items, by_item, deliveries
+            )
+        return result
 
     @staticmethod
     async def _contact_count(db, deliveries, by_item):
