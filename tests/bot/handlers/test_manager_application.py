@@ -1,6 +1,7 @@
 """Telegram application entry, private contact sharing and submission."""
 
 import asyncio
+from datetime import datetime, timezone
 from itertools import count
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -102,28 +103,38 @@ async def test_active_admin_opens_workspace_without_a_candidate_application(
         "view=manager",
         "view=partner",
     ]
-    assert markup.inline_keyboard[3][0].callback_data == "mreview:q:0"
+    assert markup.inline_keyboard[3][0].callback_data == "mreview:q"
 
 
 def test_admin_review_queue_exposes_both_pagination_actions():
     from ugc_bot.bot.telegram.manager_review_messages import (
         REVIEW_PAGE_SIZE,
+        review_queue_cursor,
         review_queue_message,
     )
 
+    queued_at = datetime(2026, 11, 16, 12, 0, 0, 123456, tzinfo=timezone.utc)
     rows = [
-        {"user_id": uuid4(), "name": "", "username": f"Creator {index}"}
+        {
+            "user_id": uuid4(),
+            "name": "",
+            "username": f"Creator {index}",
+            "queued_at": queued_at,
+        }
         for index in range(REVIEW_PAGE_SIZE + 1)
     ]
 
-    _, markup = review_queue_message(rows, page=1)
+    _, markup = review_queue_message(rows, after=(queued_at, uuid4()))
 
     assert len(markup.rows[:-1]) == REVIEW_PAGE_SIZE
     assert markup.rows[0][0].text == "Creator 0"
-    assert [button.callback_data for button in markup.rows[-1]] == [
-        "mreview:q:0",
-        "mreview:q:2",
-    ]
+    first, next_page = [button.callback_data for button in markup.rows[-1]]
+    assert first == "mreview:q"
+    assert len(next_page.encode()) <= 64
+    assert review_queue_cursor(next_page.removeprefix("mreview:q:")) == (
+        queued_at,
+        rows[REVIEW_PAGE_SIZE - 1]["user_id"],
+    )
 
 
 @pytest.mark.asyncio

@@ -31,6 +31,7 @@ from ugc_bot.bot.telegram.manager_review_messages import (
     REVIEW_PREFIX,
     manager_workspace_keyboard,
     review_message,
+    review_queue_cursor,
     review_queue_message,
 )
 from ugc_bot.domain.enums import MessengerType, UserStatus
@@ -93,7 +94,7 @@ async def show_workspace(message, config, title, *, can_review=False):
             [
                 InlineKeyboardButton(
                     text="Заявки менеджеров",
-                    callback_data=f"{REVIEW_PREFIX}q:0",
+                    callback_data=f"{REVIEW_PREFIX}q",
                 )
             ]
         )
@@ -281,12 +282,18 @@ async def review_manager_in_telegram(
     action, _, payload = callback.data.removeprefix(REVIEW_PREFIX).partition(
         ":"
     )
-    if action == "q" and payload.isdecimal() and len(payload) <= 9:
-        page = int(payload)
+    if action == "q":
+        try:
+            after = review_queue_cursor(payload)
+        except (ValueError, OverflowError):
+            await callback.answer(
+                "Откройте список заявок заново.", show_alert=True
+            )
+            return
         rows = await manager_applications.review_queue(
-            offset=page * REVIEW_PAGE_SIZE, limit=REVIEW_PAGE_SIZE + 1
+            after=after, limit=REVIEW_PAGE_SIZE + 1
         )
-        text, markup = review_queue_message(rows, page)
+        text, markup = review_queue_message(rows, after=after)
         await callback.answer()
         await messenger_client.send_text(
             chat_id=str(message.chat.id), text=text, keyboard=markup

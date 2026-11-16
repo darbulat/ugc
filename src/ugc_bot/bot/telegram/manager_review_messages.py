@@ -1,7 +1,9 @@
 """Telegram cards for reviewing and welcoming managers."""
 
+from datetime import datetime, timedelta, timezone
 from html import escape
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.domain.manager_application import (
@@ -17,7 +19,17 @@ REVIEW_PREVIEW_UNITS = 550
 REVIEW_PAGE_SIZE = 10
 
 
-def review_queue_message(rows, page: int):
+def review_queue_cursor(payload: str) -> tuple[datetime, UUID] | None:
+    if not payload:
+        return None
+    micros, identity = payload.split(":", 1)
+    queued_at = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
+        microseconds=int(micros)
+    )
+    return queued_at, UUID(hex=identity)
+
+
+def review_queue_message(rows, *, after: tuple[datetime, UUID] | None):
     buttons = [
         [
             Button(
@@ -28,13 +40,17 @@ def review_queue_message(rows, page: int):
         for row in rows[:REVIEW_PAGE_SIZE]
     ]
     navigation = []
-    if page > 0:
+    if after is not None:
         navigation.append(
-            Button(text="Назад", callback_data=f"{REVIEW_PREFIX}q:{page - 1}")
+            Button(text="К началу", callback_data=f"{REVIEW_PREFIX}q")
         )
     if len(rows) > REVIEW_PAGE_SIZE:
+        last = rows[REVIEW_PAGE_SIZE - 1]
+        cursor = (
+            f"{application_version(last['queued_at'])}:{last['user_id'].hex}"
+        )
         navigation.append(
-            Button(text="Далее", callback_data=f"{REVIEW_PREFIX}q:{page + 1}")
+            Button(text="Далее", callback_data=f"{REVIEW_PREFIX}q:{cursor}")
         )
     if navigation:
         buttons.append(navigation)

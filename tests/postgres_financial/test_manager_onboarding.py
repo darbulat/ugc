@@ -38,6 +38,11 @@ from ugc_bot.bot.telegram.handlers.manager_application import (
     show,
 )
 from ugc_bot.bot.telegram.handlers.order_summary import render_card
+from ugc_bot.bot.telegram.manager_review_messages import (
+    REVIEW_PAGE_SIZE,
+    review_queue_cursor,
+    review_queue_message,
+)
 from ugc_bot.container.creator_invite_factory import build_creator_invites
 from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.domain.manager_application import (
@@ -48,6 +53,7 @@ from ugc_bot.domain.manager_application import (
     application_version,
 )
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ManagerOrderModel,
@@ -324,7 +330,7 @@ async def test_application_verification_review_and_directory(
     response = await click_review(open_button)
     assert "администраторам" in response.call_args.args[0]
     assert response.call_args.kwargs["show_alert"]
-    response = await click_review("mreview:q:0")
+    response = await click_review("mreview:q")
     assert "администраторам" in response.call_args.args[0]
     messenger.send_text.assert_not_awaited()
     reviewer.admin = True
@@ -333,9 +339,13 @@ async def test_application_verification_review_and_directory(
     response = await click_review(f"mreview:v:{uuid4().hex}")
     assert "не найдена" in response.call_args.args[0]
     messenger.send_text.assert_not_awaited()
-    await click_review("mreview:q:0")
+    await click_review("mreview:q")
     result = messenger.send_text.call_args.kwargs
     assert "нет заявок" in result["text"] and result["keyboard"] is None
+    response = await click_review("mreview:q:invalid")
+    response.assert_awaited_once_with(
+        "Откройте список заявок заново.", show_alert=True
+    )
 
     await click_review(open_button)
     displayed = messenger.send_text.call_args.kwargs
@@ -467,7 +477,7 @@ async def test_application_verification_review_and_directory(
     assert (await service.review_card(user_id))["state"] == "clarify"
     users.get_user.side_effect = roles.get_user
     for index in (0, 1):
-        response = await click_review("mreview:q:0", reviewer_index=index)
+        response = await click_review("mreview:q", reviewer_index=index)
         response.assert_awaited_once_with()
         queue = messenger.send_text.call_args.kwargs
         assert queue["chat_id"] == str(addresses[index])
@@ -488,7 +498,7 @@ async def test_application_verification_review_and_directory(
     )
     assert response.call_args.kwargs["show_alert"]
     assert "уже обработана" in response.call_args.args[0]
-    await click_review("mreview:q:0", reviewer_index=approver_index)
+    await click_review("mreview:q", reviewer_index=approver_index)
     assert messenger.send_text.call_args.kwargs["keyboard"] is None
     with Session(env["pg"]) as db, db.begin():
         manager = db.get(UserModel, user_id)
@@ -584,6 +594,53 @@ async def test_application_verification_review_and_directory(
         assert len(events) == 9 and all(
             event.status == "published" for event in events
         )
+
+
+@pytest.mark.asyncio
+async def test_review_queue_next_keeps_unseen_applications_after_approvals(
+    intake_env,
+):
+    env = intake_env
+    service = ManagerApplications(env["container"].transaction_manager, None)
+    queued_at = datetime.now(timezone.utc)
+    identities = sorted(uuid4() for _ in range(REVIEW_PAGE_SIZE + 1))
+    with Session(env["pg"]) as db, db.begin():
+        db.add_all(
+            UserModel(
+                user_id=identity,
+                username="Candidate",
+                status=UserStatus.ACTIVE,
+                messenger_type=MessengerType.TELEGRAM,
+            )
+            for identity in identities
+        )
+        db.flush()
+        db.execute(
+            APPLICATIONS.insert(),
+            [
+                {
+                    "user_id": identity,
+                    "state": "submitted",
+                    "answers": {},
+                    "updated_at": queued_at,
+                    "submitted_at": queued_at,
+                    "instagram_verified_at": queued_at,
+                }
+                for identity in identities
+            ],
+        )
+
+    first = await service.review_queue(after=None, limit=REVIEW_PAGE_SIZE + 1)
+    _, markup = review_queue_message(first, after=None)
+    next_page = markup.rows[-1][0].callback_data
+    after = review_queue_cursor(next_page.removeprefix("mreview:q:"))
+    for identity in (identities[0], identities[REVIEW_PAGE_SIZE - 1]):
+        await service.approve_in_telegram(
+            identity, env["admin"].user_id, application_version(queued_at)
+        )
+
+    second = await service.review_queue(after=after, limit=REVIEW_PAGE_SIZE + 1)
+    assert [row["user_id"] for row in second] == identities[REVIEW_PAGE_SIZE:]
 
 
 @pytest.mark.asyncio
