@@ -628,13 +628,26 @@ def test_dashboard_social_summary_links_and_layout(
         "(sections) => sections.map(section => "
         "section.getAttribute('aria-labelledby'))"
     )
-    assert section_ids[:5] == [
+    assert section_ids[:7] == [
+        "creator-goal-heading",
+        "attention-heading",
         "period-heading",
         "creators-heading",
         "charts-heading",
         "cohorts-heading",
         "creator-social-heading",
     ]
+    goal = page.get_by_role("region", name="Креаторы, завершившие заказ")
+    progress = goal.get_by_role("progressbar")
+    expect(progress).to_have_attribute("aria-valuemax", "1000")
+    assert progress.evaluate(
+        """(bar) => {
+          const bounds = bar.getBoundingClientRect();
+          const center = bounds.left + bounds.width / 2;
+          return bounds.left >= 0 && bounds.right <= window.innerWidth
+            && Math.abs(center - window.innerWidth / 2) < 24;
+        }"""
+    )
     summary = page.get_by_role("table", name="Соцсети креаторов")
     youtube = summary.get_by_role("row").filter(has_text="YouTube")
     expect(youtube.get_by_role("link")).to_have_text(["2", "2", "0"])
