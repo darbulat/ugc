@@ -41,11 +41,18 @@
     var label = platform + ': ' + value;
     if (!profile || profile[1] === '.' || profile[1] === '..') return node('p', label);
     var line = node('p', '');
-    var link = node('a', label);
+    var link = node('a', '');
     link.href = instagram ? 'https://instagram.com/' + profile[1] + '/' : 'https://t.me/' + profile[1];
-    link.className = 'themed-link';
+    link.className = 'btn btn-secondary umc-summary-contact-button';
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
+    var details = node('span', '');
+    var handle = node('span', '@' + profile[1]);
+    handle.className = 'umc-summary-contact-handle';
+    details.append(node('span', platform), handle);
+    var arrow = node('span', '↗');
+    arrow.setAttribute('aria-hidden', 'true');
+    link.append(details, arrow);
     line.appendChild(link);
     return line;
   }
