@@ -1174,6 +1174,39 @@ def test_miniapp_api_orders_list_success(client: TestClient) -> None:
     assert data["orders"] == []
 
 
+@pytest.mark.parametrize(
+    ("message", "error", "status"),
+    [
+        ("active_advertiser_required", PermissionError, 403),
+        ("order_status_invalid", ValueError, 422),
+    ],
+)
+def test_miniapp_order_history_returns_the_view_error(
+    client: TestClient, message: str, error: type[Exception], status: int
+) -> None:
+    from ugc_bot.application.native_principal_ports import (
+        AuthenticatedMessengerPrincipal,
+    )
+
+    init_data = _make_valid_init_data("test_token", 77777)
+    principal = AuthenticatedMessengerPrincipal(uuid4(), "telegram", "77777")
+    view = MagicMock()
+    view.list = AsyncMock(side_effect=error(message))
+    app.state.dispatcher["client_order_view_service"] = view
+    with patch(
+        "ugc_bot.miniapp.api.resolve_financial_principal",
+        new=AsyncMock(return_value=principal),
+    ):
+        response = client.post(
+            "/miniapp/api/orders/list", json={"init_data": init_data}
+        )
+    assert response.status_code == status
+    assert response.json() == {"detail": message}
+    view.list.assert_awaited_once_with(
+        principal.user_id, page=0, limit=10, status=None, principal=principal
+    )
+
+
 def test_miniapp_api_orders_list_includes_payment_link(
     client: TestClient,
 ) -> None:

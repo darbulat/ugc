@@ -65,6 +65,7 @@ class IntakeFacts:
         return self.policy
 
     async def create_financial_order(self, **values):
+        assert values["session"] is self
         self.calls.append("order_quote")
         self.orders.append(values["order_id"])
         quote = SimpleNamespace(
