@@ -225,6 +225,50 @@ def test_reopening_creator_agreement_discards_unsaved_map_pin(
     assert not errors
 
 
+def test_opening_creator_map_suggests_current_city_until_confirmed(
+    page: Page, platform: str
+) -> None:
+    class Network(MiniAppNetwork):
+        def route(self, route: Route) -> None:
+            if route.request.url.endswith("/geocode/reverse"):
+                self.requests.append(
+                    ("/geocode/reverse", route.request.post_data_json)
+                )
+                route.fulfill(
+                    json={
+                        "city": "Казань",
+                        "region": "Татарстан",
+                        "country": "Россия",
+                    }
+                )
+                return
+            super().route(route)
+
+    page.add_init_script("""
+      Object.defineProperty(navigator, 'geolocation', {
+        value: { getCurrentPosition(success) {
+          success({coords: {latitude: 55.78, longitude: 49.12}});
+        } }
+      });
+    """)
+    network = Network()
+    errors = open_app(page, network, platform, native=True)
+    page.locator('[data-role="blogger"]').click()
+    assert not any(path == "/geocode/reverse" for path, _ in network.requests)
+    page.locator("#btn-blogger-city-map").click()
+    expect(page.locator("#blg-city")).to_have_value("Казань")
+    expect(page.locator("#blg-lat")).to_have_value("")
+    page.wait_for_function(
+        "window.__host.wa.MainButton.params.text === 'Подтвердить город'"
+    )
+    page.evaluate("window.__host.wa.MainButton.click()")
+    expect(page.locator("#blg-lat")).to_have_value("55.78")
+    expect(page.locator("#blg-lon")).to_have_value("49.12")
+    expect(page.locator("#blg-region")).to_have_value("Татарстан")
+    expect(page.locator("#block-blogger-city-map")).to_be_hidden()
+    assert not errors
+
+
 @pytest.mark.parametrize("fail_refresh", [False, True])
 def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
     page: Page, platform: str, fail_refresh: bool
@@ -278,6 +322,12 @@ def test_creator_profile_waits_for_lookup_and_keeps_the_saved_pin(
     assert not any(path == "/register/blogger" for path, _ in network.requests)
     network.held[1].fulfill(json={"city": "New city", "lat": 3, "lon": 4})
     expect(page.locator("#blg-city")).to_have_value("New city")
+    page.locator("#btn-submit-blogger").click()
+    expect(page.locator("#blg-error")).to_have_text(
+        "Подтвердите найденный город."
+    )
+    assert not any(path == "/register/blogger" for path, _ in network.requests)
+    page.locator("#btn-blogger-city-confirm").click()
     network.fail_refresh = fail_refresh
     page.locator("#btn-submit-blogger").click()
     if fail_refresh:

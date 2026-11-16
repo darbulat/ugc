@@ -270,6 +270,7 @@ class TestMiniAppBlogger:
             "document.getElementById('blg-city').value.length > 0",
             timeout=15000,
         )
+        miniapp_page.locator("#btn-blogger-city-confirm").click()
 
         # Submit
         miniapp_page.locator("#btn-submit-blogger").click()
