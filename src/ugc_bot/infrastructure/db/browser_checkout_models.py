@@ -21,6 +21,18 @@ BROWSER_LINKS = sa.Table(
     sa.Column("token", sa.Uuid(), nullable=False, unique=True),
 )
 
+BROWSER_ONLY_ORDERS = sa.Table(
+    "browser_only_orders",
+    Base.metadata,
+    sa.Column(
+        "order_id",
+        sa.Uuid(),
+        sa.ForeignKey("orders.order_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("switched_at", sa.DateTime(timezone=True), nullable=False),
+)
+
 BROWSER_ATTEMPTS = sa.Table(
     "browser_checkout_attempts",
     Base.metadata,
@@ -76,6 +88,14 @@ def browser_payment_active(order_id):
         BROWSER_ATTEMPTS.c.order_id == order_id,
         BROWSER_ATTEMPTS.c.state.in_(ACTIVE_STATES),
     )
+
+
+def browser_only(order_id):
+    return sa.exists().where(BROWSER_ONLY_ORDERS.c.order_id == order_id)
+
+
+def telegram_payment_blocked(order_id):
+    return browser_payment_active(order_id) | browser_only(order_id)
 
 
 def browser_capture_matches(order_id, identity, captured_at):

@@ -40,6 +40,7 @@ class BrowserCheckoutService:
         token = view["token"]
         return {
             "state": view["state"],
+            "telegram_disabled": view["telegram_disabled"],
             "url": f"{self.public_base_url}{BROWSER_PAGE_PATH}#{token}"
             if token
             else None,
@@ -50,6 +51,14 @@ class BrowserCheckoutService:
             raise OrderCreationError("browser_payment_paused")
         async with self.transactions.transaction() as session:
             await self.repository.offer(order_id, session=session)
+
+    async def switch_to_browser(self, order_id: UUID) -> None:
+        if not self.can_create:
+            raise OrderCreationError("browser_payment_paused")
+        async with self.transactions.transaction() as session:
+            await self.repository.offer(
+                order_id, session=session, switch_to_browser=True
+            )
 
     async def buyer_view(self, token: UUID):
         async with self.transactions.transaction() as session:

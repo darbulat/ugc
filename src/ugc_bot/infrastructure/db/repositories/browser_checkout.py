@@ -13,6 +13,8 @@ from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     ACTIVE_STATES,
     BROWSER_LINKS,
+    BROWSER_ONLY_ORDERS,
+    browser_only,
 )
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     BROWSER_ATTEMPTS as ATTEMPTS,
@@ -44,7 +46,9 @@ class SqlBrowserCheckout:
         self.test_mode = test_mode
         self.notices = notices
 
-    async def offer(self, order_id: UUID, *, session) -> None:
+    async def offer(
+        self, order_id: UUID, *, session, switch_to_browser: bool = False
+    ) -> None:
         db = _session(session)
         owner = await db.scalar(
             select(OrderModel.advertiser_id).where(
@@ -58,6 +62,16 @@ class SqlBrowserCheckout:
             raise OrderCreationError("order_not_payable")
         if await self._paid(db, order_id):
             raise OrderCreationError("order_not_payable")
+        if switch_to_browser:
+            if await db.scalar(select(unresolved_telegram_payment(order_id))):
+                raise OrderCreationError("telegram_payment_pending")
+            if not await db.scalar(select(browser_only(order_id))):
+                await db.execute(
+                    insert(BROWSER_ONLY_ORDERS).values(
+                        order_id=order_id,
+                        switched_at=datetime.now(timezone.utc),
+                    )
+                )
         link = await self._link_for_order(db, order_id)
         if link is None:
             await db.execute(
@@ -131,7 +145,13 @@ class SqlBrowserCheckout:
                 OrderModel.advertiser_id == BROWSER_LINKS.c.client_id,
             )
         )
-        return {"state": view["state"], "token": token}
+        return {
+            "state": view["state"],
+            "token": token,
+            "telegram_disabled": bool(
+                await db.scalar(select(browser_only(order_id)))
+            ),
+        }
 
     async def _view(self, order_id, *, session):
         db = _session(session)
