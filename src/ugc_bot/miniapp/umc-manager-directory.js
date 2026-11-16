@@ -228,6 +228,7 @@
   document.addEventListener('umc:screen-change', function (event) {
     var screen = event.detail.screen;
     if (screen === 'screen-manager-orders') localize();
+    if (screen === listScreen && !context) openDirectory();
     if (context && screen !== listScreen && screen !== cardScreen) clear();
   });
 }());

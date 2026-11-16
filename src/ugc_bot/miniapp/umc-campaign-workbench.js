@@ -196,7 +196,15 @@
   function markView() { var url=new URL(location.href);url.searchParams.set('view','campaign-workbench');history.replaceState(null,'',url.href); }
   function open() { var current=document.querySelector('.screen.active');if(current&&current!==screen)state.back=current.id;invalidate();state.bound=bridge.createRequestContext();state.witness=bridge.createRequestContext();state.context=null;state.mode='list';state.rows=[];state.page=0;state.saved=null;state.raw={};state.pending=null;state.storageBlocked=false;state.preview=null;state.error='';state.notice='';state.conflict=false;markView();bridge.showScreen(screen.id);refresh();screen.querySelector('h1').focus(); }
   function ready() { document.querySelectorAll('[data-campaign-workbench-open]').forEach(function(el){el.textContent=c().entry;});var params=new URLSearchParams(location.search);if(params.getAll('view').length===1&&params.get('view')==='campaign-workbench'&&!['assignment','assignment_id','selection','selection_id'].some(function(k){return params.has(k);})&&!active())open(); }
-  ['screen-manager-orders','screen-partner','screen-campaign-settings'].forEach(function(name){var parent=id(name);if(parent){var entry=button(parent,c().entry,'',open);entry.dataset.campaignWorkbenchOpen='';if(window.UMCCampaignNavigation)window.UMCCampaignNavigation.register(entry,'workbench');else entry.hidden=true;}});
+  ['screen-manager-orders', 'screen-invited-creators', 'screen-partner', 'screen-campaign-settings'].forEach(function(name) {
+    var parent = id(name);
+    if (!parent) return;
+    var entry = button(parent, c().entry, '', open);
+    entry.dataset.campaignWorkbenchOpen = '';
+    if (name === 'screen-invited-creators') parent.querySelector('h1').after(entry);
+    if (window.UMCCampaignNavigation) window.UMCCampaignNavigation.register(entry, 'workbench');
+    else entry.hidden = true;
+  });
   document.addEventListener('umc:app-ready',ready);document.addEventListener('umc:screen-change',function(event){if(!event.detail)return;if(event.detail.screen!==screen.id&&state.bound)leave();else if(event.detail.screen===screen.id&&!state.bound){checkIdentity();state.bound=bridge.createRequestContext();if(!state.witness)state.witness=bridge.createRequestContext();state.generation++;markView();refresh();}});window.addEventListener('pagehide',invalidate);window.addEventListener('focus',checkIdentity);document.addEventListener('visibilitychange',checkIdentity);
   window.UMCCampaignWorkbench={open:open};if(window.__umcAppReady)ready();
 })();
