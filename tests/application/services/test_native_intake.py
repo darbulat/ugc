@@ -65,6 +65,7 @@ class IntakeFacts:
         return self.policy
 
     async def create_financial_order(self, **values):
+        assert values["session"] is self
         self.calls.append("order_quote")
         self.orders.append(values["order_id"])
         quote = SimpleNamespace(
@@ -98,7 +99,12 @@ class IntakeFacts:
 def setup(platform):
     command = OrderIntakeCommand(**values())
     client = IntakeClient(
-        command.client_id, "active", True, "RUB", country="ru"
+        command.client_id,
+        "active",
+        True,
+        "RUB",
+        country="ru",
+        agreement_confirmed=True,
     )
     facts = IntakeFacts(client)
     service = OrderIntakeService(
@@ -225,6 +231,23 @@ async def test_intake_real_memory_creation_and_cross_platform_receipt(managed):
         with pytest.raises(ValueError, match="financial_principal_changed"):
             await method(value, principal=proof)
     assert (facts.orders, facts.quotes, facts.leads, facts.receipt) == snapshot
+
+
+@pytest.mark.asyncio
+async def test_intake_retry_with_image_creates_no_partial_order():
+    service, facts, command, proof = ready()
+    command = replace(command, image_token=uuid4())
+    facts.client = replace(facts.client, agreement_confirmed=False)
+    with pytest.raises(
+        PermissionError, match="registration_agreement_required"
+    ):
+        await service.create(command, principal=proof)
+    assert "order_quote" not in facts.calls
+    facts.client = replace(facts.client, agreement_confirmed=True)
+    with pytest.raises(ValueError, match="image_upload_unavailable"):
+        await service.create(command, principal=proof)
+    assert "order_quote" in facts.calls
+    assert not facts.orders and not facts.quotes and facts.receipt is None
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 """Tests for blogger registration service."""
 
 from datetime import date, datetime, timezone
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
@@ -40,6 +41,65 @@ async def _seed_user(repo: InMemoryUserRepository) -> UUID:
     )
     await repo.save(user)
     return user.user_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preserve_location", [True, None])
+async def test_registration_edits_keep_the_saved_map_location(
+    preserve_location: bool | None,
+) -> None:
+    user_repo = InMemoryUserRepository()
+    user_id = await _seed_user(user_repo)
+    geocoder = Mock()
+    geocoder.geocode_with_details = AsyncMock(
+        return_value=(55.8, 37.7, "place", "city", "Another region", "Russia")
+    )
+    geocoder.accepts_as_place_or_region.return_value = True
+    service = BloggerRegistrationService(
+        user_repo=user_repo,
+        blogger_repo=InMemoryBloggerProfileRepository(),
+        geocoder=geocoder,
+    )
+    fields = {
+        "city": "Moscow",
+        "topics": {"selected": ["fitness"]},
+        "audience_gender": AudienceGender.ALL,
+        "audience_age_min": 18,
+        "audience_age_max": 35,
+        "audience_geo": "Moscow",
+        "barter": False,
+        "work_format": WorkFormat.UGC_ONLY,
+        "blogger_gender": BloggerGender.MALE,
+    }
+    point = "MULTIPOINT((37.621 55.749))"
+    await service.save_blogger_before_agreement(
+        user_id,
+        instagram_url="https://instagram.com/old",
+        price=1500,
+        region="Moscow region",
+        country="Russia",
+        location_geometry=point,
+        **fields,
+    )
+    result = await service.update_blogger_profile(user_id, price=2000)
+    assert result.profile is not None
+    assert result.profile.price == 2000
+    assert result.profile.location_geometry == point
+    changed_handle = await service.save_blogger_before_agreement(
+        user_id,
+        instagram_url="https://instagram.com/new",
+        price=2000,
+        preserve_location=preserve_location,
+        **fields,
+    )
+    assert changed_handle.location_geometry == point
+    assert changed_handle.region == "Moscow region"
+    assert changed_handle.country == "Russia"
+    geocoder.geocode_with_details.assert_not_awaited()
+    result = await service.update_blogger_profile(user_id, city="Moscow")
+    assert result.profile is not None
+    assert result.profile.location_geometry == "MULTIPOINT((37.7 55.8))"
+    geocoder.geocode_with_details.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -247,6 +307,12 @@ async def test_resolve_city_from_location_returns_result_from_geocoder() -> (
             None,
         ),
         ("Неизвестный", None, None, None),
+        (
+            "Казань",
+            (55.79, 49.12, "place", "city", "Tatarstan", "Russia"),
+            None,
+            None,
+        ),
     ],
 )
 async def test_resolve_city_identity(query, details, reverse, expected):

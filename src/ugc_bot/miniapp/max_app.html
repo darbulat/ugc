@@ -190,6 +190,7 @@
     </label>
     <div id="adv-agreement-error" class="error" role="alert" aria-live="assertive"></div>
     <button type="button" class="btn" id="btn-confirm-adv-agreement" data-umc-primary="20">Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="btn-agreement-orders" hidden>Мои заказы</button>
     <button type="button" class="btn btn-secondary" id="back-from-adv-agreements" data-umc-back>Назад</button>
   </div>
 
@@ -204,6 +205,8 @@
     </label>
     <div id="blg-agreement-error" class="error" role="alert" aria-live="assertive"></div>
     <button type="button" class="btn" id="btn-confirm-blg-agreement" data-umc-primary="20">Подтвердить согласие</button>
+    <button type="button" class="btn btn-secondary" id="btn-blogger-agreement-orders" hidden>Мои заказы</button>
+    <ul id="blogger-agreement-orders-list" hidden></ul>
     <button type="button" class="btn btn-secondary" id="back-from-blg-agreements" data-umc-back>Назад</button>
   </div>
 
@@ -614,11 +617,14 @@
       }
 
       function showScreen(id) {
+        if (id === 'screen-advertiser-dashboard' && resumeAgreement('advertiser')) return;
+        if (id === 'screen-blogger-dashboard' && resumeAgreement('blogger')) return;
         document.querySelectorAll('.screen').forEach(function(el) { el.classList.remove('active'); });
         var el = document.getElementById(id);
         if (el) {
           el.classList.add('active');
           document.dispatchEvent(new CustomEvent('umc:screen-change', { detail: { screen: id } }));
+          if (id === 'screen-blogger-dashboard') updateBloggerDashboardState(window._me);
         }
       }
 
@@ -644,9 +650,13 @@
         if (!initData) return Promise.reject(new Error('No initData'));
         var basePayload = { init_data: initData, platform: checkedAuth ? checkedAuth.platform : window.__miniapp_platform || 'telegram' };
         var payload = typeof body === 'object' ? (checkedAuth ? Object.assign({}, body, basePayload) : Object.assign(basePayload, body)) : basePayload;
+        var headers = { 'Content-Type': 'application/json' };
+        if (path === '/financial/orders' && window.UMCSelection && window.UMCSelection.supportsAgreementRecovery) {
+          headers['X-UMC-Agreement-Recovery'] = '1';
+        }
         return fetch(base + '/miniapp/api' + path, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: headers,
           body: JSON.stringify(payload)
         }).then(function(r) {
           if (!r.ok) {
@@ -675,8 +685,9 @@
           throw new Error('Откройте приложение заново, чтобы продолжить.');
         }
       }
-      function loadMe() {
-        var initial = getInitData(), platform = window.__miniapp_platform || 'telegram';
+      function loadMe(checkedAuth) {
+        var initial = checkedAuth ? checkedAuth.initData : getInitData();
+        var platform = checkedAuth ? checkedAuth.platform : window.__miniapp_platform || 'telegram';
         return api('/me', {}, {initData: initial, platform: platform}).then(function(data) {
           if (getInitData() !== initial || (window.__miniapp_platform || 'telegram') !== platform) {
             throw new Error('Откройте приложение заново, чтобы продолжить.');
@@ -685,6 +696,21 @@
           verifiedMePlatform = platform;
           window._me = data;
           return data;
+        });
+      }
+
+      function verifiedProfileRequest(path, body, options) {
+        var auth = {initData: verifiedMeAuth, platform: verifiedMePlatform};
+        return Promise.resolve().then(function() {
+          assertVerifiedMe(auth);
+          return api(path, body, auth);
+        }).then(function(result) {
+          assertVerifiedMe(auth);
+          if (options && options.onSaved) options.onSaved();
+          if (options && options.refreshProfile) {
+            return loadMe(auth).then(function() { return result; });
+          }
+          return result;
         });
       }
 
@@ -753,6 +779,7 @@
           set('blg-instagram', igUser);
         }
         set('blg-city', profile.city);
+        resetBloggerLocationDraft();
         set('blg-audience-geo', profile.audience_geo);
         set('blg-age-min', profile.audience_age_min);
         set('blg-age-max', profile.audience_age_max);
@@ -1608,6 +1635,7 @@
         setQ('#screen-advertiser-dashboard > .hint', L.adv_dashboard_hint);
         setText('btn-show-create-order', L.btn_create_order);
         setText('btn-show-orders-list', L.btn_my_orders);
+        setText('btn-agreement-orders', L.btn_my_orders);
         setText('btn-adv-update-profile', L.btn_update_profile);
         setText('btn-change-role-from-adv', L.btn_change_role);
         setQ('#block-create-order h2', L.new_order_h2);
@@ -1620,6 +1648,7 @@
         setQ('#screen-blogger-dashboard > .hint', L.blg_dashboard_hint);
         setText('btn-blogger-confirm-instagram', L.btn_confirm_instagram);
         setText('btn-blogger-orders', L.btn_blogger_orders);
+        setText('btn-blogger-agreement-orders', L.btn_blogger_orders);
         setQ('#block-blogger-orders-list h2', L.my_orders_h2);
         setText('hide-blogger-orders-list', L.btn_close);
         setText('btn-blogger-update-profile', L.btn_update_blg_profile);
@@ -1741,6 +1770,34 @@
         setText('mgr-creators-back', L.btn_back);
       }
 
+      function showAgreement(role, profile) {
+        var prefix = role === 'advertiser' ? 'adv' : 'blg';
+        if (role === 'advertiser') {
+          fillAdvertiserForm(profile);
+          document.getElementById('btn-agreement-orders').hidden = !(window._me || {}).has_advertiser_profile;
+        } else {
+          fillBloggerForm(profile);
+          document.getElementById('btn-blogger-agreement-orders').hidden = !(window._me || {}).has_blogger_profile;
+          var orders = document.getElementById('blogger-agreement-orders-list');
+          orders.replaceChildren();
+          orders.hidden = true;
+        }
+        fillAgreementsLinks('agreements-' + prefix + '-links', 'agreements-' + prefix + '-fallback');
+        document.getElementById(prefix + '-agree-checkbox').checked = false;
+        document.getElementById(prefix + '-agreement-error').textContent = '';
+        showScreen('screen-agreements-' + role);
+      }
+
+      function resumeAgreement(role, required) {
+        var profile = (window._me || {})[role + '_profile'];
+        if (!profile || (!required && profile.agreement_confirmed !== false)) return false;
+        if (required) {
+          try { assertVerifiedMe(); } catch (_) { return false; }
+        }
+        showAgreement(role, profile);
+        return true;
+      }
+
       function updateRegisterButtonLabels() {
         var me = window._me;
         var advBtn = document.getElementById('btn-submit-advertiser');
@@ -1773,7 +1830,6 @@
             }
           } else if (role === 'blogger') {
             if (me && me.has_blogger_profile) {
-              updateBloggerDashboardState(me);
               showScreen('screen-blogger-dashboard');
             } else {
               fillBloggerForm(me && me.blogger_profile);
@@ -1817,13 +1873,9 @@
         updateRegisterButtonLabels();
         showScreen('screen-register-blogger');
       });
-      document.getElementById('btn-blogger-orders').addEventListener('click', function() {
-        var block = document.getElementById('block-blogger-orders-list');
-        var ul = document.getElementById('blogger-orders-list');
-        if (!block || !ul) return;
-        block.style.display = 'block';
-        ul.innerHTML = '';
-        api('/orders/list/creator').then(function(data) {
+      function loadBloggerOrders(ul) {
+        ul.replaceChildren();
+        return verifiedProfileRequest('/orders/list/creator', {}).then(function(data) {
           (data.orders || []).forEach(function(o) {
             var li = document.createElement('li');
             var strong = document.createElement('strong');
@@ -1844,6 +1896,17 @@
           li.textContent = tx('orders_error');
           ul.appendChild(li);
         });
+      }
+      document.getElementById('btn-blogger-orders').addEventListener('click', function() {
+        document.getElementById('block-blogger-orders-list').style.display = 'block';
+        loadBloggerOrders(document.getElementById('blogger-orders-list'));
+      });
+      document.getElementById('btn-blogger-agreement-orders').addEventListener('click', function() {
+        var button = this;
+        var list = document.getElementById('blogger-agreement-orders-list');
+        list.hidden = false;
+        button.disabled = true;
+        loadBloggerOrders(list).finally(function() { button.disabled = false; });
       });
       document.getElementById('hide-blogger-orders-list').addEventListener('click', function() {
         var block = document.getElementById('block-blogger-orders-list');
@@ -1853,7 +1916,29 @@
       var bloggerCityMapInited = false;
       var bloggerCityMapInstance = null;
       var bloggerCityMarker = null;
+      var bloggerLocationRequest = 0;
+      var bloggerLocationPending = false;
+      var savedBloggerLocation = null;
       var hintElCityMap = document.getElementById('blg-city-map-hint');
+      function finishBloggerLocationRequest(request) {
+        if (request !== bloggerLocationRequest) return;
+        bloggerLocationPending = false;
+        var error = document.getElementById('blg-error');
+        if (error.textContent === tx('loading')) error.textContent = '';
+      }
+
+      function resetBloggerLocationDraft() {
+        finishBloggerLocationRequest(++bloggerLocationRequest);
+        ['blg-region', 'blg-country', 'blg-lat', 'blg-lon', 'blg-city-search'].forEach(function(id) {
+          document.getElementById(id).value = '';
+        });
+        if (bloggerCityMarker && bloggerCityMapInstance) {
+          bloggerCityMapInstance.removeLayer(bloggerCityMarker);
+          bloggerCityMarker = null;
+        }
+        hintElCityMap.textContent = tx('ph_blg_city_map_hint');
+      }
+
       function initBloggerCityMap() {
         if (!window.L) return;
         var map = L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
@@ -1873,11 +1958,14 @@
           );
         }
         map.on('click', function(e) {
+          var request = ++bloggerLocationRequest;
+          bloggerLocationPending = true;
           var lat = e.latlng.lat;
           var lon = e.latlng.lng;
           if (bloggerCityMarker) bloggerCityMarker.setLatLng(e.latlng);
           else bloggerCityMarker = L.marker(e.latlng).addTo(map);
           api('/geocode/reverse', { lat: lat, lon: lon }).then(function(data) {
+            if (request !== bloggerLocationRequest) return;
             document.getElementById('blg-city').value = data.city || '';
             document.getElementById('blg-region').value = data.region || '';
             document.getElementById('blg-country').value = data.country || '';
@@ -1885,8 +1973,8 @@
             document.getElementById('blg-lon').value = String(lon);
             if (hintElCityMap) hintElCityMap.textContent = 'Выбрано: ' + (data.city || '');
           }).catch(function() {
-            if (hintElCityMap) hintElCityMap.textContent = tx('city_error');
-          });
+            if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_error');
+          }).finally(function() { finishBloggerLocationRequest(request); });
         });
       }
       document.getElementById('btn-blogger-city-map').addEventListener('click', function() {
@@ -1911,7 +1999,10 @@
           bloggerCityMapInited = true;
           setTimeout(initBloggerCityMap, 100);
         }
+        var request = ++bloggerLocationRequest;
+        bloggerLocationPending = true;
         api('/geocode/forward', { city: query }).then(function(data) {
+          if (request !== bloggerLocationRequest) return;
           document.getElementById('blg-city').value = data.city || '';
           document.getElementById('blg-region').value = data.region || '';
           document.getElementById('blg-country').value = data.country || '';
@@ -1919,7 +2010,7 @@
           document.getElementById('blg-lon').value = String(data.lon);
           if (hintElCityMap) hintElCityMap.textContent = tx('city_selected') + (data.city || '');
           function applyOnMap() {
-            if (bloggerCityMapInstance) {
+            if (request === bloggerLocationRequest && bloggerCityMapInstance) {
               bloggerCityMapInstance.setView([data.lat, data.lon], 12);
               if (bloggerCityMarker) bloggerCityMarker.setLatLng([data.lat, data.lon]);
               else bloggerCityMarker = L.marker([data.lat, data.lon]).addTo(bloggerCityMapInstance);
@@ -1928,8 +2019,8 @@
           if (bloggerCityMapInstance) applyOnMap();
           else setTimeout(applyOnMap, 250);
         }).catch(function() {
-          if (hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
-        });
+          if (request === bloggerLocationRequest && hintElCityMap) hintElCityMap.textContent = tx('city_not_found');
+        }).finally(function() { finishBloggerLocationRequest(request); });
       });
       document.getElementById('blg-city-search').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
@@ -1948,15 +2039,22 @@
         }
         var btn = document.getElementById('btn-confirm-adv-agreement');
         if (btn) btn.disabled = true;
-        api('/register/advertiser/confirm-agreement', {}).then(function() {
-          return loadMe();
-        }).then(function() {
+        verifiedProfileRequest('/register/advertiser/confirm-agreement', {}, {refreshProfile: true}).then(function() {
           showScreen('screen-advertiser-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка';
         }).then(function() {
           if (btn) btn.disabled = false;
         });
+      });
+      document.getElementById('btn-agreement-orders').addEventListener('click', function() {
+        var error = document.getElementById('adv-agreement-error');
+        error.textContent = '';
+        try { assertVerifiedMe(); } catch (err) {
+          error.textContent = err.message;
+          return;
+        }
+        if (window.UMCCustomer) window.UMCCustomer.orders();
       });
       document.getElementById('back-from-adv-agreements').addEventListener('click', function() {
         showScreen('screen-register-advertiser');
@@ -1972,10 +2070,7 @@
         }
         var btn = document.getElementById('btn-confirm-blg-agreement');
         if (btn) btn.disabled = true;
-        api('/register/blogger/confirm-agreement', {}).then(function() {
-          return loadMe();
-        }).then(function(me) {
-          updateBloggerDashboardState(me || window._me);
+        verifiedProfileRequest('/register/blogger/confirm-agreement', {}, {refreshProfile: true}).then(function() {
           showScreen('screen-blogger-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка';
@@ -2014,16 +2109,13 @@
         };
         var advSubmitBtn = document.getElementById('btn-submit-advertiser');
         if (advSubmitBtn) advSubmitBtn.disabled = true;
-        api('/register/advertiser', payload).then(function(res) {
+        verifiedProfileRequest('/register/advertiser', payload, {refreshProfile: true}).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
-              fillAgreementsLinks('agreements-adv-links', 'agreements-adv-fallback');
-              document.getElementById('adv-agree-checkbox').checked = false;
-              document.getElementById('adv-agreement-error').textContent = '';
-              showScreen('screen-agreements-advertiser');
+              showAgreement('advertiser');
             });
           }
-          return loadMe().then(function() { showScreen('screen-advertiser-dashboard'); });
+          showScreen('screen-advertiser-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
@@ -2036,6 +2128,10 @@
         var errEl = document.getElementById('blg-error');
         var blgSubmitBtn = document.getElementById('btn-submit-blogger');
         errEl.textContent = '';
+        if (bloggerLocationPending) {
+          errEl.textContent = tx('loading');
+          return;
+        }
         if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         var topicsRaw = document.getElementById('blg-topics').value.trim();
         var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
@@ -2064,23 +2160,40 @@
         if (countryEl && countryEl.value.trim()) payload.country = countryEl.value.trim();
         var latEl = document.getElementById('blg-lat');
         var lonEl = document.getElementById('blg-lon');
+        var actor = (window._me || {}).user_id;
+        var selectedLocation = null;
         if (latEl && lonEl && latEl.value.trim() && lonEl.value.trim()) {
           payload.lat = parseFloat(latEl.value);
           payload.lon = parseFloat(lonEl.value);
+          selectedLocation = {
+            actor: actor,
+            platform: verifiedMePlatform,
+            city: payload.city,
+            fields: {lat: payload.lat, lon: payload.lon, region: payload.region, country: payload.country}
+          };
+        } else if ((window._me || {}).has_blogger_profile) {
+          payload.preserve_location = true;
+          // The previous API still needs coordinates during a rolling release.
+          if (actor && savedBloggerLocation && savedBloggerLocation.actor === actor &&
+              savedBloggerLocation.platform === verifiedMePlatform && savedBloggerLocation.city === payload.city) {
+            Object.assign(payload, savedBloggerLocation.fields);
+          }
         }
-        api('/register/blogger', payload).then(function(res) {
+        verifiedProfileRequest('/register/blogger', payload, {
+          refreshProfile: true,
+          onSaved: function() {
+            if (!selectedLocation) return;
+            savedBloggerLocation = selectedLocation;
+            var profile = (window._me || {}).blogger_profile;
+            if (profile) profile.city = selectedLocation.city;
+          }
+        }).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
-              fillAgreementsLinks('agreements-blg-links', 'agreements-blg-fallback');
-              document.getElementById('blg-agree-checkbox').checked = false;
-              document.getElementById('blg-agreement-error').textContent = '';
-              showScreen('screen-agreements-blogger');
+              showAgreement('blogger');
             });
           }
-          return loadMe().then(function(me) {
-            updateBloggerDashboardState(me || window._me);
-            showScreen('screen-blogger-dashboard');
-          });
+          showScreen('screen-blogger-dashboard');
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
@@ -2089,10 +2202,9 @@
       });
 
       document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
-        api('/blogger/instagram-verification/start', {}).then(function(res) {
+        verifiedProfileRequest('/blogger/instagram-verification/start', {}).then(function(res) {
           if (res.already_confirmed) {
-            return loadMe().then(function(me) {
-              updateBloggerDashboardState(me || window._me);
+            return loadMe().then(function() {
               showScreen('screen-blogger-dashboard');
             });
           }
@@ -2123,6 +2235,7 @@
           if (codeEl) codeEl.textContent = res.code || '';
           showScreen('screen-instagram-verification');
         }).catch(function(err) {
+          if (err.status === 403 && err.message === 'registration_agreement_required' && resumeAgreement('blogger', true)) return;
           var hint = document.querySelector('#screen-blogger-dashboard .hint');
           if (hint) hint.textContent = (err && err.message) || 'Ошибка загрузки';
         });
@@ -2135,8 +2248,7 @@
         else if (url) window.open(url, '_blank');
       });
       document.getElementById('btn-instagram-verification-back').addEventListener('click', function() {
-        loadMe().then(function(me) {
-          updateBloggerDashboardState(me || window._me);
+        loadMe().then(function() {
           showScreen('screen-blogger-dashboard');
         });
       });
@@ -3086,11 +3198,15 @@
         var managerBtn = document.getElementById('btn-manager-role');
         if (managerBtn) managerBtn.style.display = (me && me.is_manager) ? '' : 'none';
         var view = new URLSearchParams(location.search).get('view');
-        var openCreatorSocials = view === 'socials' && me.blogger_profile && me.blogger_profile.confirmed;
+        var creator = me.blogger_profile;
+        var advertiser = me.advertiser_profile;
+        var openCreator = creator && (
+          (view === 'socials' && (creator.confirmed || creator.agreement_confirmed === false)) ||
+          (!view && creator.agreement_confirmed === false && advertiser && advertiser.agreement_confirmed !== false)
+        );
         if (me.has_advertiser_profile && !me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreatorSocials)) {
-          updateBloggerDashboardState(me);
+        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
           showScreen('screen-blogger-dashboard');
         } else if (me.has_advertiser_profile && me.has_blogger_profile) {
           showScreen('screen-advertiser-dashboard');
@@ -3153,7 +3269,7 @@
           }
         });
       }
-      window.__umcAppBridge = { request: api, showScreen: showScreen, createRequestContext: createRequestContext, openOrder: openOrderDetail };
+      window.__umcAppBridge = { request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       // Deferred modules subscribe to app-ready and selection events.

@@ -29,6 +29,7 @@ from ugc_bot.application.services.admin_notification_service import (
 )
 from ugc_bot.application.services.blogger_registration_service import (
     BloggerRegistrationService,
+    preserve_saved_blogger_location,
 )
 from ugc_bot.application.services.geocoder import wkt_multipoint_from_lat_lon
 from ugc_bot.application.services.manager_service import (
@@ -57,7 +58,7 @@ from ugc_bot.bot.telegram.validators import (
     validate_topics,
 )
 from ugc_bot.domain.checkout import CheckoutActor
-from ugc_bot.domain.entities import OfferDispatch, Order
+from ugc_bot.domain.entities import BloggerProfile, OfferDispatch, Order
 from ugc_bot.domain.entities import User as UserEntity
 from ugc_bot.domain.enums import (
     AudienceGender,
@@ -229,12 +230,15 @@ class RegisterBloggerRequest(BaseModel):
     country: str | None = None
     lat: float | None = None  # from map picker; skip geocoder when set
     lon: float | None = None
+    preserve_location: bool | None = None
 
 
 def _location_geometry_from_blogger_request(
     body: RegisterBloggerRequest,
 ) -> str | None:
     """Build WKT from lat/lon when both are present and in valid range."""
+    if body.preserve_location is True:
+        return None
     if body.lat is None or body.lon is None:
         return None
     if not (-90 <= body.lat <= 90 and -180 <= body.lon <= 180):
@@ -783,6 +787,7 @@ def _blogger_profile_to_dict(blogger, user) -> dict | None:
         "display_name": getattr(user, "username", None) or "",
         "instagram_url": blogger.instagram_url,
         "confirmed": getattr(blogger, "confirmed", False),
+        "agreement_confirmed": blogger.agreement_confirmed_at is not None,
         "birth_date": birth_str,
         "topics": topics,
         "city": blogger.city,
@@ -827,6 +832,8 @@ async def me(request: Request, body: InitDataBody) -> MeResponse:
             "city": advertiser.city or "",
             "company_activity": advertiser.company_activity or "",
             "display_name": getattr(user, "username", None) or "",
+            "agreement_confirmed": advertiser.agreement_confirmed_at
+            is not None,
         }
     blg_profile = _blogger_profile_to_dict(blogger, user)
     # Resolve currency from country
@@ -1096,7 +1103,7 @@ def _validate_blogger_body(
 
 async def _blogger_register_update(
     svc: BloggerRegistrationService,
-    user_id: UUID,
+    profile: BloggerProfile,
     body: RegisterBloggerRequest,
     instagram_url: str,
     birth_date_val: date | None,
@@ -1107,12 +1114,22 @@ async def _blogger_register_update(
     location_geometry: str | None = None,
 ) -> dict:
     """Update existing blogger profile. Raises HTTPException on error."""
+    preserve_location = (
+        location_geometry is None
+        and preserve_saved_blogger_location(
+            profile,
+            body.preserve_location,
+            city=body.city,
+            region=body.region,
+            country=body.country,
+        )
+    )
     result = await svc.update_blogger_profile(
-        user_id,
+        profile.user_id,
         instagram_url=instagram_url,
-        city=body.city,
-        region=body.region,
-        country=body.country,
+        city=None if preserve_location else body.city,
+        region=None if preserve_location else body.region,
+        country=None if preserve_location else body.country,
         topics=topics_dict,
         audience_gender=audience_gender,
         audience_age_min=body.audience_age_min,
@@ -1130,7 +1147,14 @@ async def _blogger_register_update(
             status_code=400,
             detail="City could not be resolved. Try another city.",
         )
-    return {"ok": True, "user_id": str(user_id)}
+    return {
+        "ok": True,
+        "user_id": str(profile.user_id),
+        "needs_agreement": (
+            result.profile is not None
+            and result.profile.agreement_confirmed_at is None
+        ),
+    }
 
 
 async def _blogger_register_create(
@@ -1166,6 +1190,7 @@ async def _blogger_register_create(
         region=body.region,
         country=body.country,
         location_geometry=location_geometry,
+        preserve_location=body.preserve_location,
     )
     return {"ok": True, "user_id": str(user_id), "needs_agreement": True}
 
@@ -1228,7 +1253,7 @@ async def register_blogger(
         try:
             return await _blogger_register_update(
                 svc,
-                user_id,
+                existing,
                 body,
                 instagram_url,
                 birth_date_val,
@@ -1304,6 +1329,8 @@ async def start_instagram_verification(
         raise HTTPException(
             status_code=404, detail="Blogger profile not found."
         )
+    if blogger.agreement_confirmed_at is None:
+        raise HTTPException(403, "registration_agreement_required")
     if getattr(blogger, "confirmed", False):
         return {"already_confirmed": True}
     verification_service = dispatcher["instagram_verification_service"]
@@ -1414,6 +1441,8 @@ async def create_order(request: Request, body: CreateOrderRequest) -> dict:
             status_code=403,
             detail="Advertiser profile required. Register as advertiser first.",
         )
+    if advertiser.agreement_confirmed_at is None:
+        raise HTTPException(403, "registration_agreement_required")
     external_id = _get_external_id(
         request, body.init_data, platform=body.platform
     )

@@ -56,6 +56,26 @@ def _validate_blogger_input(
     return instagram_url_clean, city_clean, audience_geo_clean
 
 
+def preserve_saved_blogger_location(
+    profile: BloggerProfile | None,
+    requested: bool | None,
+    *,
+    city: str,
+    region: str | None,
+    country: str | None,
+) -> bool:
+    if profile is None or not profile.location_geometry:
+        return False
+    if requested is not None:
+        return requested
+    # Older Mini App pages send the saved city without a location flag.
+    return (
+        city.strip() == profile.city
+        and region in (None, profile.region)
+        and country in (None, profile.country)
+    )
+
+
 async def _resolve_location_and_geocoder_details(
     geocoder: Optional[GeocoderPort],
     city: str,
@@ -362,6 +382,7 @@ class BloggerRegistrationService:
         location_geometry: Optional[str] = None,
         country: Optional[str] = None,
         phone: Optional[str] = None,
+        preserve_location: bool | None = False,
     ) -> BloggerProfile:
         """Save blogger profile and update user before consent confirmation.
 
@@ -409,6 +430,20 @@ class BloggerRegistrationService:
                 geom_wkt = location_geometry
                 profile_region = region
                 profile_country = (country or "").strip()
+            elif (
+                existing_profile is not None
+                and preserve_saved_blogger_location(
+                    existing_profile,
+                    preserve_location,
+                    city=city_clean,
+                    region=region,
+                    country=country,
+                )
+            ):
+                city_clean = existing_profile.city
+                geom_wkt = existing_profile.location_geometry
+                profile_region = existing_profile.region
+                profile_country = existing_profile.country
             else:
                 (
                     geom_wkt,

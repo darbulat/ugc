@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.orm import Session
 
 from tests.helpers.factories import (
@@ -17,7 +17,11 @@ from tests.helpers.factories import (
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
 from ugc_bot.infrastructure.db.base import Base
-from ugc_bot.infrastructure.db.models import FinancialPolicyVersionModel
+from ugc_bot.infrastructure.db.models import (
+    AdvertiserProfileModel,
+    FinancialPolicyVersionModel,
+)
+from ugc_bot.infrastructure.db.order_notice_models import ORDER_NOTICE_EVENTS
 
 
 class Clock:
@@ -310,6 +314,46 @@ async def test_intake_receipt_rejects_forged_quote_before_atomic_commit(
     with pytest.raises(DBAPIError, match="intake_quote_mismatch"):
         await service(env, repository=ForgedReceipt()).create(source)
     assert scoped_rows(env, "orders", source.order_id) == []
+
+
+@pytest.mark.asyncio
+async def test_resumed_intake_with_unavailable_image_rolls_back(intake_env):
+    env = intake_env
+    intake = service(env)
+    assert intake.orders.order_notices is not None
+    source = command(env, service_mode="with_manager", image_token=uuid4())
+    profile = update(AdvertiserProfileModel).where(
+        AdvertiserProfileModel.user_id == env["user"].user_id
+    )
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(profile.values(agreement_confirmed_at=None))
+    with pytest.raises(
+        PermissionError, match="registration_agreement_required"
+    ):
+        await intake.create(source)
+    assert scoped_rows(env, "orders", source.order_id) == []
+
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(profile.values(agreement_confirmed_at=env["clock"].at))
+    with pytest.raises(ValueError, match="image_upload_unavailable"):
+        await intake.create(source)
+    for table in (
+        "orders",
+        "order_items",
+        "order_intake_receipts",
+        "accompaniment_leads",
+        "accompaniment_lead_outbox",
+    ):
+        assert scoped_rows(env, table, source.order_id) == []
+    with Session(env["pg"]) as db:
+        assert (
+            db.scalar(
+                select(ORDER_NOTICE_EVENTS.c.order_id).where(
+                    ORDER_NOTICE_EVENTS.c.order_id == source.order_id
+                )
+            )
+            is None
+        )
 
 
 @pytest.mark.asyncio

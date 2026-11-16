@@ -20,9 +20,14 @@ class MiniAppNetwork:
     def __init__(self, locale: str = "ru", registered: bool = False) -> None:
         self.locale = locale
         self.registered = registered
+        self.advertiser_agreed = True
+        self.advertiser_brand = "Previous brand"
         self.requests: list[tuple[str, dict]] = []
         self.failure = False
         self.blogger_registered = False
+        self.blogger_agreement_confirmed = None
+        self.blogger_city = ""
+        self.creator_orders: list[dict] = []
         self.manager = False
         self.manager_app_enabled = False
         self.order: dict = {}
@@ -36,14 +41,26 @@ class MiniAppNetwork:
             self.requests.append((path, body))
             if path == "/me":
                 data = {
+                    "user_id": body["init_data"],
                     "locale": self.locale,
                     "country": {"ru": "ru", "en": "ge", "kk": "kz"}[
                         self.locale
                     ],
                     "currency_symbol": self.symbol,
                     "has_advertiser_profile": self.registered,
+                    "advertiser_profile": {
+                        "agreement_confirmed": self.advertiser_agreed,
+                        "brand": self.advertiser_brand,
+                        "phone": "89001234567",
+                    }
+                    if self.registered
+                    else None,
                     "has_blogger_profile": self.blogger_registered,
-                    "blogger_profile": {"confirmed": False}
+                    "blogger_profile": {
+                        "confirmed": False,
+                        "agreement_confirmed": self.blogger_agreement_confirmed,
+                        "city": self.blogger_city,
+                    }
                     if self.blogger_registered
                     else None,
                     "is_manager": self.manager,
@@ -64,14 +81,17 @@ class MiniAppNetwork:
                         json={"detail": "Synthetic validation error"},
                     )
                     return
+                self.advertiser_brand = body["brand"]
                 data = {"needs_agreement": True}
             elif path == "/register/advertiser/confirm-agreement":
                 self.registered = True
+                self.advertiser_agreed = True
                 data = {"ok": True}
             elif path == "/register/blogger":
                 data = {"needs_agreement": True}
             elif path == "/register/blogger/confirm-agreement":
                 self.blogger_registered = True
+                self.blogger_agreement_confirmed = True
                 data = {"ok": True}
             elif path == "/geocode/forward":
                 data = {
@@ -82,7 +102,7 @@ class MiniAppNetwork:
                     "lon": 0,
                 }
             elif path == "/orders/list/creator":
-                data = {"orders": []}
+                data = {"orders": self.creator_orders}
             elif path == "/manager/orders":
                 data = {
                     "orders": [self.order] if self.order else [],
@@ -201,6 +221,29 @@ def test_manager_application_opens_bot_without_opening_advertiser_form(
     expect(link).to_be_hidden()
     page.locator("#btn-manager-role").click()
     expect(page.locator("#screen-manager-orders")).to_be_visible()
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_second_role_resumes_its_own_agreement(
+    page: Page, platform: str
+) -> None:
+    network = MiniAppNetwork(registered=True)
+    network.blogger_registered = True
+    network.blogger_agreement_confirmed = False
+    errors = open_app(page, network, platform)
+    expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+    page.locator("#back-from-blg-agreements").click()
+    page.locator("#back-from-blogger").click()
+
+    page.locator('[data-role="advertiser"]').click()
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    page.locator("#btn-change-role-from-adv").click()
+    page.locator('[data-role="blogger"]').click()
+    expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+    page.locator("#blg-agree-checkbox").check()
+    page.locator("#btn-confirm-blg-agreement").click()
+    expect(page.locator("#screen-blogger-dashboard")).to_be_visible()
     assert not errors
 
 

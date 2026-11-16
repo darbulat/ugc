@@ -158,16 +158,27 @@ def create_order_intake_router(
         if targeting is not None:
             targeting["platforms"] = tuple(targeting["platforms"])
             values["targeting"] = OrderTargeting(**targeting)
-        result = await service.create(
-            OrderIntakeCommand(
-                client_id=principal.user_id,
-                accompaniment_ordinals=(
-                    frozenset(selected) if selected is not None else None
+        try:
+            result = await service.create(
+                OrderIntakeCommand(
+                    client_id=principal.user_id,
+                    accompaniment_ordinals=(
+                        frozenset(selected) if selected is not None else None
+                    ),
+                    **values,
                 ),
-                **values,
-            ),
-            principal=principal,
-        )
+                principal=principal,
+            )
+        except PermissionError as error:
+            if (
+                error.args == ("registration_agreement_required",)
+                and request.headers.get("X-UMC-Agreement-Recovery") != "1"
+            ):
+                # Older Mini Apps interpret 401 as a request to reopen the app.
+                raise HTTPException(
+                    401, "registration_agreement_required"
+                ) from None
+            raise
         return OrderIntakeResponse(
             **asdict(result),
             public_number=public_order_number(result.order_id),

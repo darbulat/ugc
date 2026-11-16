@@ -72,10 +72,23 @@ class TestMiniAppAdvertiser:
         # Agreements
         wait_for_screen(miniapp_page, "screen-agreements-advertiser")
         miniapp_page.locator("#adv-agree-checkbox").check()
+        # An unchecked submission can be resumed even from an order link.
+        miniapp_page.goto(
+            f"{miniapp_base_url}/miniapp/app.html?view=order",
+            wait_until="load",
+        )
+        wait_for_screen(miniapp_page, "screen-agreements-advertiser")
+        expect(miniapp_page.locator("#adv-agree-checkbox")).not_to_be_checked()
+        expect(miniapp_page.locator("#screen-intake")).to_be_hidden()
+        miniapp_page.locator("#btn-agreement-orders").click()
+        wait_for_screen(miniapp_page, "screen-customer-orders")
+        miniapp_page.locator("#screen-customer-orders [data-umc-back]").click()
+        wait_for_screen(miniapp_page, "screen-agreements-advertiser")
+        miniapp_page.locator("#adv-agree-checkbox").check()
         miniapp_page.locator("#btn-confirm-adv-agreement").click()
 
-        # Dashboard
-        wait_for_screen(miniapp_page, "screen-advertiser-dashboard")
+        # The requested order brief opens once consent has been recorded.
+        wait_for_screen(miniapp_page, "screen-intake")
 
     def test_create_order(
         self,
@@ -262,6 +275,15 @@ class TestMiniAppBlogger:
         miniapp_page.locator("#btn-submit-blogger").click()
 
         # Agreements
+        wait_for_screen(miniapp_page, "screen-agreements-blogger")
+        miniapp_page.locator("#blg-agree-checkbox").check()
+        miniapp_page.reload(wait_until="load")
+        wait_for_screen(miniapp_page, "screen-agreements-blogger")
+        expect(miniapp_page.locator("#blg-agree-checkbox")).not_to_be_checked()
+        expect(miniapp_page.locator("#screen-blogger-dashboard")).to_be_hidden()
+        miniapp_page.locator("#back-from-blg-agreements").click()
+        miniapp_page.locator("#blg-price").fill("9500")
+        miniapp_page.locator("#btn-submit-blogger").click()
         wait_for_screen(miniapp_page, "screen-agreements-blogger")
         miniapp_page.locator("#blg-agree-checkbox").check()
         miniapp_page.locator("#btn-confirm-blg-agreement").click()

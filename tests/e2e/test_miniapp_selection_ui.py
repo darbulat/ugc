@@ -31,6 +31,7 @@ class SelectionNetwork(MiniAppNetwork):
         self.hold = False
         self.abort = False
         self.create_code = 200
+        self.create_error = "synthetic rejected retry"
         self.selection_code = 200
         self.policies = [
             {
@@ -113,6 +114,11 @@ class SelectionNetwork(MiniAppNetwork):
                     "currency_code": "RUB",
                     "currency_symbol": "₽",
                     "has_advertiser_profile": self.registered,
+                    "advertiser_profile": {
+                        "agreement_confirmed": self.advertiser_agreed
+                    }
+                    if self.registered
+                    else None,
                     "has_blogger_profile": False,
                     "is_manager": False,
                 }
@@ -148,7 +154,7 @@ class SelectionNetwork(MiniAppNetwork):
             elif self.create_code != 200:
                 route.fulfill(
                     status=self.create_code,
-                    json={"detail": "synthetic rejected retry"},
+                    json={"detail": self.create_error},
                 )
             elif self.hold:
                 self.pending.append((route, payload))

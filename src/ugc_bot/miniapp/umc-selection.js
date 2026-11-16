@@ -23,7 +23,7 @@
   Object.keys(paymentTogether).forEach(function(locale){copy[locale].paymentTogether=paymentTogether[locale];});
   Object.keys(clientCopy).forEach(function(locale){Object.assign(copy[locale],clientCopy[locale]);});
   var state = { busy:false, policies:[], pending:null, pendingEntry:null, completedEntry:null, result:null, order:null, intakeBack:'screen-advertiser-dashboard', selectionBack:'screen-advertiser-dashboard', opened:false };
-  var context=null,owner=null;
+  var context=null,owner=null,requestedIntake=null;
   function binding(){if(!context)context=bridge.createRequestContext();return context;}
   function id(name) { return document.getElementById(name); }
   function words() { return copy[(window._me || {}).locale] || copy.ru; }
@@ -156,6 +156,11 @@
       }).catch(function(){/* Keep the same key until cleanup succeeds. */}).then(function(){if(ctx.isCurrent())renderResult(data,entry);});
     }).catch(function(error) {
       if(!ctx.isCurrent())return;
+      if (error.status === 403 && error.message === 'registration_agreement_required' &&
+          deferIntake(undefined, state.intakeBack, true)) {
+        pendingView();
+        return;
+      }
       // If another window retried, the first rejection cannot settle the outcome.
       if((error.status===400 || error.status===422) && !isRetry) {
         return finishPending(owner,entry,'rejected').then(function(result){
@@ -193,7 +198,30 @@
       });
     }).catch(function(error) { if(!ctx.isCurrent())return;if(state.pending) pendingView(); if(error.intakeStorage)text('intake-error',words().storage);else failure(error,'intake-error'); }).finally(function() { if(ctx.isCurrent()){text('intake-loading',''); busy(false,intake);} });
   }
-  function openIntake(options) { if(state.busy) return; var current=document.querySelector('.screen.active'); if(current && current!==intake) state.intakeBack=current.id; bridge.showScreen(intake.id);if(options&&options.withManager)document.querySelector('[name="intake-mode"][value="with_manager"]').checked=true;loadPolicies(); }
+  function openIntake(options) {
+    if (state.busy) return;
+    var current = document.querySelector('.screen.active');
+    var back = current && current !== intake && current.id !== 'screen-agreements-advertiser'
+      ? current.id : state.intakeBack;
+    if (!deferIntake(options, back, false)) showIntake(options, back);
+  }
+  function deferIntake(options, back, required) {
+    if (!bridge.resumeAgreement || !bridge.resumeAgreement('advertiser', required)) return false;
+    requestedIntake = {options: options, back: back, context: binding()};
+    return true;
+  }
+  function showIntake(options, back) {
+    state.intakeBack = back;
+    bridge.showScreen(intake.id);
+    if (options && options.withManager) document.querySelector('[name="intake-mode"][value="with_manager"]').checked = true;
+    loadPolicies();
+  }
+  document.addEventListener('umc:screen-change', function(event) {
+    if (!requestedIntake || !event.detail || event.detail.screen !== 'screen-advertiser-dashboard') return;
+    var requested = requestedIntake;
+    requestedIntake = null;
+    if (requested.context.isCurrent()) showIntake(requested.options, requested.back);
+  });
   function key() { if(!window.crypto || !crypto.getRandomValues) return null; if(crypto.randomUUID) return crypto.randomUUID(); return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(n) { return n.toString(16).padStart(2,'0'); }).join(''); }
   id('form-umc-intake').addEventListener('submit',function(event) {
     event.preventDefault(); if(state.busy || state.pending || state.result || (window.UMCOrderImages && window.UMCOrderImages.busy())) return;
@@ -273,6 +301,6 @@
   function orderLinks() { list.querySelectorAll('[data-order-id]').forEach(function(row) { if(!row.dataset.financialVersion || row.querySelector('[data-selection-open]')) return; var button=node('button',words().viewSelection,'btn btn-secondary'); button.type='button'; button.dataset.selectionOpen=''; button.addEventListener('click',function(event) { event.preventDefault(); event.stopPropagation(); openSelection(row.dataset.orderId); }); row.appendChild(button); }); }
   new MutationObserver(orderLinks).observe(list,{childList:true,subtree:true});
   function ready() { var identity=(window.__miniapp_platform||'telegram')+':'+(window._me||{}).user_id;if(owner!==identity||(context&&!context.isCurrent())){owner=identity;if(context)context.dispose();context=null;state.busy=false;state.pending=null;state.pendingEntry=null;state.completedEntry=null;state.result=null;state.order=null;state.opened=false;freshDraft.hidden=true;id('form-umc-intake').reset();positionOptions();id('intake-result').hidden=true;id('intake-uncertain').hidden=true;id('selection-positions').replaceChildren();text('intake-order-id','');text('selection-order-id','');document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:null,target:null}}));}if(!context)context=bridge.createRequestContext();localize(); orderLinks();if(intake.classList.contains('active')){loadPolicies();return;} if(state.opened) return; var params=new URLSearchParams(location.search), values=params.getAll('selection');if(['orders','services','ratings'].indexOf(params.get('screen'))>=0&&params.has('order_id'))return;if(params.get('view')==='order'||params.get('tgWebAppStartParam')==='order'){state.opened=true;openIntake();return;} if(!values.length || params.has('assignment') || params.has('assignment_id') || params.get('view')==='partner') return; state.opened=true; openSelection(values.length===1?values[0]:null); }
-  window.UMCSelection={open:openSelection,create:openIntake,rebuildPositions:positionOptions};
+  window.UMCSelection={open:openSelection,create:openIntake,rebuildPositions:positionOptions,supportsAgreementRecovery:typeof bridge.resumeAgreement === 'function'};
   document.addEventListener('umc:app-ready',ready); if(window.__umcAppReady) ready();
 })();
