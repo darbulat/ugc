@@ -84,8 +84,8 @@ async def test_default_off_delivers_admin_work_without_consuming_followups(
         is not None
     )
     assert await worker.run_once() == 1
-    assert "5000 RUB" in transport.send.call_args.args[0].text
-    assert "500 RUB" in transport.send.call_args.args[0].text
+    assert "5 000 ₽" in transport.send.call_args.args[0].text
+    assert "500 ₽" in transport.send.call_args.args[0].text
 
 
 @pytest.mark.asyncio

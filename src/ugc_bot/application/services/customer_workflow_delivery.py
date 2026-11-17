@@ -12,7 +12,10 @@ from ugc_bot.application.customer_request_admin_text import message_units
 from ugc_bot.application.customer_workflow_ports import (
     CustomerWorkflowRepository,
 )
-from ugc_bot.application.customer_workflow_texts import FOLLOWUP_TEXTS
+from ugc_bot.application.customer_workflow_texts import (
+    FOLLOWUP_ACTIONS,
+    FOLLOWUP_TEXTS,
+)
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
@@ -36,6 +39,7 @@ _DESTINATION_FIELDS = (
     "order_id",
     "requester_telegram_id",
 )
+_SUPPORT_URL = "https://t.me/usemycontent"
 
 
 def _is_rate_limit(exc: DeliveryFailure) -> bool:
@@ -83,44 +87,61 @@ class CustomerWorkflowDelivery:
             )
 
     async def _message(self, current: dict) -> WorkflowMessage:
-        url, label = None, None
-        card = None
-        if current["request_id"]:
-            text = current["text"]
-            if is_order_summary_review(current):
-                text = order_summary_admin_text(current)
-                if current.get("order_id"):
-                    text = self._with_admin_order_link(
-                        text, current["order_id"]
-                    )
-            elif current.get("kind") in ("support", "service"):
-                text, card = self._admin_card(current)
-        else:
-            stage, locale = current["stage"], current["language"]
-            defaults = FOLLOWUP_TEXTS.get(locale, FOLLOWUP_TEXTS["ru"])
-            text, label = defaults[stage - 1], defaults[3]
-            if self.texts:
-                text = (
-                    await self.texts.get(f"customer_followup_{stage}", locale)
-                    or text
+        if not current["request_id"]:
+            return await self._followup_message(current)
+        text, card = current["text"], None
+        if is_order_summary_review(current):
+            text = order_summary_admin_text(current)
+            if current.get("order_id"):
+                text = self._with_admin_order_link(text, current["order_id"])
+        elif current.get("kind") in ("support", "service"):
+            text, card = self._admin_card(current)
+        return WorkflowMessage(
+            current["job_id"],
+            current["channel"],
+            current["address"],
+            current["address_kind"],
+            text,
+            card=card,
+        )
+
+    async def _followup_message(self, current: dict) -> WorkflowMessage:
+        stage, locale = current["stage"], current["language"]
+        defaults = FOLLOWUP_TEXTS.get(locale, FOLLOWUP_TEXTS["ru"])
+        actions = FOLLOWUP_ACTIONS.get(locale, FOLLOWUP_ACTIONS["ru"])
+        text, label = defaults[stage - 1], defaults[3]
+        support_label = actions[1]
+        action_key = "customer_followup_action"
+        if stage == 3:
+            label = actions[0]
+            action_key = "customer_followup_services_action"
+        if self.texts:
+            text = (
+                await self.texts.get(f"customer_followup_{stage}", locale)
+                or text
+            )
+            label = await self.texts.get(action_key, locale) or label
+            if stage >= 2:
+                support_label = (
+                    await self.texts.get("customer_followup_support", locale)
+                    or support_label
                 )
-                label = (
-                    await self.texts.get("customer_followup_action", locale)
-                    or label
-                )
-            if self.offer_loader:
-                offer = await self.offer_loader(current)
-                if offer:
-                    text += "\n\n" + offer_text(offer, locale)
-            base = self.action_urls.get(current["channel"], "")
-            if not base:
-                raise DeliveryFailure(
-                    "followup_action_unavailable", uncertain=False
-                )
-            query = {"screen": "services" if stage == 3 else "orders"}
-            if current["order_id"]:
-                query["order_id"] = str(current["order_id"])
-            url = base + ("&" if "?" in base else "?") + urlencode(query)
+        if self.offer_loader and stage < 3:
+            offer = await self.offer_loader(current)
+            if offer:
+                text += "\n\n" + offer_text(offer, locale, stage=stage)
+        card = ReceiptCard(
+            (ReceiptLink(support_label, _SUPPORT_URL),) if stage >= 2 else ()
+        )
+        base = self.action_urls.get(current["channel"], "")
+        if not base:
+            raise DeliveryFailure(
+                "followup_action_unavailable", uncertain=False
+            )
+        query = {"screen": "services" if stage == 3 else "orders"}
+        if current["order_id"]:
+            query["order_id"] = str(current["order_id"])
+        url = base + ("&" if "?" in base else "?") + urlencode(query)
         return WorkflowMessage(
             current["job_id"],
             current["channel"],

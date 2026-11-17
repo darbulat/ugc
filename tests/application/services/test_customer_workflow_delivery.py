@@ -8,7 +8,11 @@ from uuid import uuid4
 
 import pytest
 
-from ugc_bot.application.customer_workflow_texts import bot_text_defaults
+from ugc_bot.application.customer_workflow_texts import (
+    FOLLOWUP_ACTIONS,
+    FOLLOWUP_TEXTS,
+    bot_text_defaults,
+)
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
     DeliveryReceipt,
@@ -100,7 +104,9 @@ async def test_followup_localization_actions_and_missing_channel_url():
     )
     transport = AsyncMock()
     transport.send.return_value = DeliveryReceipt("max", "ok")
-    texts = SimpleNamespace(get=AsyncMock(side_effect=["Custom body", "Open"]))
+    texts = SimpleNamespace(
+        get=AsyncMock(side_effect=["Custom body", "Open", "Help"])
+    )
     worker = CustomerWorkflowDelivery(
         repo,
         Transactions(),
@@ -115,6 +121,12 @@ async def test_followup_localization_actions_and_missing_channel_url():
         message.text == "Custom body"
         and "&screen=services&order_id=" in message.action_url
     )
+    assert message.action_label == "Open"
+    assert message.card.links[0].label == "Help"
+    assert texts.get.await_args_list[1].args == (
+        "customer_followup_services_action",
+        "en",
+    )
     worker.texts = None
     worker.action_urls = {}
     assert await worker.deliver(job)
@@ -123,6 +135,98 @@ async def test_followup_localization_actions_and_missing_channel_url():
     assert await worker.deliver(job) is False
     assert repo.finish.call_args.args[1] == "obsolete"
     assert set(bot_text_defaults()) == {"ru", "en", "kk", "be", "uz"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", [1, 2, 3])
+@pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz", "unknown"])
+async def test_followup_cards_keep_stage_actions_and_support(stage, locale):
+    order_id = uuid4()
+    current = dict(
+        job_id=uuid4(),
+        request_id=None,
+        channel="telegram",
+        address="123",
+        address_kind="chat_id",
+        stage=stage,
+        language=locale,
+        order_id=order_id,
+    )
+    offer_loader = AsyncMock(return_value=None)
+    worker = CustomerWorkflowDelivery(
+        SimpleNamespace(),
+        Transactions(),
+        AsyncMock(),
+        SimpleNamespace(),
+        {"telegram": "https://example.test/miniapp/app.html"},
+        offer_loader=offer_loader,
+    )
+    message = await worker._message(current)
+    expected_locale = locale if locale in FOLLOWUP_TEXTS else "ru"
+    actions = FOLLOWUP_ACTIONS[expected_locale]
+    assert message.text == FOLLOWUP_TEXTS[expected_locale][stage - 1]
+    assert "\n\n" in message.text
+    assert message.action_label == (
+        actions[0] if stage == 3 else FOLLOWUP_TEXTS[expected_locale][3]
+    )
+    screen = "services" if stage == 3 else "orders"
+    assert message.action_url.endswith(f"?screen={screen}&order_id={order_id}")
+    if stage == 1:
+        assert message.card.links == ()
+    else:
+        (support,) = message.card.links
+        assert support.label == actions[1]
+        assert support.url == "https://t.me/usemycontent"
+    assert offer_loader.await_count == (0 if stage == 3 else 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", [1, 2])
+@pytest.mark.parametrize("saved", [False, True])
+@pytest.mark.parametrize("currency", ["RUB", "KZT"])
+async def test_followup_prices_use_loaded_quote(stage, saved, currency):
+    offer = dict(
+        saved=saved,
+        position_count=7,
+        selection_base_minor=864192,
+        selection_unit_minor=123456,
+        accompaniment_unit_minor=234567,
+        currency=currency,
+    )
+    current = dict(
+        job_id=uuid4(),
+        request_id=None,
+        channel="telegram",
+        address="123",
+        address_kind="chat_id",
+        stage=stage,
+        language="ru",
+        order_id=uuid4() if saved else None,
+    )
+    worker = CustomerWorkflowDelivery(
+        SimpleNamespace(),
+        Transactions(),
+        AsyncMock(),
+        SimpleNamespace(),
+        {"telegram": "https://example.test"},
+        offer_loader=AsyncMock(return_value=offer),
+    )
+    message = await worker._message(current)
+    currency_label = "₽" if currency == "RUB" else "KZT"
+    selection = (
+        "Ваш подбор из 7 авторов — " if saved else "Подбор 7 авторов — от "
+    )
+    assert selection + f"8 641,92 {currency_label}" in message.text
+    if stage == 1:
+        assert (
+            f"Стоимость за автора — 1 234,56 {currency_label}" in message.text
+        )
+        assert "Сопровождение менеджера" not in message.text
+    else:
+        assert (
+            f"Сопровождение менеджера — 2 345,67 {currency_label} "
+            "за выбранного автора" in message.text
+        )
 
 
 @pytest.mark.asyncio
