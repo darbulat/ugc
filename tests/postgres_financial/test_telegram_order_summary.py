@@ -79,7 +79,9 @@ def fake_telegram():
     )
 
 
-async def paid_order(env, *, size=10, interested_creators=None):
+async def paid_order(
+    env, *, size=10, interested_creators=None, deliver_contacts=True
+):
     oid = (
         await service(env).create(command(env, position_count=size))
     ).order_id
@@ -143,8 +145,9 @@ async def paid_order(env, *, size=10, interested_creators=None):
         for cid in creators
     ]
     bot = fake_telegram()
-    delivery = container.build_paid_selection_delivery(bot)
-    await delivery.run_once()
+    if deliver_contacts:
+        delivery = container.build_paid_selection_delivery(bot)
+        await delivery.run_once()
     config = env["config"].model_copy(
         update={
             "order": env["config"].order.model_copy(
