@@ -36,16 +36,99 @@ const audience = document.getElementById("order-edit-audience");
 const watched = [...audience.querySelectorAll("input, select, textarea"),
   editor.elements.namedItem("order_type"), editor.elements.namedItem("price")];
 const savedAudience = watched.map(readValue);
-const countHint = document.getElementById("order-audience-dirty");
-for (const field of watched) {
-  field.addEventListener("input", () => {
-    countHint.hidden = !watched.some((item, index) => readValue(item) !== savedAudience[index]);
-  });
+const savedCount = document.getElementById("order-audience-saved");
+const preview = document.getElementById("order-audience-preview");
+const previewCount = document.getElementById("order-audience-count");
+const previewHint = document.getElementById("order-audience-hint");
+const {previewUrl, needed} = preview.parentElement.dataset;
+let audienceTimer;
+let audienceRequest;
+
+for (const field of watched) field.addEventListener("input", scheduleAudiencePreview);
+
+function scheduleAudiencePreview() {
+  clearTimeout(audienceTimer);
+  audienceRequest?.abort();
+  const changed = watched.some((item, i) => readValue(item) !== savedAudience[i]);
+  savedCount.hidden = changed;
+  preview.hidden = !changed;
+  if (!changed) return;
+  previewCount.textContent = "Считаем выборку…";
+  previewHint.textContent = "По фильтрам в редакторе";
+  previewCount.classList.remove("text-danger");
+  audienceTimer = setTimeout(updateAudiencePreview, 450);
+}
+
+async function updateAudiencePreview() {
+  const controller = new AbortController();
+  audienceRequest = controller;
+  const url = new URL(previewUrl, location.href);
+  for (const field of watched) {
+    const value = field.tagName === "SELECT" && field.value === "__None" ? "" : readValue(field);
+    url.searchParams.set(field.name, value);
+  }
+  try {
+    const response = await fetch(url, {signal: controller.signal, cache: "no-store"});
+    const result = await response.json();
+    if (controller.signal.aborted) return;
+    if (!response.ok) throw new Error(result.detail);
+    previewCount.textContent = `Подходят ${result.count} креаторов`;
+    previewHint.textContent = result.count < Number(needed)
+      ? `Выборка меньше числа креаторов в заказе (${needed}). Фильтры ещё не сохранены.`
+      : "По новым фильтрам. Изменения ещё не сохранены.";
+    previewCount.classList.toggle("text-danger", result.count < Number(needed));
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    previewCount.textContent = "Выборка недоступна";
+    previewCount.classList.add("text-danger");
+    previewHint.textContent = error.message || "Проверьте фильтры.";
+  }
 }
 
 function readValue(field) {
   return field.type === "checkbox" ? field.checked : field.value;
 }
+
+editor.addEventListener("submit", (event) => {
+  if (event.submitter?.value === "Activate order" &&
+      !window.confirm("Активировать заказ? Подходящим креаторам будет отправлено предложение.")) {
+    event.preventDefault();
+  }
+});
+
+const briefLink = editor.elements.namedItem("brief_link");
+const offerText = editor.elements.namedItem("offer_text");
+const photoId = editor.elements.namedItem("product_photo_file_id");
+const photoPrompt = document.getElementById("order-photo-prompt");
+const promptText = document.getElementById("order-photo-prompt-text");
+const promptFeedback = document.getElementById("order-photo-prompt-feedback");
+
+function updateMaterials() {
+  const hasPhoto = Boolean(photoId.value.trim());
+  document.getElementById("order-brief-missing").hidden = Boolean(briefLink.value.trim());
+  document.getElementById("order-photo-missing").hidden = hasPhoto;
+  photoPrompt.hidden = hasPhoto;
+  const brief = offerText.value.trim();
+  promptText.value = [
+    "Создай квадратную обложку 1:1 для объявления о поиске UGC-креаторов в Telegram.",
+    "Выбери один сюжет из задания. Покажи продукт или его использование в естественной обстановке, с ясным главным объектом и читаемой композицией на экране телефона.",
+    "Изображение без надписей, водяных знаков, выдуманных логотипов и интерфейсов. Исключи личные данные и иллюстрации условий оплаты.",
+    brief && `Бриф для визуального контекста:\n${brief}`,
+  ].filter(Boolean).join("\n\n");
+  promptFeedback.textContent = "";
+}
+
+for (const field of [briefLink, offerText, photoId]) field.addEventListener("input", updateMaterials);
+updateMaterials();
+document.getElementById("order-photo-prompt-copy").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(promptText.value);
+    promptFeedback.textContent = "Промпт скопирован.";
+  } catch {
+    promptText.select();
+    promptFeedback.textContent = "Скопируйте выделенный текст.";
+  }
+});
 
   document.getElementById('order-photo-upload-button')?.addEventListener('click', async () => {
     const picker = document.getElementById('order-photo-upload');
@@ -61,6 +144,7 @@ function readValue(field) {
       const field = document.querySelector('[name="product_photo_file_id"]');
       if (!field) throw new Error('Не найдено поле Telegram file_id');
       field.value = result.file_id;
+      updateMaterials();
       status.textContent = 'Готово. Сохраните заказ, чтобы применить картинку.';
     } catch (error) { status.textContent = error.message; }
     finally { button.disabled = false; }

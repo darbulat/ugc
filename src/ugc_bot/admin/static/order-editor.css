@@ -76,6 +76,26 @@
   display: none;
 }
 
+.order-editor__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-bottom: .7rem;
+}
+
+.order-editor__checks .badge--alert {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.order-editor__checks [hidden] {
+  display: none;
+}
+
+.order-editor__checks:not(:has(> :not([hidden]))) {
+  margin-bottom: 0;
+}
+
 .order-editor__panel {
   margin-bottom: .7rem;
   scroll-margin-top: 8rem;

@@ -1,6 +1,7 @@
 """E2E tests for Admin UI with Playwright."""
 
 import os
+import re
 
 import pytest
 
@@ -277,6 +278,11 @@ def test_order_worklist_search_hide_and_restore(
     customer_name = f"Анна Петрова {order_id.hex[:8]}"
     geography = "Новосибирская область, Свердловская область, " * 20
     with Session(engine) as session, session.begin():
+        # SQLite fixture omits PostGIS models. Preview uses an empty directory.
+        session.connection().exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS blogger_profiles ("
+            "user_id CHAR(32) PRIMARY KEY, confirmed BOOLEAN NOT NULL)"
+        )
         session.add(
             UserModel(
                 user_id=user_id,
@@ -512,19 +518,45 @@ def test_order_worklist_search_hide_and_restore(
     expect(page.get_by_role("heading", name="Бриф заказа")).to_be_visible()
     expect(page.get_by_role("heading", name="Подбор креаторов")).to_be_visible()
     expect(page.get_by_role("link", name=brand)).to_be_visible()
+    expect(page.get_by_role("link", name="Нет ссылки на ТЗ")).to_be_visible()
+    expect(page.get_by_role("link", name="Нет фото")).to_be_visible()
+    page.get_by_text("Промпт для обложки в Telegram", exact=True).click()
+    expect(page.get_by_label("Промпт по тексту оффера")).to_have_value(
+        re.compile("Браузерный тест черновика")
+    )
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    page.get_by_role("button", name="Активировать заказ").click()
+    expect(page.get_by_label("Статус", exact=True)).to_have_value("new")
+    geo = page.get_by_label("География", exact=True)
+    geo.fill("любом")
+    expect(page.locator("#order-audience-hint")).to_contain_text(
+        "Укажите город"
+    )
+    geo.fill("")
+    expect(page.locator("#order-audience-count")).to_have_text(
+        "Подходят 0 креаторов"
+    )
+    with Session(engine) as session:
+        assert session.get(OrderModel, order_id).geography == geography
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 800})
-        assert page.locator(".order-editor").evaluate(
+        page.evaluate("window.scrollTo({top: 0, behavior: 'instant'})")
+        layout = page.locator(".order-editor").evaluate(
             """editor => {
               const [top, nav, brief] = ['.order-editor__top',
                 '.order-editor__bar', '#order-edit-brief'].map(
                 part => editor.querySelector(part).getBoundingClientRect()
               );
-              return top.bottom <= nav.top && nav.bottom <= brief.top &&
-                Math.abs(top.width - brief.width) <= 1 &&
-                document.documentElement.scrollWidth <= window.innerWidth;
+              return { topBottom: top.bottom, navTop: nav.top,
+                navBottom: nav.bottom, briefTop: brief.top,
+                topWidth: top.width, briefWidth: brief.width,
+                documentWidth: document.documentElement.scrollWidth };
             }"""
         )
+        assert layout["topBottom"] <= layout["navTop"], layout
+        assert layout["navBottom"] <= layout["briefTop"], layout
+        assert abs(layout["topWidth"] - layout["briefWidth"]) <= 1, layout
+        assert layout["documentWidth"] <= width, layout
     page.set_viewport_size({"width": 1440, "height": 800})
     expect(page.get_by_role("link", name="Дублировать заказ")).to_be_visible()
     barter = page.get_by_label("Описание бартера", exact=True)
@@ -535,12 +567,13 @@ def test_order_worklist_search_hide_and_restore(
     assert barter.evaluate("(field) => !field.validity.valid")
     barter.fill("Билеты")
     page.get_by_label("География", exact=True).fill("Казань")
-    expect(page.locator("#order-audience-dirty")).to_be_visible()
+    expect(page.locator("#order-audience-preview")).to_be_visible()
     page.get_by_role(
         "button", name="Сохранить и продолжить", exact=True
     ).click()
     expect(page.get_by_label("География", exact=True)).to_have_value("Казань")
-    expect(page.locator("#order-audience-dirty")).to_be_hidden()
+    expect(page.locator("#order-audience-preview")).to_be_hidden()
+    expect(page.get_by_label("Статус", exact=True)).to_have_value("new")
     page.get_by_role("link", name="← Назад к списку").click()
     marker = row.get_by_role("button", name="Это тест", exact=True)
     page.once("dialog", confirm)

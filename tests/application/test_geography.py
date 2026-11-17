@@ -3,17 +3,34 @@
 No hardcoded region/city dictionaries; cities are arbitrary worldwide.
 """
 
+import pytest
+
 from ugc_bot.application.geography import (
     GeographySpec,
     get_cities_list_for_miniapp,
     get_geometry_queries_from_spec,
     get_regions_for_city,
+    has_unspecified_geography,
     normalize_geo_token,
     parse_geography,
     parse_miniapp_city_id,
     region_key_to_label,
     resolve_region_from_city_field,
 )
+
+
+@pytest.mark.parametrize(
+    "value", ["любой", "  В Любом. ", "Казань, любой город", "anywhere"]
+)
+def test_unspecified_geography_is_detected(value):
+    assert has_unspecified_geography(value)
+
+
+@pytest.mark.parametrize(
+    "value", ["Россия", "Казань", "Казахстан", "Весь мир", None]
+)
+def test_existing_geography_options_are_distinct_from_unspecified_text(value):
+    assert not has_unspecified_geography(value)
 
 
 class TestNormalizeGeoToken:

@@ -30,6 +30,8 @@ INTAKE_CODES = SHARED_CODES | {
             "invalid_direct_honorarium",
             "invalid_order_targeting",
             "invalid_targeting_range",
+            "geography_unspecified",
+            "geography_unavailable",
             "invalid_service_mode",
             "self_service_has_no_accompaniment",
             "invalid_accompaniment_ordinals",
