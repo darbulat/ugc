@@ -651,10 +651,12 @@ def test_miniapp_api_confirm_blogger_agreement_user_not_found_404(
 
 
 @pytest.mark.parametrize("agreement_confirmed", [True, False])
+@pytest.mark.parametrize("target", ["", " @admin_ugc "])
 def test_miniapp_api_instagram_verification_start_checks_agreement(
-    client: TestClient, agreement_confirmed: bool
+    client: TestClient, agreement_confirmed: bool, target: str
 ) -> None:
     """POST instagram-verification/start returns code and instruction."""
+    client.app.state.config.instagram.admin_instagram_username = target
     init_data = _make_valid_init_data("test_token", 55553)
     user_id = uuid4()
     user = User(
@@ -715,7 +717,9 @@ def test_miniapp_api_instagram_verification_start_checks_agreement(
     assert data["code"] == "ABC123"
     assert "instruction" in data
     assert "instagram_url" in data
-    assert "instagram.com" in data["instagram_url"]
+    username = target.strip().lstrip("@") or "usemycontent"
+    assert data["instagram_url"] == f"https://ig.me/m/{username}"
+    assert data["instagram_url"] in data["instruction"]
     assert data.get("already_confirmed") is not True
 
 
