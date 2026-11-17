@@ -129,6 +129,14 @@ class BloggerProfile:
 
 
 @dataclass(frozen=True)
+class InstagramAudienceCounts:
+    """Stored counts used when matching creators to an order."""
+
+    followers_count: Optional[int]
+    media_count: Optional[int]
+
+
+@dataclass(frozen=True)
 class InstagramStats:
     """Instagram account statistics (per user), with data source provider."""
 

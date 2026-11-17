@@ -570,8 +570,18 @@ def test_order_worklist_search_hide_and_restore(
     page.get_by_role("link", name="В работе").click()
     expect(row).to_be_visible()
 
+    audience_requests = []
+    audience_path = f"**/admin/api/orders/{order_id}/audience*"
+    page.route(audience_path, lambda route: audience_requests.append(route))
     row.get_by_role("link", name="Редактировать", exact=True).click()
     expect(page.get_by_role("heading", name="Бриф заказа")).to_be_visible()
+    expect(page.locator("#order-audience-saved-caption")).to_have_text(
+        "Считаем выборку…"
+    )
+    assert len(audience_requests) == 1
+    audience_requests[0].fulfill(json={"count": 42})
+    expect(page.locator("#order-audience-saved-count")).to_have_text("42")
+    page.unroute(audience_path)
     expect(page.get_by_role("heading", name="Подбор креаторов")).to_be_visible()
     expect(page.get_by_role("link", name=brand)).to_be_visible()
     expect(page.get_by_role("link", name="Нет ссылки на ТЗ")).to_be_visible()

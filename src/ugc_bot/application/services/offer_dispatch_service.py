@@ -29,7 +29,7 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.domain.counteroffer import COUNTEROFFER_SUBMITTED
 from ugc_bot.domain.entities import (
     BloggerProfile,
-    InstagramStats,
+    InstagramAudienceCounts,
     Order,
     OutboxEvent,
     User,
@@ -267,7 +267,7 @@ def _passes_profile_based_filters(
 
 
 def _extract_followers_and_media(
-    stats: InstagramStats | None,
+    stats: InstagramAudienceCounts | None,
     profile: BloggerProfile | None,
     criteria: _DispatchCriteria,
 ) -> tuple[int | None, int | None]:
@@ -550,12 +550,12 @@ class OfferDispatchService:
             return []
 
         # Batch load Instagram stats if needed (1 query)
-        stats_map: dict[UUID, InstagramStats] = {}
+        stats_map: dict[UUID, InstagramAudienceCounts] = {}
         if (
             criteria.need_instagram_stats
             and self.instagram_stats_repo is not None
         ):
-            stats_map = await self.instagram_stats_repo.get_by_user_ids(
+            stats_map = await self.instagram_stats_repo.get_audience_counts(
                 active_ids, session=session
             )
 

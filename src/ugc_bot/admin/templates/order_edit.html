@@ -81,23 +81,13 @@
          data-preview-url="{{ request.url_for('order_audience_preview', order_id=obj.order_id) }}"
          data-needed="{{ obj.bloggers_needed }}">
       <div id="order-audience-saved">
-      {% if order_geography_unavailable %}
-        <strong class="text-danger">География не распознана</strong>
-        <small>Рассылка заблокирована до исправления геофильтра.</small>
-      {% elif eligible_bloggers_count is defined and eligible_bloggers_count is not none %}
         <div class="order-editor__audience-summary">
-          <strong id="order-audience-saved-count" class="order-editor__audience-value{% if eligible_bloggers_count < obj.bloggers_needed %} order-editor__audience-value--short{% endif %}">{{ eligible_bloggers_count }}</strong>
+          <strong id="order-audience-saved-count" class="order-editor__audience-value" hidden></strong>
           <div>
-            <strong>Подходящие креаторы</strong>
-            <small>По сохранённым фильтрам</small>
-            {% if eligible_bloggers_count < obj.bloggers_needed %}
-            <small class="text-danger">В заказе нужно {{ obj.bloggers_needed }}</small>
-            {% endif %}
+            <strong id="order-audience-saved-caption">Считаем выборку…</strong>
+            <small id="order-audience-saved-hint">По сохранённым фильтрам</small>
           </div>
         </div>
-      {% else %}
-        <strong>Выборка недоступна</strong>
-      {% endif %}
       </div>
       <div id="order-audience-preview" hidden>
         <div class="order-editor__audience-summary">
