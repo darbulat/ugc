@@ -3,8 +3,8 @@
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0142_manager_creator_followups"
-down_revision = "0141_browser_only_orders"
+revision = "0143_manager_creator_followups"
+down_revision = "0142_creator_offer_cards"
 branch_labels = None
 depends_on = None
 

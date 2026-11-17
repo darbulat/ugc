@@ -1,13 +1,19 @@
 """Signed manager directory reads backed by the real referral bindings."""
 
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import func, update
+from sqlalchemy import func, inspect, text, update
+from sqlalchemy.exc import IntegrityError
 
 from tests.e2e.miniapp_helpers import generate_init_data
+from tests.helpers.financial_environment import (
+    isolated_financial_database,
+    upgrade_financial_schema,
+)
 from tests.postgres_financial.test_collaboration_persistence import (
     collaboration_pg as collaboration_fixture,
 )
@@ -62,6 +68,53 @@ def _profile(user_id):
         audience_geo="synthetic",
         price=1,
     )
+
+
+def test_followup_migration_upgrades_the_deployed_parent(financial_pg_engine):
+    with isolated_financial_database(
+        os.environ["FINANCIAL_TEST_DATABASE_URL"],
+        target_revision="0142_creator_offer_cards",
+    ) as engine:
+        manager, creator = uuid4(), uuid4()
+        assert not inspect(engine).has_table("manager_creator_followups")
+        with engine.begin() as db:
+            db.execute(
+                text(
+                    "INSERT INTO users "
+                    "(user_id,username,messenger_type,status) "
+                    "VALUES (:manager,'manager','telegram','active'),"
+                    "(:creator,'creator','telegram','active')"
+                ),
+                {"manager": manager, "creator": creator},
+            )
+        upgrade_financial_schema(
+            engine, target_revision="0143_manager_creator_followups"
+        )
+        with engine.begin() as db:
+            assert db.scalar(text("SELECT count(*) FROM users")) == 2
+            assert db.scalar(
+                text("SELECT version_num FROM alembic_version")
+            ) == ("0143_manager_creator_followups")
+            db.execute(
+                text(
+                    "INSERT INTO manager_creator_followups "
+                    "(manager_id,creator_id,remind_at) "
+                    "VALUES (:manager,:creator,now()+interval '1 day')"
+                ),
+                {"manager": manager, "creator": creator},
+            )
+        with pytest.raises(IntegrityError), engine.begin() as db:
+            db.execute(
+                text(
+                    "INSERT INTO manager_creator_followups "
+                    "(manager_id,creator_id,remind_at) "
+                    "VALUES (:manager,:creator,now())"
+                ),
+                {"manager": manager, "creator": creator},
+            )
+        assert "creator_offer_card" in {
+            column["name"] for column in inspect(engine).get_columns("orders")
+        }
 
 
 @pytest.mark.asyncio
