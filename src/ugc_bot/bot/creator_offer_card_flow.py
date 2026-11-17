@@ -144,10 +144,22 @@ class CreatorOfferCardFlow:
         if not user or user.status != UserStatus.ACTIVE:
             await self._answer(incoming, "msg_offer_response_blocked")
             return None
+        receipts = self.dispatch.offer_dispatch_repo
+        address = (
+            user.telegram_id
+            if channel == MessengerType.TELEGRAM
+            else user.max_chat_id
+        )
         if (
             not incoming.message_id
-            or not await self.dispatch.offer_dispatch_repo.creator_card_matches(
-                order_id, user.user_id, channel, incoming.message_id
+            or incoming.chat_id != address
+            or not (
+                await receipts.creator_card_matches(
+                    order_id, user.user_id, channel, incoming.message_id
+                )
+                or await receipts.recover_creator_card_receipt(
+                    order_id, user.user_id, channel, incoming.message_id
+                )
             )
         ):
             await self._answer(incoming, "msg_order_closed")

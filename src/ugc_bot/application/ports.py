@@ -372,6 +372,16 @@ class OfferDispatchRepository(ABC):
         """Record that the provider accepted the response card edit."""
         return
 
+    async def recover_creator_card_receipt(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        message_id: str,
+    ) -> bool:
+        """Bind a delivered callback to a previously claimed recipient."""
+        return False
+
     @abstractmethod
     async def record_response(
         self,

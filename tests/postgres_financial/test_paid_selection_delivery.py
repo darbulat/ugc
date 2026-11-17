@@ -528,6 +528,7 @@ async def test_one_provider_reference_cannot_prove_two_paid_contacts(
     await env["worker"].run_once()
     second = await service(env).respond(env["order"], env["other_creator"])
     assert second.accepted
+    env["worker"].clock.at = max(env["worker"].clock.at, second.confirmed_at)
     # A stale chat/message receipt cannot prove two distinct contacts.
     await env["worker"].run_once()
     assert len(env["bot"].calls) == 2
