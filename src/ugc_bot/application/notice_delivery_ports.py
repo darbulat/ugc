@@ -34,6 +34,7 @@ class DeliveryReceipt:
 class ReceiptLink:
     label: str
     url: str
+    style: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

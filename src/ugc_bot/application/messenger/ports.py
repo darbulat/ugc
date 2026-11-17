@@ -1,6 +1,6 @@
 """Ports for messenger abstractions."""
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ugc_bot.application.messenger.dto import (
     IncomingCallback,
@@ -9,6 +9,21 @@ from ugc_bot.application.messenger.dto import (
     Invoice,
     Keyboard,
 )
+
+if TYPE_CHECKING:
+    from ugc_bot.application.creator_offer_cards import OfferCard
+
+
+class OfferCardTransport(Protocol):
+    """Provider calls for a single message and its subsequent edits."""
+
+    async def send_offer_card(
+        self, chat_id: str, card: "OfferCard", cover: str | None
+    ) -> str: ...
+
+    async def edit_offer_card(
+        self, chat_id: str, message_id: str, card: "OfferCard"
+    ) -> None: ...
 
 
 class MessengerClient(Protocol):

@@ -4,6 +4,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
+from ugc_bot.application.creator_offer_cards import CALLBACK_PREFIX
 from ugc_bot.application.errors import (
     OrderCreationError,
     PaidSelectionResponseError,
@@ -24,6 +25,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.creator_offer_card_flow import CreatorOfferCardFlow
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.bot.telegram.handlers.offer_responses import (
@@ -40,6 +42,33 @@ router = MaxRouter()
 logger = logging.getLogger(__name__)
 
 STATE_WAITING_DESIRED_PRICE = "offer_desired_price"
+
+
+@router.callback(lambda cb: (cb.data or "").startswith(CALLBACK_PREFIX))
+async def handle_creator_offer_card(
+    incoming: IncomingCallback, deps: dict
+) -> None:
+    flow = CreatorOfferCardFlow(
+        deps["order_repo"],
+        deps["offer_dispatch_service"],
+        deps["offer_response_service"],
+        deps["user_role_service"],
+        deps["profile_service"],
+        deps["bot_texts_service"],
+        deps["messenger_client"],
+        deps.get("locale", "ru"),
+        deps.get("offer_response_rate_limiter"),
+    )
+    direct = await flow.handle(incoming)
+    if direct:
+        response, creator = direct
+        await flow.finish_direct(
+            incoming,
+            response.order,
+            creator,
+            deps["interaction_service"],
+            deps.get("telegram_messenger_client"),
+        )
 
 
 async def _safe_clear_markup(

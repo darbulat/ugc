@@ -648,12 +648,14 @@ class OfferDispatchService:
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        message_id: str | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
 
         async def _run(sess: object | None) -> None:
+            extra = {"message_id": message_id} if message_id is not None else {}
             await self.offer_dispatch_repo.record_sent(
-                order_id, blogger_id, session=sess, channel=channel
+                order_id, blogger_id, session=sess, channel=channel, **extra
             )
 
         await with_optional_tx(self.transaction_manager, _run)
@@ -681,10 +683,19 @@ class OfferDispatchService:
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        only_unanswered: bool = False,
     ) -> SkipResult:
         """Record blogger skip with optional rejection reason."""
 
         async def _run(sess: object | None) -> SkipResult:
+            if only_unanswered:
+                await self.order_repo.get_by_id_for_update(
+                    order_id, session=sess
+                )
+                if await self.offer_dispatch_repo.exists_responded(
+                    order_id, blogger_id, session=sess
+                ):
+                    return SkipResult()
             await self.offer_dispatch_repo.record_response(
                 order_id,
                 blogger_id,

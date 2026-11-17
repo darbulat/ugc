@@ -127,7 +127,11 @@ def _telegram_card(text: str, card: ReceiptCard) -> _TelegramOptions:
     if card.links:
         options["reply_markup"] = InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text=link.label, url=link.url)]
+                [
+                    InlineKeyboardButton(
+                        text=link.label, url=link.url, style=link.style
+                    )
+                ]
                 for link in card.links
             ]
         )

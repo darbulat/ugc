@@ -213,7 +213,24 @@ async def _capture_and_activate(
         assert edit.status_code == 200
         assert due_display in edit.text
         assert client.get(f"/admin/order-images/{order_id}").content == image
+        assert 'id="creator-offer-card"' in edit.text
 
+    assert await activate() == [
+        "Сначала заполните карточку креатора в админке."
+    ]
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == order_id)
+            .values(
+                creator_offer_card={
+                    "title": "Сторис о приложении",
+                    "task": "Покажи в сторис, как пользуешься приложением",
+                    "deadline": "Через три дня после согласования",
+                    "usage": "Публикация в своём блоге",
+                }
+            )
+        )
     assert await activate() == ["Заказ активирован, уходит блогерам."]
     assert await activate() == ["Заказ уже обработан."]
 

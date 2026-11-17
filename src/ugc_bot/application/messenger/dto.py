@@ -27,6 +27,7 @@ class Button:
     request_location: bool = False
     web_app_url: str | None = None
     max_app_payload: str | None = None
+    style: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

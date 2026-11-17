@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from tests.helpers.fakes import FakeCallback, FakeUser
@@ -32,7 +32,7 @@ from ugc_bot.container.order_notice_factory import build_order_notice_delivery
 from ugc_bot.domain.checkout import NativePaidReceipt
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.infrastructure.db.checkout_models import NOTICE_JOBS
-from ugc_bot.infrastructure.db.models import OutboxEventModel
+from ugc_bot.infrastructure.db.models import OrderModel, OutboxEventModel
 from ugc_bot.infrastructure.db.order_notice_models import (
     ORDER_NOTICE_DELIVERIES,
 )
@@ -172,6 +172,22 @@ async def test_paid_order_notifies_once_and_activates_only_after_capture(
     )
     assert not await processor.run_once()
     assert not await notices.run_once()
+    assert await activate() == [
+        "Сначала заполните карточку креатора в админке."
+    ]
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == env["order"].order_id)
+            .values(
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "В течение недели после согласования",
+                    "usage": "Соцсети заказчика",
+                }
+            )
+        )
     assert await activate() == ["Заказ активирован, уходит блогерам."]
     assert await activate() == ["Заказ уже обработан."]
     view = await services["client_order_view_service"].list(env["user"].user_id)

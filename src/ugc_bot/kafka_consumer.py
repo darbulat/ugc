@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import aiohttp
@@ -24,8 +24,15 @@ from aiokafka.errors import (  # type: ignore[import-untyped]
 )
 from aiokafka.structs import OffsetAndMetadata  # type: ignore[import-untyped]
 
+from ugc_bot.application.creator_offer_cards import (
+    NEUTRAL_COVER,
+    render_public_offer,
+)
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
-from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.application.messenger.ports import (
+    MessengerClient,
+    OfferCardTransport,
+)
 from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
@@ -260,6 +267,19 @@ async def _send_offer_via_client(
     return False
 
 
+def _offer_targets(
+    blogger: User, clients: dict[str, MessengerClient]
+) -> list[tuple[str, MessengerClient, str]]:
+    return [
+        (address, clients[channel], channel)
+        for channel, address in (
+            ("telegram", blogger.telegram_id),
+            ("max", blogger.max_chat_id),
+        )
+        if address and channel in clients
+    ]
+
+
 async def _send_offer_to_blogger(
     blogger: User,
     order: Order,
@@ -284,21 +304,18 @@ async def _send_offer_to_blogger(
         )
         return False if guarded else None
 
-    # Build list of (chat_id, client, label) for all available messengers
-    targets: list[tuple[str, MessengerClient, str]] = []
-    if blogger.telegram_id and "telegram" in messenger_clients:
-        targets.append(
-            (blogger.telegram_id, messenger_clients["telegram"], "telegram")
-        )
-    if blogger.max_chat_id and "max" in messenger_clients:
-        targets.append((blogger.max_chat_id, messenger_clients["max"], "max"))
-
+    targets = _offer_targets(blogger, messenger_clients)
     if not targets:
         logger.debug(
             "Skipping blogger: no valid messenger IDs",
             extra={"order_id": order.order_id, "blogger_id": blogger.user_id},
         )
         return False if guarded else None
+
+    if order.creator_offer_card is not None:
+        return await _send_public_offer(
+            order, blogger, targets, offer_dispatch_service, locale
+        )
 
     offer_text = await offer_dispatch_service.format_offer(
         order,
@@ -363,6 +380,48 @@ async def _send_offer_to_blogger(
     return any_sent if guarded else None
 
 
+async def _send_public_offer(
+    order: Order,
+    blogger: User,
+    targets: list[tuple[str, MessengerClient, str]],
+    service: OfferDispatchService,
+    locale: str,
+) -> bool | None:
+    card = render_public_offer(order, locale)
+    approved = (order.creator_offer_card or {}).get("photo") == "approved"
+    cover = (order.product_photo_file_id if approved else None) or NEUTRAL_COVER
+    for chat_id, client, channel in targets:
+        try:
+            adapter = cast(OfferCardTransport, client)
+            try:
+                message_id = await adapter.send_offer_card(chat_id, card, cover)
+            except TelegramRetryAfter as exc:
+                # A flood-wait is an explicit rejection before delivery.
+                await asyncio.sleep(exc.retry_after)
+                message_id = await adapter.send_offer_card(chat_id, card, cover)
+        except Exception as exc:
+            logger.warning(
+                "Public offer delivery failed",
+                extra={
+                    "order_id": order.order_id,
+                    "messenger": channel,
+                    "error": type(exc).__name__,
+                },
+            )
+            if _definitely_rejected(exc):
+                continue
+            # Do not send through either channel again if delivery is unknown.
+            return None
+        await service.record_offer_sent(
+            order.order_id,
+            blogger.user_id,
+            channel=MessengerType(channel),
+            message_id=message_id,
+        )
+        return True
+    return False
+
+
 async def _claim_offer(service, order_id, blogger, run):
     if run is None:
         return (
@@ -371,6 +430,23 @@ async def _claim_offer(service, order_id, blogger, run):
     return await service.claim_dispatch_recipient(
         order_id, blogger.user_id, run
     )
+
+
+def _dispatch_ready(order: Order, run: int | None) -> bool:
+    if order.dispatch_stopped or (
+        run is not None and order.status != OrderStatus.ACTIVE
+    ):
+        return False
+    if order.creator_offer_card is not None:
+        try:
+            for locale in ("ru", "en"):
+                render_public_offer(order, locale)
+        except ValueError:
+            logger.warning(
+                "Public offer is not ready", extra={"order_id": order.order_id}
+            )
+            return False
+    return True
 
 
 async def _send_offers(
@@ -402,9 +478,7 @@ async def _send_offers(
         )
         return
 
-    if order.dispatch_stopped or (
-        dispatch_run is not None and order.status != OrderStatus.ACTIVE
-    ):
+    if not _dispatch_ready(order, dispatch_run):
         return
     advertisers_status = advertiser.status.value.upper()
     bloggers = await offer_dispatch_service.dispatch(order_id)

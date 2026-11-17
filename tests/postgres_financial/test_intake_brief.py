@@ -56,7 +56,16 @@ async def test_paid_city_activation_keeps_creator_without_coordinates(
             receipt.order_id, session=session
         )
         await env["repos"]["order_repo"].save(
-            replace(order, status=OrderStatus.PENDING_MODERATION),
+            replace(
+                order,
+                status=OrderStatus.PENDING_MODERATION,
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "В течение недели после согласования",
+                    "usage": "Соцсети заказчика",
+                },
+            ),
             session=session,
         )
         await env["repos"]["payment_repo"].save(
@@ -430,6 +439,21 @@ async def test_admin_starts_unpaid_financial_order_with_working_responses(
     with patch(
         "ugc_bot.admin.app._get_admin_container", return_value=container
     ):
+        with pytest.raises(ValueError, match="Заполните заголовок"):
+            await _activate_order(order_id, geography_update=(None, None))
+        repo = env["repos"]["order_repo"]
+        order = await repo.get_by_id(order_id)
+        await repo.save(
+            replace(
+                order,
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "После согласования в течение недели",
+                    "usage": "Соцсети заказчика",
+                },
+            )
+        )
         await _activate_order(order_id, geography_update=(None, None))
         await _activate_order(order_id, geography_update=(None, None))
 

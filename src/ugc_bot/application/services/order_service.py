@@ -305,6 +305,7 @@ class OrderService:
                 filter_by_barter=False,
                 location_geometry=order_location_geometry,
                 currency=order_currency,
+                creator_offer_card={},
             )
             await self.order_repo.save(order, session=session)
             await self._enqueue_created(order, session)

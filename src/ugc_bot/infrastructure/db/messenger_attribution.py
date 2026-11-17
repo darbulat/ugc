@@ -23,6 +23,8 @@ OFFER_CHANNELS = Table(
     Column("max_sent_at", DateTime(timezone=True)),
     Column("response_channel", String(8)),
     Column("response_at", DateTime(timezone=True)),
+    Column("creator_card_message_id", String(128)),
+    Column("creator_card_updated_at", DateTime(timezone=True)),
     ForeignKeyConstraint(
         ("order_id", "blogger_id"),
         ("offer_dispatches.order_id", "offer_dispatches.blogger_id"),
