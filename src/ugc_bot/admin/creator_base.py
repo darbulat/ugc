@@ -156,7 +156,10 @@ def _registration_stages() -> dict[str, ColumnElement[bool]]:
     }
 
 
-def _profile_conditions() -> dict[str, ColumnElement[bool]]:
+def _profile_conditions(
+    telegram_availability: ColumnElement[str | None] | None = None,
+    max_availability: ColumnElement[str | None] | None = None,
+) -> dict[str, ColumnElement[bool]]:
     user = UserModel
     profile = BloggerProfileModel
     agreement = profile.agreement_confirmed_at.is_not(None)
@@ -174,8 +177,10 @@ def _profile_conditions() -> dict[str, ColumnElement[bool]]:
         "registered_max_only": registered & max_id & ~telegram,
         "telegram_account": telegram,
         "max_account": max_id,
-        **_availability(MessengerType.TELEGRAM, telegram),
-        **_availability(MessengerType.MAX, max_id),
+        **_availability(
+            MessengerType.TELEGRAM, telegram, telegram_availability
+        ),
+        **_availability(MessengerType.MAX, max_id, max_availability),
     }
 
 
@@ -229,12 +234,15 @@ def admin_creator_directory_status() -> ColumnElement[UserStatus]:
     )
 
 
-def _availability(platform, linked) -> dict[str, ColumnElement[bool]]:
-    latest = (
-        _telegram_availability()
-        if platform == MessengerType.TELEGRAM
-        else latest_bot_availability(platform)
-    )
+def _availability(
+    platform, linked, latest=None
+) -> dict[str, ColumnElement[bool]]:
+    if latest is None:
+        latest = (
+            _telegram_availability()
+            if platform == MessengerType.TELEGRAM
+            else latest_bot_availability(platform)
+        )
     return {
         f"{platform}_available": linked & (latest == BOT_AVAILABLE_EVENT),
         f"{platform}_unavailable": linked & (latest == BOT_UNAVAILABLE_EVENT),
@@ -382,8 +390,36 @@ async def creator_base_counts(
     db: AsyncSession, period: str, timezone: ZoneInfo
 ) -> dict[str, int]:
     normalized = normalize_creator_period(period)
+    # Availability is shared by six counters. Materialize its two values once
+    # per creator instead of repeating the correlated history lookups.
+    availability = (
+        select(
+            UserModel.user_id,
+            case(
+                (
+                    func.nullif(func.trim(UserModel.telegram_id), "").is_not(
+                        None
+                    ),
+                    _telegram_availability(),
+                )
+            ).label("telegram"),
+            case(
+                (
+                    func.nullif(func.trim(UserModel.max_id), "").is_not(None),
+                    latest_bot_availability(MessengerType.MAX),
+                )
+            ).label("max"),
+        )
+        .join(
+            BloggerProfileModel,
+            BloggerProfileModel.user_id == UserModel.user_id,
+        )
+        .where(UserModel.status != UserStatus.DELETED)
+        .cte("creator_availability")
+        .prefix_with("MATERIALIZED", dialect="postgresql")
+    )
     conditions = {
-        **_profile_conditions(),
+        **_profile_conditions(availability.c.telegram, availability.c.max),
         **_activity_conditions(normalized, timezone),
     }
     result = await db.execute(
@@ -395,6 +431,7 @@ async def creator_base_counts(
         )
         .select_from(BloggerProfileModel)
         .join(UserModel, UserModel.user_id == BloggerProfileModel.user_id)
+        .join(availability, availability.c.user_id == UserModel.user_id)
         .where(UserModel.status != UserStatus.DELETED)
     )
     funnel = await db.execute(

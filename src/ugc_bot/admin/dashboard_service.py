@@ -22,7 +22,7 @@ from sqlalchemy import (
     select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, defer
 from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.admin.business_metrics import (
@@ -221,6 +221,7 @@ class AdminDashboardService:
         referrers_order: str = "desc",
         referrers_filter: str | None = None,
         include_timings: bool = False,
+        include_referrers: bool = True,
     ) -> dict:
         """Return dashboard cards and delayed orders list."""
         total_start = time.perf_counter()
@@ -244,7 +245,11 @@ class AdminDashboardService:
             delayed_orders = attention["delayed"]
             timings["delayed_orders"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
-            referrers = await self._get_referral_referrers(session, window)
+            referrers = (
+                await self._get_referral_referrers(session, window)
+                if include_referrers
+                else []
+            )
             timings["referrers"] = (time.perf_counter() - t0) * 1000
             t0 = time.perf_counter()
             payout_requests = await self._list_payout_requests(session)
@@ -306,62 +311,70 @@ class AdminDashboardService:
             t0 = time.perf_counter()
             managers_count = await count_managers(session)
             timings["managers"] = (time.perf_counter() - t0) * 1000
-        page = max(1, referrers_page)
-        per_page = max(1, min(100, referrers_per_page))
-        need_balance_for_filter = referrers_filter in (
-            "top_by_balance",
-            "top_by_earnings_period",
-        )
-        t0 = time.perf_counter()
-        if need_balance_for_filter:
-            referral_data = await self._referrers_balance_filter_sort_paginate(
-                referrers=referrers,
-                referrers_filter=referrers_filter,
-                referrers_sort=referrers_sort,
-                referrers_order=referrers_order,
-                page=page,
-                per_page=per_page,
+        referral_data = {}
+        if include_referrers:
+            page = max(1, referrers_page)
+            per_page = max(1, min(100, referrers_per_page))
+            need_balance_for_filter = referrers_filter in (
+                "top_by_balance",
+                "top_by_earnings_period",
             )
-            total_referrers = referral_data["referrers_total"]
-            total_pages = (
-                (total_referrers + per_page - 1) // per_page
-                if total_referrers
-                else 1
+            t0 = time.perf_counter()
+            if need_balance_for_filter:
+                referral_data = (
+                    await self._referrers_balance_filter_sort_paginate(
+                        referrers=referrers,
+                        referrers_filter=referrers_filter,
+                        referrers_sort=referrers_sort,
+                        referrers_order=referrers_order,
+                        page=page,
+                        per_page=per_page,
+                    )
+                )
+                total_referrers = referral_data["referrers_total"]
+                total_pages = (
+                    (total_referrers + per_page - 1) // per_page
+                    if total_referrers
+                    else 1
+                )
+            else:
+                filtered = self._apply_referrers_filter(
+                    referrers, referrers_filter
+                )
+                default_sort = self._referrers_filter_default_sort(
+                    referrers_filter
+                )
+                sorted_refs = self._sort_referrers(
+                    filtered,
+                    referrers_sort or default_sort or "total_referred",
+                    referrers_order,
+                )
+                total_referrers = len(sorted_refs)
+                total_pages = (
+                    (total_referrers + per_page - 1) // per_page
+                    if total_referrers
+                    else 1
+                )
+                start = (page - 1) * per_page
+                page_referrers = sorted_refs[start : start + per_page]
+                use_totals = total_referrers <= per_page
+                referral_data = await self._enrich_referrers_with_balance(
+                    page_referrers, sort_by_balance=use_totals
+                )
+            timings["enrich_referrers"] = (time.perf_counter() - t0) * 1000
+            referral_data["referrers_total"] = total_referrers
+            referral_data["referrers_page"] = page
+            referral_data["referrers_per_page"] = per_page
+            referral_data["referrers_total_pages"] = total_pages
+            referral_data["referrers_sort"] = (
+                referrers_sort
+                or self._referrers_filter_default_sort(referrers_filter)
+                or "balance"
             )
-        else:
-            filtered = self._apply_referrers_filter(referrers, referrers_filter)
-            default_sort = self._referrers_filter_default_sort(referrers_filter)
-            sorted_refs = self._sort_referrers(
-                filtered,
-                referrers_sort or default_sort or "total_referred",
-                referrers_order,
+            referral_data["referrers_order"] = (
+                "asc" if referrers_order == "asc" else "desc"
             )
-            total_referrers = len(sorted_refs)
-            total_pages = (
-                (total_referrers + per_page - 1) // per_page
-                if total_referrers
-                else 1
-            )
-            start = (page - 1) * per_page
-            page_referrers = sorted_refs[start : start + per_page]
-            use_totals = total_referrers <= per_page
-            referral_data = await self._enrich_referrers_with_balance(
-                page_referrers, sort_by_balance=use_totals
-            )
-        timings["enrich_referrers"] = (time.perf_counter() - t0) * 1000
-        referral_data["referrers_total"] = total_referrers
-        referral_data["referrers_page"] = page
-        referral_data["referrers_per_page"] = per_page
-        referral_data["referrers_total_pages"] = total_pages
-        referral_data["referrers_sort"] = (
-            referrers_sort
-            or self._referrers_filter_default_sort(referrers_filter)
-            or "balance"
-        )
-        referral_data["referrers_order"] = (
-            "asc" if referrers_order == "asc" else "desc"
-        )
-        referral_data["referrers_filter"] = referrers_filter or "all"
+            referral_data["referrers_filter"] = referrers_filter or "all"
         total_ms = (time.perf_counter() - total_start) * 1000
         timings["_total"] = total_ms
         logger.info(
@@ -1492,6 +1505,7 @@ class AdminDashboardService:
                 ~order_archived(),
                 OrderModel.status.in_(_ACTIVE_ORDER_STATUSES),
             )
+            .options(defer(OrderModel.location_geometry, raiseload=True))
             .order_by(OrderModel.created_at, OrderModel.order_id)
         )
         result = await session.execute(query)

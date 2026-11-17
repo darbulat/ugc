@@ -46,11 +46,7 @@ async function loadDashboard() {
       throw new Error("Unexpected dashboard response");
     }
     panel.replaceChildren(template.content);
-    loadCharts().catch(() => {
-      panel.querySelectorAll(".chart-state").forEach((item) => {
-        item.textContent = "Данные графика недоступны. Обновите страницу.";
-      });
-    });
+    startCharts();
   } catch {
     status.textContent = "Не удалось загрузить показатели. Попробуйте ещё раз.";
     retry.hidden = false;
@@ -62,5 +58,17 @@ async function loadDashboard() {
   }
 }
 
-retry.addEventListener("click", loadDashboard);
-loadDashboard();
+function startCharts() {
+  loadCharts().catch(() => {
+    panel.querySelectorAll(".chart-state").forEach((item) => {
+      item.textContent = "Данные графика недоступны. Обновите страницу.";
+    });
+  });
+}
+
+if (panel.querySelector("[data-dashboard-content]")) {
+  startCharts();
+} else {
+  retry.addEventListener("click", loadDashboard);
+  loadDashboard();
+}

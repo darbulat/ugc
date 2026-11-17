@@ -1,5 +1,6 @@
 """Tests for admin dashboard routes."""
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -126,6 +127,83 @@ def test_dashboard_shell_opens_without_loading_metrics(monkeypatch) -> None:
     metrics.assert_not_awaited()
     base.assert_not_awaited()
     counts.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "cache_state", ["ready", "missing", "slow", "slow_counts"]
+)
+def test_dashboard_embeds_cached_metrics_and_keeps_worklist_counts_current(
+    monkeypatch, cache_state
+) -> None:
+    payload = {
+        "registrations": {
+            "creators": {"count": 0},
+            "advertisers": {"count": 0},
+        },
+        "problems": {"open_complaints": 0},
+        "payout_requests": [],
+        "completed_creators_count": 37,
+    }
+    cache = MagicMock()
+    cache.get = AsyncMock(
+        side_effect=[
+            serialize_admin_payload(payload),
+            serialize_admin_payload({}),
+        ]
+        if cache_state in ("ready", "slow_counts")
+        else [None, None]
+    )
+    if cache_state == "slow":
+
+        async def slow_get(_key):
+            await asyncio.sleep(0.1)
+            return
+
+        cache.get.side_effect = slow_get
+    monkeypatch.setattr("ugc_bot.admin.app.AdminCache", lambda **_kwargs: cache)
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload=payload,
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    counts = AsyncMock(
+        return_value={"no_manager": 8, "inactive": 0, "position_review": 0}
+    )
+    if cache_state == "slow_counts":
+
+        async def slow_counts():
+            await asyncio.sleep(0.3)
+
+        counts.side_effect = slow_counts
+    monkeypatch.setattr(
+        AdminDashboardService, "get_worklist_attention_counts", counts
+    )
+    response = client.get("/admin/dashboard?period=today")
+    assert response.status_code == 200
+    AdminDashboardService.get_dashboard.assert_not_awaited()
+    AdminDashboardService.get_creator_base.assert_not_awaited()
+    if cache_state == "ready":
+        assert "data-dashboard-content" in response.text
+        assert 'aria-busy="false"' in response.text
+        assert "Загружаем показатели…" not in response.text
+        assert "<strong>37</strong>" in response.text
+        href = 'href="/admin/order-model/list?group=work&amp;no_manager=1">'
+        assert (
+            "<strong>8</strong>"
+            in response.text.split(href, 1)[1].split("</a>", 1)[0]
+        )
+        counts.assert_awaited_once()
+    else:
+        assert "data-dashboard-content" not in response.text
+        assert "Загружаем показатели…" in response.text
+        if cache_state == "slow_counts":
+            counts.assert_awaited_once()
+        else:
+            counts.assert_not_awaited()
+    assert cache.get.await_args_list[0].args[0].startswith("dashboard:summary:")
 
 
 def test_admin_dashboard_html(monkeypatch) -> None:

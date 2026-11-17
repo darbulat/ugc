@@ -781,6 +781,7 @@ async def _get_dashboard_payload_cached(
     referrers_order: str | None = None,
     referrers_filter: str | None = None,
     include_timings: bool = False,
+    include_referrers: bool = True,
 ) -> dict[str, Any]:
     """Load dashboard from cache or dashboard_service; set cache when used."""
     if cache and use_cache and cache_key:
@@ -790,6 +791,7 @@ async def _get_dashboard_payload_cached(
                 dict[str, Any],
                 deserialize_admin_payload(raw),
             )
+    options = {} if include_referrers else {"include_referrers": False}
     payload = await dashboard_service.get_dashboard(
         period_key,
         referrers_page=referrers_page,
@@ -798,6 +800,7 @@ async def _get_dashboard_payload_cached(
         referrers_order=referrers_order or "desc",
         referrers_filter=referrers_filter,
         include_timings=include_timings,
+        **options,
     )
     if cache and use_cache and cache_key:
         await cache.set(
@@ -815,10 +818,12 @@ def _dashboard_cache_key(
     referrers_per_page: int,
     referrers_sort: str,
     referrers_order: str,
+    include_referrers: bool = True,
 ) -> str:
     """Build cache key for dashboard/referrers payload."""
+    prefix = "dashboard:v15" if include_referrers else "dashboard:summary:v1"
     return (
-        f"dashboard:v15:{period_key}:{referrers_filter or 'all'}:"
+        f"{prefix}:{period_key}:{referrers_filter or 'all'}:"
         f"{referrers_page}:{referrers_per_page}:"
         f"{referrers_sort or ''}:{referrers_order}"
     )
@@ -845,10 +850,7 @@ async def _render_dashboard_page(
         "Cache-Control": "private, no-store",
         "Vary": "X-Dashboard-Content",
     }
-    if request.headers.get("X-Dashboard-Content") != "1":
-        return templates.TemplateResponse(
-            request, "dashboard.html", {}, headers=response_headers
-        )
+    content_only = request.headers.get("X-Dashboard-Content") == "1"
     period_key = _normalize_period(period)
     include_timings = (
         timings.lower() in ("1", "true", "yes") if timings else False
@@ -862,35 +864,70 @@ async def _render_dashboard_page(
             referrers_per_page,
             referrers_sort,
             referrers_order,
+            include_referrers=False,
         )
         if use_cache
         else None
     )
-    payload, creator_base, attention_counts = await asyncio.gather(
-        _get_dashboard_payload_cached(
-            dashboard_service,
-            period_key,
-            cache,
-            use_cache,
-            cache_key,
-            referrers_page=referrers_page,
-            referrers_per_page=referrers_per_page,
-            referrers_sort=referrers_sort or None,
-            referrers_order=referrers_order or "desc",
-            referrers_filter=referrers_filter or None,
-            include_timings=include_timings,
-        ),
-        _get_cached_or_fetch(
-            cache,
-            f"creator-base:v4:{period_key}" if cache else None,
-            _dashboard_cache_ttl(period_key),
-            lambda: dashboard_service.get_creator_base(period_key),
-        ),
-        dashboard_service.get_worklist_attention_counts(),
-    )
+    cached = None
+    if not content_only:
+        if cache and use_cache and cache_key:
+            try:
+                # A cache outage must not delay the immediately usable page.
+                async with asyncio.timeout(0.05):
+                    raw_payload, raw_base = await asyncio.gather(
+                        cache.get(cache_key),
+                        cache.get(f"creator-base:v4:{period_key}"),
+                    )
+                    if raw_payload is not None and raw_base is not None:
+                        cached = (
+                            deserialize_admin_payload(raw_payload),
+                            deserialize_admin_payload(raw_base),
+                        )
+            except (TimeoutError, ValueError, TypeError):
+                pass
+        if cached is None:
+            return templates.TemplateResponse(
+                request, "dashboard.html", {}, headers=response_headers
+            )
+    if cached is not None:
+        payload, creator_base = cached
+        try:
+            async with asyncio.timeout(0.2):
+                attention_counts = (
+                    await dashboard_service.get_worklist_attention_counts()
+                )
+        except TimeoutError:
+            return templates.TemplateResponse(
+                request, "dashboard.html", {}, headers=response_headers
+            )
+    else:
+        payload, creator_base, attention_counts = await asyncio.gather(
+            _get_dashboard_payload_cached(
+                dashboard_service,
+                period_key,
+                cache,
+                use_cache,
+                cache_key,
+                referrers_page=referrers_page,
+                referrers_per_page=referrers_per_page,
+                referrers_sort=referrers_sort or None,
+                referrers_order=referrers_order or "desc",
+                referrers_filter=referrers_filter or None,
+                include_timings=include_timings,
+                include_referrers=False,
+            ),
+            _get_cached_or_fetch(
+                cache,
+                f"creator-base:v4:{period_key}" if cache else None,
+                _dashboard_cache_ttl(period_key),
+                lambda: dashboard_service.get_creator_base(period_key),
+            ),
+            dashboard_service.get_worklist_attention_counts(),
+        )
     return templates.TemplateResponse(
         request,
-        "dashboard_content.html",
+        "dashboard_content.html" if content_only else "dashboard.html",
         {
             "payload": payload,
             "creator_base": creator_base,
