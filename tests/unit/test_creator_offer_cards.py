@@ -260,6 +260,7 @@ def offer_session(order, creator):
     receipts = AsyncMock()
     dispatch.offer_dispatch_repo = receipts
     receipts.creator_card_matches.return_value = True
+    receipts.recover_creator_card_receipt.return_value = False
     receipts.list_responses_by_blogger.return_value = []
     responses = AsyncMock()
     users = AsyncMock()
@@ -295,7 +296,7 @@ def offer_session(order, creator):
 def click(order, action="done", channel=MessengerType.TELEGRAM):
     return IncomingCallback(
         callback_id="callback",
-        chat_id="100",
+        chat_id="100" if channel == MessengerType.TELEGRAM else "200",
         user=IncomingUser("100", channel),
         message_id="456",
         data=f"{CALLBACK_PREFIX}{action}:{order.order_id}",
@@ -310,6 +311,7 @@ def click(order, action="done", channel=MessengerType.TELEGRAM):
         ("legacy", "msg_order_closed"),
         ("paused", "msg_offer_response_blocked"),
         ("another_cards_receipt", "msg_order_closed"),
+        ("another_chat", "msg_order_closed"),
         ("unconfirmed_profile", "msg_confirm_instagram_first"),
         ("flood", "msg_too_many_requests"),
     ],
@@ -334,6 +336,8 @@ async def test_rejected_callback_cannot_reveal_contacts(
             )
         case "another_cards_receipt":
             harness.receipts.creator_card_matches.return_value = False
+        case "another_chat":
+            callback = replace(callback, chat_id="-1000000000000")
         case "unconfirmed_profile":
             harness.flow.profiles.get_blogger_profile.return_value.confirmed = (
                 False
@@ -347,6 +351,8 @@ async def test_rejected_callback_cannot_reveal_contacts(
     )
     harness.response.respond_and_finalize.assert_not_awaited()
     harness.messenger.edit_offer_card.assert_not_awaited()
+    if problem == "another_chat":
+        harness.receipts.recover_creator_card_receipt.assert_not_awaited()
 
 
 @pytest.mark.asyncio

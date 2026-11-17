@@ -27,7 +27,10 @@ __all__ = ["capture_env", "delivery_env"]
 
 
 @pytest.mark.asyncio
-async def test_paid_card_navigation_response_and_contact_delivery(delivery_env):
+@pytest.mark.parametrize("lost_receipt", [False, True])
+async def test_paid_card_navigation_response_and_contact_delivery(
+    delivery_env, lost_receipt
+):
     env = delivery_env
     await env["worker"].run_once()
     baseline = len(env["bot"].calls)
@@ -58,15 +61,28 @@ async def test_paid_card_navigation_response_and_contact_delivery(delivery_env):
     creator = await repos["user_repo"].get_by_id(env["other_creator"])
     provider = AsyncMock()
     provider.send_photo.return_value = SimpleNamespace(message_id=321)
+    if lost_receipt:
+        provider.send_photo.side_effect = TimeoutError
     messenger = TelegramMessengerClient(provider)
     dispatch = services["offer_dispatch_service"]
-    assert await _send_public_offer(
+    control = repos["dispatch_control"]
+    async with container.transaction_manager.transaction() as db:
+        assert await control.start(order.order_id, session=db) == 1
+        assert await control.prepare_audience(
+            order.order_id, [creator.user_id], 1, session=db
+        ) == {creator.user_id}
+        assert (
+            await control.claim(order.order_id, creator.user_id, 1, session=db)
+            == "claimed"
+        )
+    sent = await _send_public_offer(
         order,
         creator,
         [(creator.telegram_id, messenger, "telegram")],
         dispatch,
         "ru",
     )
+    assert sent is (None if lost_receipt else True)
     flow = CreatorOfferCardFlow(
         repos["order_repo"],
         dispatch,

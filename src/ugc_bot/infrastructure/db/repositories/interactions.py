@@ -58,6 +58,13 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
     ) -> None:
         """Save the first successful send on this channel for the offer."""
         async with _resolve_session(self.session_factory, session) as db:
+            if message_id is not None:
+                # Serialize provider acknowledgements with callback recovery.
+                await db.scalar(
+                    select(OrderModel.order_id)
+                    .where(OrderModel.order_id == order_id)
+                    .with_for_update()
+                )
             if channel is None:
                 await db.merge(
                     OfferDispatchModel(
@@ -136,6 +143,61 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                 )
                 .values(creator_card_updated_at=datetime.now(timezone.utc))
             )
+
+    async def recover_creator_card_receipt(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        message_id: str,
+    ) -> bool:
+        """A provider callback proves delivery after a lost send response."""
+        from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
+
+        async with _resolve_session(self.session_factory, None) as db:
+            order = await db.get(OrderModel, order_id, with_for_update=True)
+            if order is None or not order.creator_offer_card:
+                return False
+            key = (
+                OFFER_CHANNELS.c.order_id == order_id,
+                OFFER_CHANNELS.c.blogger_id == blogger_id,
+            )
+            receipt = (
+                (await db.execute(select(OFFER_CHANNELS).where(*key)))
+                .mappings()
+                .one_or_none()
+            )
+            if receipt and receipt["creator_card_message_id"] is not None:
+                return (
+                    receipt["creator_card_message_id"] == message_id
+                    and receipt[f"{channel.value}_sent_at"] is not None
+                )
+            claimed = await db.scalar(
+                select(CLAIMS.c.blogger_id)
+                .join(CONTROLS, CLAIMS.c.order_id == CONTROLS.c.order_id)
+                .where(
+                    CLAIMS.c.order_id == order_id,
+                    CLAIMS.c.blogger_id == blogger_id,
+                    CLAIMS.c.run > 0,
+                    CLAIMS.c.run <= CONTROLS.c.run,
+                    CLAIMS.c.rejected.is_(False),
+                )
+            )
+            if claimed is None:
+                return False
+            await self.record_sent(
+                order_id,
+                blogger_id,
+                session=db,
+                channel=channel,
+                message_id=message_id,
+            )
+            await db.execute(
+                update(OFFER_CHANNELS)
+                .where(*key, OFFER_CHANNELS.c.creator_card_message_id.is_(None))
+                .values(creator_card_message_id=message_id)
+            )
+            return True
 
     async def record_response(
         self,
