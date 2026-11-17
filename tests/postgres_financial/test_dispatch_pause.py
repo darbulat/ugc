@@ -23,6 +23,19 @@ async def test_resume_keeps_audience_and_never_reclaims_unknown(intake_env):
     container = env["container"]
     tm = container.transaction_manager
     order_id = (await service(env).create(command(env))).order_id
+    async with tm.transaction() as db:
+        await db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == order_id)
+            .values(
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "В течение недели после согласования",
+                    "usage": "Соцсети заказчика",
+                }
+            )
+        )
     ids = [
         (
             await create_test_user(

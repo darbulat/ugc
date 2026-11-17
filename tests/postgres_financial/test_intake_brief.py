@@ -56,7 +56,16 @@ async def test_paid_city_activation_keeps_creator_without_coordinates(
             receipt.order_id, session=session
         )
         await env["repos"]["order_repo"].save(
-            replace(order, status=OrderStatus.PENDING_MODERATION),
+            replace(
+                order,
+                status=OrderStatus.PENDING_MODERATION,
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "В течение недели после согласования",
+                    "usage": "Соцсети заказчика",
+                },
+            ),
             session=session,
         )
         await env["repos"]["payment_repo"].save(
