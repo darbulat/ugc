@@ -2,8 +2,11 @@
 {% block title %}Дашборд{% endblock %}
 {% block content_class %} dashboard-content{% endblock %}
 {% block content %}
-  <div id="dashboard-panel" aria-busy="true"
+  <div id="dashboard-panel" aria-busy="{{ 'false' if payload is defined else 'true' }}"
        data-charts-script="{{ admin_asset(request, 'dashboard.js') }}">
+    {% if payload is defined %}
+      {% include "dashboard_content.html" %}
+    {% else %}
     <div class="section page-heading">
       <h1>Дашборд</h1>
       <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
@@ -17,6 +20,7 @@
         {% endfor %}
       </div>
     </section>
+    {% endif %}
   </div>
   <script defer src="{{ admin_asset(request, 'dashboard-loader.js') }}"></script>
 {% endblock %}

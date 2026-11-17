@@ -243,6 +243,32 @@ async def test_get_dashboard_returns_structure(service) -> None:
 
 
 @pytest.mark.asyncio
+async def test_dashboard_summary_preserves_metrics_and_skips_referrer_queries(
+    service, monkeypatch
+) -> None:
+    svc = service(
+        [_FakeResult(scalar_value=0) for _ in range(4)]
+        + [_FakeResult(all_rows=[_order_cards_row()])]
+    )
+    referrers = AsyncMock(return_value=[])
+    balances = AsyncMock(return_value={"referrers": []})
+    monkeypatch.setattr(svc, "_get_referral_referrers", referrers)
+    monkeypatch.setattr(svc, "_enrich_referrers_with_balance", balances)
+    complete = await svc.get_dashboard("today")
+    referrers.assert_awaited_once()
+    balances.assert_awaited_once()
+    referrers.reset_mock()
+    balances.reset_mock()
+    summary = await svc.get_dashboard("today", include_referrers=False)
+    assert {k: v for k, v in complete.items() if k != "referrals"} == {
+        k: v for k, v in summary.items() if k != "referrals"
+    }
+    assert summary["referrals"] == {}
+    referrers.assert_not_awaited()
+    balances.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_get_creators_by_city_public_method(service) -> None:
     """get_creators_by_city returns list from session."""
     creators_by_city_rows = [("Moscow", 3), ("SPb", 1)]

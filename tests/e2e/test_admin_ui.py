@@ -128,6 +128,46 @@ def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
+def test_dashboard_cached_metrics_do_not_trigger_a_second_request(
+    admin_server, page
+):
+    """A page containing cached values initializes without a metrics fetch."""
+    import re
+
+    from playwright.sync_api import expect
+
+    _login(page, admin_server)
+    metric_requests = []
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+
+    def cached_page(route):
+        if route.request.headers.get("x-dashboard-content") == "1":
+            metric_requests.append(route)
+            route.abort()
+            return
+        response = route.fetch()
+        body = re.sub(
+            r'<div id="dashboard-panel".*?(?=<script defer)',
+            '<div id="dashboard-panel" aria-busy="false">'
+            "<div data-dashboard-content><h1>Дашборд</h1>"
+            '<section id="dashboard-goals">Завершили заказ: 37</section>'
+            "</div></div>",
+            response.text(),
+            flags=re.DOTALL,
+        )
+        route.fulfill(response=response, body=body)
+
+    page.route("**/admin/dashboard?period=7d", cached_page)
+    page.goto(f"{admin_server}/admin/dashboard?period=7d")
+    expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
+    page.wait_for_load_state("networkidle")
+    assert metric_requests == []
+    assert errors == []
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(30)
 @requires_postgres
 def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     """Custom dashboard loads with KPI cards (needs PostgreSQL)."""
