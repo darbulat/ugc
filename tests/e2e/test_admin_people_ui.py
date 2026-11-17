@@ -736,6 +736,7 @@ def test_dashboard_social_summary_links_and_layout(
     page.set_viewport_size({"width": width, "height": 900})
     _login(page, admin_server)
     page.goto(f"{admin_server}/admin/dashboard?period=today")
+    expect(page.locator("#creator-social-heading")).to_be_visible()
     section_ids = page.locator("main section[aria-labelledby]").evaluate_all(
         "(sections) => sections.map(section => "
         "section.getAttribute('aria-labelledby'))"
@@ -835,6 +836,7 @@ def test_creator_base_opens_filtered_directory(
                 re.compile(rf"^Найдено {formatted}$")
             )
             page.go_back(wait_until="domcontentloaded")
+            expect(section).to_be_visible()
 
     overview = section.locator(
         ":scope > .dashboard-metrics .creator-base-metric"

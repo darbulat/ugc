@@ -1,0 +1,299 @@
+{% macro cohort_rate(rate) -%}
+  <span class="metric__values">
+    <strong class="metric__value">{{ ('%.1f'|format(rate.percent)|replace('.', ',') ~ '%') if rate.percent is not none else '—' }}</strong>
+    <span class="metric__delta">{{ rate.converted }} из {{ rate.eligible }}</span>
+  </span>
+{%- endmacro %}
+<div data-dashboard-content>
+  {% set conversion = payload.get('order_conversion', {}) %}
+  {% set previous = payload.get('previous_conversion') %}
+  {% set launches = payload.get('admin_launches', []) %}
+  {% set weekly = payload.get('weekly_registrations') %}
+  {% set roles = [('creators', 'Креаторы'), ('advertisers', 'Заказчики')] %}
+  {% set creators = payload.get('creator_metrics', {}) %}
+  <div class="section page-heading">
+    <h1>Дашборд</h1>
+    <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
+  </div>
+
+  {% set creator_target = payload.get('completed_creators_target', 1000) %}
+  <section class="section card dashboard-goal" id="dashboard-goals" aria-label="Цели дашборда">
+    {% for key, label, target in [
+      ('completed_creators', 'Завершили заказ', creator_target),
+      ('picked_creators', 'Получили назначение', creator_target),
+      ('responded_creators', 'Откликнулись на оффер', creator_target),
+      ('managers', 'Менеджеры', payload.get('managers_target', 100))
+    ] %}
+    {% set total = payload.get(key ~ '_count', 0) %}
+    {% set progress = [total, target]|min %}
+    <div class="dashboard-goal__item">
+      <div class="dashboard-goal__reading">
+        <h2 class="dashboard-goal__label" id="goal-{{ key }}">{{ label }}</h2>
+        <span class="dashboard-goal__values">
+          <strong>{{ '{:,}'.format(total).replace(',', ' ') }}</strong>
+          из {{ '{:,}'.format(target).replace(',', ' ') }}
+        </span>
+      </div>
+      <div class="progress-bar__track" role="progressbar" aria-labelledby="goal-{{ key }}"
+           aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="{{ target }}">
+        <div class="progress-bar__fill" style="width: {{ (progress * 100 / target)|round(1) }}%;"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+
+  {% include "dashboard_attention.html" %}
+
+  <section class="section" aria-labelledby="period-heading">
+    <div class="page-heading">
+      <h2 id="period-heading">За период</h2>
+      <a href="/admin/orders?period={{ period }}">Аналитика заказов</a>
+    </div>
+    <nav class="periods" aria-label="Период аналитики">
+      {% for p in periods %}
+        <a class="chip {% if p == period %}chip--active{% endif %}"
+           {% if p == period %}aria-current="page"{% endif %}
+           href="/admin/dashboard?period={{ p }}">{{ period_labels.get(p, p) }}</a>
+      {% endfor %}
+    </nav>
+    <div class="grid dashboard-metrics dashboard-summary">
+      <article class="card">
+        <h3>Новые профили</h3>
+        {% if period != '7d' or not weekly %}
+        {% for role, name in roles %}
+          {% set data = payload.registrations[role] %}
+          <div class="metric">
+            <span class="metric__label">{{ name }}</span>
+            <strong class="metric__value">{{ data.count }}</strong>
+            {% if data.change_pct is not none and data.change_pct is defined %}
+              <span class="metric__delta {{ 'positive' if data.change_pct >= 0 else 'negative' }}">{{ "%+.1f%%"|format(data.change_pct) }}</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+        {% endif %}
+        {% if weekly %}
+        <p class="muted">Последние 7 дней к предыдущим 7 дням</p>
+        {% for role, name in roles %}
+          {% set data = weekly[role] %}
+          <div class="metric">
+            <span class="metric__label">{{ name }}</span>
+            <span class="metric__values">
+              <strong class="metric__value">{{ data.count }}</strong>
+              <span class="metric__delta">было {{ data.previous_count }}</span>
+              {% if data.change_pct is not none %}
+                <span class="metric__delta {{ 'positive' if data.change_pct >= 0 else 'negative' }}">{{ ("%+.1f%%"|format(data.change_pct))|replace('.', ',') }}</span>
+              {% endif %}
+            </span>
+          </div>
+        {% endfor %}
+        {% endif %}
+        {% set ratio = payload.get('imbalance', {}).get('ratio') %}
+        {% if ratio is not none %}<p class="muted">{{ ratio|string|replace('.', ',') }} профиля креатора на один профиль заказчика</p>{% endif %}
+      </article>
+      <article class="card">
+        <h3>Новые заявки</h3>
+        <div class="metric">
+          <span class="metric__label">Создано</span>
+          <strong class="metric__value">{{ conversion.get('created', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Из них оплачено</span>
+          <strong class="metric__value">{{ conversion.get('paid', 0) }}</strong>
+        </div>
+        <div class="metric">
+          <span class="metric__label">Конверсия в оплату</span>
+          {% set percent = conversion.get('percent') %}
+          <strong class="metric__value">{{ (percent|string|replace('.', ',') ~ '%') if percent is not none else '—' }}</strong>
+          {% if previous and previous.percent is not none and percent is not none %}
+            {% set delta = percent - previous.percent %}
+            <span class="metric__delta {{ 'positive' if delta >= 0 else 'negative' }}"
+                  title="К предыдущему периоду">{{ ("%+.1f"|format(delta))|replace('.', ',') }} п. п.</span>
+          {% endif %}
+        </div>
+        <p class="muted">Заказы созданы и оплачены в пределах выбранного периода. Учитываются подтверждённые оплаты, в том числе предоплаты, внесённые вручную. Тестовые заказы и запуски без оплаты исключены.</p>
+      </article>
+      <article class="card">
+        <h3>Оплаты</h3>
+        <div class="metric">
+          <span class="metric__label">Оплачено заказов</span>
+          <a class="metric__value" href="/admin/payment-model/list?paid_period={{ period }}">{{ payload.get('paid_orders', 0) }}</a>
+        </div>
+        {% for payment in payload.get('payments_by_currency', []) %}
+          <div class="metric">
+            <span class="metric__label">Оборот · {{ payment.currency }}</span>
+            <strong class="metric__value">{{ "{:,.2f}".format(payment.amount|float).replace(',', ' ').replace('.', ',') }}</strong>
+          </div>
+          {% if payment.average_check is defined %}
+          <div class="metric">
+            <span class="metric__label">Средний чек · {{ payment.currency }}</span>
+            <strong class="metric__value">{{ "{:,.2f}".format(payment.average_check|float).replace(',', ' ').replace('.', ',') }}</strong>
+          </div>
+          {% endif %}
+        {% else %}
+          <p class="muted">За выбранный период оплат нет.</p>
+        {% endfor %}
+      </article>
+      <article class="card">
+        <h3>Запуски админом без оплаты</h3>
+        <div class="metric">
+          <span class="metric__label">Запущено заказов</span>
+          <strong class="metric__value">{{ launches|sum(attribute=1) }}</strong>
+        </div>
+        {% for handle, count in launches %}
+          <div class="metric">
+            <span class="metric__label">{{ '@' ~ handle if handle else 'Другие заказчики' }}</span>
+            <strong class="metric__value">{{ count }}</strong>
+          </div>
+        {% endfor %}
+        <p class="muted">Оплата в боте · 0 ₽. Креаторы из этих заказов входят в подбор.</p>
+      </article>
+    </div>
+  </section>
+
+  {% include "creator_base.html" %}
+
+  <section class="section dashboard-charts-section" aria-labelledby="charts-heading">
+    <div class="page-heading">
+      <h2 id="charts-heading">Динамика за период</h2>
+      {% if payload.get('metrics_timezone') %}<span class="muted">{{ payload.metrics_timezone }}</span>{% endif %}
+    </div>
+    <div id="dashboard-charts" data-period="{{ period }}" class="grid">
+      {% for key, label in [('registrations', 'Новые профили'), ('orders', 'Создание и оплата заказов'), ('turnover', 'Суммы оплат')] %}
+      <article class="card chart-card" data-chart="{{ key }}">
+        <div class="page-heading chart-heading">
+          <h3>{{ label }}</h3>
+          <button type="button" class="admin-button chart-expand" aria-label="Увеличить график «{{ label }}»" disabled>Увеличить</button>
+        </div>
+        <p class="muted chart-state" role="status">Загрузка…</p>
+        <div class="chart-plot" hidden><canvas role="img" aria-label="{{ label }} по дням"></canvas></div>
+      </article>
+      {% endfor %}
+    </div>
+    <details class="card chart-observations" hidden>
+      <summary>Дни с наибольшими показателями</summary>
+      <p class="muted">Здесь отмечены дни с максимальным значением каждого показателя. Откройте график за этот день, чтобы сверить данные с датами кампаний или рассылок.</p>
+      <ul class="chart-peaks"></ul>
+    </details>
+    <dialog id="chart-detail" class="chart-dialog" aria-labelledby="chart-detail-title">
+      <div class="page-heading">
+        <h2 id="chart-detail-title"></h2>
+        <form method="dialog"><button class="admin-button" autofocus>Закрыть</button></form>
+      </div>
+      <p class="muted chart-detail-note"></p>
+      <form class="chart-controls">
+        <label>С <input type="date" name="from" required></label>
+        <label>По <input type="date" name="to" required></label>
+        <button class="admin-button admin-button--primary" type="submit">Показать</button>
+        <button class="admin-button" type="button" data-days="7">Последние 7 дней</button>
+        <button class="admin-button" type="button" data-days="0">Весь период</button>
+      </form>
+      <p class="chart-range muted" aria-live="polite"></p>
+      <div class="chart-plot chart-plot--large"><canvas role="img" aria-labelledby="chart-detail-title"></canvas></div>
+      <details class="chart-values">
+        <summary>Значения по дням</summary>
+        <div class="admin-table-scroll" role="region" aria-label="Значения по дням" tabindex="0">
+          <table class="table"><thead></thead><tbody></tbody></table>
+        </div>
+      </details>
+    </dialog>
+  </section>
+
+  {% set cohorts = payload.get('cohort_metrics') %}
+  {% if cohorts %}
+  <section class="section" aria-labelledby="cohorts-heading">
+    <div class="page-heading">
+      <h2 id="cohorts-heading">Активация и повторные заказы</h2>
+      <span class="muted">За всё время</span>
+    </div>
+    <div class="grid dashboard-metrics">
+      <article class="card">
+        <h3>Креаторы</h3>
+        <div class="metric">
+          <span class="metric__label">Первый заказ за 30 дней</span>
+          {{ cohort_rate(cohorts.creator_activation) }}
+        </div>
+        <p class="muted">Считаем первые 30 дней после регистрации и берём креаторов, у которых прошёл весь срок. Первый заказ засчитывается при принятии оффера в пределах лимита или старте платного сотрудничества. Даты старых откликов приблизительные.</p>
+      </article>
+      <article class="card">
+        <h3>Заказчики</h3>
+        <div class="metric">
+          <span class="metric__label">Первая оплата за 30 дней</span>
+          {{ cohort_rate(cohorts.customer_activation) }}
+        </div>
+        <p class="muted">Считаем первые 30 дней после регистрации и берём заказчиков, у которых прошёл весь срок.</p>
+      </article>
+      <article class="card">
+        <h3>Повторные заказы</h3>
+        {% for key, label in [('customers_who_ordered_again', 'Создали второй заказ'), ('repeat_customers', 'Оплатили второй заказ')] %}
+        <div class="metric">
+          <span class="metric__label">{{ label }}</span>
+          {% if key == 'customers_who_ordered_again' %}
+          <a class="metric__values" href="{{ request.url_for('admin:list', identity='order-model').include_query_params(group='repeat') }}">
+            <strong class="metric__value">{{ cohorts[key] }}</strong>
+            <span class="metric__delta">из {{ cohorts.paying_customers }} плативших</span>
+          </a>
+          {% else %}
+          <span class="metric__values">
+            <strong class="metric__value">{{ cohorts[key] }}</strong>
+            <span class="metric__delta">из {{ cohorts.paying_customers }} плативших</span>
+          </span>
+          {% endif %}
+        </div>
+        {% endfor %}
+        <div class="metric">
+          <span class="metric__label">Оплатили второй за 90 дней</span>
+          {{ cohort_rate(cohorts.customer_repeat_90d) }}
+        </div>
+        <p class="muted">Создание второго заказа считаем после первой оплаты. Для доли за 90 дней берём заказчиков с полным сроком наблюдения.</p>
+      </article>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if payload.get('creator_social_summary') %}
+  <section class="section card creator-social-summary" aria-labelledby="creator-social-heading">
+    <div class="page-heading">
+      <h2 id="creator-social-heading">Соцсети креаторов</h2>
+      <span class="muted">За всё время</span>
+    </div>
+    <table class="table" aria-labelledby="creator-social-heading">
+      <colgroup span="2"></colgroup>
+      <colgroup span="2"></colgroup>
+      <thead>
+        <tr>
+          <th scope="col" rowspan="2">Площадка</th>
+          <th scope="col" rowspan="2">Есть ссылка</th>
+          <th scope="colgroup" colspan="2">Подписчики</th>
+        </tr>
+        <tr>
+          <th scope="col">Указаны</th>
+          <th scope="col">Не указаны</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set directory = request.url_for('admin_creators') %}
+        {% for row in payload.creator_social_summary %}
+          {% set platform_url = directory.include_query_params(platform=row.platform) %}
+          <tr>
+            <th scope="row">{{ row.label }}</th>
+            <td><a href="{{ platform_url }}" aria-label="{{ row.label }}, есть ссылка: {{ row.with_link }}">{{ row.with_link }}</a></td>
+            <td><a href="{{ platform_url.include_query_params(platform_followers_min=0) }}" aria-label="{{ row.label }}, подписчики указаны: {{ row.with_followers }}">{{ row.with_followers }}</a></td>
+            <td><a href="{{ platform_url.include_query_params(platform_followers_unknown='true') }}" aria-label="{{ row.label }}, подписчики не указаны: {{ row.without_followers }}">{{ row.without_followers }}</a></td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+
+  {% if payload.get("_timings_ms") %}
+  <section class="section card">
+    <h2>Время загрузки (мс)</h2>
+    <dl>
+      {% for key, ms in payload._timings_ms.items() | sort %}
+        <dt>{{ key }}</dt><dd>{{ "%.0f"|format(ms) }}</dd>
+      {% endfor %}
+    </dl>
+  </section>
+  {% endif %}
+</div>

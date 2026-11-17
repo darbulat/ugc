@@ -80,14 +80,65 @@ def test_dashboard_loads(admin_server: str, page) -> None:
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
+def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
+    """Navigation works before metrics arrive, including after a failed load."""
+    from playwright.sync_api import expect
+
+    _login(page, admin_server)
+    requests = []
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+
+    def hold_metrics(route):
+        if route.request.headers.get("x-dashboard-content") == "1":
+            requests.append(route)
+        else:
+            route.continue_()
+
+    page.route("**/admin/dashboard?period=30d", hold_metrics)
+    response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
+    assert response is not None and response.ok
+    expect(
+        page.get_by_role("heading", name="Дашборд", exact=True)
+    ).to_be_visible()
+    expect(page.get_by_role("link", name="Открыть заказы")).to_be_visible()
+    expect(page.get_by_role("status")).to_have_text("Загружаем показатели…")
+    expect(page.locator("#dashboard-panel")).to_have_attribute(
+        "aria-busy", "true"
+    )
+    assert len(requests) == 1
+    requests[0].fulfill(status=503, body="Temporarily unavailable")
+    retry = page.get_by_role("button", name="Повторить загрузку")
+    expect(retry).to_be_visible()
+    retry.click()
+    expect(page.get_by_role("status")).to_have_text("Загружаем показатели…")
+    assert len(requests) == 2
+    requests[1].fulfill(
+        content_type="text/html",
+        body="<div data-dashboard-content><h1>Дашборд</h1>"
+        '<section id="dashboard-goals">Завершили заказ: 37</section></div>',
+    )
+    expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
+    expect(page.locator("#dashboard-panel")).to_have_attribute(
+        "aria-busy", "false"
+    )
+    expect(retry).to_have_count(0)
+    assert errors == []
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(30)
 @requires_postgres
 def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     """Custom dashboard loads with KPI cards (needs PostgreSQL)."""
+    from playwright.sync_api import expect
+
     _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
     response = page.goto(f"{admin_server}/admin/dashboard?period=all")
     assert response is not None and response.ok
     assert page.get_by_role("heading", name="Дашборд", exact=True).is_visible()
+    expect(page.locator("#dashboard-goals")).to_be_visible()
     assert page.get_by_text("Последние 7 дней к предыдущим 7 дням").is_visible()
     assert page.get_by_role(
         "heading", name="Запуски админом без оплаты"
@@ -126,6 +177,8 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
 @pytest.mark.timeout(30)
 @requires_postgres
 def test_dashboard_attention_layout(admin_server: str, page) -> None:
+    from playwright.sync_api import expect
+
     _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
     page.set_viewport_size({"width": 1440, "height": 900})
@@ -134,6 +187,7 @@ def test_dashboard_attention_layout(admin_server: str, page) -> None:
 
     attention = page.get_by_role("region", name="Требует внимания")
     cards = attention.locator(".attention-queues > .attention-queue")
+    expect(cards).to_have_count(8)
     coordinates = (
         "cards => cards.map(card => [card.offsetLeft, card.offsetTop])"
     )
