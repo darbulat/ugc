@@ -16,6 +16,30 @@ WORLD_PHRASES = frozenset(
 )
 
 GEO_TOKEN_SPLIT_RE = re.compile(r"[,/]+|\s+и\s+|\n+")
+UNSPECIFIED_GEOGRAPHY = frozenset(
+    {
+        "любая",
+        "любое",
+        "любой",
+        "любые",
+        "любом",
+        "любому",
+        "в любом",
+        "любая страна",
+        "любой город",
+        "в любом городе",
+        "любой регион",
+        "любая география",
+        "не важно",
+        "неважно",
+        "без разницы",
+        "без ограничений",
+        "any",
+        "anywhere",
+        "any city",
+        "any country",
+    }
+)
 
 
 def _normalize_token(value: str) -> str:
@@ -29,6 +53,13 @@ def _normalize_token(value: str) -> str:
 def normalize_geo_token(value: str) -> str:
     """Normalize a single geography token (strip, lower, ё→е)."""
     return _normalize_token(value)
+
+
+def has_unspecified_geography(value: str | None) -> bool:
+    return any(
+        _normalize_token(part).strip(".!? ") in UNSPECIFIED_GEOGRAPHY
+        for part in GEO_TOKEN_SPLIT_RE.split(value or "")
+    )
 
 
 def parse_geography(raw: str | None) -> "GeographySpec | None":

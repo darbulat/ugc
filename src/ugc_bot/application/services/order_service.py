@@ -13,6 +13,7 @@ from ugc_bot.application.errors import (
 )
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
+    has_unspecified_geography,
     parse_geography,
 )
 from ugc_bot.application.order_notice_ports import OrderNoticeRepository
@@ -39,19 +40,36 @@ from ugc_bot.infrastructure.db.session import with_optional_tx
 logger = logging.getLogger(__name__)
 
 
+def _target_geography(targeting: OrderTargeting | None) -> str | None:
+    if targeting is None:
+        return None
+    if has_unspecified_geography(targeting.city):
+        raise ValueError("geography_unspecified")
+    return targeting.geography
+
+
 async def _order_geometry(geography, geocoder, *, financial):
     spec = parse_geography(geography)
-    if spec is None or geocoder is None:
+    if spec is None:
+        if financial and geography:
+            raise ValueError("geography_unavailable")
         return None
     queries = get_geometry_queries_from_spec(spec)
     if not queries:
         return None
     try:
-        return await geocoder.get_multipolygon_wkt_for_queries(queries)
+        geometry = (
+            await geocoder.get_multipolygon_wkt_for_queries(queries)
+            if geocoder is not None
+            else None
+        )
     except Exception as exc:
         if financial:
             raise ValueError("geography_unavailable") from exc
         raise
+    if financial and not geometry:
+        raise ValueError("geography_unavailable")
+    return geometry
 
 
 def _validate_order_input(
@@ -249,6 +267,8 @@ class OrderService:
             order_currency = await self._resolve_currency(user.country, session)
 
             geography_clean = (geography or "").strip() or None
+            if has_unspecified_geography(geography_clean):
+                raise OrderCreationError("geography_unspecified")
             order_location_geometry = await _order_geometry(
                 geography_clean,
                 self.geocoder,
@@ -440,7 +460,7 @@ class OrderService:
                 _financial_order_id=order_id,
                 _created_at=order_created_at,
                 product_photo_file_id=product_photo_file_id,
-                geography=targeting.geography if targeting else None,
+                geography=_target_geography(targeting),
             )
             await paid.repository.activate_new_order(
                 order_id, quote.policy_version, session=session
@@ -498,7 +518,9 @@ class OrderService:
             return order
 
         async def _run(session: object | None) -> Order:
-            editable(await self.order_repo.get_by_id(order_id, session=session))
+            previous = editable(
+                await self.order_repo.get_by_id(order_id, session=session)
+            )
             product_link_clean, offer_text_clean, barter_clean = (
                 _validate_order_input(
                     product_link,
@@ -511,6 +533,11 @@ class OrderService:
                 )
             )
             geography_clean = (geography or "").strip() or None
+            if (
+                geography_clean != previous.geography
+                and has_unspecified_geography(geography_clean)
+            ):
+                raise OrderCreationError("geography_unspecified")
             spec = parse_geography(geography_clean)
             geography_queries = (
                 get_geometry_queries_from_spec(spec)

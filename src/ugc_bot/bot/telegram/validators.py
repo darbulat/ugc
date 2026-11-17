@@ -13,6 +13,8 @@ import re
 from datetime import date
 from urllib.parse import urlparse
 
+from ugc_bot.application.geography import has_unspecified_geography
+
 INSTAGRAM_URL_REGEX = re.compile(
     r"^(https?://)?(www\.)?instagram\.com/[A-Za-z0-9._]+/?$"
 )
@@ -338,12 +340,12 @@ def validate_geography(
     err = validate_not_bot_command(v, texts=texts)
     if err is not None:
         return err
-    if not v:
+    if not v or has_unspecified_geography(v):
         return _msg(
             texts,
             "err_geo_required",
             "Specify one option: city, region or country. "
-            "Examples: London, UK, Worldwide",
+            "Examples: London or Kazakhstan.",
         )
     if len(v) > GEOGRAPHY_MAX:
         return _msg(

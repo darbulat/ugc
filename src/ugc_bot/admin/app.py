@@ -19,12 +19,14 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
 from aiogram.utils.token import TokenValidationError
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import ValidationError
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
 from sqladmin.pagination import Pagination
 from sqlalchemy import exists, func, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, object_session
 from starlette.datastructures import URL, QueryParams
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -77,6 +79,8 @@ from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_HINTS,
     ORDER_EDITOR_LIMITS,
     ORDER_EDITOR_SECTIONS,
+    ORDER_GEOGRAPHY_HINT,
+    OrderAudiencePreview,
     changed_text_errors,
 )
 from ugc_bot.admin.order_review import register_order_review
@@ -115,6 +119,7 @@ from ugc_bot.admin.people import (
 from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
+    has_unspecified_geography,
     parse_geography,
 )
 from ugc_bot.application.ports import OrderRepository
@@ -1918,6 +1923,8 @@ def _register_dashboard_api_routes(
             raise HTTPException(status_code=404, detail="Заказ не найден")
         return order
 
+    _register_order_audience_preview_route(app, require_admin)
+
     @app.get("/admin/api/search", dependencies=[Depends(require_admin)])
     async def search_api(q: str = "") -> dict:
         return await _api_search_json(
@@ -3539,6 +3546,95 @@ async def _inject_order_eligible_bloggers_count(
         context["eligible_bloggers_count"] = None
 
 
+def _register_order_audience_preview_route(app: FastAPI, require_admin) -> None:
+    @app.get(
+        "/admin/api/orders/{order_id}/audience",
+        dependencies=[Depends(require_admin)],
+    )
+    async def order_audience_preview(request: Request, order_id: UUID):
+        try:
+            filters = OrderAudiencePreview.model_validate(
+                {
+                    key: value or None
+                    for key, value in request.query_params.items()
+                }
+            )
+        except ValidationError:
+            raise HTTPException(422, "Проверьте значения фильтров.") from None
+        return JSONResponse(
+            {"count": await _preview_order_audience(order_id, filters)},
+            headers={"Cache-Control": "no-store"},
+        )
+
+
+async def _preview_geography(order, intake, value, session) -> dict:
+    geography = (value or "").strip() or None
+    if has_unspecified_geography(geography):
+        raise HTTPException(422, ORDER_GEOGRAPHY_HINT)
+    if geography == ((order.geography or "").strip() or None):
+        return {}
+    if (
+        order.financial_version
+        and intake is not None
+        and await intake.exact_city_for_order(order.order_id, session=session)
+        is not None
+    ):
+        raise HTTPException(422, "Город заказа с точным подбором закреплён.")
+    return {
+        "geography": geography,
+        "location_geometry": await _resolve_order_location_geometry(geography),
+    }
+
+
+async def _preview_order_audience(
+    order_id: UUID, filters: OrderAudiencePreview
+) -> int:
+    container = _get_admin_container()
+    if container is None or container.transaction_manager is None:
+        raise HTTPException(503, "Подбор временно недоступен.")
+    dispatcher = container.build_offer_dispatch_service()
+    override = filters.model_dump(exclude_unset=True)
+    try:
+        async with asyncio.timeout(20):
+            async with container.transaction_manager.transaction() as session:
+                order = await dispatcher.order_repo.get_by_id(
+                    order_id, session=session
+                )
+                if order is None or order.status == OrderStatus.DELETED:
+                    raise HTTPException(404, "Заказ не найден.")
+                for name in ("order_type", "price"):
+                    if (
+                        order.financial_version is not None
+                        or override.get(name) is None
+                    ):
+                        override.pop(name, None)
+                if "geography" in override:
+                    override.update(
+                        await _preview_geography(
+                            order,
+                            dispatcher.intake_repository,
+                            override.pop("geography"),
+                            session,
+                        )
+                    )
+                return await dispatcher.count_order_candidates(
+                    dataclasses.replace(order, **override), session=session
+                )
+    except (ValueError, OrderGeographyUnavailableError):
+        raise HTTPException(
+            422, "География не распознана. " + ORDER_GEOGRAPHY_HINT
+        ) from None
+    except TimeoutError:
+        raise HTTPException(
+            503, "Подбор занял слишком много времени. Повторите попытку."
+        ) from None
+    except SQLAlchemyError:
+        logger.warning(
+            "Order audience preview failed", extra={"order_id": str(order_id)}
+        )
+        raise HTTPException(503, "Подбор временно недоступен.") from None
+
+
 async def _inject_order_quote_details(context, model_view, model) -> None:
     """Saved quote and private preview stay read-only in the edit page."""
     if not isinstance(model_view, OrderAdmin) or model is None:
@@ -3636,6 +3732,39 @@ async def _inject_order_managers(
         logger.exception("Failed to inject order managers")
 
 
+async def _prepare_order_edit_values(request, model, form, values) -> None:
+    if form.get("save") == "Activate order":
+        await _require_action_token(request)
+        values["status"] = OrderStatus.ACTIVE
+    elif form.get("status") == form.get("original_status"):
+        values.pop("status", None)
+    elif (
+        model.status in _ACTIVATABLE_ORDER_STATUSES
+        and values.get("status") == OrderStatus.ACTIVE
+    ):
+        raise HTTPException(422, "Для запуска нажмите «Активировать заказ».")
+
+
+async def _inject_order_editor_context(context, request, model_view, model):
+    if not isinstance(model_view, OrderAdmin):
+        return
+    await _inject_order_managers(context, model_view, model)
+    await _inject_order_quote_details(context, model_view, model)
+    details = await model_view.worklist_details([model])
+    reasons = await model_view.closure_reasons([model])
+    order_actions = details.get(model.order_id, {})
+    request.state.order_actions = order_actions
+    context.update(
+        order_actions=order_actions,
+        saved_closure_reason=reasons.get(model.order_id),
+        order_sections=ORDER_EDITOR_SECTIONS,
+        order_limits=ORDER_EDITOR_LIMITS,
+        order_hints=ORDER_EDITOR_HINTS,
+        order_status_labels=ORDER_STATUS_LABELS,
+        can_activate_order=model.status in _ACTIVATABLE_ORDER_STATUSES,
+    )
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -3660,6 +3789,13 @@ class EnumAwareAdmin(Admin):
         return RedirectResponse("/admin/dashboard", status_code=302)
 
     def get_save_redirect_url(self, request, form, model_view, obj):
+        if (
+            isinstance(model_view, OrderAdmin)
+            and form.get("save") == "Activate order"
+        ):
+            return request.url_for(
+                "admin_order_detail", order_id=obj.order_id
+            ).include_query_params(return_to=_order_return_url(request))
         url = super().get_save_redirect_url(request, form, model_view, obj)
         if not isinstance(model_view, OrderAdmin) or request.method != "POST":
             return url
@@ -3724,9 +3860,6 @@ class EnumAwareAdmin(Admin):
     @login_required
     async def edit(self, request: Request):  # pragma: no cover
         """Override edit to pass enum .value for correct select display."""
-        from starlette.exceptions import HTTPException
-        from starlette.responses import RedirectResponse
-
         await self._edit(request)
 
         identity = request.path_params["identity"]
@@ -3743,24 +3876,11 @@ class EnumAwareAdmin(Admin):
             "model_view": model_view,
             "form": Form(data=form_data),
         }
-        await _inject_order_eligible_bloggers_count(context, model_view, model)
-        await _inject_order_managers(context, model_view, model)
-        await _inject_order_quote_details(context, model_view, model)
-        if isinstance(model_view, OrderAdmin):
-            details = await model_view.worklist_details([model])
-            reasons = await model_view.closure_reasons([model])
-            order_actions = details.get(model.order_id, {})
-            request.state.order_actions = order_actions
-            context.update(
-                order_actions=order_actions,
-                saved_closure_reason=reasons.get(model.order_id),
-                order_sections=ORDER_EDITOR_SECTIONS,
-                order_limits=ORDER_EDITOR_LIMITS,
-                order_hints=ORDER_EDITOR_HINTS,
-                order_status_labels=ORDER_STATUS_LABELS,
-            )
-
+        await _inject_order_editor_context(context, request, model_view, model)
         if request.method == "GET":
+            await _inject_order_eligible_bloggers_count(
+                context, model_view, model
+            )
             return await self.templates.TemplateResponse(
                 request, model_view.edit_template, context
             )
@@ -3784,6 +3904,10 @@ class EnumAwareAdmin(Admin):
             )
 
         form_data_dict = self._denormalize_wtform_data(form.data, model)
+        if isinstance(model_view, OrderAdmin):
+            await _prepare_order_edit_values(
+                request, model, form_data_post, form_data_dict
+            )
         try:
             if (
                 model_view.save_as

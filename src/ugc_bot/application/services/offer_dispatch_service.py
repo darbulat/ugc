@@ -388,28 +388,31 @@ class OfferDispatchService:
 
         async def _run(sess: object | None) -> int:
             order = await self.order_repo.get_by_id(order_id, session=sess)
-            (
-                _order,
-                confirmed_ids,
-                already_sent_set,
-                bloggers_with_unfulfilled,
-            ) = await self._get_initial_data_for_order(
-                order_id, order, session=sess
-            )
-            if _order is None or not confirmed_ids:
-                return 0
-            users = await self._collect_eligible_users(
-                _order,
-                confirmed_ids,
-                already_sent_set,
-                bloggers_with_unfulfilled,
-                sess,
-            )
-            return len(users)
+            return await self.count_order_candidates(order, session=sess)
 
         if session is not None:
             return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def count_order_candidates(
+        self, order: Order | None, *, session: object | None
+    ) -> int:
+        """Count candidates for saved or proposed filters."""
+        if order is None:
+            return 0
+        (
+            _,
+            confirmed,
+            sent,
+            unfulfilled,
+        ) = await self._get_initial_data_for_order(
+            order.order_id, order, session=session
+        )
+        return len(
+            await self._collect_eligible_users(
+                order, confirmed, sent, unfulfilled, session
+            )
+        )
 
     async def _validate_and_get_initial_data(
         self, order_id: UUID, session: object | None
