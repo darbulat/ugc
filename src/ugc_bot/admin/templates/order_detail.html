@@ -51,11 +51,6 @@
           <small>Согласились в переписке: {{ order.manual_creator_count }}</small>
           {% endif %}
           <small>Осталось подобрать {{ [needed - picked - order.get('manual_creator_count', 0), 0]|max }}</small>
-        </article>
-        <article>
-          <h2>Отклики</h2>
-          <strong>{{ order.accepted_count|default(0) }}</strong>
-          <small>Отправлено офферов {{ order.dispatched_count|default(0) }}</small>
           {% if order.get('eligible_creators_count') is not none %}<small>Подходят по фильтрам {{ order.eligible_creators_count }}</small>{% endif %}
         </article>
         <article>
@@ -87,6 +82,15 @@
         {% endif %}
       </div>
       {% endif %}
+    </section>
+
+    <section class="card order-detail__section" aria-labelledby="order-offer-heading">
+      <h2 id="order-offer-heading">Рассылка и отклики</h2>
+      <div id="order-offer-activity"
+           data-url="{{ request.url_for('admin_order_offer_activity', order_id=order.order_id).include_query_params(return_to=back_url) }}">
+        <p class="muted">Отправлено офферов {{ order.dispatched_count|default(0) }} · Согласились {{ order.accepted_count|default(0) }}</p>
+      </div>
+      <small class="muted" id="order-offer-refresh-status" role="status"></small>
     </section>
 
     {% if browser_payment or browser_payment_message %}
@@ -296,4 +300,5 @@
     </section>
   </div>
   <script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
+  <script defer src="{{ admin_asset(request, 'order-offer-activity.js') }}"></script>
 {% endblock %}

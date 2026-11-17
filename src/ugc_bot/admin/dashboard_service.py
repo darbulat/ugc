@@ -47,6 +47,7 @@ from ugc_bot.admin.dashboard_periods import PeriodWindow as PeriodWindow
 from ugc_bot.admin.dashboard_periods import (
     dashboard_period_window as dashboard_period_window,
 )
+from ugc_bot.admin.order_offer_activity import load_order_offer_activity
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
     active_pick_reasons,
@@ -783,6 +784,10 @@ class AdminDashboardService:
         """Return detailed order card data for a single order."""
         async with self._session_factory() as session:
             return await self._get_order_card(session, order_id)
+
+    async def get_order_offer_activity(self, order_id: UUID) -> dict | None:
+        async with self._session_factory() as session:
+            return await load_order_offer_activity(session, order_id)
 
     def _build_period_window(self, period: PeriodKey) -> PeriodWindow:
         return dashboard_period_window(period, self._timezone)
