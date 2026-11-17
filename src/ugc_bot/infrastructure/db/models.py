@@ -395,6 +395,14 @@ class OrderModel(Base):
 
     __tablename__ = "orders"
 
+    # NULL is a pre-existing order. An empty object is a new, unapproved card.
+    creator_offer_card: Mapped[Optional[dict[str, str]]] = mapped_column(
+        JSON(none_as_null=True).with_variant(
+            JSONB(none_as_null=True), "postgresql"
+        ),
+        nullable=True,
+    )
+
     complimentary: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )

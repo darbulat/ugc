@@ -1096,6 +1096,7 @@ class InMemoryOfferDispatchRepository(OfferDispatchRepository):
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        message_id: str | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
         key = (order_id, blogger_id)

@@ -681,18 +681,17 @@ async def successful_payment_handler(
     msg_success = await bot_texts_service.get(
         "msg_advertiser_after_payment_success", locale
     )
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id,
-        text=msg_success,
-    )
     msg_what_next = await bot_texts_service.get(
         "msg_advertiser_after_payment_what_next", locale
     )
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id,
-        text=msg_what_next,
-        parse_mode="Markdown",
-    )
+    compact = order is not None and order.creator_offer_card is not None
+    if not compact:
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id, text=msg_success
+        )
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id, text=msg_what_next, parse_mode="Markdown"
+        )
     after_texts = await bot_texts_service.get_many(
         [
             "btn_create_order",
@@ -707,9 +706,14 @@ async def successful_payment_handler(
     msg_important = await bot_texts_service.get(
         "msg_advertiser_after_payment_important", locale
     )
+    text = (
+        "\n\n".join((msg_success, msg_what_next, msg_important))
+        if compact
+        else msg_important
+    )
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
-        text=msg_important,
+        text=text,
         parse_mode="Markdown",
         keyboard=advertiser_menu_inline_keyboard(after_texts),
     )

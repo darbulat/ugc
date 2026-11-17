@@ -12,6 +12,7 @@ from aiogram.exceptions import (
     TelegramNetworkError,
 )
 from aiogram.types import (
+    BufferedInputFile,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -20,6 +21,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
+from ugc_bot.application.creator_offer_cards import NEUTRAL_COVER, OfferCard
 from ugc_bot.application.messenger.dto import (
     Button,
     Invoice,
@@ -28,6 +30,9 @@ from ugc_bot.application.messenger.dto import (
     KeyboardKind,
 )
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.infrastructure.messenger.telegram.offer_cover import (
+    neutral_offer_cover,
+)
 from ugc_bot.infrastructure.order_images import telegram_order_photo
 
 TELEGRAM_API_RETRY_ATTEMPTS = 3
@@ -169,6 +174,48 @@ class TelegramMessengerClient(MessengerClient):
         except TelegramBadRequest as exc:
             msg = (getattr(exc, "message", None) or str(exc)).lower()
             if "message is not modified" not in msg:
+                raise
+
+    async def send_offer_card(
+        self, chat_id: str, card: OfferCard, cover: str | None
+    ) -> str:
+        if cover is None:
+            message = await self._bot.send_message(
+                chat_id=int(chat_id),
+                text=card.text,
+                reply_markup=_build_markup(card.keyboard),
+                parse_mode="HTML",
+                disable_web_page_preview=True,
+            )
+            return str(message.message_id)
+        photo = (
+            BufferedInputFile(neutral_offer_cover(), filename="ugc-offer.jpg")
+            if cover == NEUTRAL_COVER
+            else telegram_order_photo(cover)
+        )
+        # A timeout can happen after Telegram has accepted the message.
+        message = await self._bot.send_photo(
+            chat_id=int(chat_id),
+            photo=photo,
+            caption=card.text,
+            reply_markup=_build_markup(card.keyboard),
+            parse_mode="HTML",
+        )
+        return str(message.message_id)
+
+    async def edit_offer_card(
+        self, chat_id: str, message_id: str, card: OfferCard
+    ) -> None:
+        try:
+            await self._bot.edit_message_caption(
+                chat_id=int(chat_id),
+                message_id=int(message_id),
+                caption=card.text,
+                reply_markup=_build_markup(card.keyboard),
+                parse_mode="HTML",
+            )
+        except TelegramBadRequest as exc:
+            if "message is not modified" not in exc.message.lower():
                 raise
 
     async def edit_reply_markup(
@@ -317,10 +364,13 @@ def _inline_button(button: Button) -> InlineKeyboardButton:
             web_app=WebAppInfo(url=web_app_url),
         )
     if button.url:
-        return InlineKeyboardButton(text=button.text, url=button.url)
+        return InlineKeyboardButton(
+            text=button.text, url=button.url, style=button.style
+        )
     return InlineKeyboardButton(
         text=button.text,
         callback_data=button.callback_data or "",
+        style=button.style,
     )
 
 

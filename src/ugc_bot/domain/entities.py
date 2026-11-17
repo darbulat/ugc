@@ -243,6 +243,7 @@ class Order:
     financial_version: Optional[str] = None
     complimentary: bool = False
     dispatch_stopped: bool = False
+    creator_offer_card: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

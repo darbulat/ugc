@@ -12,6 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
+from ugc_bot.application.creator_offer_cards import CALLBACK_PREFIX
 from ugc_bot.application.errors import (
     OrderCreationError,
     PaidSelectionResponseError,
@@ -39,6 +40,7 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
+from ugc_bot.bot.creator_offer_card_flow import CreatorOfferCardFlow
 from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
@@ -73,6 +75,49 @@ _SEND_CONTACT_TEXTS_KEYS = (
 logger = logging.getLogger(__name__)
 _send_retries = 3
 _send_retry_delay_seconds = 0.5
+
+
+@router.callback_query(lambda cb: (cb.data or "").startswith(CALLBACK_PREFIX))
+async def handle_creator_offer_card(
+    callback: CallbackQuery,
+    order_repo: OrderRepository,
+    offer_dispatch_service: OfferDispatchService,
+    offer_response_service: OfferResponseService,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService,
+    bot_texts_service: BotTextsService,
+    interaction_service: InteractionService,
+    offer_response_rate_limiter: Any,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+    max_messenger_client: MessengerClient | None = None,
+) -> None:
+    messenger, adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = adapter.from_callback(callback)
+    flow = CreatorOfferCardFlow(
+        order_repo,
+        offer_dispatch_service,
+        offer_response_service,
+        user_role_service,
+        profile_service,
+        bot_texts_service,
+        messenger,
+        user_locale,
+        offer_response_rate_limiter,
+    )
+    direct = await flow.handle(incoming)
+    if direct:
+        response, creator = direct
+        await flow.finish_direct(
+            incoming,
+            response.order,
+            creator,
+            interaction_service,
+            max_messenger_client,
+        )
 
 
 async def _clear_max_chat_id(

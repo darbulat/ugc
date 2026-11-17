@@ -159,6 +159,41 @@
       {% endif %}
     </section>
     {% endfor %}
+    {% if obj.creator_offer_card is defined and (obj.creator_offer_card is not none or obj.status in ('new', 'pending_moderation')) %}
+    {% set card = obj.creator_offer_card or {} %}
+    <section class="order-editor__panel" id="creator-offer-card" aria-labelledby="creator-offer-card-title">
+      <h2 id="creator-offer-card-title">Карточка креатора до отклика</h2>
+      <p class="form-hint">Уберите упоминания бренда и ссылки из публичного текста. Проверьте картинку внизу, прежде чем разрешить её показывать.</p>
+      {% if obj.creator_offer_card is none %}
+      <label class="form-check">
+        <input class="form-check-input" type="checkbox" name="creator_card_enable" value="yes">
+        <span class="form-check-label">Использовать новую карточку для этого черновика</span>
+      </label>
+      {% endif %}
+      <div class="order-editor__fields">
+        {% for key, text, limit in [
+          ('title','Заголовок',64), ('task','Короткая задача',200),
+          ('deadline','Срок для креатора',106), ('usage','Где используют ролик',106),
+          ('brief','Анонимный бриф по кнопке',620), ('barter','Условия бартера',100),
+          ('brand','Бренд, если его показ одобрен',64),
+          ('contact','Рабочий Telegram с разрешением на передачу после отклика',33)
+        ] %}
+        <div>
+          <label class="form-label" for="creator-card-{{ key }}">{{ text }}</label>
+          {% if key in ('brief', 'task') %}
+          <textarea class="form-control" id="creator-card-{{ key }}" name="creator_card_{{ key }}" maxlength="{{ limit }}" rows="3">{{ card.get(key, '') }}</textarea>
+          {% else %}
+          <input class="form-control" id="creator-card-{{ key }}" name="creator_card_{{ key }}" value="{{ card.get(key, '') }}" maxlength="{{ limit }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" name="creator_card_photo" value="approved" {% if card.get('photo') == 'approved' %}checked{% endif %}>
+          <span class="form-check-label">Показывать загруженную обложку до отклика. По умолчанию используется нейтральная.</span>
+        </label>
+      </div>
+    </section>
+    {% endif %}
     <section class="order-editor__panel" id="order-edit-files" aria-labelledby="order-edit-files-title">
       <h2 id="order-edit-files-title">Фото и менеджеры</h2>
       {% if order_image_preview %}

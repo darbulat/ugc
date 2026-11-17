@@ -8,6 +8,7 @@ from uuid import UUID
 from aiogram import Router
 from aiogram.types import CallbackQuery
 
+from ugc_bot.application.creator_offer_cards import render_public_offer
 from ugc_bot.application.messenger.dto import IncomingCallback
 from ugc_bot.application.messenger.ports import (
     MessengerClient,
@@ -124,6 +125,17 @@ async def handle_moderate_activate(
             )
             return
         assert order is not None
+
+        if order.creator_offer_card is not None:
+            try:
+                render_public_offer(order, "ru")
+            except ValueError:
+                await messenger_client.answer_callback(
+                    callback_id=incoming.callback_id,
+                    text="Сначала заполните карточку креатора в админке.",
+                    show_alert=True,
+                )
+                return
 
         if _order_has_banned_content(order, content_moderation_service):
             msg = _format_banned_content_message(

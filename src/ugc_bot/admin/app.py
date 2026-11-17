@@ -116,6 +116,11 @@ from ugc_bot.admin.people import (
     instagram_link,
     telegram_handle,
 )
+from ugc_bot.application.creator_offer_cards import (
+    PUBLIC_FIELDS,
+    render_public_offer,
+    validate_public_offer,
+)
 from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
@@ -370,6 +375,8 @@ async def _activate_order(
             return
         if order.status not in _ACTIVATABLE_ORDER_STATUSES:
             raise ValueError("order_activation_requires_new_or_pending")
+        if order.creator_offer_card is not None:
+            render_public_offer(order, "ru")
         order = await _checked_activation_geography(
             order, container, geography_update, exact_city, session
         )
@@ -2289,6 +2296,29 @@ def _validate_activation_submission(submitted: dict) -> None:
         )
 
 
+def _creator_card_edit_data(order, data, form, *, activating):
+    draft = getattr(order, "creator_offer_card", None)
+    if draft is None:
+        if (
+            order is None
+            or order.status not in _ACTIVATABLE_ORDER_STATUSES
+            or form.get("creator_card_enable") != "yes"
+        ):
+            return data
+        draft = {}
+    if "creator_card_title" in form:
+        draft = {
+            key: str(form.get(f"creator_card_{key}", "") or "")
+            for key in (*PUBLIC_FIELDS, "contact", "photo")
+        }
+    card = validate_public_offer(
+        draft,
+        ready=activating,
+        barter=float(data.get("price", order.price)) <= 0,
+    )
+    return {**data, "creator_offer_card": card}
+
+
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
@@ -2415,6 +2445,8 @@ class OrderAdmin(ModelView, model=OrderModel):
             raise ValueError("Заказ удалён.")
         if data.get("status") == OrderStatus.DELETED:
             raise ValueError("Для удаления используйте кнопку «Удалить заказ».")
+        if is_created:
+            model.creator_offer_card = {}
         if (
             not is_created
             and data.get("status") == OrderStatus.CLOSED
@@ -2467,6 +2499,9 @@ class OrderAdmin(ModelView, model=OrderModel):
             raise ValueError("Заказ уже запущен без оплаты.")
         if activating:
             _validate_activation_submission(submitted)
+        data = _creator_card_edit_data(
+            obj, data, form_data, activating=activating
+        )
 
         if old_status == OrderStatus.ACTIVE and new_status_raw in {
             OrderStatus.CLOSED,

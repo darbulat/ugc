@@ -352,8 +352,24 @@ class OfferDispatchRepository(ABC):
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        message_id: str | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
+
+    async def creator_card_matches(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        message_id: str,
+    ) -> bool:
+        return False
+
+    async def mark_creator_card_updated(
+        self, order_id: UUID, blogger_id: UUID, message_id: str
+    ) -> None:
+        """Record that the provider accepted the response card edit."""
+        return
 
     @abstractmethod
     async def record_response(

@@ -303,6 +303,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         financial_version=model.financial_version,
         complimentary=model.complimentary is True,
         dispatch_stopped=model.dispatch_stopped is True,
+        creator_offer_card=model.creator_offer_card,
     )
 
 
@@ -344,6 +345,7 @@ def _to_order_model(order: Order) -> OrderModel:
         financial_version=order.financial_version,
         complimentary=order.complimentary is True,
         dispatch_stopped=order.dispatch_stopped is True,
+        creator_offer_card=order.creator_offer_card,
     )
 
 
