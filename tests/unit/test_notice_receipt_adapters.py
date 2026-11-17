@@ -59,6 +59,54 @@ async def test_telegram_returns_actual_chat_message_id_without_retry():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_web_app", [False, True])
+@pytest.mark.parametrize("with_support", [False, True])
+async def test_telegram_followup_keeps_native_action_and_support(
+    use_web_app, with_support
+):
+    Telegram, _, _ = adapters()
+    bot = SimpleNamespace(
+        send_message=AsyncMock(
+            return_value=SimpleNamespace(
+                message_id=42, chat=SimpleNamespace(id=101)
+            )
+        )
+    )
+    heading = "🤝 Подберём удобный формат работы"
+    attempt = WorkflowMessage(
+        (await prepared()).attempt_id,
+        "telegram",
+        "101",
+        "chat_id",
+        heading + "\n\nПодробности <заказа> & условия",
+        action_url="https://example.test/miniapp/app.html?screen=services",
+        action_label="Посмотреть услуги",
+        card=ReceiptCard(
+            (ReceiptLink("💬 Поддержка", "https://t.me/usemycontent"),)
+            if with_support
+            else ()
+        ),
+    )
+    await Telegram(bot, use_web_app=use_web_app).send(attempt)
+    sent = bot.send_message.call_args.kwargs
+    assert sent["text"] == attempt.text and sent["parse_mode"] is None
+    (entity,) = sent["entities"]
+    assert entity.type == "bold" and entity.offset == 0
+    assert entity.length == len(heading.encode("utf-16-le")) // 2
+    assert sent["link_preview_options"].is_disabled
+    rows = sent["reply_markup"].inline_keyboard
+    assert len(rows) == (2 if with_support else 1)
+    assert rows[0][0].text == "Посмотреть услуги"
+    if use_web_app:
+        assert rows[0][0].web_app.url == attempt.action_url
+    else:
+        assert rows[0][0].url == attempt.action_url
+    if with_support:
+        assert rows[1][0].text == "💬 Поддержка"
+        assert rows[1][0].url == "https://t.me/usemycontent"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "failure,uncertain",
     [
@@ -168,6 +216,43 @@ async def test_max_admin_card_sends_web_links_as_buttons():
                 "url": "https://example.test/order",
             }
         ]
+    ]
+
+
+@pytest.mark.asyncio
+async def test_max_followup_keeps_open_app_and_support_buttons():
+    _, Max, _ = adapters()
+    session = MaxSession()
+    attempt = WorkflowMessage(
+        (await prepared()).attempt_id,
+        "max",
+        "202",
+        "user_id",
+        "💬 Поможем с подбором авторов\n\nНапишите нам.",
+        action_url="https://example.test/miniapp/max_app.html?screen=orders",
+        action_label="Продолжить",
+        card=ReceiptCard(
+            (ReceiptLink("💬 Поддержка", "https://t.me/usemycontent"),)
+        ),
+    )
+    await Max(session, "synthetic-token").send(attempt)
+    body = session.calls[0][1]["json"]
+    (keyboard,) = body["attachments"]
+    assert keyboard["payload"]["buttons"] == [
+        [
+            {
+                "type": "open_app",
+                "text": "Продолжить",
+                "web_app": attempt.action_url,
+            }
+        ],
+        [
+            {
+                "type": "link",
+                "text": "💬 Поддержка",
+                "url": "https://t.me/usemycontent",
+            }
+        ],
     ]
 
 

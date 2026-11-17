@@ -160,9 +160,11 @@ class TelegramNoticeReceipts:
                 if self.use_web_app
                 else InlineKeyboardButton(text=label, url=url)
             )
-            kwargs["reply_markup"] = InlineKeyboardMarkup(
-                inline_keyboard=[[button]]
-            )
+            keyboard = kwargs.get("reply_markup")
+            rows = [[button]]
+            if keyboard is not None:
+                rows.extend(keyboard.inline_keyboard)
+            kwargs["reply_markup"] = InlineKeyboardMarkup(inline_keyboard=rows)
         try:
             message = await self.bot.send_message(
                 chat_id=address, text=attempt.text, parse_mode=None, **kwargs
