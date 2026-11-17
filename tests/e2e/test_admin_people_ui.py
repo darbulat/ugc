@@ -2,12 +2,12 @@
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
 from playwright.sync_api import expect
-from sqlalchemy import create_engine, delete
+from sqlalchemy import create_engine, delete, insert
 from sqlalchemy.orm import Session
 
 from tests.helpers.financial_environment import require_test_database
@@ -23,6 +23,7 @@ from ugc_bot.domain.enums import (
     WorkFormat,
 )
 from ugc_bot.domain.social import SELF_REPORTED_FOLLOWERS
+from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
@@ -37,7 +38,6 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
-    BOT_AVAILABLE_EVENT,
     BOT_UNAVAILABLE_EVENT,
 )
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
@@ -88,18 +88,18 @@ def people_records(request):
     with Session(engine) as session, session.begin():
         session.add_all(users)
         session.flush()
-        availability = [(other_id, BOT_UNAVAILABLE_EVENT)]
+        blocked = [(other_id, now)]
         if telegram_ready_sample:
-            availability.append((creator_id, BOT_AVAILABLE_EVENT))
+            blocked.append((creator_id, now - timedelta(minutes=2)))
         session.add_all(
             AuditLogModel(
-                entity_type=event,
+                entity_type=BOT_UNAVAILABLE_EVENT,
                 entity_id=user_id,
                 action=AuditAction.CREATE,
                 new_values={"platform": "telegram"},
-                changed_at=now,
+                changed_at=blocked_at,
             )
-            for user_id, event in availability
+            for user_id, blocked_at in blocked
         )
         session.add(
             UserReferralBindingModel(
@@ -263,6 +263,22 @@ def people_records(request):
                 ),
             ]
         )
+        if telegram_ready_sample:
+            session.add(
+                OfferDispatchModel(order_id=order_id, blogger_id=other_id)
+            )
+            session.flush()
+            session.execute(
+                insert(OFFER_CHANNELS),
+                [
+                    dict(
+                        order_id=order_id,
+                        blogger_id=user_id,
+                        telegram_sent_at=now - timedelta(minutes=1),
+                    )
+                    for user_id in confirmed_profiles
+                ],
+            )
     try:
         yield brand, city, instagram, order_title, creator_name
     finally:
