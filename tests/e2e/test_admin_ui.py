@@ -108,7 +108,7 @@ def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
     )
     assert len(requests) == 1
     requests[0].fulfill(status=503, body="Temporarily unavailable")
-    retry = page.get_by_role("button", name="Повторить загрузку")
+    retry = page.get_by_role("button", name="Повторить обновление")
     expect(retry).to_be_visible()
     retry.click()
     expect(page.get_by_role("status")).to_have_text("Загружаем показатели…")
@@ -122,47 +122,64 @@ def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
     expect(page.locator("#dashboard-panel")).to_have_attribute(
         "aria-busy", "false"
     )
-    expect(retry).to_have_count(0)
+    expect(retry).to_be_hidden()
     assert errors == []
 
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_dashboard_cached_metrics_do_not_trigger_a_second_request(
+def test_dashboard_saved_snapshot_remains_visible_during_refresh(
     admin_server, page
 ):
-    """A page containing cached values initializes without a metrics fetch."""
+    """Old figures survive a failed refresh and are replaced after retry."""
     import re
 
     from playwright.sync_api import expect
 
     _login(page, admin_server)
-    metric_requests = []
+    requests = []
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
+    old = (
+        "<div data-dashboard-content "
+        'data-calculated-at="2026-11-16T12:00:00+00:00" '
+        'data-counts-at="2026-11-16T12:00:00+00:00">'
+        '<section id="dashboard-goals">Завершили заказ: 37</section></div>'
+    )
 
-    def cached_page(route):
+    def saved_page(route):
         if route.request.headers.get("x-dashboard-content") == "1":
-            metric_requests.append(route)
-            route.abort()
+            requests.append(route)
             return
         response = route.fetch()
         body = re.sub(
             r'<div id="dashboard-panel".*?(?=<script defer)',
-            '<div id="dashboard-panel" aria-busy="false">'
-            "<div data-dashboard-content><h1>Дашборд</h1>"
-            '<section id="dashboard-goals">Завершили заказ: 37</section>'
-            "</div></div>",
+            '<div id="dashboard-panel" aria-busy="true">' + old + "</div>",
             response.text(),
             flags=re.DOTALL,
         )
         route.fulfill(response=response, body=body)
 
-    page.route("**/admin/dashboard?period=7d", cached_page)
+    page.route("**/admin/dashboard?period=7d", saved_page)
     page.goto(f"{admin_server}/admin/dashboard?period=7d")
     expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
-    page.wait_for_load_state("networkidle")
-    assert metric_requests == []
+    expect(page.get_by_role("status")).to_contain_text("16.11.2026")
+    assert len(requests) == 1
+    requests[0].fulfill(status=503, body="Unavailable")
+    retry = page.get_by_role("button", name="Повторить обновление")
+    expect(retry).to_be_visible()
+    expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
+    expect(page.get_by_role("status")).to_contain_text("Не удалось обновить")
+    retry.click()
+    expect(page.get_by_role("status")).to_contain_text("Проверяем обновления")
+    assert len(requests) == 2
+    requests[1].fulfill(
+        content_type="text/html",
+        body=old.replace("37", "38").replace("16T12", "17T12"),
+    )
+    expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 38")
+    expect(page.get_by_role("status")).to_contain_text("17.11.2026")
+    expect(retry).to_be_hidden()
     assert errors == []
 
 

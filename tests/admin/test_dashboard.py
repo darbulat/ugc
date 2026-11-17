@@ -1,6 +1,5 @@
 """Tests for admin dashboard routes."""
 
-import asyncio
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -129,12 +128,13 @@ def test_dashboard_shell_opens_without_loading_metrics(monkeypatch) -> None:
     counts.assert_not_awaited()
 
 
-@pytest.mark.parametrize(
-    "cache_state", ["ready", "missing", "slow", "slow_counts"]
-)
-def test_dashboard_embeds_cached_metrics_and_keeps_worklist_counts_current(
-    monkeypatch, cache_state
-) -> None:
+@pytest.mark.parametrize("days_old", [0, 1])
+def test_saved_dashboard_is_visible_without_waiting_for_new_counts(
+    monkeypatch, days_old
+):
+    from datetime import timedelta
+    from zoneinfo import ZoneInfo
+
     payload = {
         "registrations": {
             "creators": {"count": 0},
@@ -144,23 +144,6 @@ def test_dashboard_embeds_cached_metrics_and_keeps_worklist_counts_current(
         "payout_requests": [],
         "completed_creators_count": 37,
     }
-    cache = MagicMock()
-    cache.get = AsyncMock(
-        side_effect=[
-            serialize_admin_payload(payload),
-            serialize_admin_payload({}),
-        ]
-        if cache_state in ("ready", "slow_counts")
-        else [None, None]
-    )
-    if cache_state == "slow":
-
-        async def slow_get(_key):
-            await asyncio.sleep(0.1)
-            return
-
-        cache.get.side_effect = slow_get
-    monkeypatch.setattr("ugc_bot.admin.app.AdminCache", lambda **_kwargs: cache)
     client = _build_admin_client(
         monkeypatch,
         dashboard_payload=payload,
@@ -169,41 +152,39 @@ def test_dashboard_embeds_cached_metrics_and_keeps_worklist_counts_current(
         orders=[],
         order_card={},
     )
+    then = datetime.now(ZoneInfo("Europe/Moscow")) - timedelta(days=days_old)
+    saved = {
+        "payload": payload,
+        "creator_base": {},
+        "attention_counts": {
+            "no_manager": 8,
+            "inactive": 0,
+            "position_review": 0,
+        },
+        "calculated_at": then.isoformat(),
+        "counts_at": then.isoformat(),
+        "period_date": then.date().isoformat(),
+        "range_start": then.isoformat(),
+    }
+    store = client.app.state.dashboard_snapshots
+    store.read = AsyncMock(return_value=saved)
     counts = AsyncMock(
-        return_value={"no_manager": 8, "inactive": 0, "position_review": 0}
+        side_effect=AssertionError("Refresh belongs to the background request")
     )
-    if cache_state == "slow_counts":
-
-        async def slow_counts():
-            await asyncio.sleep(0.3)
-
-        counts.side_effect = slow_counts
     monkeypatch.setattr(
         AdminDashboardService, "get_worklist_attention_counts", counts
     )
     response = client.get("/admin/dashboard?period=today")
     assert response.status_code == 200
+    assert "data-dashboard-content" in response.text
+    assert "<strong>37</strong>" in response.text
+    assert "Срез рассчитан" in response.text
+    assert "Проверяем обновления" in response.text
+    counts.assert_not_awaited()
     AdminDashboardService.get_dashboard.assert_not_awaited()
-    AdminDashboardService.get_creator_base.assert_not_awaited()
-    if cache_state == "ready":
-        assert "data-dashboard-content" in response.text
-        assert 'aria-busy="false"' in response.text
-        assert "Загружаем показатели…" not in response.text
-        assert "<strong>37</strong>" in response.text
-        href = 'href="/admin/order-model/list?group=work&amp;no_manager=1">'
-        assert (
-            "<strong>8</strong>"
-            in response.text.split(href, 1)[1].split("</a>", 1)[0]
-        )
-        counts.assert_awaited_once()
-    else:
-        assert "data-dashboard-content" not in response.text
-        assert "Загружаем показатели…" in response.text
-        if cache_state == "slow_counts":
-            counts.assert_awaited_once()
-        else:
-            counts.assert_not_awaited()
-    assert cache.get.await_args_list[0].args[0].startswith("dashboard:summary:")
+    if days_old:
+        assert then.strftime("%d.%m.%Y") in response.text
+        assert "Воронка регистрации · Сегодня" not in response.text
 
 
 def test_admin_dashboard_html(monkeypatch) -> None:
@@ -330,9 +311,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Ориентир админки 3 дн." in response.text
     assert "Дата оплаты неизвестна" in response.text
     assert "101 ч с создания" not in response.text
-    assert "Дашборд" in response.text
     assert "data-dashboard-content" in response.text
-    assert 'href="/admin/order-model/list"' in response.text
     assert 'href="/admin/orders?period=today"' in response.text
     assert "139 000,00" in response.text and "250,10" in response.text
     assert (
@@ -1110,12 +1089,14 @@ def test_dashboard_html_uses_cache_on_second_request(
         },
         "payout_requests": [],
     }
-    serialized = serialize_admin_payload(payload)
+    values = {}
     mock_cache = MagicMock()
-    mock_cache.get = AsyncMock(
-        side_effect=[None, None, serialized, serialize_admin_payload({})]
-    )
-    mock_cache.set = AsyncMock()
+    mock_cache.get = AsyncMock(side_effect=lambda key: values.get(key))
+
+    async def put(key, value, _ttl):
+        values[key] = value
+
+    mock_cache.set = AsyncMock(side_effect=put)
     get_dashboard_mock = AsyncMock(return_value=payload)
     counts_mock = AsyncMock(
         side_effect=[
@@ -1170,7 +1151,7 @@ def test_dashboard_html_uses_cache_on_second_request(
         "/admin/dashboard?period=today", headers={"X-Dashboard-Content": "1"}
     )
     assert r1.status_code == 200
-    assert "Дашборд" in r1.text
+    assert "data-dashboard-content" in r1.text
     r2 = client.get(
         "/admin/dashboard?period=today", headers={"X-Dashboard-Content": "1"}
     )

@@ -74,6 +74,7 @@ from ugc_bot.admin.dashboard_service import (
     dashboard_period_window,
     paid_in_period,
 )
+from ugc_bot.admin.dashboard_snapshots import DashboardSnapshots
 from ugc_bot.admin.managers import register_managers
 from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_HINTS,
@@ -852,100 +853,96 @@ async def _render_dashboard_page(
     }
     content_only = request.headers.get("X-Dashboard-Content") == "1"
     period_key = _normalize_period(period)
-    include_timings = (
-        timings.lower() in ("1", "true", "yes") if timings else False
-    )
-    use_cache = bool(cache and not include_timings)
-    cache_key = (
-        _dashboard_cache_key(
-            period_key,
-            referrers_filter,
-            referrers_page,
-            referrers_per_page,
-            referrers_sort,
-            referrers_order,
-            include_referrers=False,
-        )
-        if use_cache
-        else None
-    )
-    cached = None
-    if not content_only:
-        if cache and use_cache and cache_key:
-            try:
-                # A cache outage must not delay the immediately usable page.
-                async with asyncio.timeout(0.05):
-                    raw_payload, raw_base = await asyncio.gather(
-                        cache.get(cache_key),
-                        cache.get(f"creator-base:v4:{period_key}"),
-                    )
-                    if raw_payload is not None and raw_base is not None:
-                        cached = (
-                            deserialize_admin_payload(raw_payload),
-                            deserialize_admin_payload(raw_base),
-                        )
-            except (TimeoutError, ValueError, TypeError):
-                pass
-        if cached is None:
-            return templates.TemplateResponse(
-                request, "dashboard.html", {}, headers=response_headers
-            )
-    if cached is not None:
-        payload, creator_base = cached
-        try:
-            async with asyncio.timeout(0.2):
-                attention_counts = (
+    zone = dashboard_service._timezone
+    period_date = datetime.now(zone).date().isoformat()
+    key = f"{zone.key}:{period_key}"
+    snapshots: DashboardSnapshots = request.app.state.dashboard_snapshots
+    include_timings = timings.lower() in ("1", "true", "yes")
+
+    async def calculate(previous):
+        if previous is not None:
+            return previous | {
+                "attention_counts": (
                     await dashboard_service.get_worklist_attention_counts()
-                )
-        except TimeoutError:
-            return templates.TemplateResponse(
-                request, "dashboard.html", {}, headers=response_headers
-            )
-    else:
-        payload, creator_base, attention_counts = await asyncio.gather(
-            _get_dashboard_payload_cached(
-                dashboard_service,
+                ),
+                "counts_at": datetime.now(timezone.utc).isoformat(),
+            }
+        window = dashboard_service._build_period_window(period_key)
+        payload, creator_base, counts = await asyncio.gather(
+            dashboard_service.get_dashboard(
                 period_key,
-                cache,
-                use_cache,
-                cache_key,
-                referrers_page=referrers_page,
-                referrers_per_page=referrers_per_page,
-                referrers_sort=referrers_sort or None,
-                referrers_order=referrers_order or "desc",
-                referrers_filter=referrers_filter or None,
-                include_timings=include_timings,
                 include_referrers=False,
+                include_timings=include_timings,
             ),
-            _get_cached_or_fetch(
-                cache,
-                f"creator-base:v4:{period_key}" if cache else None,
-                _dashboard_cache_ttl(period_key),
-                lambda: dashboard_service.get_creator_base(period_key),
-            ),
+            dashboard_service.get_creator_base(period_key),
             dashboard_service.get_worklist_attention_counts(),
         )
+        calculated_at = datetime.now(timezone.utc).isoformat()
+        return {
+            "payload": payload,
+            "creator_base": creator_base,
+            "attention_counts": counts,
+            "calculated_at": calculated_at,
+            "counts_at": calculated_at,
+            "period_date": period_date,
+            "range_start": window.current_start.isoformat(),
+            "range_end": window.current_end.isoformat(),
+        }
+
+    saved: dict[str, Any] | None
+    if content_only:
+        try:
+            saved = await snapshots.refresh(
+                key,
+                _dashboard_cache_ttl(period_key),
+                period_date,
+                calculate,
+                force=include_timings,
+            )
+        except (TimeoutError, SQLAlchemyError):
+            raise HTTPException(
+                503, "Не удалось обновить показатели. Повторите попытку."
+            ) from None
+    else:
+        saved = await snapshots.read(key)
+    if saved is None:
+        return templates.TemplateResponse(
+            request,
+            "dashboard.html",
+            {"snapshot": None, "dashboard_timezone": zone.key},
+            headers=response_headers,
+        )
+    period_labels = dict(_PERIOD_LABELS)
+    if saved.get("period_date") != period_date and period_key in (
+        "today",
+        "yesterday",
+    ):
+        period_labels[period_key] = _admin_date(
+            saved.get("range_start", saved["calculated_at"]), zone
+        ).split(",", 1)[0]
     return templates.TemplateResponse(
         request,
         "dashboard_content.html" if content_only else "dashboard.html",
         {
-            "payload": payload,
-            "creator_base": creator_base,
+            "payload": saved["payload"],
+            "creator_base": saved["creator_base"],
             "creator_base_cards": CREATOR_BASE_CARDS,
             "creator_activity_labels": CREATOR_ACTIVITY_LABELS,
             "telegram_activity_labels": TELEGRAM_ACTIVITY_LABELS,
             "max_activity_labels": MAX_ACTIVITY_LABELS,
             "period": period_key,
             "periods": _DASHBOARD_PERIODS,
-            "period_labels": _PERIOD_LABELS,
+            "period_labels": period_labels,
             "status_labels": _STATUS_LABELS,
             "delay_reason_labels": _DELAY_REASON_LABELS,
             "order_quick_filter_labels": _ORDER_QUICK_FILTER_LABELS,
-            "order_attention_counts": attention_counts,
+            "order_attention_counts": saved["attention_counts"],
             "order_inactivity_days": ORDER_INACTIVITY_DAYS,
             "referrers_sort": referrers_sort,
             "referrers_order": referrers_order,
             "referrers_filter": referrers_filter,
+            "snapshot": saved,
+            "dashboard_timezone": zone.key,
         },
         headers=response_headers,
     )
@@ -1995,6 +1992,9 @@ def _register_dashboard_routes(
 ) -> None:
     """Register dashboard and list routes on the admin app."""
     _LIST_CACHE_TTL = 90
+    snapshots = DashboardSnapshots(cache)
+    app.state.dashboard_snapshots = snapshots
+    app.add_event_handler("shutdown", snapshots.close)
     require_admin = _make_require_admin(auth)
     _register_dashboard_html_routes(
         app, auth, dashboard_service, templates, cache, _LIST_CACHE_TTL

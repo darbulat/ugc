@@ -206,6 +206,19 @@ body {
   max-width: none;
 }
 
+.dashboard-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .5rem 1rem;
+  color: #6b7280;
+  font-size: .9rem;
+}
+
+.dashboard-state [hidden] {
+  display: none;
+}
+
 .dashboard-loading {
   margin-top: 1.5rem;
 }

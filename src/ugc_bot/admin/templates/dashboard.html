@@ -2,18 +2,21 @@
 {% block title %}Дашборд{% endblock %}
 {% block content_class %} dashboard-content{% endblock %}
 {% block content %}
-  <div id="dashboard-panel" aria-busy="{{ 'false' if payload is defined else 'true' }}"
+  <div class="section page-heading">
+    <h1>Дашборд</h1>
+    <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
+  </div>
+  <div class="section dashboard-state">
+    <span id="dashboard-loading-status" role="status">{% if snapshot %}Срез рассчитан {{ snapshot.calculated_at|admin_date }} · Проверяем обновления…{% else %}Загружаем показатели…{% endif %}</span>
+    <button id="dashboard-retry" class="admin-button" type="button" hidden>Повторить обновление</button>
+  </div>
+  <div id="dashboard-panel" aria-busy="true"
+       data-timezone="{{ dashboard_timezone }}"
        data-charts-script="{{ admin_asset(request, 'dashboard.js') }}">
     {% if payload is defined %}
       {% include "dashboard_content.html" %}
     {% else %}
-    <div class="section page-heading">
-      <h1>Дашборд</h1>
-      <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
-    </div>
     <section class="section card" aria-label="Загрузка показателей">
-      <p id="dashboard-loading-status" role="status">Загружаем показатели…</p>
-      <button id="dashboard-retry" class="admin-button" type="button" hidden>Повторить загрузку</button>
       <div class="grid dashboard-metrics dashboard-loading" aria-hidden="true">
         {% for label in ['Завершили заказ', 'Получили назначение', 'Откликнулись на оффер', 'Менеджеры'] %}
         <div class="card"><span class="muted">{{ label }}</span><span class="dashboard-loading__value"></span></div>
