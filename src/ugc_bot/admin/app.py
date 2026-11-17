@@ -1946,9 +1946,35 @@ def _register_dashboard_routes(
         app, auth, dashboard_service, templates, cache, _LIST_CACHE_TTL
     )
     _register_flowchart_route(app, auth)
+    _register_order_offer_activity_route(
+        app, require_admin, dashboard_service, templates
+    )
     _register_dashboard_api_routes(
         app, require_admin, dashboard_service, cache, _LIST_CACHE_TTL
     )
+
+
+def _register_order_offer_activity_route(
+    app: FastAPI,
+    require_admin,
+    dashboard_service: AdminDashboardService,
+    templates: Jinja2Templates,
+) -> None:
+    @app.get(
+        "/admin/orders/{order_id}/offer-activity",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_admin)],
+    )
+    async def admin_order_offer_activity(request: Request, order_id: UUID):
+        activity = await dashboard_service.get_order_offer_activity(order_id)
+        if activity is None:
+            raise HTTPException(status_code=404, detail="Заказ не найден")
+        return templates.TemplateResponse(
+            request,
+            "order_offer_activity.html",
+            {"activity": activity, "order_id": order_id},
+            headers={"Cache-Control": "private, no-store"},
+        )
 
 
 async def _get_obj_by_pk(

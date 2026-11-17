@@ -251,10 +251,17 @@ def test_order_worklist_search_hide_and_restore(
     from uuid import uuid4
 
     from playwright.sync_api import expect
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, insert
     from sqlalchemy.orm import Session
 
-    from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+    from ugc_bot.domain.enums import (
+        MessengerType,
+        OrderStatus,
+        RejectionReason,
+        UserStatus,
+    )
+    from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
+    from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
     from ugc_bot.infrastructure.db.models import (
         AdvertiserProfileModel,
         ManagerOrderModel,
@@ -272,6 +279,7 @@ def test_order_worklist_search_hide_and_restore(
     user_id, order_id, managed_id, creator_id, manager_id = (
         uuid4() for _ in range(5)
     )
+    counteroffer_id, failed_id, pending_id = (uuid4() for _ in range(3))
     brand = f"Workbench-{order_id.hex[:8]}"
     managed_title = f"Отклик и работа менеджера {managed_id.hex[:8]}"
     handle = "browser_manager_" + manager_id.hex[:9]
@@ -331,6 +339,9 @@ def test_order_worklist_search_hide_and_restore(
             for uid, name, telegram in (
                 (creator_id, "Тестовый креатор", "browser_creator"),
                 (manager_id, "Тестовый менеджер", handle),
+                (counteroffer_id, "Автор со встречной ценой", None),
+                (failed_id, "Недоступный автор", None),
+                (pending_id, "Автор из очереди", None),
             )
         )
         session.add(
@@ -365,6 +376,43 @@ def test_order_worklist_search_hide_and_restore(
             )
         )
         session.add(
+            OfferDispatchModel(
+                order_id=managed_id,
+                blogger_id=counteroffer_id,
+                accepted=False,
+                in_offer=False,
+                created_at=now,
+                rejection_reason=RejectionReason.LOW_PRICE,
+                desired_price=5000,
+            )
+        )
+        session.flush()
+        session.execute(
+            insert(OFFER_CHANNELS).values(
+                order_id=managed_id,
+                blogger_id=counteroffer_id,
+                telegram_sent_at=now,
+                max_sent_at=now,
+            )
+        )
+        session.execute(
+            insert(CONTROLS).values(
+                order_id=managed_id, run=1, paused=False, audience_ready=True
+            )
+        )
+        session.execute(
+            insert(CLAIMS),
+            [
+                {
+                    "order_id": managed_id,
+                    "blogger_id": uid,
+                    "run": 0 if uid == pending_id else 1,
+                    "rejected": uid == failed_id,
+                }
+                for uid in (creator_id, counteroffer_id, failed_id, pending_id)
+            ],
+        )
+        session.add(
             SocialAccountModel(
                 account_id=uuid4(),
                 user_id=creator_id,
@@ -379,6 +427,8 @@ def test_order_worklist_search_hide_and_restore(
     engine.dispose()
 
     # This job has no external server or assets. The admin's assets are local.
+    activity_url = f"{admin_server}/admin/orders/{managed_id}/offer-activity"
+    assert page.request.get(activity_url).status == 401
     page.route(
         "**/*",
         lambda route: (
@@ -388,6 +438,12 @@ def test_order_worklist_search_hide_and_restore(
         ),
     )
     _login(page, admin_server)
+    legacy = page.request.get(
+        f"{admin_server}/admin/orders/{order_id}/offer-activity"
+    )
+    assert legacy.ok and "Не доставлено" in legacy.text()
+    assert "<strong>—</strong>" in legacy.text()
+    assert legacy.headers["cache-control"] == "private, no-store"
     page.goto(f"{admin_server}/admin/order-model/list")
     group_nav = page.get_by_role("navigation", name="Группы заказов")
     menu = group_nav.locator(".order-worklist-more")
@@ -632,6 +688,37 @@ def test_order_worklist_search_hide_and_restore(
     expect(page.get_by_role("link", name="Открыть видео")).to_have_attribute(
         "href", "https://example.test/ugc"
     )
+    activity = page.get_by_role("region", name="Рассылка и отклики")
+    counters = activity.locator("article strong")
+    expect(counters).to_have_text(["2 из 4", "1", "1", "1"])
+    expect(activity).to_contain_text("Авторов без результата отправки — 1")
+    counteroffer = activity.get_by_role("row").filter(
+        has_text="Автор со встречной ценой"
+    )
+    expect(counteroffer).to_contain_text("Низкая цена")
+    expect(counteroffer).to_contain_text("5 000 ₽")
+    details = activity.get_by_text("Причины отказов и предложенные цены")
+    details.click()
+    expect(counteroffer).to_be_hidden()
+    with Session(engine) as session, session.begin():
+        session.add(
+            OfferDispatchModel(
+                order_id=managed_id,
+                blogger_id=pending_id,
+                accepted=False,
+                in_offer=False,
+                created_at=now,
+                rejection_reason=RejectionReason.WRONG_FORMAT,
+            )
+        )
+    engine.dispose()
+    expect(counters).to_have_text(["3 из 4", "1", "1", "2"], timeout=25_000)
+    expect(activity).to_contain_text("Рассылка завершена")
+    expect(counteroffer).to_be_hidden()
+    details.click()
+    expect(
+        activity.get_by_role("row").filter(has_text="Автор из очереди")
+    ).to_contain_text("Не подходит формат")
     page.set_viewport_size({"width": 390, "height": 800})
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"
