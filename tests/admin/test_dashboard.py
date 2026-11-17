@@ -132,6 +132,9 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "orders": {"active": 3, "completed": 1, "archived": 0},
             "problems": {"open_complaints": 0, "delays": 0},
             "order_attention": {
+                "moderation": [
+                    dict(delayed, age_hours=4, reasons=["waiting_moderation"])
+                ],
                 "delayed": [
                     delayed,
                     dict(delayed, days_until_selection_due=-1.2),
@@ -141,7 +144,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
                         selection_days=None,
                         selection_due_at=None,
                     ),
-                ]
+                ],
             },
             "delayed_orders": [],
             "open_complaints_list": [],
@@ -238,8 +241,11 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         "Давно без оплаты",
     ]
     assert sorted(labels, key=attention.index) == labels
+    for key in ("moderation", "delayed"):
+        assert f'attention-queue--{key}" open>' in attention
     review_link = attention.split(
-        'href="http://testserver/admin/order-review">', 1
+        'href="http://testserver/admin/order-review?include_unpicked=false">',
+        1,
     )[1].split("</a>", 1)[0]
     assert "Позиции на проверку" in review_link
     assert "<strong>6</strong>" in review_link
@@ -1051,7 +1057,7 @@ def test_dashboard_html_uses_cache_on_second_request(
     href = 'href="/admin/order-model/list?group=work&amp;no_manager=1">'
     assert "<strong>4</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
     assert "<strong>3</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
-    href = 'href="http://testserver/admin/order-review">'
+    href = 'href="http://testserver/admin/order-review?include_unpicked=false">'
     assert "<strong>1</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
     assert "<strong>0</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
 

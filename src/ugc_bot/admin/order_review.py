@@ -3,7 +3,7 @@
 import asyncio
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -64,7 +64,15 @@ def _reason(row, at):
 
 
 def _load_review(
-    engine, order_id, manager_id, unassigned, page, *, at, stage="attention"
+    engine,
+    order_id,
+    manager_id,
+    unassigned,
+    page,
+    *,
+    at,
+    stage="attention",
+    include_unpicked: bool = True,
 ):
     per_page = 50
     with Session(engine) as db:
@@ -79,6 +87,7 @@ def _load_review(
                 unassigned,
                 (page - 1) * per_page,
                 per_page + 1,
+                include_unpicked=include_unpicked,
             )
             if stage == "attention"
             else queue_rows(
@@ -92,7 +101,7 @@ def _load_review(
                 limit=per_page + 1,
             )
         )
-        groups = {}
+        groups: dict[UUID, list[dict[str, Any]]] = {}
         for row in rows[:per_page]:
             groups.setdefault(row["order_id"], []).append(
                 dict(row, reason=_reason(row, at))
@@ -148,6 +157,7 @@ def register_order_review(app, auth, engine, templates, require_action_token):
         stage: Literal[
             "attention", "all", "waiting", "manual", "received"
         ] = "attention",
+        include_unpicked: bool = True,
     ):
         if not await auth.authenticate(request):
             return admin_login_redirect(request)
@@ -162,6 +172,7 @@ def register_order_review(app, auth, engine, templates, require_action_token):
             page,
             at=datetime.now(timezone.utc),
             stage=stage,
+            include_unpicked=include_unpicked,
         )
         return templates.TemplateResponse(
             request,
@@ -177,12 +188,16 @@ def register_order_review(app, auth, engine, templates, require_action_token):
                 "money_states": MONEY_STATES,
                 "stage": stage,
                 "stages": STAGES,
+                "include_unpicked": include_unpicked,
             },
         )
 
     @app.post("/admin/order-review/{order_id}/{item_id}/assign")
     async def assign_review_manager(
-        request: Request, order_id: UUID, item_id: UUID
+        request: Request,
+        order_id: UUID,
+        item_id: UUID,
+        include_unpicked: bool = True,
     ):
         if not await auth.authenticate(request):
             raise HTTPException(403, "Требуется вход в админку.")
@@ -217,4 +232,6 @@ def register_order_review(app, auth, engine, templates, require_action_token):
         url = request.url_for("admin_order_review").include_query_params(
             order_id=order_id
         )
+        if not include_unpicked:
+            url = url.include_query_params(include_unpicked="false")
         return RedirectResponse(url, status_code=303)

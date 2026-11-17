@@ -10,7 +10,8 @@
 
 {% macro queue(key, label, rows) %}
   {% set count = payload.problems.open_complaints if key == 'complaints' else rows|length %}
-  <details class="card attention-queue" {% if key == 'delayed' and count %}open{% endif %}>
+  {% set expanded = key in ('moderation', 'delayed') %}
+  <details class="card attention-queue{% if expanded and count %} attention-queue--{{ key }}{% endif %}"{% if expanded %} open{% endif %}>
     <summary><span>{{ label }}</span> <strong>{{ count }}</strong></summary>
     {% if rows %}
     <ul class="attention-list">
@@ -114,7 +115,7 @@
       {% endif %}
       <a class="attention-queue__link" href="/admin/payout-request-model/list">Реферальные выплаты</a>
     </details>
-    <a class="card attention-queue attention-queue--shortcut" href="{{ request.url_for('admin_order_review') }}">
+    <a class="card attention-queue attention-queue--shortcut" href="{{ request.url_for('admin_order_review').include_query_params(include_unpicked='false') }}">
       <span>Позиции на проверку</span>
       <strong>{{ order_attention_counts.position_review }}</strong>
     </a>

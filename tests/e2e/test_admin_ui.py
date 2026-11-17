@@ -142,13 +142,23 @@ def test_dashboard_attention_layout(admin_server: str, page) -> None:
         assert left[1] == right[1]
         assert left[0] < right[0]
 
+    for index in (0, 1):
+        card = cards.nth(index)
+        assert card.get_attribute("open") is not None
+        card.locator("summary").click()
+        assert card.get_attribute("open") is None
+    page.reload()
+    for index in (0, 1):
+        assert cards.nth(index).get_attribute("open") is not None
+
     page.set_viewport_size({"width": 375, "height": 812})
     mobile = cards.evaluate_all(coordinates)
     assert len({x for x, _ in mobile}) == 1
     assert [y for _, y in mobile] == sorted({y for _, y in mobile})
 
     attention.get_by_role("link", name="Позиции на проверку").click()
-    assert page.get_by_role("heading", name="Требуют проверки").is_visible()
+    assert page.get_by_role("heading", name="Позиции на проверку").is_visible()
+    assert page.url.endswith("?include_unpicked=false")
 
 
 @pytest.mark.e2e
