@@ -358,7 +358,7 @@ async def test_rejected_callback_cannot_reveal_contacts(
         ("accepted", "open", "Отклик сохранён"),
         ("reserve", "done", "Ты в листе ожидания"),
         ("skipped", "done", "Оффер пропущен"),
-        ("new", "s_price", "Оффер пропущен"),
+        ("new", "s_time", "Оффер пропущен"),
     ],
 )
 async def test_terminal_card_does_not_repeat_a_response(
@@ -386,12 +386,12 @@ async def test_terminal_card_does_not_repeat_a_response(
     assert caption in card.text
     if state != "accepted":
         assert card.keyboard is None
-    if action == "s_price":
+    if action == "s_time":
         harness.flow.dispatch.record_skip.assert_awaited_once_with(
             order.order_id,
             creator.user_id,
             channel=MessengerType.TELEGRAM,
-            rejection_reason=RejectionReason.LOW_PRICE,
+            rejection_reason=RejectionReason.NO_TIME,
             only_unanswered=True,
         )
 
@@ -456,6 +456,7 @@ async def test_direct_response_notifies_the_preferred_address_once(
                 "user_role_service": flow.users,
                 "profile_service": flow.profiles,
                 "bot_texts_service": flow.texts,
+                "state_store": AsyncMock(),
                 "messenger_client": flow.messenger,
                 "telegram_messenger_client": harness.alternative,
                 "interaction_service": harness.interactions,
@@ -464,6 +465,7 @@ async def test_direct_response_notifies_the_preferred_address_once(
     else:
         await handle_telegram_creator_offer(
             SimpleNamespace(),
+            AsyncMock(),
             flow.orders,
             flow.dispatch,
             flow.responses,
@@ -806,4 +808,27 @@ async def test_admin_created_order_has_public_card_draft(order):
     assert model.creator_offer_card == {}
     assert not _dispatch_ready(
         replace(order, creator_offer_card=model.creator_offer_card), 1
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", [OrderStatus.ACTIVE, OrderStatus.CLOSED])
+@pytest.mark.parametrize("channel", [MessengerType.TELEGRAM, MessengerType.MAX])
+async def test_offer_card_opens_price_entry(
+    order, offer_session, status, channel
+):
+    flow = offer_session.flow
+    flow.orders.get_by_id.return_value = replace(order, status=status)
+    start = AsyncMock()
+    flow.start_price_entry = start
+
+    await flow.handle(click(order, "s_price", channel))
+    start.assert_awaited_once_with(order.order_id)
+    flow.dispatch.record_skip.assert_not_awaited()
+    offer_session.messenger.edit_offer_card.assert_not_awaited()
+    self_message = offer_session.messenger.send_text.call_args.kwargs
+    assert self_message["text"] == "msg_enter_desired_price"
+    assert (
+        self_message["keyboard"].rows[0][0].callback_data
+        == f"orr_cancel:{order.order_id}"
     )

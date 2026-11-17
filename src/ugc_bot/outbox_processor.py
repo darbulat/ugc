@@ -10,6 +10,7 @@ from ugc_bot.application.ports import OrderActivationPublisher
 from ugc_bot.application.services.outbox_publisher import OutboxPublisher
 from ugc_bot.config import OutboxConfig, load_config
 from ugc_bot.container import Container
+from ugc_bot.counteroffer_admin_delivery import CounterofferAdminDelivery
 from ugc_bot.exception_hooks import (
     install_asyncio_exception_handler,
     install_exception_hooks,
@@ -145,11 +146,15 @@ async def run_processor() -> None:
     outbox_publisher, kafka_publisher = container.build_outbox_deps()
     if config.db.database_url.startswith("postgresql"):
         outbox_publisher.manager_notifier = ManagerApplicationDelivery(config)
+        outbox_publisher.counteroffer_notifier = CounterofferAdminDelivery(
+            config
+        )
 
     if (
         kafka_publisher is None
         and outbox_publisher.financial_delivery is None
         and outbox_publisher.financial_router is None
+        and outbox_publisher.counteroffer_notifier is None
     ):
         logger.error("Kafka is disabled, cannot run outbox processor")
         await container.dispose()

@@ -1,6 +1,7 @@
 """Edit the original offer as a creator reads, confirms, or skips it."""
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from html import escape
 from typing import Protocol, cast
@@ -54,6 +55,22 @@ class ResponseRateLimiter(Protocol):
     async def allow_async(self, key: str) -> bool: ...
 
 
+async def prompt_offer_price(
+    messenger: MessengerClient,
+    texts: BotTextsService,
+    locale: str,
+    chat_id: str,
+    order_id: UUID,
+) -> None:
+    prompt = await texts.get("msg_enter_desired_price", locale)
+    cancel = await texts.get("btn_cancel_price_entry", locale)
+    keyboard = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[[Button(cancel, callback_data=f"orr_cancel:{order_id}")]],
+    )
+    await messenger.send_text(chat_id=chat_id, text=prompt, keyboard=keyboard)
+
+
 @dataclass
 class CreatorOfferCardFlow:
     orders: OrderRepository
@@ -65,6 +82,7 @@ class CreatorOfferCardFlow:
     messenger: MessengerClient
     locale: str
     rate_limiter: ResponseRateLimiter | None = None
+    start_price_entry: Callable[[UUID], Awaitable[None]] | None = None
 
     async def _answer(
         self,
@@ -103,6 +121,8 @@ class CreatorOfferCardFlow:
                 return None
         else:
             card = await self._view(incoming, order, user, action)
+            if card is None:
+                return None
         await self._answer(incoming)
         if response and response.accepted and not response.delivery_queued:
             # Direct delivery has no paid delivery worker. Make the
@@ -200,10 +220,21 @@ class CreatorOfferCardFlow:
         order: Order,
         user: User,
         action: str,
-    ) -> OfferCard:
+    ) -> OfferCard | None:
         stored = await self._stored_view(order, user)
         if stored:
             return stored
+        if action == "s_price" and order.price > 0 and self.start_price_entry:
+            await self.start_price_entry(order.order_id)
+            await self._answer(incoming)
+            await prompt_offer_price(
+                self.messenger,
+                self.texts,
+                self.locale,
+                incoming.chat_id,
+                order.order_id,
+            )
+            return None
         if order.status != OrderStatus.ACTIVE or order.dispatch_stopped:
             return render_public_offer(order, self.locale, "closed")
         reason = (

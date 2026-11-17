@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
+from ugc_bot.application.notice_delivery_ports import DeliveryFailure
 from ugc_bot.application.ports import (
     OrderActivationPublisher,
     OrderRepository,
@@ -17,6 +18,7 @@ from ugc_bot.application.ports import (
 from ugc_bot.application.services.financial_event_router import (
     FinancialEventRouter,
 )
+from ugc_bot.domain.counteroffer import COUNTEROFFER_SUBMITTED
 from ugc_bot.domain.entities import Order, OutboxEvent
 from ugc_bot.domain.enums import OrderStatus, OutboxEventStatus
 from ugc_bot.domain.manager_application import MANAGER_NOTICE_EVENTS
@@ -47,6 +49,9 @@ class OutboxPublisher:
     financial_router: FinancialEventRouter | None = None
     dispatch_control: Any = None
     manager_notifier: (
+        Callable[[OutboxEvent, object], Awaitable[None]] | None
+    ) = None
+    counteroffer_notifier: (
         Callable[[OutboxEvent, object], Awaitable[None]] | None
     ) = None
 
@@ -133,7 +138,11 @@ class OutboxPublisher:
         """
 
         # A financial-only worker must not acquire or retry legacy deliveries.
-        if kafka_publisher is None and self.financial_router is None:
+        if (
+            kafka_publisher is None
+            and self.financial_router is None
+            and self.counteroffer_notifier is None
+        ):
             if self.financial_delivery is not None:
                 await self.financial_delivery.process_pending_events(
                     None, max_retries, batch_limit, concurrency
@@ -218,7 +227,10 @@ class OutboxPublisher:
             await self.outbox_repo.mark_as_processing(
                 event.event_id, session=session
             )
-            if (
+            if event.event_type == COUNTEROFFER_SUBMITTED:
+                if not await self._deliver_counteroffer(event, session):
+                    return
+            elif (
                 event.event_type in MANAGER_NOTICE_EVENTS
                 and self.manager_notifier
             ):
@@ -240,6 +252,23 @@ class OutboxPublisher:
             )
 
         await with_optional_tx(self.transaction_manager, _run)
+
+    async def _deliver_counteroffer(
+        self, event: OutboxEvent, session: object | None
+    ) -> bool:
+        if self.counteroffer_notifier is None or session is None:
+            raise ValueError("counteroffer_admin_delivery_unavailable")
+        try:
+            await self.counteroffer_notifier(event, session)
+        except DeliveryFailure as exc:
+            if exc.retry_after_seconds is not None and not exc.uncertain:
+                raise
+            # A missing receipt can mean Telegram already delivered it.
+            await self.outbox_repo.mark_as_failed(
+                event.event_id, exc.code, event.retry_count + 1, session=session
+            )
+            return False
+        return True
 
     async def _process_order_activation(
         self,
