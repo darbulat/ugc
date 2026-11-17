@@ -39,6 +39,7 @@ from ugc_bot.admin.complaints import (
     OPEN_COMPLAINT_STATUSES,
 )
 from ugc_bot.admin.creator_base import (
+    admin_creator_directory_status,
     creator_base_counts,
     creator_base_filter,
 )
@@ -109,9 +110,6 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.payout_models import TABLE_MAP as PAYOUT_TABLES
-from ugc_bot.infrastructure.db.repositories.bot_availability import (
-    creator_directory_status,
-)
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
     staff_consent_available,
 )
@@ -1291,7 +1289,7 @@ class AdminDashboardService:
                 UserModel,
                 BloggerProfileModel,
                 AdvertiserProfileModel,
-                creator_directory_status(),
+                admin_creator_directory_status(),
             )
             .outerjoin(
                 BloggerProfileModel,
@@ -1685,7 +1683,7 @@ class AdminDashboardService:
         query = (
             select(
                 UserModel,
-                creator_directory_status().label("directory_status"),
+                admin_creator_directory_status().label("directory_status"),
                 BloggerProfileModel.instagram_url,
                 BloggerProfileModel.city,
                 BloggerProfileModel.instagram_followers_count,
@@ -1788,7 +1786,7 @@ class AdminDashboardService:
         if sort_by == "complaints":
             return func.coalesce(complaints.c.complaints, 0)
         if sort_by == "status":
-            return creator_directory_status()
+            return admin_creator_directory_status()
         return None
 
     async def _count_advertisers(

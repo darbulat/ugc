@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql import ColumnElement
 
+from ugc_bot.admin.creator_base import admin_creator_directory_status
 from ugc_bot.admin.order_worklist import worklist_conditions
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.domain.social import (
@@ -37,9 +38,6 @@ from ugc_bot.infrastructure.db.models import (
     OrderModel,
     UserModel,
     UserReferralBindingModel,
-)
-from ugc_bot.infrastructure.db.repositories.bot_availability import (
-    creator_directory_status,
 )
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
@@ -181,12 +179,14 @@ def creator_directory_filters(
             == city.strip().lower()
         )
     if status == "active":
-        filters.append(creator_directory_status() == UserStatus.ACTIVE)
+        filters.append(admin_creator_directory_status() == UserStatus.ACTIVE)
     elif status == "bot_blocked":
-        filters.append(creator_directory_status() == UserStatus.BOT_BLOCKED)
+        filters.append(
+            admin_creator_directory_status() == UserStatus.BOT_BLOCKED
+        )
     elif status == "limited":
         filters.append(
-            creator_directory_status().not_in(
+            admin_creator_directory_status().not_in(
                 (UserStatus.ACTIVE, UserStatus.BOT_BLOCKED)
             )
         )

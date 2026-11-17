@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import Table, case, literal, or_, select
+from sqlalchemy import Table, case, func, literal, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.sql import ColumnElement
@@ -18,7 +18,11 @@ BOT_UNAVAILABLE_EVENT = "bot_unavailable"
 BOT_AVAILABLE_EVENT = "bot_available"
 
 
-def latest_bot_availability(platform: MessengerType):
+def latest_bot_availability(
+    platform: MessengerType,
+    *,
+    last_successful_send: ColumnElement[datetime] | None = None,
+) -> ColumnElement[str | None]:
     """Latest recorded event for the profile’s current account on a channel."""
     audit = AuditLogModel
     external_id = audit.new_values[f"{platform}_id"].as_string()
@@ -27,8 +31,19 @@ def latest_bot_availability(platform: MessengerType):
         if platform == MessengerType.TELEGRAM
         else UserModel.max_id
     )
-    return (
-        select(audit.entity_type)
+    event_type: ColumnElement[str] = audit.entity_type.expression
+    if last_successful_send is not None:
+        # A successful send supersedes a block only if it is strictly newer.
+        event_type = case(
+            (
+                (audit.entity_type == BOT_UNAVAILABLE_EVENT)
+                & (last_successful_send > audit.changed_at),
+                BOT_AVAILABLE_EVENT,
+            ),
+            else_=audit.entity_type,
+        )
+    latest = (
+        select(event_type)
         .where(
             audit.entity_id == UserModel.user_id,
             audit.entity_type.in_((BOT_UNAVAILABLE_EVENT, BOT_AVAILABLE_EVENT)),
@@ -45,10 +60,23 @@ def latest_bot_availability(platform: MessengerType):
         .scalar_subquery()
     )
 
+    if last_successful_send is None:
+        return latest
+    return func.coalesce(
+        latest, case((last_successful_send.is_not(None), BOT_AVAILABLE_EVENT))
+    )
 
-def creator_directory_status() -> ColumnElement[UserStatus]:
+
+def creator_directory_status(
+    *,
+    telegram_availability: ColumnElement[str | None] | None = None,
+) -> ColumnElement[UserStatus]:
     """Read Telegram reachability while retaining the stored account status."""
-    latest = latest_bot_availability(MessengerType.TELEGRAM)
+    latest = (
+        latest_bot_availability(MessengerType.TELEGRAM)
+        if telegram_availability is None
+        else telegram_availability
+    )
     return case(
         (
             (UserModel.status != UserStatus.DELETED)
