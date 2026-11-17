@@ -226,7 +226,7 @@ def _keyboard(order: Order, view: str, ru: bool) -> Keyboard | None:
     apply = action("Откликнуться" if ru else "Respond", "confirm")
     back = action("← К офферу" if ru else "← Back", "open")
     brief = action("Бриф" if ru else "Brief", "brief")
-    safety = action("Безопасность" if ru else "Safety", "safe")
+    safety = action("Правила" if ru else "Rules", "safe")
     rows = {
         "open": [
             [apply],
