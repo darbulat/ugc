@@ -39,6 +39,7 @@ const savedAudience = watched.map(readValue);
 const savedCount = document.getElementById("order-audience-saved");
 const preview = document.getElementById("order-audience-preview");
 const previewCount = document.getElementById("order-audience-count");
+const previewCaption = document.getElementById("order-audience-caption");
 const previewHint = document.getElementById("order-audience-hint");
 const {previewUrl, needed} = preview.parentElement.dataset;
 let audienceTimer;
@@ -53,9 +54,10 @@ function scheduleAudiencePreview() {
   savedCount.hidden = changed;
   preview.hidden = !changed;
   if (!changed) return;
-  previewCount.textContent = "Считаем выборку…";
+  previewCount.hidden = true;
+  previewCaption.textContent = "Считаем выборку…";
   previewHint.textContent = "По фильтрам в редакторе";
-  previewCount.classList.remove("text-danger");
+  previewCaption.classList.remove("text-danger");
   audienceTimer = setTimeout(updateAudiencePreview, 450);
 }
 
@@ -72,15 +74,18 @@ async function updateAudiencePreview() {
     const result = await response.json();
     if (controller.signal.aborted) return;
     if (!response.ok) throw new Error(result.detail);
-    previewCount.textContent = `Подходят ${result.count} креаторов`;
-    previewHint.textContent = result.count < Number(needed)
-      ? `Выборка меньше числа креаторов в заказе (${needed}). Фильтры ещё не сохранены.`
-      : "По новым фильтрам. Изменения ещё не сохранены.";
-    previewCount.classList.toggle("text-danger", result.count < Number(needed));
+    const shortage = result.count < Number(needed);
+    previewCount.textContent = result.count;
+    previewCount.classList.toggle("order-editor__audience-value--short", shortage);
+    previewCount.hidden = false;
+    previewCaption.textContent = "Подходящие креаторы";
+    previewHint.textContent = shortage
+      ? `В заказе нужно ${needed}. Фильтры ещё не сохранены.`
+      : "По несохранённым фильтрам";
   } catch (error) {
     if (controller.signal.aborted) return;
-    previewCount.textContent = "Выборка недоступна";
-    previewCount.classList.add("text-danger");
+    previewCaption.textContent = "Выборка недоступна";
+    previewCaption.classList.add("text-danger");
     previewHint.textContent = error.message || "Проверьте фильтры.";
   }
 }
@@ -107,7 +112,6 @@ function updateMaterials() {
   const hasPhoto = Boolean(photoId.value.trim());
   document.getElementById("order-brief-missing").hidden = Boolean(briefLink.value.trim());
   document.getElementById("order-photo-missing").hidden = hasPhoto;
-  photoPrompt.hidden = hasPhoto;
   const brief = offerText.value.trim();
   promptText.value = [
     "Создай квадратную обложку 1:1 для объявления о поиске UGC-креаторов в Telegram.",
@@ -125,6 +129,7 @@ document.getElementById("order-photo-prompt-copy").addEventListener("click", asy
     await navigator.clipboard.writeText(promptText.value);
     promptFeedback.textContent = "Промпт скопирован.";
   } catch {
+    photoPrompt.open = true;
     promptText.select();
     promptFeedback.textContent = "Скопируйте выделенный текст.";
   }

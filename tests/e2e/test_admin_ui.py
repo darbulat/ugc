@@ -520,10 +520,22 @@ def test_order_worklist_search_hide_and_restore(
     expect(page.get_by_role("link", name=brand)).to_be_visible()
     expect(page.get_by_role("link", name="Нет ссылки на ТЗ")).to_be_visible()
     expect(page.get_by_role("link", name="Нет фото")).to_be_visible()
-    page.get_by_text("Промпт для обложки в Telegram", exact=True).click()
-    expect(page.get_by_label("Промпт по тексту оффера")).to_have_value(
-        re.compile("Браузерный тест черновика")
+    copy_prompt = page.get_by_role("button", name="Скопировать промпт")
+    page.context.grant_permissions(
+        ["clipboard-read", "clipboard-write"], origin=admin_server
     )
+    copy_prompt.click()
+    expect(page.get_by_text("Промпт скопирован.")).to_be_visible()
+    assert "Браузерный тест черновика" in page.evaluate(
+        "navigator.clipboard.readText()"
+    )
+    page.get_by_text("Посмотреть текст промпта", exact=True).click()
+    prompt = page.get_by_label("Промпт для обложки в Telegram")
+    expect(prompt).to_have_value(re.compile("Браузерный тест черновика"))
+    page.get_by_text("Идентификатор фото в Telegram", exact=True).click()
+    page.locator("#product_photo_file_id").fill("local-test-photo")
+    expect(page.get_by_role("link", name="Нет фото")).to_be_hidden()
+    expect(copy_prompt).to_be_visible()
     page.once("dialog", lambda dialog: dialog.dismiss())
     page.get_by_role("button", name="Активировать заказ").click()
     expect(page.get_by_label("Статус", exact=True)).to_have_value("new")
@@ -533,8 +545,10 @@ def test_order_worklist_search_hide_and_restore(
         "Укажите город"
     )
     geo.fill("")
-    expect(page.locator("#order-audience-count")).to_have_text(
-        "Подходят 0 креаторов"
+    preview_count = page.locator("#order-audience-count")
+    expect(preview_count).to_have_text("0")
+    expect(preview_count).to_have_class(
+        re.compile("order-editor__audience-value--short")
     )
     with Session(engine) as session:
         assert session.get(OrderModel, order_id).geography == geography
@@ -558,7 +572,13 @@ def test_order_worklist_search_hide_and_restore(
         assert abs(layout["topWidth"] - layout["briefWidth"]) <= 1, layout
         assert layout["documentWidth"] <= width, layout
     page.set_viewport_size({"width": 1440, "height": 800})
-    expect(page.get_by_role("link", name="Дублировать заказ")).to_be_visible()
+    expect(
+        page.get_by_role("region", name="Действия с заказом").get_by_role(
+            "link", name="Создать копию заказа"
+        )
+    ).to_have_accessible_description(
+        "Копия откроется как новый заказ с сохранёнными данными этой карточки."
+    )
     barter = page.get_by_label("Описание бартера", exact=True)
     barter.fill("я" * 4001)
     expect(page.locator("#barter_description-count")).to_contain_text(
@@ -568,13 +588,13 @@ def test_order_worklist_search_hide_and_restore(
     barter.fill("Билеты")
     page.get_by_label("География", exact=True).fill("Казань")
     expect(page.locator("#order-audience-preview")).to_be_visible()
-    page.get_by_role(
-        "button", name="Сохранить и продолжить", exact=True
-    ).click()
+    page.get_by_role("button", name="Сохранить и остаться", exact=True).click()
     expect(page.get_by_label("География", exact=True)).to_have_value("Казань")
     expect(page.locator("#order-audience-preview")).to_be_hidden()
     expect(page.get_by_label("Статус", exact=True)).to_have_value("new")
-    page.get_by_role("link", name="← Назад к списку").click()
+    expect(copy_prompt).to_be_visible()
+    expect(page.get_by_role("link", name="Нет фото")).to_be_hidden()
+    page.get_by_role("button", name="Сохранить и выйти", exact=True).click()
     marker = row.get_by_role("button", name="Это тест", exact=True)
     page.once("dialog", confirm)
     marker.click()
