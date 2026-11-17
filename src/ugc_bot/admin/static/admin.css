@@ -857,10 +857,6 @@ body {
 
 .chart-peaks button { padding: .28rem .45rem; }
 
-.payout-queue {
-  grid-column: 1 / -1;
-}
-
 .payout-queue summary small {
   margin-inline-start: .35rem;
   font-weight: 400;

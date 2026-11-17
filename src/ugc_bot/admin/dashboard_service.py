@@ -114,6 +114,9 @@ from ugc_bot.infrastructure.db.repositories.bot_availability import (
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
     staff_consent_available,
 )
+from ugc_bot.infrastructure.db.repositories.order_review import (
+    position_review_count_query,
+)
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
 )
@@ -1410,20 +1413,28 @@ class AdminDashboardService:
         return card
 
     async def get_worklist_attention_counts(self) -> dict[str, int]:
-        """Return totals for the two quick filters in the live worklist."""
+        """Return current counts for the worklist filters and review queue."""
+        now = datetime.now(timezone.utc)
         query = (
             select(
                 func.count().filter(~order_has_manager()).label("no_manager"),
-                func.count()
-                .filter(order_is_inactive(datetime.now(timezone.utc)))
-                .label("inactive"),
+                func.count().filter(order_is_inactive(now)).label("inactive"),
             )
             .select_from(OrderModel)
             .where(*worklist_conditions("work", "", admin_list=True))
         )
         async with self._session_factory() as session:
             row = (await session.execute(query)).one()
-        return {"no_manager": row.no_manager, "inactive": row.inactive}
+            position_review = 0
+            if session.get_bind().dialect.name == "postgresql":
+                position_review = (
+                    await session.scalar(position_review_count_query(now)) or 0
+                )
+        return {
+            "no_manager": row.no_manager,
+            "inactive": row.inactive,
+            "position_review": position_review,
+        }
 
     async def _get_order_attention(self, session: AsyncSession) -> dict:
         """Group current orders by the action they are waiting for."""
