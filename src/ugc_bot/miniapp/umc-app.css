@@ -480,6 +480,13 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-customer #orders-list > li { margin: 0; padding: 0; border: 0; background: none; }
 
 .umc-directory-filter { display: flex; align-items: center; gap: var(--space-8); margin: var(--space-12) 0; }
-.umc-directory-filter input { width: 20px; height: 20px; margin: 0; accent-color: var(--ink); }
+.umc-directory-filter input { width: 20px; height: 20px; min-height: 0; padding: 0; margin: 0; accent-color: var(--ink); }
 .umc-directory-list { list-style: none; padding: 0; margin: 0; }
 .umc-directory-list .btn { text-align: start; white-space: normal; overflow-wrap: anywhere; }
+.umc-directory-list li { margin-top: var(--space-16); padding-top: var(--space-12); border-top: 1px solid var(--line); }
+.umc-directory-list .btn { margin-top: var(--space-8); }
+.umc-directory-detail { margin: var(--space-8) 0; font-size: 14px; }
+.umc-directory-detail:empty { display: none; }
+.umc-directory-actions { display: flex; flex-wrap: wrap; gap: var(--space-8); }
+.umc-directory-actions .btn { width: auto; min-height: 44px; padding: var(--space-8) var(--space-12); }
+#screen-invited-creators button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }

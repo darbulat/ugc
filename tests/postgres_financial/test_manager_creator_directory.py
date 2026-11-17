@@ -1,13 +1,19 @@
 """Signed manager directory reads backed by the real referral bindings."""
 
-from datetime import datetime, timezone
+import os
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import httpx
 import pytest
-from sqlalchemy import update
+from sqlalchemy import func, inspect, text, update
+from sqlalchemy.exc import IntegrityError
 
 from tests.e2e.miniapp_helpers import generate_init_data
+from tests.helpers.financial_environment import (
+    isolated_financial_database,
+    upgrade_financial_schema,
+)
 from tests.postgres_financial.test_collaboration_persistence import (
     collaboration_pg as collaboration_fixture,
 )
@@ -23,6 +29,7 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
+    ManagerCreatorFollowupModel,
     ManagerOrderModel,
     UserModel,
     UserReferralBindingModel,
@@ -61,6 +68,53 @@ def _profile(user_id):
         audience_geo="synthetic",
         price=1,
     )
+
+
+def test_followup_migration_upgrades_the_deployed_parent(financial_pg_engine):
+    with isolated_financial_database(
+        os.environ["FINANCIAL_TEST_DATABASE_URL"],
+        target_revision="0142_creator_offer_cards",
+    ) as engine:
+        manager, creator = uuid4(), uuid4()
+        assert not inspect(engine).has_table("manager_creator_followups")
+        with engine.begin() as db:
+            db.execute(
+                text(
+                    "INSERT INTO users "
+                    "(user_id,username,messenger_type,status) "
+                    "VALUES (:manager,'manager','telegram','active'),"
+                    "(:creator,'creator','telegram','active')"
+                ),
+                {"manager": manager, "creator": creator},
+            )
+        upgrade_financial_schema(
+            engine, target_revision="0143_manager_creator_followups"
+        )
+        with engine.begin() as db:
+            assert db.scalar(text("SELECT count(*) FROM users")) == 2
+            assert db.scalar(
+                text("SELECT version_num FROM alembic_version")
+            ) == ("0143_manager_creator_followups")
+            db.execute(
+                text(
+                    "INSERT INTO manager_creator_followups "
+                    "(manager_id,creator_id,remind_at) "
+                    "VALUES (:manager,:creator,now()+interval '1 day')"
+                ),
+                {"manager": manager, "creator": creator},
+            )
+        with pytest.raises(IntegrityError), engine.begin() as db:
+            db.execute(
+                text(
+                    "INSERT INTO manager_creator_followups "
+                    "(manager_id,creator_id,remind_at) "
+                    "VALUES (:manager,:creator,now())"
+                ),
+                {"manager": manager, "creator": creator},
+            )
+        assert "creator_offer_card" in {
+            column["name"] for column in inspect(engine).get_columns("orders")
+        }
 
 
 @pytest.mark.asyncio
@@ -263,6 +317,69 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
             assert await listed(max_app, q="Мария") == set()
             assert await listed(max_app, q="%") == set()
             assert (await post(max_app, q="x" * 121)).status_code == 422
+            assert (
+                await post(telegram, instagram="unknown")
+            ).status_code == 422
+            assert await listed(telegram, instagram="verified") == {str(paused)}
+            assert await listed(telegram, instagram="unverified") == {
+                str(active)
+            }
+            due = (await post(telegram, instagram="due")).json()
+            assert due["followup_count"] == 1
+            assert {row["creator_id"] for row in due["creators"]} == {
+                str(active)
+            }
+            assert due["creators"][0]["telegram_url"] is None
+            beyond_page = (await post(telegram, instagram="due", page=1)).json()
+            assert beyond_page == {
+                "creators": [],
+                "has_more": False,
+                "followup_count": 1,
+            }
+
+            endpoint = f"/{active}/followup"
+            assert (
+                await post(max_app, endpoint, action="tomorrow")
+            ).status_code == 404
+            assert (
+                await post(telegram, f"/{paused}/followup", action="tomorrow")
+            ).status_code == 404
+            response = await post(telegram, endpoint, action="tomorrow")
+            assert response.status_code == 200, response.json()
+            tomorrow = datetime.fromisoformat(response.json()["remind_at"])
+            assert (
+                timedelta(hours=23)
+                < tomorrow - datetime.now(timezone.utc)
+                < timedelta(hours=25)
+            )
+            response = await post(telegram, endpoint, action="contacted")
+            assert response.status_code == 200, response.json()
+            remind_at = datetime.fromisoformat(response.json()["remind_at"])
+            assert (
+                timedelta(hours=23) < remind_at - tomorrow < timedelta(hours=25)
+            )
+            assert await listed(telegram, instagram="due") == set()
+            assert await listed(telegram, instagram="unverified") == {
+                str(active)
+            }
+
+            async with factory.begin() as db:
+                await db.execute(
+                    update(ManagerCreatorFollowupModel)
+                    .where(ManagerCreatorFollowupModel.creator_id == active)
+                    .values(remind_at=func.now() - timedelta(seconds=1))
+                )
+            assert await listed(telegram, instagram="due") == {str(active)}
+            async with factory.begin() as db:
+                await db.execute(
+                    update(BloggerProfileModel)
+                    .where(BloggerProfileModel.user_id == active)
+                    .values(confirmed=True, instagram_user_id=str(active.int))
+                )
+            assert await listed(telegram, instagram="due") == set()
+            assert (
+                await post(telegram, endpoint, action="contacted")
+            ).status_code == 404
 
             assert (await post(telegram, f"/{active}")).status_code == 200
             not_found = await post(telegram, f"/{blocked}")
@@ -286,6 +403,9 @@ async def test_manager_directory_checks_current_binding_on_both_messengers(
                 "city": "Казань",
                 "status": "bot_blocked",
                 "instagram_verified": True,
+                "telegram_url": "https://t.me/own_special",
+                "followup_due": False,
+                "remind_at": None,
                 "links": [
                     {
                         "label": "Instagram",

@@ -48,6 +48,20 @@
       prev: '← Orqaga', next: 'Keyingi →', home: 'Menejer kabinetiga', back: 'Ro‘yxatga'
     }
   };
+  var queueCopy = {
+    ru: ['Подтверждение Instagram', 'Все', 'Подтверждены', 'Не подтверждены', 'Нужно связаться', 'Instagram не подтверждён', 'Написать в Telegram', 'Нет контакта в Telegram', 'Написал', 'Напомнить завтра', 'Связаться после', 'В этой группе пока никого нет.', 'Не удалось сохранить напоминание. Попробуйте ещё раз.'],
+    en: ['Instagram verification', 'All', 'Verified', 'Unverified', 'To contact', 'Instagram not verified', 'Message on Telegram', 'No Telegram contact', 'Contacted', 'Remind me tomorrow', 'Contact after', 'No creators in this group.', 'Could not save the reminder. Try again.'],
+    kk: ['Instagram растауы', 'Барлығы', 'Расталған', 'Расталмаған', 'Байланысу керек', 'Instagram расталмаған', 'Telegram-да жазу', 'Telegram байланысы жоқ', 'Хабарластым', 'Ертең еске салу', 'Кейін хабарласу:', 'Бұл топта әзірге ешкім жоқ.', 'Еске салу сақталмады. Қайта көріңіз.'],
+    be: ['Пацвярджэнне Instagram', 'Усе', 'Пацверджаныя', 'Непацверджаныя', 'Трэба звязацца', 'Instagram не пацверджаны', 'Напісаць у Telegram', 'Няма кантакту ў Telegram', 'Напісаў', 'Нагадаць заўтра', 'Звязацца пасля', 'У гэтай групе пакуль нікога няма.', 'Не ўдалося захаваць напамін. Паспрабуйце яшчэ раз.'],
+    uz: ['Instagram tasdig‘i', 'Barchasi', 'Tasdiqlangan', 'Tasdiqlanmagan', 'Bog‘lanish kerak', 'Instagram tasdiqlanmagan', 'Telegramda yozish', 'Telegram kontakti yo‘q', 'Yozdim', 'Ertaga eslatish', 'Bog‘lanish vaqti:', 'Bu guruhda hali hech kim yo‘q.', 'Eslatma saqlanmadi. Qayta urinib ko‘ring.']
+  };
+  var queueKeys = ['filter', 'all', 'verifiedFilter', 'unverified', 'due', 'notVerified',
+    'write', 'noContact', 'contacted', 'tomorrow', 'scheduled', 'emptyFilter', 'saveError'];
+  Object.keys(queueCopy).forEach(function (locale) {
+    queueKeys.forEach(function (key, index) {
+      copy[locale][key] = queueCopy[locale][index];
+    });
+  });
   var listScreen = 'screen-invited-creators';
   var cardScreen = 'screen-invited-creator-card';
   var path = '/manager/invited-creators';
@@ -58,6 +72,21 @@
 
   function byId(id) { return document.getElementById(id); }
   var searchInput = byId('invited-search');
+  var instagramFilter = 'all';
+  var instagramFilters = element('div', '', 'umc-directory-actions');
+  instagramFilters.hidden = true;
+  instagramFilters.setAttribute('role', 'group');
+  var instagramButtons = ['all', 'verified', 'unverified'].map(function (filter) {
+    var button = element('button', '', 'btn btn-secondary');
+    button.type = 'button';
+    button.dataset.instagramFilter = filter;
+    instagramFilters.appendChild(button);
+    return button;
+  });
+  var followups = element('button', '', 'btn btn-secondary');
+  followups.type = 'button';
+  followups.hidden = true;
+  byId('invited-search-form').after(followups, instagramFilters);
   function words() { return copy[(window._me || {}).locale] || copy.ru; }
   function setText(id, text) { byId(id).textContent = text; }
 
@@ -67,6 +96,11 @@
     setText('invited-creators-title', lang.title);
     setText('invited-search-label', lang.search);
     setText('invited-bot-label', lang.blocked);
+    instagramFilters.setAttribute('aria-label', lang.filter);
+    instagramButtons.forEach(function (button) {
+      var filter = button.dataset.instagramFilter;
+      button.textContent = filter === 'verified' ? lang.verifiedFilter : lang[filter];
+    });
     setText('invited-prev', lang.prev);
     setText('invited-next', lang.next);
     setText('invited-back', lang.home);
@@ -101,6 +135,67 @@
     setText('invited-creators-status', '');
     byId('invited-prev').hidden = true;
     byId('invited-next').hidden = true;
+    followups.hidden = true;
+    instagramFilters.hidden = true;
+  }
+
+  function showContact(parent, creator, lang) {
+    if (/^https:\/\/t\.me\/[A-Za-z0-9_]{5,32}$/.test(creator.telegram_url || '')) {
+      var link = element('a', lang.write, 'btn btn-secondary');
+      link.href = creator.telegram_url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      parent.appendChild(link);
+    } else if (creator.telegram_url === null) {
+      parent.appendChild(element('p', lang.noContact, 'umc-directory-detail'));
+    }
+  }
+
+  function showFollowupActions(row, creator, lang, version) {
+    if (creator.instagram_verified !== false) return;
+    if (creator.remind_at && !creator.followup_due) {
+      var date = new Intl.DateTimeFormat((window._me || {}).locale || 'ru', {
+        dateStyle: 'medium', timeStyle: 'short'
+      }).format(new Date(creator.remind_at));
+      row.appendChild(element('p', lang.scheduled + ' ' + date, 'umc-directory-detail'));
+    }
+    var actions = element('div', '', 'umc-directory-actions');
+    var feedback = element('p', '', 'umc-directory-detail error');
+    feedback.setAttribute('role', 'alert');
+    ['contacted', 'tomorrow'].forEach(function (action) {
+      var button = element('button', lang[action], 'btn btn-secondary');
+      button.type = 'button';
+      button.addEventListener('click', function () {
+        if (!activeRequest(version, listScreen)) return;
+        actions.querySelectorAll('button').forEach(function (control) {
+          control.disabled = true;
+        });
+        feedback.textContent = '';
+        context.request(path + '/' + encodeURIComponent(creator.creator_id) + '/followup', {
+          action: action
+        }).then(function () {
+          if (!activeRequest(version, listScreen)) return;
+          if (instagramFilter === 'due') page = 0;
+          showList();
+        }).catch(function () {
+          if (!activeRequest(version, listScreen)) return;
+          feedback.textContent = lang.saveError;
+          actions.querySelectorAll('button').forEach(function (control) {
+            control.disabled = false;
+          });
+        });
+      });
+      actions.appendChild(button);
+    });
+    row.append(actions, feedback);
+  }
+
+  function selectInstagram(filter) {
+    instagramFilter = filter;
+    instagramButtons.forEach(function (button) {
+      button.setAttribute('aria-pressed', String(button.dataset.instagramFilter === filter));
+    });
+    followups.setAttribute('aria-pressed', String(filter === 'due'));
   }
 
   function showList() {
@@ -110,6 +205,7 @@
     var list = byId('invited-creators-list');
     var filtered = byId('invited-bot-filter').checked;
     var query = searchInput.value.trim();
+    var instagram = instagramFilter;
     list.replaceChildren();
     byId('invited-prev').hidden = true;
     byId('invited-next').hidden = true;
@@ -117,9 +213,14 @@
     if (!byId(listScreen).classList.contains('active')) window.__umcAppBridge.showScreen(listScreen);
     var params = { bot_unavailable: filtered, page: page };
     if (query) params.q = query;
+    if (instagram !== 'all') params.instagram = instagram;
     context.request(path, params).then(function (data) {
       if (!activeRequest(version, listScreen)) return;
-      var emptyMessage = query ? lang.noMatches : filtered ? lang.emptyBlocked : lang.empty;
+      followups.hidden = !Number.isInteger(data.followup_count);
+      instagramFilters.hidden = followups.hidden;
+      if (!followups.hidden) followups.textContent = lang.due + ': ' + data.followup_count;
+      var emptyMessage = query ? lang.noMatches : instagram !== 'all' ?
+        lang.emptyFilter : filtered ? lang.emptyBlocked : lang.empty;
       setText('invited-creators-status', data.creators.length ? '' : emptyMessage);
       data.creators.forEach(function (creator) {
         var label = [creator.name || lang.card, creator.city];
@@ -129,6 +230,11 @@
         button.addEventListener('click', function () { showCard(creator.creator_id); });
         var row = element('li', '');
         row.appendChild(button);
+        if (typeof creator.instagram_verified === 'boolean') {
+          row.appendChild(element('p', creator.instagram_verified ? lang.verified : lang.notVerified, 'umc-directory-detail'));
+        }
+        showContact(row, creator, lang);
+        showFollowupActions(row, creator, lang, version);
         list.appendChild(row);
       });
       byId('invited-prev').hidden = page === 0;
@@ -154,7 +260,8 @@
       setText('invited-creator-title', creator.name || lang.card);
       setText('invited-creator-status', creator.status === 'bot_blocked' ? lang.blocked : '');
       if (creator.city) details.appendChild(element('p', creator.city));
-      if (creator.instagram_verified) details.appendChild(element('p', lang.verified));
+      details.appendChild(element('p', creator.instagram_verified ? lang.verified : lang.notVerified));
+      showContact(details, creator, lang);
       creator.links.forEach(function (link) {
         if (!link.url.startsWith('https://')) return;
         var anchor = element('a', link.label, 'btn btn-secondary');
@@ -177,6 +284,7 @@
     page = 0;
     searchInput.value = '';
     byId('invited-bot-filter').checked = false;
+    selectInstagram('all');
     showList();
   }
 
@@ -207,6 +315,25 @@
     if (!context) return;
     page = 0;
     showList();
+  });
+  instagramButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      if (!context) return;
+      selectInstagram(button.dataset.instagramFilter);
+      page = 0;
+      showList();
+    });
+  });
+  followups.addEventListener('click', function () {
+    if (!context) return;
+    selectInstagram(instagramFilter === 'due' ? 'all' : 'due');
+    searchInput.value = '';
+    byId('invited-bot-filter').checked = false;
+    page = 0;
+    showList();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && context && byId(listScreen).classList.contains('active')) showList();
   });
   byId('invited-prev').addEventListener('click', function () {
     if (!context) return;
