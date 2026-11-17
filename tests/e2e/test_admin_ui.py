@@ -124,6 +124,36 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
 @requires_postgres
+def test_dashboard_attention_layout(admin_server: str, page) -> None:
+    _login(page, admin_server)
+    page.wait_for_url(lambda url: "login" not in url, timeout=5000)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    response = page.goto(f"{admin_server}/admin/dashboard?period=7d")
+    assert response is not None and response.ok
+
+    attention = page.get_by_role("region", name="Требует внимания")
+    cards = attention.locator(".attention-queues > .attention-queue")
+    coordinates = (
+        "cards => cards.map(card => [card.offsetLeft, card.offsetTop])"
+    )
+    desktop = cards.evaluate_all(coordinates)
+    assert len(desktop) == 8
+    for left, right in zip(desktop[::2], desktop[1::2], strict=True):
+        assert left[1] == right[1]
+        assert left[0] < right[0]
+
+    page.set_viewport_size({"width": 375, "height": 812})
+    mobile = cards.evaluate_all(coordinates)
+    assert len({x for x, _ in mobile}) == 1
+    assert [y for _, y in mobile] == sorted({y for _, y in mobile})
+
+    attention.get_by_role("link", name="Позиции на проверку").click()
+    assert page.get_by_role("heading", name="Требуют проверки").is_visible()
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(30)
+@requires_postgres
 def test_dashboard_chart_range_and_values(admin_server: str, page) -> None:
     """Show all 30 calendar days and let the operator zoom in and reset."""
     from playwright.sync_api import expect

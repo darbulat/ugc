@@ -102,7 +102,9 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     monkeypatch.setattr(
         AdminDashboardService,
         "get_worklist_attention_counts",
-        AsyncMock(return_value={"no_manager": 3, "inactive": 0}),
+        AsyncMock(
+            return_value={"no_manager": 3, "inactive": 0, "position_review": 6}
+        ),
     )
     delayed = {
         "order_id": "11111111-1111-1111-1111-111111111111",
@@ -222,6 +224,25 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         < response.text.index("Требует внимания")
         < response.text.index("Динамика за период")
     )
+    attention = response.text.split('class="attention-queues"', 1)[1].split(
+        "</section>", 1
+    )[0]
+    labels = [
+        "На модерации",
+        "Проблемы с подбором",
+        "Без менеджера",
+        "Давно без активности",
+        "Заявки на вывод",
+        "Позиции на проверку",
+        "Открытые жалобы",
+        "Давно без оплаты",
+    ]
+    assert sorted(labels, key=attention.index) == labels
+    review_link = attention.split(
+        'href="http://testserver/admin/order-review">', 1
+    )[1].split("</a>", 1)[0]
+    assert "Позиции на проверку" in review_link
+    assert "<strong>6</strong>" in review_link
     for key, label, total, progress, target in (
         ("completed_creators", "Завершили заказ", "37", 37, 1000),
         ("picked_creators", "Получили назначение", "100", 100, 1000),
@@ -973,8 +994,8 @@ def test_dashboard_html_uses_cache_on_second_request(
     get_dashboard_mock = AsyncMock(return_value=payload)
     counts_mock = AsyncMock(
         side_effect=[
-            {"no_manager": 4, "inactive": 2},
-            {"no_manager": 3, "inactive": 2},
+            {"no_manager": 4, "inactive": 2, "position_review": 1},
+            {"no_manager": 3, "inactive": 2, "position_review": 0},
         ]
     )
     monkeypatch.setattr(
@@ -1030,6 +1051,9 @@ def test_dashboard_html_uses_cache_on_second_request(
     href = 'href="/admin/order-model/list?group=work&amp;no_manager=1">'
     assert "<strong>4</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
     assert "<strong>3</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
+    href = 'href="http://testserver/admin/order-review">'
+    assert "<strong>1</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
+    assert "<strong>0</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
 
 
 def test_referrers_html_uses_cache_on_second_request(

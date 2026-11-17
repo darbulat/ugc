@@ -1,9 +1,19 @@
 """Read paid-position evidence for the staff queue and deadline alerts."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import and_, case, delete, exists, func, or_, select, update
+from sqlalchemy import (
+    Select,
+    and_,
+    case,
+    delete,
+    exists,
+    func,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
@@ -382,6 +392,16 @@ def _attention(p, at):
             p.work_state.in_(("assigned", "in_progress", "success_claimed")),
         ),
         p.delivery_state.in_(("failed", "unknown")),
+    )
+
+
+def position_review_count_query(at: datetime) -> Select[tuple[int]]:
+    """Count the unfiltered review queue before pagination."""
+    positions = _positions()
+    return (
+        select(func.count())
+        .select_from(positions)
+        .where(_attention(positions.c, at))
     )
 
 

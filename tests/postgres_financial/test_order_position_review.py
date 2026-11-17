@@ -32,6 +32,7 @@ from ugc_bot.infrastructure.db.customer_workflow_models import REQUESTS
 from ugc_bot.infrastructure.db.models import ManagerOrderModel, OrderItemModel
 from ugc_bot.infrastructure.db.order_review_models import ALERTS
 from ugc_bot.infrastructure.db.repositories.order_review import (
+    position_review_count_query,
     set_position_manager,
 )
 from ugc_bot.order_review_scheduler import run_once
@@ -118,6 +119,8 @@ async def test_paid_positions_queue_and_deadline_alerts(
 
     await run_once(*args)
     transport.send.assert_not_awaited()
+    with Session(engine) as db:
+        assert db.scalar(position_review_count_query(clock.now())) == 0
 
     clock.at += timedelta(seconds=1)
     await run_once(
@@ -223,6 +226,8 @@ async def test_paid_positions_queue_and_deadline_alerts(
     page = web.get(path)
     assert page.status_code == 200
     assert page.text.count("Нужно подобрать креатора") == 8
+    with Session(engine) as db:
+        assert db.scalar(position_review_count_query(clock.now())) == 8
     assert "Просрочено" in page.text
     assert "осталось 2 из 2" in page.text
     import re
