@@ -27,6 +27,7 @@ from ugc_bot.domain.entities import (
     Complaint,
     ContactPricing,
     Country,
+    InstagramAudienceCounts,
     InstagramStats,
     InstagramVerificationCode,
     Interaction,
@@ -352,8 +353,24 @@ class OfferDispatchRepository(ABC):
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        message_id: str | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
+
+    async def creator_card_matches(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        message_id: str,
+    ) -> bool:
+        return False
+
+    async def mark_creator_card_updated(
+        self, order_id: UUID, blogger_id: UUID, message_id: str
+    ) -> None:
+        """Record that the provider accepted the response card edit."""
+        return
 
     @abstractmethod
     async def record_response(
@@ -835,6 +852,15 @@ class InstagramStatsRepository(ABC):
             if s is not None:
                 result[uid] = s
         return result  # pragma: no cover
+
+    async def get_audience_counts(
+        self, user_ids: List[UUID], session: object | None = None
+    ) -> Dict[UUID, InstagramAudienceCounts]:
+        stats = await self.get_by_user_ids(user_ids, session=session)
+        return {
+            uid: InstagramAudienceCounts(item.followers_count, item.media_count)
+            for uid, item in stats.items()
+        }
 
     @abstractmethod
     async def save(

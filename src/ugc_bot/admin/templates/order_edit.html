@@ -15,7 +15,7 @@
     {% if not checkbox %}{{ field.label(class_='form-label' ~ (' required-label' if field.flags.required else '')) }}{% endif %}
     {% if field.name == 'status' %}
       <select class="form-select" name="status" id="status" required aria-describedby="{{ described_by|join(' ') }}">
-        {% for value, label, selected, _ in field.iter_choices() if value in order_status_labels %}
+        {% for value, label, selected, _ in field.iter_choices() if value in order_status_labels and (value != 'active' or obj.status == 'active') %}
         <option value="{{ value }}"{% if selected %} selected{% endif %}>{{ order_status_labels[value] }}</option>
         {% endfor %}
       </select>
@@ -61,7 +61,12 @@
         {% if saved_closure_reason %}<p class="text-muted">{{ saved_closure_reason }}</p>{% endif %}
         <span class="text-muted">{{ obj.geography or 'География не задана' }}</span>
       </div>
-      <button type="submit" form="order-edit-form" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить изменения</button>
+      <div class="d-flex flex-wrap gap-2">
+        <button type="submit" form="order-edit-form" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить изменения</button>
+        {% if can_activate_order %}
+        <button type="submit" form="order-edit-form" name="save" value="Activate order" class="btn btn-outline-primary">Активировать заказ</button>
+        {% endif %}
+      </div>
     </div>
   </div>
   <div class="order-editor__bar">
@@ -72,22 +77,38 @@
       <a href="#order-edit-files">Фото и менеджеры</a>
       <a href="#order-edit-actions">Действия</a>
     </nav>
-    <div class="order-editor__audience" role="status">
-      {% if order_geography_unavailable %}
-        <strong class="text-danger">География не распознана</strong>
-        <small>Рассылка заблокирована до исправления геофильтра.</small>
-      {% elif eligible_bloggers_count is not none %}
-        <strong>Подходят <span>{{ eligible_bloggers_count }}</span> креаторов</strong>
-        <small>По сохранённым фильтрам</small>
-      {% else %}
-        <strong>Выборка недоступна</strong>
-      {% endif %}
-      <small id="order-audience-dirty" hidden>Фильтры изменились. Нажмите «Сохранить и продолжить».</small>
+    <div class="order-editor__audience" role="status"
+         data-preview-url="{{ request.url_for('order_audience_preview', order_id=obj.order_id) }}"
+         data-needed="{{ obj.bloggers_needed }}">
+      <div id="order-audience-saved">
+        <div class="order-editor__audience-summary">
+          <strong id="order-audience-saved-count" class="order-editor__audience-value" hidden></strong>
+          <div>
+            <strong id="order-audience-saved-caption">Считаем выборку…</strong>
+            <small id="order-audience-saved-hint">По сохранённым фильтрам</small>
+          </div>
+        </div>
+      </div>
+      <div id="order-audience-preview" hidden>
+        <div class="order-editor__audience-summary">
+          <strong id="order-audience-count" class="order-editor__audience-value" hidden></strong>
+          <div>
+            <strong id="order-audience-caption"></strong>
+            <small id="order-audience-hint"></small>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <form id="order-edit-form" action="{{ model_view._build_url_for('admin:edit', request, obj).include_query_params(return_to=back_url) }}" method="POST" enctype="multipart/form-data">
     {% if error %}<div class="alert alert-danger" role="alert">{{ error }}</div>{% endif %}
     {% for field in form if field.widget.input_type == 'hidden' %}{{ field }}{% endfor %}
+    <input type="hidden" name="original_status" value="{{ obj.status }}">
+    <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+    <div class="order-editor__checks" aria-label="Материалы заказа">
+      <a id="order-brief-missing" class="badge badge--alert" href="#brief_link" {% if form.brief_link.data %}hidden{% endif %}>Нет ссылки на ТЗ</a>
+      <a id="order-photo-missing" class="badge badge--alert" href="#order-edit-files" {% if form.product_photo_file_id.data %}hidden{% endif %}>Нет фото</a>
+    </div>
     {% for key, title in [('brief', 'Бриф заказа'), ('terms', 'Условия и статус'), ('audience', 'Подбор креаторов')] %}
     <section class="order-editor__panel" id="order-edit-{{ key }}" aria-labelledby="order-edit-{{ key }}-title">
       <h2 id="order-edit-{{ key }}-title">{{ title }}</h2>
@@ -124,15 +145,64 @@
 </details>
 {% endif %}
       {% elif key == 'audience' %}
-        <p class="form-hint mt-2 mb-0">«Сохранить и продолжить» пересчитает выборку по новым фильтрам.</p>
+        <p class="form-hint mt-2 mb-0">Счётчик обновляется при изменении фильтров. Сохраните поля, чтобы применить их к заказу.</p>
       {% endif %}
     </section>
     {% endfor %}
+    {% if obj.creator_offer_card is defined and (obj.creator_offer_card is not none or obj.status in ('new', 'pending_moderation')) %}
+    {% set card = obj.creator_offer_card or {} %}
+    <section class="order-editor__panel" id="creator-offer-card" aria-labelledby="creator-offer-card-title">
+      <h2 id="creator-offer-card-title">Карточка креатора до отклика</h2>
+      <p class="form-hint">Уберите упоминания бренда и ссылки из публичного текста. Проверьте картинку внизу, прежде чем разрешить её показывать.</p>
+      {% if obj.creator_offer_card is none %}
+      <label class="form-check">
+        <input class="form-check-input" type="checkbox" name="creator_card_enable" value="yes">
+        <span class="form-check-label">Использовать новую карточку для этого черновика</span>
+      </label>
+      {% endif %}
+      <div class="order-editor__fields">
+        {% for key, text, limit in [
+          ('title','Заголовок',64), ('task','Короткая задача',200),
+          ('deadline','Срок для креатора',106), ('usage','Где используют ролик',106),
+          ('brief','Анонимный бриф по кнопке',620), ('barter','Условия бартера',100),
+          ('brand','Бренд, если его показ одобрен',64),
+          ('contact','Рабочий Telegram с разрешением на передачу после отклика',33)
+        ] %}
+        <div>
+          <label class="form-label" for="creator-card-{{ key }}">{{ text }}</label>
+          {% if key in ('brief', 'task') %}
+          <textarea class="form-control" id="creator-card-{{ key }}" name="creator_card_{{ key }}" maxlength="{{ limit }}" rows="3">{{ card.get(key, '') }}</textarea>
+          {% else %}
+          <input class="form-control" id="creator-card-{{ key }}" name="creator_card_{{ key }}" value="{{ card.get(key, '') }}" maxlength="{{ limit }}">
+          {% endif %}
+        </div>
+        {% endfor %}
+        <label class="form-check">
+          <input class="form-check-input" type="checkbox" name="creator_card_photo" value="approved" {% if card.get('photo') == 'approved' %}checked{% endif %}>
+          <span class="form-check-label">Показывать загруженную обложку до отклика. По умолчанию используется нейтральная.</span>
+        </label>
+      </div>
+    </section>
+    {% endif %}
     <section class="order-editor__panel" id="order-edit-files" aria-labelledby="order-edit-files-title">
       <h2 id="order-edit-files-title">Фото и менеджеры</h2>
       {% if order_image_preview %}
         <img src="{{ order_image_preview }}" alt="Изображение товара из сохранённого заказа" class="order-editor__photo" loading="lazy">
       {% endif %}
+      <div class="order-editor__photo-prompt mb-3">
+        <div class="order-editor__photo-prompt-heading">
+          <div>
+            <h3 id="order-photo-prompt-heading">Промпт для обложки в Telegram</h3>
+            <small>По текущему тексту оффера. Вставьте промпт в генератор изображений.</small>
+          </div>
+          <button class="btn btn-outline-primary" type="button" id="order-photo-prompt-copy">Скопировать промпт</button>
+        </div>
+        <details class="mt-2" id="order-photo-prompt">
+          <summary>Посмотреть текст промпта</summary>
+          <textarea class="form-control mt-2" id="order-photo-prompt-text" aria-labelledby="order-photo-prompt-heading" rows="6" readonly></textarea>
+        </details>
+        <small id="order-photo-prompt-feedback" aria-live="polite"></small>
+      </div>
           <div class="mb-3">
             <label for="order-photo-upload" class="form-label">Загрузить картинку товара (PNG/JPG)</label>
             <div class="d-flex flex-wrap gap-2">
@@ -155,19 +225,9 @@
     </section>
     <div class="order-editor__footer">
       <div class="d-flex flex-wrap gap-2">
-        <button type="submit" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить и продолжить</button>
-        <button type="submit" name="save" value="Save" class="btn btn-outline-secondary">Сохранить</button>
-        {% if model_view.can_create %}
-          {% if model_view.save_as %}
-          <button type="submit" name="save" value="Save as new" class="btn">Сохранить как новый</button>
-          {% else %}
-          <button type="submit" name="save" value="Save and add another" class="btn">Сохранить и добавить заказ</button>
-          {% endif %}
-        {% endif %}
+        <button type="submit" name="save" value="Save and continue editing" class="btn btn-primary">Сохранить и остаться</button>
+        <button type="submit" name="save" value="Save" class="btn btn-outline-secondary">Сохранить и выйти</button>
       </div>
-      {% if model_view.can_create %}
-      <a class="btn btn-outline-secondary" href="{{ model_view._url_for_action(request, 'duplicate-order') }}?pks={{ obj.order_id }}">Дублировать заказ</a>
-      {% endif %}
     </div>
   </form>
   <section class="order-editor__panel order-editor__danger" id="order-edit-actions" aria-labelledby="order-edit-actions-heading">
@@ -186,7 +246,15 @@
     {% set archived = order_actions.archived %}
     {% set delete_button_class = 'btn btn-outline-danger' %}
     {% set restore_button_class = 'btn btn-outline-secondary' %}
-    {% include 'order_delete_button.html' %}
+    <div class="d-flex flex-wrap gap-2">
+      {% if model_view.can_create %}
+      <a class="btn btn-outline-secondary" href="{{ model_view._url_for_action(request, 'duplicate-order') }}?pks={{ obj.order_id }}" aria-describedby="order-copy-hint">Создать копию заказа</a>
+      {% endif %}
+      {% include 'order_delete_button.html' %}
+    </div>
+    {% if model_view.can_create %}
+    <small class="form-hint w-100" id="order-copy-hint">Копия откроется как новый заказ с сохранёнными данными этой карточки.</small>
+    {% endif %}
   </section>
 </article>
 {% endblock %}

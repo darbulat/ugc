@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Очередь по позициям{% endblock %}
 {% block content %}
+{% set attention_title = "Требуют проверки" if include_unpicked else "Позиции на проверку" %}
 <div class="section">
   <div class="admin-actions">
     <a class="admin-button" href="/admin/order-model/list">← К заказам</a>
   </div>
-  <h1>{{ "Требуют проверки" if stage == "attention" else "Очередь по позициям" }}</h1>
+  <h1>{{ attention_title if stage == "attention" else "Очередь по позициям" }}</h1>
   {% if message %}<p class="alert alert-info" role="status">{{ message }}</p>{% endif %}
   <nav class="admin-actions" aria-label="Этапы подбора">
-    {% for key, label in [('attention', 'Требуют проверки'), ('all', 'Все позиции')] + (stages.items()|list) %}
+    {% for key, label in [('attention', attention_title), ('all', 'Все позиции')] + (stages.items()|list) %}
       <a class="admin-button" {% if stage == key %}aria-current="page"{% endif %} href="{{ request.url.include_query_params(stage=key, page=1) }}">{{ label }}</a>
     {% endfor %}
   </nav>
@@ -57,7 +58,8 @@
             <a href="{{ request.url.include_query_params(manager_id=position.manager_id, unassigned='false', page=1) }}">{{ position.manager }}</a>
           {% else %}{{ position.manager }}{% endif %}
           {% if order.managers and (stage == 'attention' or position.needs_review) %}
-          <form class="mt-2" method="post" action="{{ request.url_for('assign_review_manager', order_id=order.id, item_id=position.paid_item_id) }}">
+          {% set assign_url = request.url_for('assign_review_manager', order_id=order.id, item_id=position.paid_item_id) %}
+          <form class="mt-2" method="post" action="{{ assign_url if include_unpicked else assign_url.include_query_params(include_unpicked='false') }}">
             <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
             <input type="hidden" name="expected" value="{{ position.owner_override or '' }}">
             <select class="form-select mb-2" name="manager_id" aria-label="Ответственный за позицию {{ position.ordinal }}">

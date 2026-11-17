@@ -1,9 +1,19 @@
 """Read paid-position evidence for the staff queue and deadline alerts."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import and_, case, delete, exists, func, or_, select, update
+from sqlalchemy import (
+    Select,
+    and_,
+    case,
+    delete,
+    exists,
+    func,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import aliased
 
@@ -372,9 +382,14 @@ def finish_alert(db, job, state, reference, retry_at):
     )
 
 
-def _attention(p, at):
+def _attention(p, at, *, include_unpicked: bool = True):
+    contact_due = and_(
+        p.deadline <= at + timedelta(hours=24), p.contact_at.is_(None)
+    )
+    if not include_unpicked:
+        contact_due = and_(contact_due, p.creator_id.is_not(None))
     return or_(
-        and_(p.deadline <= at + timedelta(hours=24), p.contact_at.is_(None)),
+        contact_due,
         p.report_state.in_(("queued", "waiting", "review")),
         p.work_state == "disputed",
         and_(
@@ -385,11 +400,29 @@ def _attention(p, at):
     )
 
 
+def position_review_count_query(at: datetime) -> Select[tuple[int]]:
+    """Count the dashboard review queue before pagination."""
+    positions = _positions()
+    return (
+        select(func.count())
+        .select_from(positions)
+        .where(_attention(positions.c, at, include_unpicked=False))
+    )
+
+
 def list_positions(
-    db, at, order_id, manager_id, unassigned, offset=0, limit=50
+    db,
+    at,
+    order_id,
+    manager_id,
+    unassigned,
+    offset=0,
+    limit=50,
+    *,
+    include_unpicked: bool = True,
 ):
     p = _positions().c
-    conditions = [_attention(p, at)]
+    conditions = [_attention(p, at, include_unpicked=include_unpicked)]
     if order_id is not None:
         conditions.append(p.order_id == order_id)
     if unassigned:

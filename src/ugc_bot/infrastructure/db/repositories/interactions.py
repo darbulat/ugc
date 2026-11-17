@@ -54,6 +54,7 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        message_id: str | None = None,
     ) -> None:
         """Save the first successful send on this channel for the offer."""
         async with _resolve_session(self.session_factory, session) as db:
@@ -81,21 +82,59 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             )
             column = OFFER_CHANNELS.c[f"{channel.value}_sent_at"]
             sent_at = datetime.now(timezone.utc)
+            values: dict[str, datetime | str] = {column.key: sent_at}
+            if message_id is not None:
+                values["creator_card_message_id"] = message_id
             await db.execute(
                 insert(OFFER_CHANNELS)
                 .values(
                     order_id=order_id,
                     blogger_id=blogger_id,
-                    **{column.key: sent_at},
+                    **values,
                 )
                 .on_conflict_do_update(
                     index_elements=(
                         OFFER_CHANNELS.c.order_id,
                         OFFER_CHANNELS.c.blogger_id,
                     ),
-                    set_={column.key: sent_at},
+                    set_=values,
                     where=column.is_(None),
                 )
+            )
+
+    async def creator_card_matches(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        message_id: str,
+    ) -> bool:
+        async with _resolve_session(self.session_factory, None) as db:
+            sent = OFFER_CHANNELS.c[f"{channel.value}_sent_at"]
+            return bool(
+                await db.scalar(
+                    select(OFFER_CHANNELS.c.order_id).where(
+                        OFFER_CHANNELS.c.order_id == order_id,
+                        OFFER_CHANNELS.c.blogger_id == blogger_id,
+                        OFFER_CHANNELS.c.creator_card_message_id == message_id,
+                        sent.is_not(None),
+                    )
+                )
+            )
+
+    async def mark_creator_card_updated(
+        self, order_id: UUID, blogger_id: UUID, message_id: str
+    ) -> None:
+        async with _resolve_session(self.session_factory, None) as db:
+            await db.execute(
+                update(OFFER_CHANNELS)
+                .where(
+                    OFFER_CHANNELS.c.order_id == order_id,
+                    OFFER_CHANNELS.c.blogger_id == blogger_id,
+                    OFFER_CHANNELS.c.creator_card_message_id == message_id,
+                    OFFER_CHANNELS.c.creator_card_updated_at.is_(None),
+                )
+                .values(creator_card_updated_at=datetime.now(timezone.utc))
             )
 
     async def record_response(

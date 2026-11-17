@@ -150,5 +150,49 @@
     };
   }
 
-  window.UMCCreatorForm = {instagramUrl: instagramUrl, bindCity: bindCity};
+  function bindVerificationCopy(text) {
+    var code = document.getElementById('instagram-verification-code');
+    var button = document.getElementById('btn-instagram-copy');
+    var status = document.getElementById('instagram-copy-status');
+    var generation = 0;
+
+    button.addEventListener('click', async function () {
+      var value = code.value;
+      if (!value) return;
+      var current = generation;
+      button.disabled = true;
+      status.textContent = '';
+      var copied = false;
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(value);
+          copied = true;
+        }
+      } catch (_) {
+        // Some messenger webviews deny the Clipboard API.
+      }
+      if (current !== generation) return;
+      if (!copied) {
+        code.focus();
+        code.select();
+        code.setSelectionRange(0, value.length);
+        try { copied = document.execCommand('copy'); } catch (_) {}
+      }
+      status.textContent = text(copied ? 'instagram_code_copied' : 'instagram_code_manual');
+      button.disabled = false;
+    });
+
+    return function setCode(value) {
+      generation += 1;
+      code.value = value || '';
+      button.disabled = !code.value;
+      status.textContent = '';
+    };
+  }
+
+  window.UMCCreatorForm = {
+    instagramUrl: instagramUrl,
+    bindCity: bindCity,
+    bindVerificationCopy: bindVerificationCopy
+  };
 })();

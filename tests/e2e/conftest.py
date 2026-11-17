@@ -144,9 +144,11 @@ def test_database(
     db_path = db_dir / "e2e.db"
 
     from ugc_bot.infrastructure.db import (  # noqa: F401
+        creator_invite_models,
         dispatch_control,
         models,
         order_review_models,
+        paid_selection_models,
     )
 
     engine = create_engine(f"sqlite:///{db_path}", echo=False)

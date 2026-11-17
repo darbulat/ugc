@@ -9,6 +9,7 @@ from uuid import UUID
 
 import aiohttp
 
+from ugc_bot.application.creator_offer_cards import OfferCard
 from ugc_bot.application.messenger.dto import (
     Invoice,
     Keyboard,
@@ -110,20 +111,23 @@ class MaxMessengerClient(MessengerClient):
         path: str,
         json_body: dict | None = None,
         params: dict[str, str] | None = None,
+        *,
+        attempts: int | None = None,
     ) -> dict:
         url = f"{self._base_url}{path}"
         headers = {"Authorization": self._token}
         last_exc: Exception | None = None
         last_body: str | None = None
 
-        for attempt in range(self._retry_attempts):
+        attempts = self._retry_attempts if attempts is None else attempts
+        for attempt in range(attempts):
             try:
                 resp = await self._session.request(
                     method, url, json=json_body, headers=headers, params=params
                 )
                 async with resp:
                     if resp.status == 429:
-                        if self._retry_attempts == 1:
+                        if attempts == 1:
                             raise MaxAPIError(429, "Rate limited")
                         retry_after = float(
                             resp.headers.get("Retry-After", "1")
@@ -167,7 +171,7 @@ class MaxMessengerClient(MessengerClient):
 
         logger.error(
             "Max API request failed after %d attempts: %s %s",
-            self._retry_attempts,
+            attempts,
             method,
             path,
         )
@@ -175,7 +179,7 @@ class MaxMessengerClient(MessengerClient):
             raise last_exc
         raise RuntimeError(
             f"Max API request {method} {path} failed after "
-            f"{self._retry_attempts} attempts"
+            f"{attempts} attempts"
             f"{f': {last_body}' if last_body else ''}"
         )
 
@@ -319,6 +323,35 @@ class MaxMessengerClient(MessengerClient):
             # Explicitly send empty attachments to remove inline keyboard
             body["attachments"] = []
         await self._put("/messages", body, params={"message_id": message_id})
+
+    async def send_offer_card(
+        self, chat_id: str, card: OfferCard, cover: str | None
+    ) -> str:
+        body: dict[str, Any] = {
+            "text": card.text,
+            "format": "html",
+            "disable_link_preview": True,
+        }
+        if card.keyboard:
+            body["attachments"] = [_build_inline_keyboard(card.keyboard)]
+        response = await self._request(
+            "POST", "/messages", body, params={"chat_id": chat_id}, attempts=1
+        )
+        message_id = response.get("message", {}).get("body", {}).get("mid")
+        if not isinstance(message_id, str) or not message_id:
+            raise ValueError("offer_card_receipt_unavailable")
+        return message_id
+
+    async def edit_offer_card(
+        self, chat_id: str, message_id: str, card: OfferCard
+    ) -> None:
+        await self.edit_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=card.text,
+            keyboard=card.keyboard,
+            parse_mode="HTML",
+        )
 
     async def edit_reply_markup(
         self,

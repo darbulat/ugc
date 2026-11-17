@@ -129,6 +129,14 @@ class BloggerProfile:
 
 
 @dataclass(frozen=True)
+class InstagramAudienceCounts:
+    """Stored counts used when matching creators to an order."""
+
+    followers_count: Optional[int]
+    media_count: Optional[int]
+
+
+@dataclass(frozen=True)
 class InstagramStats:
     """Instagram account statistics (per user), with data source provider."""
 
@@ -243,6 +251,7 @@ class Order:
     financial_version: Optional[str] = None
     complimentary: bool = False
     dispatch_stopped: bool = False
+    creator_offer_card: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)

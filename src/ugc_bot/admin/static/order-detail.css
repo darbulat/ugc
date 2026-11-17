@@ -17,6 +17,7 @@
 }
 
 .order-detail h2,
+.order-detail__stats h3,
 .order-detail summary {
   margin: 0;
   font-size: 1rem;
@@ -101,6 +102,19 @@
 
 .order-detail__alerts {
   margin-top: 1rem;
+}
+
+.order-detail__declines {
+  margin-top: 1rem;
+}
+
+.order-detail__decline-reasons {
+  margin: .65rem 0;
+}
+
+#order-offer-refresh-status:not(:empty) {
+  display: block;
+  margin-top: .75rem;
 }
 
 .order-detail__manager a + a {

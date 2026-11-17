@@ -40,6 +40,9 @@ from ugc_bot.bot.telegram.handlers.messenger_linking import (
     router as messenger_linking_router,
 )
 from ugc_bot.bot.telegram.handlers.my_orders import router as my_orders_router
+from ugc_bot.bot.telegram.handlers.offer_preview import (
+    router as offer_preview_router,
+)
 from ugc_bot.bot.telegram.handlers.offer_responses import (
     router as offer_response_router,
 )
@@ -167,6 +170,7 @@ def build_dispatcher(
         dispatcher.include_router(
             payments_router
         )  # before start for /start pay_
+        dispatcher.include_router(offer_preview_router)
         dispatcher.include_router(blogger_rating_router)
         dispatcher.include_router(messenger_linking_router)
         dispatcher.include_router(support_chat_router)

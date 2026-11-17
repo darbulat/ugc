@@ -30,7 +30,11 @@ intake_env = _intake_env
 async def test_paid_city_activation_keeps_creator_without_coordinates(
     intake_env,
 ):
-    from ugc_bot.admin.app import _finish_order_geography_and_activation
+    from ugc_bot.admin.app import (
+        _finish_order_geography_and_activation,
+        _preview_order_audience,
+    )
+    from ugc_bot.admin.order_editor import OrderAudiencePreview
     from ugc_bot.domain.entities import Payment
     from ugc_bot.domain.enums import OrderStatus, PaymentStatus
 
@@ -52,7 +56,16 @@ async def test_paid_city_activation_keeps_creator_without_coordinates(
             receipt.order_id, session=session
         )
         await env["repos"]["order_repo"].save(
-            replace(order, status=OrderStatus.PENDING_MODERATION),
+            replace(
+                order,
+                status=OrderStatus.PENDING_MODERATION,
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "В течение недели после согласования",
+                    "usage": "Соцсети заказчика",
+                },
+            ),
             session=session,
         )
         await env["repos"]["payment_repo"].save(
@@ -85,9 +98,22 @@ async def test_paid_city_activation_keeps_creator_without_coordinates(
             saved_geography="Москва",
             financial_version=env["policy"],
         )
+        assert (
+            await _preview_order_audience(
+                receipt.order_id, OrderAudiencePreview()
+            )
+            == 1
+        )
+        assert (
+            await _preview_order_audience(
+                receipt.order_id, OrderAudiencePreview(min_age=20)
+            )
+            == 0
+        )
     saved = await env["repos"]["order_repo"].get_by_id(receipt.order_id)
     assert saved.status == OrderStatus.ACTIVE
     assert saved.location_geometry is None
+    assert saved.min_age is None
     geocoder.assert_not_awaited()
     dispatcher = env["container"].build_bot_services()["offer_dispatch_service"]
     assert await dispatcher.count_eligible_bloggers(receipt.order_id) == 1
@@ -114,7 +140,9 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(
     intake = service(env)
     if use_override:
         intake.orders.geocoder = SimpleNamespace(
-            get_multipolygon_wkt_for_queries=AsyncMock(return_value=None)
+            get_multipolygon_wkt_for_queries=AsyncMock(
+                return_value="MULTIPOLYGON(((0 0, 3 0, 3 3, 0 3, 0 0)))"
+            )
         )
     result = await intake.create(requested)
     assert await intake.create(requested) == result
@@ -161,6 +189,15 @@ async def test_paid_brief_replay_and_actual_city_platform_matching(
     tm = env["container"].transaction_manager
     dispatcher = env["container"].build_offer_dispatch_service()
     if use_override:
+        # Recreate a historical order with unresolved geography.
+        async with tm.transaction() as db:
+            await db.execute(
+                text(
+                    "UPDATE orders SET location_geometry = NULL "
+                    "WHERE order_id = :id"
+                ),
+                {"id": result.order_id},
+            )
         with pytest.raises(OrderGeographyUnavailableError):
             await dispatcher.count_eligible_bloggers(result.order_id)
         async with tm.transaction() as db:
@@ -336,13 +373,34 @@ async def test_bot_retry_replays_receipt_written_before_geography_fix(
 
 
 @pytest.mark.asyncio
-async def test_geocoding_exception_leaves_no_financial_order(intake_env):
+@pytest.mark.parametrize("field", ["geography", "city"])
+async def test_unspecified_place_cannot_create_paid_order(intake_env, field):
+    from ugc_bot.application.errors import OrderCreationError
+
+    env = intake_env
+    requested = command(env, targeting=OrderTargeting(**{field: "любом"}))
+    with pytest.raises(
+        (ValueError, OrderCreationError), match="geography_unspecified"
+    ):
+        await service(env).create(requested)
+    assert (
+        await env["repos"]["order_repo"].get_by_id(requested.order_id) is None
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "geocoder_error", [None, RuntimeError("geocoder offline")]
+)
+async def test_unresolved_geography_leaves_no_financial_order(
+    intake_env, geocoder_error
+):
     env = intake_env
     intake = service(env)
     requested = command(env, targeting=OrderTargeting(geography="Россия"))
     intake.orders.geocoder = SimpleNamespace(
         get_multipolygon_wkt_for_queries=AsyncMock(
-            side_effect=RuntimeError("geocoder offline")
+            return_value=None, side_effect=geocoder_error
         )
     )
     with pytest.raises(ValueError, match="geography_unavailable"):
@@ -381,6 +439,21 @@ async def test_admin_starts_unpaid_financial_order_with_working_responses(
     with patch(
         "ugc_bot.admin.app._get_admin_container", return_value=container
     ):
+        with pytest.raises(ValueError, match="Заполните заголовок"):
+            await _activate_order(order_id, geography_update=(None, None))
+        repo = env["repos"]["order_repo"]
+        order = await repo.get_by_id(order_id)
+        await repo.save(
+            replace(
+                order,
+                creator_offer_card={
+                    "title": "Ролик для приложения",
+                    "task": "Покажи, как пользуешься приложением",
+                    "deadline": "После согласования в течение недели",
+                    "usage": "Соцсети заказчика",
+                },
+            )
+        )
         await _activate_order(order_id, geography_update=(None, None))
         await _activate_order(order_id, geography_update=(None, None))
 

@@ -3,7 +3,7 @@
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import ColumnElement
 
@@ -34,6 +34,7 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
     BOT_AVAILABLE_EVENT,
     BOT_UNAVAILABLE_EVENT,
+    creator_directory_status,
     latest_bot_availability,
 )
 
@@ -178,26 +179,66 @@ def _profile_conditions() -> dict[str, ColumnElement[bool]]:
     }
 
 
-def _availability(platform, linked) -> dict[str, ColumnElement[bool]]:
-    latest = latest_bot_availability(platform)
-    has_no_event = latest.is_(None)
-    unavailable = latest == BOT_UNAVAILABLE_EVENT
-    unknown = has_no_event
-    if platform == MessengerType.TELEGRAM:
-        # Older delivery failures have no channel recorded. Only infer Telegram
-        # when the profile's primary and sole route identifies that channel.
-        legacy = and_(
-            UserModel.status == UserStatus.BOT_BLOCKED,
-            UserModel.messenger_type == MessengerType.TELEGRAM,
-            func.nullif(func.trim(UserModel.max_id), "").is_(None),
-            func.nullif(func.trim(UserModel.max_chat_id), "").is_(None),
+# Group once per directory or dashboard query, including when several
+# availability counters use the same evidence.
+_TELEGRAM_OFFER_SENDS = (
+    select(
+        OFFER_CHANNELS.c.blogger_id,
+        func.max(OFFER_CHANNELS.c.telegram_sent_at).label("sent_at"),
+    )
+    .join(OrderModel, OrderModel.order_id == OFFER_CHANNELS.c.order_id)
+    .where(
+        OFFER_CHANNELS.c.telegram_sent_at.is_not(None),
+        *business_order_conditions(),
+    )
+    .group_by(OFFER_CHANNELS.c.blogger_id)
+    .cte()
+)
+
+
+def _telegram_availability() -> ColumnElement[str | None]:
+    user = UserModel
+    last_sent = (
+        select(_TELEGRAM_OFFER_SENDS.c.sent_at)
+        .where(
+            _TELEGRAM_OFFER_SENDS.c.blogger_id == user.user_id,
+            # The legacy flag lacks a reliable timestamp or destination. Keep
+            # the existing audit result when the stored flag is still set.
+            user.status != UserStatus.BOT_BLOCKED,
         )
-        unavailable = or_(unavailable, has_no_event & legacy)
-        unknown = has_no_event & ~legacy
+        .correlate(user)
+        .scalar_subquery()
+    )
+    legacy = and_(
+        user.status == UserStatus.BOT_BLOCKED,
+        user.messenger_type == MessengerType.TELEGRAM,
+        func.nullif(func.trim(user.max_id), "").is_(None),
+        func.nullif(func.trim(user.max_chat_id), "").is_(None),
+    )
+    return func.coalesce(
+        latest_bot_availability(
+            MessengerType.TELEGRAM, last_successful_send=last_sent
+        ),
+        case((legacy, BOT_UNAVAILABLE_EVENT)),
+    )
+
+
+def admin_creator_directory_status() -> ColumnElement[UserStatus]:
+    return creator_directory_status(
+        telegram_availability=_telegram_availability()
+    )
+
+
+def _availability(platform, linked) -> dict[str, ColumnElement[bool]]:
+    latest = (
+        _telegram_availability()
+        if platform == MessengerType.TELEGRAM
+        else latest_bot_availability(platform)
+    )
     return {
         f"{platform}_available": linked & (latest == BOT_AVAILABLE_EVENT),
-        f"{platform}_unavailable": linked & unavailable,
-        f"{platform}_unknown": linked & unknown,
+        f"{platform}_unavailable": linked & (latest == BOT_UNAVAILABLE_EVENT),
+        f"{platform}_unknown": linked & latest.is_(None),
     }
 
 

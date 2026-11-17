@@ -23,6 +23,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     OrderItemModel,
+    OrderModel,
     UserModel,
 )
 
@@ -211,6 +212,32 @@ async def test_provider_error_retains_interest_without_resending(
     assert rows(env, "paid_selection_interests")[0]["accepted"] is True
     assert rows(env, "paid_selection_delivery_jobs")[0]["state"] == mode
     assert rows(env, "paid_selection_accepted_deliveries") == []
+
+
+@pytest.mark.asyncio
+async def test_public_offer_contact_card_reaches_client_once(delivery_env):
+    env = delivery_env
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == env["order"])
+            .values(creator_offer_card={"title": "Привычки в кадре"})
+        )
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == env["creator"])
+            .values(telegram="creator_work")
+        )
+    await env["worker"].run_once()
+    await env["worker"].run_once()
+    (message,) = env["bot"].calls
+    assert message["text"].startswith("Новый отклик\nПривычки в кадре")
+    assert message["entities"][0].type == "bold"
+    links = message["reply_markup"].inline_keyboard
+    assert links[0][0].url == "https://t.me/creator_work"
+    assert links[1][0].url == env["interest"].instagram_url
+    (accepted,) = rows(env, "paid_selection_accepted_deliveries")
+    assert accepted["provider_reference"].endswith(":7")
 
 
 @pytest.mark.asyncio

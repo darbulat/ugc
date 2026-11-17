@@ -1,6 +1,7 @@
 """E2E tests for Admin UI with Playwright."""
 
 import os
+import re
 
 import pytest
 
@@ -79,14 +80,65 @@ def test_dashboard_loads(admin_server: str, page) -> None:
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
+def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
+    """Navigation works before metrics arrive, including after a failed load."""
+    from playwright.sync_api import expect
+
+    _login(page, admin_server)
+    requests = []
+    errors = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+
+    def hold_metrics(route):
+        if route.request.headers.get("x-dashboard-content") == "1":
+            requests.append(route)
+        else:
+            route.continue_()
+
+    page.route("**/admin/dashboard?period=30d", hold_metrics)
+    response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
+    assert response is not None and response.ok
+    expect(
+        page.get_by_role("heading", name="Дашборд", exact=True)
+    ).to_be_visible()
+    expect(page.get_by_role("link", name="Открыть заказы")).to_be_visible()
+    expect(page.get_by_role("status")).to_have_text("Загружаем показатели…")
+    expect(page.locator("#dashboard-panel")).to_have_attribute(
+        "aria-busy", "true"
+    )
+    assert len(requests) == 1
+    requests[0].fulfill(status=503, body="Temporarily unavailable")
+    retry = page.get_by_role("button", name="Повторить загрузку")
+    expect(retry).to_be_visible()
+    retry.click()
+    expect(page.get_by_role("status")).to_have_text("Загружаем показатели…")
+    assert len(requests) == 2
+    requests[1].fulfill(
+        content_type="text/html",
+        body="<div data-dashboard-content><h1>Дашборд</h1>"
+        '<section id="dashboard-goals">Завершили заказ: 37</section></div>',
+    )
+    expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
+    expect(page.locator("#dashboard-panel")).to_have_attribute(
+        "aria-busy", "false"
+    )
+    expect(retry).to_have_count(0)
+    assert errors == []
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(30)
 @requires_postgres
 def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     """Custom dashboard loads with KPI cards (needs PostgreSQL)."""
+    from playwright.sync_api import expect
+
     _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
     response = page.goto(f"{admin_server}/admin/dashboard?period=all")
     assert response is not None and response.ok
     assert page.get_by_role("heading", name="Дашборд", exact=True).is_visible()
+    expect(page.locator("#dashboard-goals")).to_be_visible()
     assert page.get_by_text("Последние 7 дней к предыдущим 7 дням").is_visible()
     assert page.get_by_role(
         "heading", name="Запуски админом без оплаты"
@@ -119,6 +171,49 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
         )
         == "page"
     )
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(30)
+@requires_postgres
+def test_dashboard_attention_layout(admin_server: str, page) -> None:
+    from playwright.sync_api import expect
+
+    _login(page, admin_server)
+    page.wait_for_url(lambda url: "login" not in url, timeout=5000)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    response = page.goto(f"{admin_server}/admin/dashboard?period=7d")
+    assert response is not None and response.ok
+
+    attention = page.get_by_role("region", name="Требует внимания")
+    cards = attention.locator(".attention-queues > .attention-queue")
+    expect(cards).to_have_count(8)
+    coordinates = (
+        "cards => cards.map(card => [card.offsetLeft, card.offsetTop])"
+    )
+    desktop = cards.evaluate_all(coordinates)
+    assert len(desktop) == 8
+    for left, right in zip(desktop[::2], desktop[1::2], strict=True):
+        assert left[1] == right[1]
+        assert left[0] < right[0]
+
+    for index in (0, 1):
+        card = cards.nth(index)
+        assert card.get_attribute("open") is not None
+        card.locator("summary").click()
+        assert card.get_attribute("open") is None
+    page.reload()
+    for index in (0, 1):
+        assert cards.nth(index).get_attribute("open") is not None
+
+    page.set_viewport_size({"width": 375, "height": 812})
+    mobile = cards.evaluate_all(coordinates)
+    assert len({x for x, _ in mobile}) == 1
+    assert [y for _, y in mobile] == sorted({y for _, y in mobile})
+
+    attention.get_by_role("link", name="Позиции на проверку").click()
+    assert page.get_by_role("heading", name="Позиции на проверку").is_visible()
+    assert page.url.endswith("?include_unpicked=false")
 
 
 @pytest.mark.e2e
@@ -210,10 +305,17 @@ def test_order_worklist_search_hide_and_restore(
     from uuid import uuid4
 
     from playwright.sync_api import expect
-    from sqlalchemy import create_engine
+    from sqlalchemy import create_engine, insert
     from sqlalchemy.orm import Session
 
-    from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+    from ugc_bot.domain.enums import (
+        MessengerType,
+        OrderStatus,
+        RejectionReason,
+        UserStatus,
+    )
+    from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
+    from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
     from ugc_bot.infrastructure.db.models import (
         AdvertiserProfileModel,
         ManagerOrderModel,
@@ -231,12 +333,18 @@ def test_order_worklist_search_hide_and_restore(
     user_id, order_id, managed_id, creator_id, manager_id = (
         uuid4() for _ in range(5)
     )
+    counteroffer_id, failed_id, pending_id = (uuid4() for _ in range(3))
     brand = f"Workbench-{order_id.hex[:8]}"
     managed_title = f"Отклик и работа менеджера {managed_id.hex[:8]}"
     handle = "browser_manager_" + manager_id.hex[:9]
     customer_name = f"Анна Петрова {order_id.hex[:8]}"
     geography = "Новосибирская область, Свердловская область, " * 20
     with Session(engine) as session, session.begin():
+        # SQLite fixture omits PostGIS models. Preview uses an empty directory.
+        session.connection().exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS blogger_profiles ("
+            "user_id CHAR(32) PRIMARY KEY, confirmed BOOLEAN NOT NULL)"
+        )
         session.add(
             UserModel(
                 user_id=user_id,
@@ -285,6 +393,9 @@ def test_order_worklist_search_hide_and_restore(
             for uid, name, telegram in (
                 (creator_id, "Тестовый креатор", "browser_creator"),
                 (manager_id, "Тестовый менеджер", handle),
+                (counteroffer_id, "Автор со встречной ценой", None),
+                (failed_id, "Недоступный автор", None),
+                (pending_id, "Автор из очереди", None),
             )
         )
         session.add(
@@ -319,6 +430,43 @@ def test_order_worklist_search_hide_and_restore(
             )
         )
         session.add(
+            OfferDispatchModel(
+                order_id=managed_id,
+                blogger_id=counteroffer_id,
+                accepted=False,
+                in_offer=False,
+                created_at=now,
+                rejection_reason=RejectionReason.LOW_PRICE,
+                desired_price=5000,
+            )
+        )
+        session.flush()
+        session.execute(
+            insert(OFFER_CHANNELS).values(
+                order_id=managed_id,
+                blogger_id=counteroffer_id,
+                telegram_sent_at=now,
+                max_sent_at=now,
+            )
+        )
+        session.execute(
+            insert(CONTROLS).values(
+                order_id=managed_id, run=1, paused=False, audience_ready=True
+            )
+        )
+        session.execute(
+            insert(CLAIMS),
+            [
+                {
+                    "order_id": managed_id,
+                    "blogger_id": uid,
+                    "run": 0 if uid == pending_id else 1,
+                    "rejected": uid == failed_id,
+                }
+                for uid in (creator_id, counteroffer_id, failed_id, pending_id)
+            ],
+        )
+        session.add(
             SocialAccountModel(
                 account_id=uuid4(),
                 user_id=creator_id,
@@ -333,6 +481,8 @@ def test_order_worklist_search_hide_and_restore(
     engine.dispose()
 
     # This job has no external server or assets. The admin's assets are local.
+    activity_url = f"{admin_server}/admin/orders/{managed_id}/offer-activity"
+    assert page.request.get(activity_url).status == 401
     page.route(
         "**/*",
         lambda route: (
@@ -342,6 +492,12 @@ def test_order_worklist_search_hide_and_restore(
         ),
     )
     _login(page, admin_server)
+    legacy = page.request.get(
+        f"{admin_server}/admin/orders/{order_id}/offer-activity"
+    )
+    assert legacy.ok and "Не доставлено" in legacy.text()
+    assert "<strong>—</strong>" in legacy.text()
+    assert legacy.headers["cache-control"] == "private, no-store"
     page.goto(f"{admin_server}/admin/order-model/list")
     group_nav = page.get_by_role("navigation", name="Группы заказов")
     menu = group_nav.locator(".order-worklist-more")
@@ -468,25 +624,81 @@ def test_order_worklist_search_hide_and_restore(
     page.get_by_role("link", name="В работе").click()
     expect(row).to_be_visible()
 
+    audience_requests = []
+    audience_path = f"**/admin/api/orders/{order_id}/audience*"
+    page.route(audience_path, lambda route: audience_requests.append(route))
     row.get_by_role("link", name="Редактировать", exact=True).click()
     expect(page.get_by_role("heading", name="Бриф заказа")).to_be_visible()
+    expect(page.locator("#order-audience-saved-caption")).to_have_text(
+        "Считаем выборку…"
+    )
+    assert len(audience_requests) == 1
+    audience_requests[0].fulfill(json={"count": 42})
+    expect(page.locator("#order-audience-saved-count")).to_have_text("42")
+    page.unroute(audience_path)
     expect(page.get_by_role("heading", name="Подбор креаторов")).to_be_visible()
     expect(page.get_by_role("link", name=brand)).to_be_visible()
+    expect(page.get_by_role("link", name="Нет ссылки на ТЗ")).to_be_visible()
+    expect(page.get_by_role("link", name="Нет фото")).to_be_visible()
+    copy_prompt = page.get_by_role("button", name="Скопировать промпт")
+    page.context.grant_permissions(
+        ["clipboard-read", "clipboard-write"], origin=admin_server
+    )
+    copy_prompt.click()
+    expect(page.get_by_text("Промпт скопирован.")).to_be_visible()
+    assert "Браузерный тест черновика" in page.evaluate(
+        "navigator.clipboard.readText()"
+    )
+    page.get_by_text("Посмотреть текст промпта", exact=True).click()
+    prompt = page.get_by_label("Промпт для обложки в Telegram")
+    expect(prompt).to_have_value(re.compile("Браузерный тест черновика"))
+    page.get_by_text("Идентификатор фото в Telegram", exact=True).click()
+    page.locator("#product_photo_file_id").fill("local-test-photo")
+    expect(page.get_by_role("link", name="Нет фото")).to_be_hidden()
+    expect(copy_prompt).to_be_visible()
+    page.once("dialog", lambda dialog: dialog.dismiss())
+    page.get_by_role("button", name="Активировать заказ").click()
+    expect(page.get_by_label("Статус", exact=True)).to_have_value("new")
+    geo = page.get_by_label("География", exact=True)
+    geo.fill("любом")
+    expect(page.locator("#order-audience-hint")).to_contain_text(
+        "Укажите город"
+    )
+    geo.fill("")
+    preview_count = page.locator("#order-audience-count")
+    expect(preview_count).to_have_text("0")
+    expect(preview_count).to_have_class(
+        re.compile("order-editor__audience-value--short")
+    )
+    with Session(engine) as session:
+        assert session.get(OrderModel, order_id).geography == geography
     for width in (1440, 390):
         page.set_viewport_size({"width": width, "height": 800})
-        assert page.locator(".order-editor").evaluate(
+        page.evaluate("window.scrollTo({top: 0, behavior: 'instant'})")
+        layout = page.locator(".order-editor").evaluate(
             """editor => {
               const [top, nav, brief] = ['.order-editor__top',
                 '.order-editor__bar', '#order-edit-brief'].map(
                 part => editor.querySelector(part).getBoundingClientRect()
               );
-              return top.bottom <= nav.top && nav.bottom <= brief.top &&
-                Math.abs(top.width - brief.width) <= 1 &&
-                document.documentElement.scrollWidth <= window.innerWidth;
+              return { topBottom: top.bottom, navTop: nav.top,
+                navBottom: nav.bottom, briefTop: brief.top,
+                topWidth: top.width, briefWidth: brief.width,
+                documentWidth: document.documentElement.scrollWidth };
             }"""
         )
+        assert layout["topBottom"] <= layout["navTop"], layout
+        assert layout["navBottom"] <= layout["briefTop"], layout
+        assert abs(layout["topWidth"] - layout["briefWidth"]) <= 1, layout
+        assert layout["documentWidth"] <= width, layout
     page.set_viewport_size({"width": 1440, "height": 800})
-    expect(page.get_by_role("link", name="Дублировать заказ")).to_be_visible()
+    expect(
+        page.get_by_role("region", name="Действия с заказом").get_by_role(
+            "link", name="Создать копию заказа"
+        )
+    ).to_have_accessible_description(
+        "Копия откроется как новый заказ с сохранёнными данными этой карточки."
+    )
     barter = page.get_by_label("Описание бартера", exact=True)
     barter.fill("я" * 4001)
     expect(page.locator("#barter_description-count")).to_contain_text(
@@ -495,13 +707,14 @@ def test_order_worklist_search_hide_and_restore(
     assert barter.evaluate("(field) => !field.validity.valid")
     barter.fill("Билеты")
     page.get_by_label("География", exact=True).fill("Казань")
-    expect(page.locator("#order-audience-dirty")).to_be_visible()
-    page.get_by_role(
-        "button", name="Сохранить и продолжить", exact=True
-    ).click()
+    expect(page.locator("#order-audience-preview")).to_be_visible()
+    page.get_by_role("button", name="Сохранить и остаться", exact=True).click()
     expect(page.get_by_label("География", exact=True)).to_have_value("Казань")
-    expect(page.locator("#order-audience-dirty")).to_be_hidden()
-    page.get_by_role("link", name="← Назад к списку").click()
+    expect(page.locator("#order-audience-preview")).to_be_hidden()
+    expect(page.get_by_label("Статус", exact=True)).to_have_value("new")
+    expect(copy_prompt).to_be_visible()
+    expect(page.get_by_role("link", name="Нет фото")).to_be_hidden()
+    page.get_by_role("button", name="Сохранить и выйти", exact=True).click()
     marker = row.get_by_role("button", name="Это тест", exact=True)
     page.once("dialog", confirm)
     marker.click()
@@ -539,6 +752,37 @@ def test_order_worklist_search_hide_and_restore(
     expect(page.get_by_role("link", name="Открыть видео")).to_have_attribute(
         "href", "https://example.test/ugc"
     )
+    activity = page.get_by_role("region", name="Рассылка и отклики")
+    counters = activity.locator("article strong")
+    expect(counters).to_have_text(["2 из 4", "1", "1", "1"])
+    expect(activity).to_contain_text("Авторов без результата отправки — 1")
+    counteroffer = activity.get_by_role("row").filter(
+        has_text="Автор со встречной ценой"
+    )
+    expect(counteroffer).to_contain_text("Низкая цена")
+    expect(counteroffer).to_contain_text("5 000 ₽")
+    details = activity.get_by_text("Причины отказов и предложенные цены")
+    details.click()
+    expect(counteroffer).to_be_hidden()
+    with Session(engine) as session, session.begin():
+        session.add(
+            OfferDispatchModel(
+                order_id=managed_id,
+                blogger_id=pending_id,
+                accepted=False,
+                in_offer=False,
+                created_at=now,
+                rejection_reason=RejectionReason.WRONG_FORMAT,
+            )
+        )
+    engine.dispose()
+    expect(counters).to_have_text(["3 из 4", "1", "1", "2"], timeout=25_000)
+    expect(activity).to_contain_text("Рассылка завершена")
+    expect(counteroffer).to_be_hidden()
+    details.click()
+    expect(
+        activity.get_by_role("row").filter(has_text="Автор из очереди")
+    ).to_contain_text("Не подходит формат")
     page.set_viewport_size({"width": 390, "height": 800})
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"

@@ -39,6 +39,7 @@ from ugc_bot.admin.complaints import (
     OPEN_COMPLAINT_STATUSES,
 )
 from ugc_bot.admin.creator_base import (
+    admin_creator_directory_status,
     creator_base_counts,
     creator_base_filter,
 )
@@ -47,6 +48,7 @@ from ugc_bot.admin.dashboard_periods import PeriodWindow as PeriodWindow
 from ugc_bot.admin.dashboard_periods import (
     dashboard_period_window as dashboard_period_window,
 )
+from ugc_bot.admin.order_offer_activity import load_order_offer_activity
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
     active_pick_reasons,
@@ -108,11 +110,11 @@ from ugc_bot.infrastructure.db.models import (
     UserReferralBindingModel,
 )
 from ugc_bot.infrastructure.db.payout_models import TABLE_MAP as PAYOUT_TABLES
-from ugc_bot.infrastructure.db.repositories.bot_availability import (
-    creator_directory_status,
-)
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
     staff_consent_available,
+)
+from ugc_bot.infrastructure.db.repositories.order_review import (
+    position_review_count_query,
 )
 from ugc_bot.infrastructure.db.repositories.ratings import (
     SqlAlchemyBloggerRatingRepository,
@@ -781,6 +783,10 @@ class AdminDashboardService:
         async with self._session_factory() as session:
             return await self._get_order_card(session, order_id)
 
+    async def get_order_offer_activity(self, order_id: UUID) -> dict | None:
+        async with self._session_factory() as session:
+            return await load_order_offer_activity(session, order_id)
+
     def _build_period_window(self, period: PeriodKey) -> PeriodWindow:
         return dashboard_period_window(period, self._timezone)
 
@@ -1283,7 +1289,7 @@ class AdminDashboardService:
                 UserModel,
                 BloggerProfileModel,
                 AdvertiserProfileModel,
-                creator_directory_status(),
+                admin_creator_directory_status(),
             )
             .outerjoin(
                 BloggerProfileModel,
@@ -1410,20 +1416,28 @@ class AdminDashboardService:
         return card
 
     async def get_worklist_attention_counts(self) -> dict[str, int]:
-        """Return totals for the two quick filters in the live worklist."""
+        """Return current counts for the worklist filters and review queue."""
+        now = datetime.now(timezone.utc)
         query = (
             select(
                 func.count().filter(~order_has_manager()).label("no_manager"),
-                func.count()
-                .filter(order_is_inactive(datetime.now(timezone.utc)))
-                .label("inactive"),
+                func.count().filter(order_is_inactive(now)).label("inactive"),
             )
             .select_from(OrderModel)
             .where(*worklist_conditions("work", "", admin_list=True))
         )
         async with self._session_factory() as session:
             row = (await session.execute(query)).one()
-        return {"no_manager": row.no_manager, "inactive": row.inactive}
+            position_review = 0
+            if session.get_bind().dialect.name == "postgresql":
+                position_review = (
+                    await session.scalar(position_review_count_query(now)) or 0
+                )
+        return {
+            "no_manager": row.no_manager,
+            "inactive": row.inactive,
+            "position_review": position_review,
+        }
 
     async def _get_order_attention(self, session: AsyncSession) -> dict:
         """Group current orders by the action they are waiting for."""
@@ -1669,7 +1683,7 @@ class AdminDashboardService:
         query = (
             select(
                 UserModel,
-                creator_directory_status().label("directory_status"),
+                admin_creator_directory_status().label("directory_status"),
                 BloggerProfileModel.instagram_url,
                 BloggerProfileModel.city,
                 BloggerProfileModel.instagram_followers_count,
@@ -1772,7 +1786,7 @@ class AdminDashboardService:
         if sort_by == "complaints":
             return func.coalesce(complaints.c.complaints, 0)
         if sort_by == "status":
-            return creator_directory_status()
+            return admin_creator_directory_status()
         return None
 
     async def _count_advertisers(

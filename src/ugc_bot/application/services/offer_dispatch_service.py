@@ -1,10 +1,10 @@
 """Service for dispatching offers to bloggers."""
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from ugc_bot.application.errors import (
     OrderGeographyUnavailableError,
@@ -19,18 +19,26 @@ from ugc_bot.application.ports import (
     CountryRepository,
     InstagramStatsRepository,
     InteractionRepository,
-    ManagerOrderRepository,
     OfferDispatchRepository,
     OrderRepository,
+    OutboxRepository,
     TransactionManager,
     UserRepository,
 )
 from ugc_bot.application.services.bot_texts_service import BotTextsService
-from ugc_bot.domain.entities import BloggerProfile, InstagramStats, Order, User
+from ugc_bot.domain.counteroffer import COUNTEROFFER_SUBMITTED
+from ugc_bot.domain.entities import (
+    BloggerProfile,
+    InstagramAudienceCounts,
+    Order,
+    OutboxEvent,
+    User,
+)
 from ugc_bot.domain.enums import (
     MessengerType,
     OrderStatus,
     OrderType,
+    OutboxEventStatus,
     RejectionReason,
     UserStatus,
     WorkFormat,
@@ -259,7 +267,7 @@ def _passes_profile_based_filters(
 
 
 def _extract_followers_and_media(
-    stats: InstagramStats | None,
+    stats: InstagramAudienceCounts | None,
     profile: BloggerProfile | None,
     criteria: _DispatchCriteria,
 ) -> tuple[int | None, int | None]:
@@ -280,10 +288,6 @@ class SkipResult:
 
     rejection_reason: RejectionReason | None = None
     desired_price: Decimal | None = None
-    manager_id: UUID | None = None
-    order_price: Decimal | None = None
-    offer_text: str | None = None
-    product_link: str | None = None
 
 
 @dataclass(slots=True)
@@ -298,11 +302,11 @@ class OfferDispatchService:
     instagram_stats_repo: InstagramStatsRepository | None = None
     blogger_rating_repo: BloggerRatingRepository | None = None
     country_repo: CountryRepository | None = None
-    manager_order_repo: ManagerOrderRepository | None = None
     transaction_manager: TransactionManager | None = None
     currency_symbol: str = "₽"
     intake_repository: OrderIntakeRepository | None = None
     dispatch_control: Any = None
+    outbox_repo: OutboxRepository | None = None
 
     async def get_order_and_advertiser(
         self, order_id: UUID
@@ -388,28 +392,31 @@ class OfferDispatchService:
 
         async def _run(sess: object | None) -> int:
             order = await self.order_repo.get_by_id(order_id, session=sess)
-            (
-                _order,
-                confirmed_ids,
-                already_sent_set,
-                bloggers_with_unfulfilled,
-            ) = await self._get_initial_data_for_order(
-                order_id, order, session=sess
-            )
-            if _order is None or not confirmed_ids:
-                return 0
-            users = await self._collect_eligible_users(
-                _order,
-                confirmed_ids,
-                already_sent_set,
-                bloggers_with_unfulfilled,
-                sess,
-            )
-            return len(users)
+            return await self.count_order_candidates(order, session=sess)
 
         if session is not None:
             return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def count_order_candidates(
+        self, order: Order | None, *, session: object | None
+    ) -> int:
+        """Count candidates for saved or proposed filters."""
+        if order is None:
+            return 0
+        (
+            _,
+            confirmed,
+            sent,
+            unfulfilled,
+        ) = await self._get_initial_data_for_order(
+            order.order_id, order, session=session
+        )
+        return len(
+            await self._collect_eligible_users(
+                order, confirmed, sent, unfulfilled, session
+            )
+        )
 
     async def _validate_and_get_initial_data(
         self, order_id: UUID, session: object | None
@@ -543,12 +550,12 @@ class OfferDispatchService:
             return []
 
         # Batch load Instagram stats if needed (1 query)
-        stats_map: dict[UUID, InstagramStats] = {}
+        stats_map: dict[UUID, InstagramAudienceCounts] = {}
         if (
             criteria.need_instagram_stats
             and self.instagram_stats_repo is not None
         ):
-            stats_map = await self.instagram_stats_repo.get_by_user_ids(
+            stats_map = await self.instagram_stats_repo.get_audience_counts(
                 active_ids, session=session
             )
 
@@ -645,12 +652,14 @@ class OfferDispatchService:
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        message_id: str | None = None,
     ) -> None:
         """Record that an offer was sent to a blogger for an order."""
 
         async def _run(sess: object | None) -> None:
+            extra = {"message_id": message_id} if message_id is not None else {}
             await self.offer_dispatch_repo.record_sent(
-                order_id, blogger_id, session=sess, channel=channel
+                order_id, blogger_id, session=sess, channel=channel, **extra
             )
 
         await with_optional_tx(self.transaction_manager, _run)
@@ -678,10 +687,34 @@ class OfferDispatchService:
         session: object | None = None,
         *,
         channel: MessengerType | None = None,
+        only_unanswered: bool = False,
     ) -> SkipResult:
         """Record blogger skip with optional rejection reason."""
 
         async def _run(sess: object | None) -> SkipResult:
+            amount = desired_price
+            counteroffer = rejection_reason == RejectionReason.LOW_PRICE
+            order = None
+            if only_unanswered or (counteroffer and amount is not None):
+                order = await self.order_repo.get_by_id_for_update(
+                    order_id, session=sess
+                )
+                if order is None or order.status == OrderStatus.DELETED:
+                    return SkipResult()
+                if await self.offer_dispatch_repo.exists_responded(
+                    order_id, blogger_id, session=sess
+                ):
+                    return SkipResult()
+            if counteroffer and amount is not None and order is not None:
+                base_price = Decimal(str(order.price))
+                if (
+                    not amount.is_finite()
+                    or not base_price < amount <= base_price * 10
+                ):
+                    return SkipResult()
+                amount = round(amount, 2)
+                if amount <= base_price:
+                    return SkipResult()
             await self.offer_dispatch_repo.record_response(
                 order_id,
                 blogger_id,
@@ -691,37 +724,58 @@ class OfferDispatchService:
                 rejection_reason=rejection_reason.value
                 if rejection_reason
                 else None,
-                desired_price=desired_price,
+                desired_price=amount,
                 channel=channel,
             )
-            manager_id: UUID | None = None
-            order_price: Decimal | None = None
-            offer_text: str | None = None
-            product_link: str | None = None
             if (
-                rejection_reason == RejectionReason.LOW_PRICE
-                and self.manager_order_repo
-            ):
-                assignments = await self.manager_order_repo.list_by_order(
-                    order_id, session=sess
+                counteroffer
+                and amount is not None
+                and order is not None
+                and not await self._queue_counteroffer(
+                    order, blogger_id, amount, sess
                 )
-                if assignments:
-                    manager_id = assignments[0].user_id
-                order = await self.order_repo.get_by_id(order_id, session=sess)
-                if order:
-                    order_price = Decimal(str(order.price))
-                    offer_text = order.offer_text
-                    product_link = order.product_link or None
+            ):
+                return SkipResult()
             return SkipResult(
                 rejection_reason=rejection_reason,
-                desired_price=desired_price,
-                manager_id=manager_id,
-                order_price=order_price,
-                offer_text=offer_text,
-                product_link=product_link,
+                desired_price=amount,
             )
 
         return await with_optional_tx(self.transaction_manager, _run)
+
+    async def _queue_counteroffer(
+        self,
+        order: Order,
+        creator_id: UUID,
+        amount: Decimal,
+        session: object | None,
+    ) -> bool:
+        if not await self.offer_dispatch_repo.exists_responded(
+            order.order_id, creator_id, session=session
+        ):
+            return False
+        if self.outbox_repo is not None:
+            await self.outbox_repo.save(
+                OutboxEvent(
+                    event_id=uuid4(),
+                    event_type=COUNTEROFFER_SUBMITTED,
+                    aggregate_id=str(order.order_id),
+                    aggregate_type="order",
+                    payload={
+                        "creator_id": str(creator_id),
+                        "amount": str(amount),
+                        "offer_price": str(order.price),
+                        "currency": order.currency,
+                    },
+                    status=OutboxEventStatus.PENDING,
+                    created_at=datetime.now(UTC),
+                    processed_at=None,
+                    retry_count=0,
+                    last_error=None,
+                ),
+                session=session,
+            )
+        return True
 
     async def format_offer(
         self,

@@ -19,12 +19,14 @@ from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
 from aiogram.utils.token import TokenValidationError
 from fastapi import Depends, FastAPI, HTTPException
+from pydantic import ValidationError
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
 from sqladmin.pagination import Pagination
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import event, exists, func, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, object_session
 from starlette.datastructures import URL, QueryParams
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -77,6 +79,8 @@ from ugc_bot.admin.order_editor import (
     ORDER_EDITOR_HINTS,
     ORDER_EDITOR_LIMITS,
     ORDER_EDITOR_SECTIONS,
+    ORDER_GEOGRAPHY_HINT,
+    OrderAudiencePreview,
     changed_text_errors,
 )
 from ugc_bot.admin.order_review import register_order_review
@@ -112,9 +116,15 @@ from ugc_bot.admin.people import (
     instagram_link,
     telegram_handle,
 )
+from ugc_bot.application.creator_offer_cards import (
+    PUBLIC_FIELDS,
+    render_public_offer,
+    validate_public_offer,
+)
 from ugc_bot.application.errors import OrderGeographyUnavailableError
 from ugc_bot.application.geography import (
     get_geometry_queries_from_spec,
+    has_unspecified_geography,
     parse_geography,
 )
 from ugc_bot.application.ports import OrderRepository
@@ -365,6 +375,8 @@ async def _activate_order(
             return
         if order.status not in _ACTIVATABLE_ORDER_STATUSES:
             raise ValueError("order_activation_requires_new_or_pending")
+        if order.creator_offer_card is not None:
+            render_public_offer(order, "ru")
         order = await _checked_activation_geography(
             order, container, geography_update, exact_city, session
         )
@@ -829,6 +841,14 @@ async def _render_dashboard_page(
     """Render dashboard HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
+    response_headers = {
+        "Cache-Control": "private, no-store",
+        "Vary": "X-Dashboard-Content",
+    }
+    if request.headers.get("X-Dashboard-Content") != "1":
+        return templates.TemplateResponse(
+            request, "dashboard.html", {}, headers=response_headers
+        )
     period_key = _normalize_period(period)
     include_timings = (
         timings.lower() in ("1", "true", "yes") if timings else False
@@ -846,28 +866,31 @@ async def _render_dashboard_page(
         if use_cache
         else None
     )
-    payload = await _get_dashboard_payload_cached(
-        dashboard_service,
-        period_key,
-        cache,
-        use_cache,
-        cache_key,
-        referrers_page=referrers_page,
-        referrers_per_page=referrers_per_page,
-        referrers_sort=referrers_sort or None,
-        referrers_order=referrers_order or "desc",
-        referrers_filter=referrers_filter or None,
-        include_timings=include_timings,
-    )
-    creator_base = await _get_cached_or_fetch(
-        cache,
-        f"creator-base:v4:{period_key}" if cache else None,
-        _dashboard_cache_ttl(period_key),
-        lambda: dashboard_service.get_creator_base(period_key),
+    payload, creator_base, attention_counts = await asyncio.gather(
+        _get_dashboard_payload_cached(
+            dashboard_service,
+            period_key,
+            cache,
+            use_cache,
+            cache_key,
+            referrers_page=referrers_page,
+            referrers_per_page=referrers_per_page,
+            referrers_sort=referrers_sort or None,
+            referrers_order=referrers_order or "desc",
+            referrers_filter=referrers_filter or None,
+            include_timings=include_timings,
+        ),
+        _get_cached_or_fetch(
+            cache,
+            f"creator-base:v4:{period_key}" if cache else None,
+            _dashboard_cache_ttl(period_key),
+            lambda: dashboard_service.get_creator_base(period_key),
+        ),
+        dashboard_service.get_worklist_attention_counts(),
     )
     return templates.TemplateResponse(
         request,
-        "dashboard.html",
+        "dashboard_content.html",
         {
             "payload": payload,
             "creator_base": creator_base,
@@ -881,14 +904,13 @@ async def _render_dashboard_page(
             "status_labels": _STATUS_LABELS,
             "delay_reason_labels": _DELAY_REASON_LABELS,
             "order_quick_filter_labels": _ORDER_QUICK_FILTER_LABELS,
-            "order_attention_counts": (
-                await dashboard_service.get_worklist_attention_counts()
-            ),
+            "order_attention_counts": attention_counts,
             "order_inactivity_days": ORDER_INACTIVITY_DAYS,
             "referrers_sort": referrers_sort,
             "referrers_order": referrers_order,
             "referrers_filter": referrers_filter,
         },
+        headers=response_headers,
     )
 
 
@@ -1918,6 +1940,8 @@ def _register_dashboard_api_routes(
             raise HTTPException(status_code=404, detail="Заказ не найден")
         return order
 
+    _register_order_audience_preview_route(app, require_admin)
+
     @app.get("/admin/api/search", dependencies=[Depends(require_admin)])
     async def search_api(q: str = "") -> dict:
         return await _api_search_json(
@@ -1939,9 +1963,35 @@ def _register_dashboard_routes(
         app, auth, dashboard_service, templates, cache, _LIST_CACHE_TTL
     )
     _register_flowchart_route(app, auth)
+    _register_order_offer_activity_route(
+        app, require_admin, dashboard_service, templates
+    )
     _register_dashboard_api_routes(
         app, require_admin, dashboard_service, cache, _LIST_CACHE_TTL
     )
+
+
+def _register_order_offer_activity_route(
+    app: FastAPI,
+    require_admin,
+    dashboard_service: AdminDashboardService,
+    templates: Jinja2Templates,
+) -> None:
+    @app.get(
+        "/admin/orders/{order_id}/offer-activity",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_admin)],
+    )
+    async def admin_order_offer_activity(request: Request, order_id: UUID):
+        activity = await dashboard_service.get_order_offer_activity(order_id)
+        if activity is None:
+            raise HTTPException(status_code=404, detail="Заказ не найден")
+        return templates.TemplateResponse(
+            request,
+            "order_offer_activity.html",
+            {"activity": activity, "order_id": order_id},
+            headers={"Cache-Control": "private, no-store"},
+        )
 
 
 async def _get_obj_by_pk(
@@ -2282,6 +2332,29 @@ def _validate_activation_submission(submitted: dict) -> None:
         )
 
 
+def _creator_card_edit_data(order, data, form, *, activating):
+    draft = getattr(order, "creator_offer_card", None)
+    if draft is None:
+        if (
+            order is None
+            or order.status not in _ACTIVATABLE_ORDER_STATUSES
+            or form.get("creator_card_enable") != "yes"
+        ):
+            return data
+        draft = {}
+    if "creator_card_title" in form:
+        draft = {
+            key: str(form.get(f"creator_card_{key}", "") or "")
+            for key in (*PUBLIC_FIELDS, "contact", "photo")
+        }
+    card = validate_public_offer(
+        draft,
+        ready=activating,
+        barter=float(data.get("price", order.price)) <= 0,
+    )
+    return {**data, "creator_offer_card": card}
+
+
 class OrderAdmin(ModelView, model=OrderModel):
     """Admin view for orders with moderation support."""
 
@@ -2408,6 +2481,8 @@ class OrderAdmin(ModelView, model=OrderModel):
             raise ValueError("Заказ удалён.")
         if data.get("status") == OrderStatus.DELETED:
             raise ValueError("Для удаления используйте кнопку «Удалить заказ».")
+        if is_created:
+            model.creator_offer_card = {}
         if (
             not is_created
             and data.get("status") == OrderStatus.CLOSED
@@ -2460,6 +2535,9 @@ class OrderAdmin(ModelView, model=OrderModel):
             raise ValueError("Заказ уже запущен без оплаты.")
         if activating:
             _validate_activation_submission(submitted)
+        data = _creator_card_edit_data(
+            obj, data, form_data, activating=activating
+        )
 
         if old_status == OrderStatus.ACTIVE and new_status_raw in {
             OrderStatus.CLOSED,
@@ -3516,27 +3594,93 @@ class DashboardLinkView(BaseView):
         return RedirectResponse(url="/admin/dashboard")
 
 
-async def _inject_order_eligible_bloggers_count(
-    context: dict[str, Any],
-    model_view: Any,
-    model: Any,
-) -> None:
-    """Set context['eligible_bloggers_count'] for OrderAdmin edit view."""
-    if not isinstance(model_view, OrderAdmin):
-        return
+def _register_order_audience_preview_route(app: FastAPI, require_admin) -> None:
+    @app.get(
+        "/admin/api/orders/{order_id}/audience",
+        dependencies=[Depends(require_admin)],
+    )
+    async def order_audience_preview(request: Request, order_id: UUID):
+        try:
+            filters = OrderAudiencePreview.model_validate(
+                {
+                    key: value or None
+                    for key, value in request.query_params.items()
+                }
+            )
+        except ValidationError:
+            raise HTTPException(422, "Проверьте значения фильтров.") from None
+        return JSONResponse(
+            {"count": await _preview_order_audience(order_id, filters)},
+            headers={"Cache-Control": "no-store"},
+        )
+
+
+async def _preview_geography(order, intake, value, session) -> dict:
+    geography = (value or "").strip() or None
+    if has_unspecified_geography(geography):
+        raise HTTPException(422, ORDER_GEOGRAPHY_HINT)
+    if geography == ((order.geography or "").strip() or None):
+        return {}
+    if (
+        order.financial_version
+        and intake is not None
+        and await intake.exact_city_for_order(order.order_id, session=session)
+        is not None
+    ):
+        raise HTTPException(422, "Город заказа с точным подбором закреплён.")
+    return {
+        "geography": geography,
+        "location_geometry": await _resolve_order_location_geometry(geography),
+    }
+
+
+async def _preview_order_audience(
+    order_id: UUID, filters: OrderAudiencePreview
+) -> int:
+    container = _get_admin_container()
+    if container is None or container.transaction_manager is None:
+        raise HTTPException(503, "Подбор временно недоступен.")
+    dispatcher = container.build_offer_dispatch_service()
+    override = filters.model_dump(exclude_unset=True)
     try:
-        container = _get_admin_container()
-        if container and getattr(container, "session_factory", None):
-            dispatch_svc = container.build_offer_dispatch_service()
-            count = await dispatch_svc.count_eligible_bloggers(model.order_id)
-            context["eligible_bloggers_count"] = count
-        else:
-            context["eligible_bloggers_count"] = None
-    except OrderGeographyUnavailableError:
-        context["eligible_bloggers_count"] = None
-        context["order_geography_unavailable"] = True
-    except Exception:
-        context["eligible_bloggers_count"] = None
+        async with asyncio.timeout(20):
+            async with container.transaction_manager.transaction() as session:
+                order = await dispatcher.order_repo.get_by_id(
+                    order_id, session=session
+                )
+                if order is None or order.status == OrderStatus.DELETED:
+                    raise HTTPException(404, "Заказ не найден.")
+                for name in ("order_type", "price"):
+                    if (
+                        order.financial_version is not None
+                        or override.get(name) is None
+                    ):
+                        override.pop(name, None)
+                if "geography" in override:
+                    override.update(
+                        await _preview_geography(
+                            order,
+                            dispatcher.intake_repository,
+                            override.pop("geography"),
+                            session,
+                        )
+                    )
+                return await dispatcher.count_order_candidates(
+                    dataclasses.replace(order, **override), session=session
+                )
+    except (ValueError, OrderGeographyUnavailableError):
+        raise HTTPException(
+            422, "География не распознана. " + ORDER_GEOGRAPHY_HINT
+        ) from None
+    except TimeoutError:
+        raise HTTPException(
+            503, "Подбор занял слишком много времени. Повторите попытку."
+        ) from None
+    except SQLAlchemyError:
+        logger.warning(
+            "Order audience preview failed", extra={"order_id": str(order_id)}
+        )
+        raise HTTPException(503, "Подбор временно недоступен.") from None
 
 
 async def _inject_order_quote_details(context, model_view, model) -> None:
@@ -3636,6 +3780,39 @@ async def _inject_order_managers(
         logger.exception("Failed to inject order managers")
 
 
+async def _prepare_order_edit_values(request, model, form, values) -> None:
+    if form.get("save") == "Activate order":
+        await _require_action_token(request)
+        values["status"] = OrderStatus.ACTIVE
+    elif form.get("status") == form.get("original_status"):
+        values.pop("status", None)
+    elif (
+        model.status in _ACTIVATABLE_ORDER_STATUSES
+        and values.get("status") == OrderStatus.ACTIVE
+    ):
+        raise HTTPException(422, "Для запуска нажмите «Активировать заказ».")
+
+
+async def _inject_order_editor_context(context, request, model_view, model):
+    if not isinstance(model_view, OrderAdmin):
+        return
+    await _inject_order_managers(context, model_view, model)
+    await _inject_order_quote_details(context, model_view, model)
+    details = await model_view.worklist_details([model])
+    reasons = await model_view.closure_reasons([model])
+    order_actions = details.get(model.order_id, {})
+    request.state.order_actions = order_actions
+    context.update(
+        order_actions=order_actions,
+        saved_closure_reason=reasons.get(model.order_id),
+        order_sections=ORDER_EDITOR_SECTIONS,
+        order_limits=ORDER_EDITOR_LIMITS,
+        order_hints=ORDER_EDITOR_HINTS,
+        order_status_labels=ORDER_STATUS_LABELS,
+        can_activate_order=model.status in _ACTIVATABLE_ORDER_STATUSES,
+    )
+
+
 class EnumAwareAdmin(Admin):
     """Admin that fixes enum select fields showing first option instead of DB.
 
@@ -3660,6 +3837,13 @@ class EnumAwareAdmin(Admin):
         return RedirectResponse("/admin/dashboard", status_code=302)
 
     def get_save_redirect_url(self, request, form, model_view, obj):
+        if (
+            isinstance(model_view, OrderAdmin)
+            and form.get("save") == "Activate order"
+        ):
+            return request.url_for(
+                "admin_order_detail", order_id=obj.order_id
+            ).include_query_params(return_to=_order_return_url(request))
         url = super().get_save_redirect_url(request, form, model_view, obj)
         if not isinstance(model_view, OrderAdmin) or request.method != "POST":
             return url
@@ -3724,9 +3908,6 @@ class EnumAwareAdmin(Admin):
     @login_required
     async def edit(self, request: Request):  # pragma: no cover
         """Override edit to pass enum .value for correct select display."""
-        from starlette.exceptions import HTTPException
-        from starlette.responses import RedirectResponse
-
         await self._edit(request)
 
         identity = request.path_params["identity"]
@@ -3743,23 +3924,7 @@ class EnumAwareAdmin(Admin):
             "model_view": model_view,
             "form": Form(data=form_data),
         }
-        await _inject_order_eligible_bloggers_count(context, model_view, model)
-        await _inject_order_managers(context, model_view, model)
-        await _inject_order_quote_details(context, model_view, model)
-        if isinstance(model_view, OrderAdmin):
-            details = await model_view.worklist_details([model])
-            reasons = await model_view.closure_reasons([model])
-            order_actions = details.get(model.order_id, {})
-            request.state.order_actions = order_actions
-            context.update(
-                order_actions=order_actions,
-                saved_closure_reason=reasons.get(model.order_id),
-                order_sections=ORDER_EDITOR_SECTIONS,
-                order_limits=ORDER_EDITOR_LIMITS,
-                order_hints=ORDER_EDITOR_HINTS,
-                order_status_labels=ORDER_STATUS_LABELS,
-            )
-
+        await _inject_order_editor_context(context, request, model_view, model)
         if request.method == "GET":
             return await self.templates.TemplateResponse(
                 request, model_view.edit_template, context
@@ -3784,6 +3949,10 @@ class EnumAwareAdmin(Admin):
             )
 
         form_data_dict = self._denormalize_wtform_data(form.data, model)
+        if isinstance(model_view, OrderAdmin):
+            await _prepare_order_edit_values(
+                request, model, form_data_post, form_data_dict
+            )
         try:
             if (
                 model_view.save_as
@@ -4128,6 +4297,17 @@ def _register_complaint_action(
         return RedirectResponse(_complaint_return_url(request), status_code=303)
 
 
+def _configure_admin_query_planning(engine: Engine) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+
+    @event.listens_for(engine, "begin")
+    def disable_jit(connection):
+        # These short admin queries spend more time compiling than executing.
+        # SET LOCAL expires at transaction end, including through PgBouncer.
+        connection.exec_driver_sql("SET LOCAL jit = off")
+
+
 def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
@@ -4145,6 +4325,11 @@ def create_admin_app() -> FastAPI:
 
     container = Container(config)
     engine = container.get_admin_engine()
+    _configure_admin_query_planning(engine)
+    if container.session_factory is not None:
+        _configure_admin_query_planning(
+            container.session_factory.kw["bind"].sync_engine
+        )
     app = FastAPI(title=config.admin.admin_site_name)
     app.add_middleware(SessionMiddleware, secret_key=config.admin.admin_secret)
     app.state.checkout_review_bot = telegram_handle(config.bot.bot_username)

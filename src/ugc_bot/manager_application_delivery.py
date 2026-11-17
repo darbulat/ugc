@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from aiogram import Bot
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.bot.telegram.manager_review_messages import (
@@ -27,7 +27,10 @@ from ugc_bot.domain.manager_application import (
     MANAGER_SUBMITTED,
     application_version,
 )
-from ugc_bot.infrastructure.db.models import OutboxEventModel, UserModel
+from ugc_bot.infrastructure.db.models import OutboxEventModel
+from ugc_bot.infrastructure.db.repositories.admin_recipients import (
+    active_admin_telegram_address,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     manager_application_query,
@@ -165,18 +168,7 @@ class ManagerApplicationDelivery:
     async def _reviewer_address(db, recipient):
         if recipient not in MANAGER_NOTIFICATION_RECIPIENTS:
             raise ValueError("manager_reviewer_not_configured")
-        addresses = (
-            await db.scalars(
-                select(UserModel.telegram_id)
-                .where(
-                    func.lower(UserModel.telegram) == recipient,
-                    UserModel.admin.is_(True),
-                    UserModel.status == "active",
-                    UserModel.telegram_id.is_not(None),
-                )
-                .limit(2)
-            )
-        ).all()
-        if len(addresses) != 1:
+        address = await active_admin_telegram_address(db, recipient)
+        if address is None:
             raise ValueError("manager_reviewer_telegram_unavailable")
-        return addresses[0]
+        return address

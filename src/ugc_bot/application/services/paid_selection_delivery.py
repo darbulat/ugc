@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from uuid import UUID, uuid4, uuid5
 
 from ugc_bot.application.collaboration_ports import canonical
+from ugc_bot.application.creator_offer_cards import client_contact_text
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
@@ -56,6 +57,14 @@ def _message(source):
     ):
         raise ValueError("selection_instagram_url_invalid")
     contact = source.creator_contact
+    order_title = _safe(contact.get("public_order_title"))
+    if order_title:
+        return client_contact_text(
+            order_title=order_title,
+            name=_safe(contact.get("username")),
+            phone=_safe(contact.get("phone")),
+            locale=_locale(source.contact.locale),
+        )
     labels = {
         "ru": ("Креатор подтвердил интерес", "Телефон"),
         "en": ("Creator confirmed interest", "Phone"),

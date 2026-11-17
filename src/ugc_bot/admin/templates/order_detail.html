@@ -51,11 +51,6 @@
           <small>Согласились в переписке: {{ order.manual_creator_count }}</small>
           {% endif %}
           <small>Осталось подобрать {{ [needed - picked - order.get('manual_creator_count', 0), 0]|max }}</small>
-        </article>
-        <article>
-          <h2>Отклики</h2>
-          <strong>{{ order.accepted_count|default(0) }}</strong>
-          <small>Отправлено офферов {{ order.dispatched_count|default(0) }}</small>
           {% if order.get('eligible_creators_count') is not none %}<small>Подходят по фильтрам {{ order.eligible_creators_count }}</small>{% endif %}
         </article>
         <article>
@@ -75,8 +70,10 @@
           <small>Создан {{ order.get('created_at')|admin_date }}</small>
         </article>
       </div>
-      {% if order.get('attention_reasons') or order.has_problem %}
+      {% if order.get('attention_reasons') or order.has_problem or not order.get('brief_link') or not order.get('product_photo_file_id') %}
       <div class="order-detail__alerts" aria-label="Требует внимания">
+        {% if not order.get('brief_link') %}<span class="badge badge--alert">Нет ссылки на ТЗ</span>{% endif %}
+        {% if not order.get('product_photo_file_id') %}<span class="badge badge--alert">Нет фото</span>{% endif %}
         {% for reason in order.get('attention_reasons', []) %}
           <span class="badge badge--alert">{{ delay_reason_labels.get(reason, reason) }}</span>
         {% endfor %}
@@ -85,6 +82,15 @@
         {% endif %}
       </div>
       {% endif %}
+    </section>
+
+    <section class="card order-detail__section" aria-labelledby="order-offer-heading">
+      <h2 id="order-offer-heading">Рассылка и отклики</h2>
+      <div id="order-offer-activity"
+           data-url="{{ request.url_for('admin_order_offer_activity', order_id=order.order_id).include_query_params(return_to=back_url) }}">
+        <p class="muted">Отправлено офферов {{ order.dispatched_count|default(0) }} · Согласились {{ order.accepted_count|default(0) }}</p>
+      </div>
+      <small class="muted" id="order-offer-refresh-status" role="status"></small>
     </section>
 
     {% if browser_payment or browser_payment_message %}
@@ -294,4 +300,5 @@
     </section>
   </div>
   <script defer src="{{ admin_asset(request, 'admin-confirm.js') }}"></script>
+  <script defer src="{{ admin_asset(request, 'order-offer-activity.js') }}"></script>
 {% endblock %}

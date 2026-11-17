@@ -5,7 +5,12 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from ugc_bot.application.notice_delivery_ports import DeliveryContact
+from ugc_bot.application.creator_offer_cards import client_contact_links
+from ugc_bot.application.notice_delivery_ports import (
+    DeliveryContact,
+    ReceiptCard,
+    ReceiptLink,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +71,23 @@ class SelectionDeliveryAttempt:
     text: str
     action_url: str | None = None
     action_label: str | None = None
+
+    @property
+    def card(self) -> ReceiptCard | None:
+        creator = self.source.get("creator_contact") or {}
+        if not creator.get("public_order_title"):
+            return None
+        links = client_contact_links(
+            profile=self.source["instagram_url"],
+            handle=creator.get("telegram"),
+            locale=self.locale,
+        )
+        return ReceiptCard(
+            tuple(
+                ReceiptLink(label, url, style="primary" if index == 0 else None)
+                for index, (label, url) in enumerate(links)
+            )
+        )
 
 
 @dataclass(frozen=True, slots=True)

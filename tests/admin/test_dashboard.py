@@ -97,12 +97,45 @@ def _build_admin_client(
     return TestClient(app)
 
 
+def test_dashboard_shell_opens_without_loading_metrics(monkeypatch) -> None:
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={},
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    metrics = AsyncMock(side_effect=AssertionError("Must load separately"))
+    base = AsyncMock(side_effect=AssertionError("Must load separately"))
+    counts = AsyncMock(side_effect=AssertionError("Must load separately"))
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard", metrics)
+    monkeypatch.setattr(AdminDashboardService, "get_creator_base", base)
+    monkeypatch.setattr(
+        AdminDashboardService, "get_worklist_attention_counts", counts
+    )
+    response = client.get("/admin/dashboard?period=30d")
+    assert response.status_code == 200
+    assert "Дашборд" in response.text and "Админка" in response.text
+    assert 'href="/admin/order-model/list"' in response.text
+    assert 'aria-busy="true"' in response.text
+    assert "Загружаем показатели…" in response.text
+    assert "dashboard-loader.js?v=" in response.text
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["vary"] == "X-Dashboard-Content"
+    metrics.assert_not_awaited()
+    base.assert_not_awaited()
+    counts.assert_not_awaited()
+
+
 def test_admin_dashboard_html(monkeypatch) -> None:
     """HTML dashboard renders clickable worklist counts, including zero."""
     monkeypatch.setattr(
         AdminDashboardService,
         "get_worklist_attention_counts",
-        AsyncMock(return_value={"no_manager": 3, "inactive": 0}),
+        AsyncMock(
+            return_value={"no_manager": 3, "inactive": 0, "position_review": 6}
+        ),
     )
     delayed = {
         "order_id": "11111111-1111-1111-1111-111111111111",
@@ -130,6 +163,9 @@ def test_admin_dashboard_html(monkeypatch) -> None:
             "orders": {"active": 3, "completed": 1, "archived": 0},
             "problems": {"open_complaints": 0, "delays": 0},
             "order_attention": {
+                "moderation": [
+                    dict(delayed, age_hours=4, reasons=["waiting_moderation"])
+                ],
                 "delayed": [
                     delayed,
                     dict(delayed, days_until_selection_due=-1.2),
@@ -139,7 +175,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
                         selection_days=None,
                         selection_due_at=None,
                     ),
-                ]
+                ],
             },
             "delayed_orders": [],
             "open_complaints_list": [],
@@ -200,8 +236,12 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         orders=[],
         order_card={"order_id": "x"},
     )
-    response = client.get("/admin/dashboard?period=today")
+    response = client.get(
+        "/admin/dashboard?period=today", headers={"X-Dashboard-Content": "1"}
+    )
     assert response.status_code == 200
+    assert response.headers["vary"] == "X-Dashboard-Content"
+    assert response.headers["cache-control"] == "private, no-store"
     assert "4,2 дн. с оплаты" in response.text
     assert "Срок подбора 7 дн." in response.text
     assert "Осталось 2 дн." in response.text
@@ -213,7 +253,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Дата оплаты неизвестна" in response.text
     assert "101 ч с создания" not in response.text
     assert "Дашборд" in response.text
-    assert "Админка" in response.text
+    assert "data-dashboard-content" in response.text
     assert 'href="/admin/order-model/list"' in response.text
     assert 'href="/admin/orders?period=today"' in response.text
     assert "139 000,00" in response.text and "250,10" in response.text
@@ -222,6 +262,28 @@ def test_admin_dashboard_html(monkeypatch) -> None:
         < response.text.index("Требует внимания")
         < response.text.index("Динамика за период")
     )
+    attention = response.text.split('class="attention-queues"', 1)[1].split(
+        "</section>", 1
+    )[0]
+    labels = [
+        "На модерации",
+        "Проблемы с подбором",
+        "Без менеджера",
+        "Давно без активности",
+        "Заявки на вывод",
+        "Позиции на проверку",
+        "Открытые жалобы",
+        "Давно без оплаты",
+    ]
+    assert sorted(labels, key=attention.index) == labels
+    for key in ("moderation", "delayed"):
+        assert f'attention-queue--{key}" open>' in attention
+    review_link = attention.split(
+        'href="http://testserver/admin/order-review?include_unpicked=false">',
+        1,
+    )[1].split("</a>", 1)[0]
+    assert "Позиции на проверку" in review_link
+    assert "<strong>6</strong>" in review_link
     for key, label, total, progress, target in (
         ("completed_creators", "Завершили заказ", "37", 37, 1000),
         ("picked_creators", "Получили назначение", "100", 100, 1000),
@@ -268,11 +330,17 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert response.text.count("<summary>Охват MAX</summary>") == 1
     assert "<summary>Как считаем</summary>" not in response.text
     assert "@usemycontent" in response.text and "0 ₽" in response.text
-    yesterday = client.get("/admin/dashboard?period=yesterday&work_period=30d")
+    yesterday = client.get(
+        "/admin/dashboard?period=yesterday&work_period=30d",
+        headers={"X-Dashboard-Content": "1"},
+    )
     assert yesterday.status_code == 200
     assert "Участие в заказах · Вчера" in yesterday.text
     assert "base_segment=worked&amp;work_period=yesterday" in yesterday.text
-    legacy = client.get("/admin/dashboard?work_period=7d")
+    legacy = client.get(
+        "/admin/dashboard?work_period=7d",
+        headers={"X-Dashboard-Content": "1"},
+    )
     assert "Участие в заказах · 7 дней" in legacy.text
     assert "из 1 000" in response.text
     assert "progress-bar" in response.text
@@ -973,8 +1041,8 @@ def test_dashboard_html_uses_cache_on_second_request(
     get_dashboard_mock = AsyncMock(return_value=payload)
     counts_mock = AsyncMock(
         side_effect=[
-            {"no_manager": 4, "inactive": 2},
-            {"no_manager": 3, "inactive": 2},
+            {"no_manager": 4, "inactive": 2, "position_review": 1},
+            {"no_manager": 3, "inactive": 2, "position_review": 0},
         ]
     )
     monkeypatch.setattr(
@@ -1020,16 +1088,23 @@ def test_dashboard_html_uses_cache_on_second_request(
     ):
         app = create_admin_app()
     client = TestClient(app)
-    r1 = client.get("/admin/dashboard?period=today")
+    r1 = client.get(
+        "/admin/dashboard?period=today", headers={"X-Dashboard-Content": "1"}
+    )
     assert r1.status_code == 200
     assert "Дашборд" in r1.text
-    r2 = client.get("/admin/dashboard?period=today")
+    r2 = client.get(
+        "/admin/dashboard?period=today", headers={"X-Dashboard-Content": "1"}
+    )
     assert r2.status_code == 200
     assert get_dashboard_mock.call_count == 1
     assert counts_mock.await_count == 2
     href = 'href="/admin/order-model/list?group=work&amp;no_manager=1">'
     assert "<strong>4</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
     assert "<strong>3</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
+    href = 'href="http://testserver/admin/order-review?include_unpicked=false">'
+    assert "<strong>1</strong>" in r1.text.split(href, 1)[1].split("</a>", 1)[0]
+    assert "<strong>0</strong>" in r2.text.split(href, 1)[1].split("</a>", 1)[0]
 
 
 def test_referrers_html_uses_cache_on_second_request(
@@ -1866,8 +1941,10 @@ def test_admin_search_page_html(monkeypatch) -> None:
     assert "jane" in response.text or "search" in response.text.lower()
 
 
+@pytest.mark.parametrize("headers", [{}, {"X-Dashboard-Content": "1"}])
 def test_admin_dashboard_redirects_to_login_when_not_authenticated(
     monkeypatch,
+    headers,
 ) -> None:
     """Dashboard HTML redirects to /admin/login when auth fails."""
     monkeypatch.setenv("BOT_TOKEN", "token")
@@ -1897,7 +1974,7 @@ def test_admin_dashboard_redirects_to_login_when_not_authenticated(
     monkeypatch.setattr(AdminDashboardService, "get_order_card", AsyncMock())
     app = create_admin_app()
     client = TestClient(app, follow_redirects=False)
-    response = client.get("/admin/dashboard?period=today")
+    response = client.get("/admin/dashboard?period=today", headers=headers)
     assert response.status_code in (302, 307)
     assert "/admin/login" in (response.headers.get("location") or "")
 

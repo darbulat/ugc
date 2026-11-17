@@ -269,11 +269,11 @@ def build_offer_dispatch_service(
         interaction_repo=repos["interaction_repo"],
         instagram_stats_repo=repos.get("instagram_stats_repo"),
         blogger_rating_repo=repos.get("blogger_rating_repo"),
-        manager_order_repo=repos.get("manager_order_repo"),
         transaction_manager=transaction_manager,
         currency_symbol=currency_symbol,
         intake_repository=repos.get("order_intake_repo"),
         dispatch_control=repos.get("dispatch_control"),
+        outbox_repo=repos.get("outbox_repo"),
     )
 
 
@@ -859,9 +859,9 @@ def build_bot_services(
             interaction_repo=repos["interaction_repo"],
             country_repo=repos.get("country_repo"),
             blogger_rating_repo=repos.get("blogger_rating_repo"),
-            manager_order_repo=repos.get("manager_order_repo"),
             transaction_manager=transaction_manager,
             currency_symbol=config.market.currency_symbol,
+            outbox_repo=repos.get("outbox_repo"),
         ),
         "blogger_rating_service": BloggerRatingService(
             eligibility_repo=SqlAlchemyRatingEligibilityRepository(),

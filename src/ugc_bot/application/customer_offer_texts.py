@@ -41,10 +41,18 @@ _OFFER = {
 }
 
 
-def offer_text(offer: dict, locale: str) -> str:
+def offer_text(offer: dict, locale: str, *, stage: int | None = None) -> str:
     templates = _OFFER.get(locale, _OFFER["ru"])
 
     def money(value):
+        if locale == "ru" and stage is not None:
+            return (
+                format(Decimal(value) / 100, ",.2f")
+                .rstrip("0")
+                .rstrip(".")
+                .replace(",", " ")
+                .replace(".", ",")
+            )
         return (
             format(Decimal(value) / 100, "f").rstrip("0").rstrip(".")
             if value % 100
@@ -60,6 +68,22 @@ def offer_text(offer: dict, locale: str) -> str:
         if offer.get("accompaniment_unit_minor")
         else "",
     )
+    if locale == "ru" and stage is not None:
+        values["currency"] = (
+            "₽" if values["currency"] == "RUB" else values["currency"]
+        )
+        selection = (
+            "Ваш подбор из {count} авторов — {total} {currency}"
+            if offer.get("saved")
+            else "Подбор {count} авторов — от {total} {currency}"
+        )
+        detail = "Стоимость за автора — {unit} {currency}"
+        if stage == 2 and values["manager"]:
+            detail = (
+                "Сопровождение менеджера — {manager} {currency} "
+                "за выбранного автора"
+            )
+        return (selection + "\n" + detail).format(**values)
     text = templates[1 if offer.get("saved") else 0].format(**values)
     if values["manager"]:
         text += "\n" + templates[2].format(**values)

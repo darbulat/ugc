@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from tests.helpers.factories import create_test_user
@@ -28,10 +28,17 @@ from ugc_bot.application.notice_delivery_ports import (
     DeliveryReceipt,
 )
 from ugc_bot.config import AppConfig
+from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
 from ugc_bot.infrastructure.db.customer_workflow_models import REQUESTS
-from ugc_bot.infrastructure.db.models import ManagerOrderModel, OrderItemModel
+from ugc_bot.infrastructure.db.models import (
+    ItemAssignmentModel,
+    ManagerOrderModel,
+    OrderItemModel,
+)
 from ugc_bot.infrastructure.db.order_review_models import ALERTS
+from ugc_bot.infrastructure.db.paid_selection_models import JOBS
 from ugc_bot.infrastructure.db.repositories.order_review import (
+    position_review_count_query,
     set_position_manager,
 )
 from ugc_bot.order_review_scheduler import run_once
@@ -118,6 +125,8 @@ async def test_paid_positions_queue_and_deadline_alerts(
 
     await run_once(*args)
     transport.send.assert_not_awaited()
+    with Session(engine) as db:
+        assert db.scalar(position_review_count_query(clock.now())) == 0
 
     clock.at += timedelta(seconds=1)
     await run_once(
@@ -225,6 +234,11 @@ async def test_paid_positions_queue_and_deadline_alerts(
     assert page.text.count("Нужно подобрать креатора") == 8
     assert "Просрочено" in page.text
     assert "осталось 2 из 2" in page.text
+    dashboard_queue = web.get(path, params={"include_unpicked": "false"})
+    assert dashboard_queue.status_code == 200
+    assert "По этим фильтрам позиций нет." in dashboard_queue.text
+    with Session(engine) as db:
+        assert db.scalar(position_review_count_query(clock.now())) == 0
     import re
 
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', page.text)[1]
@@ -246,3 +260,56 @@ async def test_paid_positions_queue_and_deadline_alerts(
         (entry,) = referral_entries(db, [interests[0].paid_item_id])
         assert entry.pending == entry.amount_minor
         assert entry.paid == 0
+
+
+@pytest.mark.asyncio
+async def test_dashboard_review_keeps_contact_and_work_problems(intake_env):
+    env = intake_env
+    _, oid, interests, _, _ = await paid_order(
+        env, interested_creators=4, deliver_contacts=False
+    )
+    engine = env["pg"]
+    with Session(engine) as db, db.begin():
+        deadline = db.scalar(
+            select(OrderItemModel.selection_due_at)
+            .where(OrderItemModel.order_id == oid)
+            .limit(1)
+        )
+        early = deadline - timedelta(hours=25)
+        db.execute(
+            update(JOBS)
+            .where(JOBS.c.interest_id == interests[1].interest_id)
+            .values(state="failed")
+        )
+        for interest, state in zip(
+            interests[2:], ("disputed", "in_progress"), strict=True
+        ):
+            assignment = db.get(ItemAssignmentModel, interest.assignment_id)
+            db.add(
+                CollaborationModel(
+                    assignment_id=assignment.assignment_id,
+                    paid_item_id=assignment.paid_item_id,
+                    order_id=oid,
+                    currency="RUB",
+                    client_id=env["user"].user_id,
+                    creator_id=assignment.creator_id,
+                    policy_version=env["policy"],
+                    state=state,
+                    version=1,
+                    due_at=early if state == "in_progress" else deadline,
+                    record_payload={},
+                    updated_at=early,
+                )
+            )
+
+    for at, ordinals in (
+        (early, [2, 3, 4]),
+        (deadline - timedelta(hours=24), [1, 2, 3, 4]),
+    ):
+        orders, more = _load_review(
+            engine, oid, None, False, 1, at=at, include_unpicked=False
+        )
+        assert not more
+        assert [row["ordinal"] for row in orders[0]["positions"]] == ordinals
+        with Session(engine) as db:
+            assert db.scalar(position_review_count_query(at)) == len(ordinals)

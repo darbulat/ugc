@@ -260,6 +260,9 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             telegram=creator["telegram"],
             phone=profile["phone"] if profile else None,
         )
+        public_card = order.get("creator_offer_card") or {}
+        if public_card.get("title"):
+            creator_contact["public_order_title"] = public_card["title"]
         manual = await invitations_available(db) and bool(
             await db.scalar(
                 select(

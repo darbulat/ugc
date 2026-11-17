@@ -183,7 +183,7 @@ async def test_cancel_price_entry_records_skip_when_user_and_order_known():
     deps = _deps(user=user)
     await router.route_callback(_incoming_cb(f"orr_cancel:{order_id}"), deps)
     deps["offer_dispatch_service"].record_skip.assert_called_once_with(
-        order_id, user.user_id, channel=MessengerType.MAX
+        order_id, user.user_id, channel=MessengerType.MAX, only_unanswered=True
     )
 
 
@@ -433,7 +433,7 @@ async def test_desired_price_valid_records_skip_and_clears():
         state_data={"order_id": str(order_id)},
     )
     result = MagicMock()
-    result.manager_id = None
+    result.desired_price = Decimal("500")
     deps["offer_dispatch_service"].get_order_price_bounds = AsyncMock(
         return_value=(Decimal("100"), Decimal("1000"))
     )
@@ -445,26 +445,28 @@ async def test_desired_price_valid_records_skip_and_clears():
 
 
 @pytest.mark.asyncio
-async def test_desired_price_valid_notifies_manager_when_set():
-    """Valid price notifies manager when result.manager_id is set."""
+async def test_duplicate_price_is_acknowledged_only_to_the_creator():
     order_id = uuid4()
-    user = _user()
-    manager_id = uuid4()
     deps = _deps(
-        user=user,
+        user=_user(),
         state=STATE_WAITING_DESIRED_PRICE,
         state_data={"order_id": str(order_id)},
     )
-    result = MagicMock()
-    result.manager_id = manager_id
     deps["offer_dispatch_service"].get_order_price_bounds = AsyncMock(
         return_value=(Decimal("100"), Decimal("1000"))
     )
-    deps["offer_dispatch_service"].record_skip = AsyncMock(return_value=result)
-    deps["user_role_service"].get_user_by_id = AsyncMock(return_value=None)
+    from ugc_bot.application.services.offer_dispatch_service import SkipResult
+
+    deps["offer_dispatch_service"].record_skip = AsyncMock(
+        return_value=SkipResult()
+    )
     await router.route_message(_incoming_msg("500"), deps)
-    # Manager notification path was triggered (get_user_by_id called)
-    deps["user_role_service"].get_user_by_id.assert_called()
+    deps["bot_texts_service"].get.assert_awaited_with(
+        "err_order_already_responded", "ru"
+    )
+    deps["messenger_client"].send_text.assert_awaited_once_with(
+        chat_id="100", text="text"
+    )
 
 
 # ── offer: (accept) ──────────────────────────────────────────────────────────
@@ -556,7 +558,7 @@ async def test_offer_response_accepted_sends_what_next():
 
     result = MagicMock()
     result.accepted = True
-    result.manager_id = None
+    result.desired_price = Decimal("500")
     result.response_count = 1
     result.order = MagicMock()
     result.order.product_link = "https://shop.example.com/product"
@@ -577,7 +579,7 @@ async def test_offer_response_not_accepted_sends_waitlist():
 
     result = MagicMock()
     result.accepted = False
-    result.manager_id = None
+    result.desired_price = Decimal("500")
     deps["offer_response_service"].respond_and_finalize = AsyncMock(
         return_value=result
     )
@@ -659,7 +661,7 @@ async def test_offer_confirm_accepted():
 
     result = MagicMock()
     result.accepted = True
-    result.manager_id = None
+    result.desired_price = Decimal("500")
     result.response_count = 1
     result.order = MagicMock()
     result.order.product_link = "https://example.com/product"
@@ -681,7 +683,7 @@ async def test_offer_confirm_not_accepted_sends_waitlist():
 
     result = MagicMock()
     result.accepted = False
-    result.manager_id = None
+    result.desired_price = Decimal("500")
     deps["offer_response_service"].respond_and_finalize = AsyncMock(
         return_value=result
     )
