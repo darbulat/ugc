@@ -34,9 +34,21 @@ PREFIX = "oi:"
 
 def invitation_text(row, payload):
     text = f"Приглашение в заказ {public_order_number(row['order_id'])}\n\n"
-    text += (row["offer_text"] or "Условия уточнит менеджер.")[:2000]
-    if row["geography"]:
-        text += f"\n\nГеография: {row['geography'][:200]}"
+    public_card = row.get("creator_offer_card")
+    if public_card is None:
+        text += (row["offer_text"] or "Условия уточнит менеджер.")[:2000]
+        if row["geography"]:
+            text += f"\n\nГеография: {row['geography'][:200]}"
+    else:
+        details = (
+            public_card.get("title"),
+            public_card.get("task"),
+            public_card.get("deadline"),
+            public_card.get("usage"),
+        )
+        text += "\n".join(value for value in details if value)
+        if public_card.get("brand"):
+            text += f"\nБренд · {public_card['brand']}"
     text += (
         f"\n\nInstagram для этого приглашения: @{row['instagram']}. "
         "Чтобы участвовать, подтвердите профиль и разрешите показать "

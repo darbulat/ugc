@@ -359,6 +359,7 @@ async def invitation(db, identity, at, creator_id=None, *, lock=False):
         select(
             INVITES,
             OrderModel.offer_text,
+            OrderModel.creator_offer_card,
             OrderModel.geography,
             OrderModel.status,
             OrderModel.complimentary,

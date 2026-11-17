@@ -16,6 +16,7 @@ from ugc_bot.application.creator_offer_cards import (
 )
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
 from ugc_bot.bot.creator_offer_card_flow import CreatorOfferCardFlow
+from ugc_bot.bot.telegram.handlers.creator_invites import invitation_text
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import (
     MessengerType,
@@ -212,3 +213,19 @@ def test_cover_decodes_as_jpeg():
     assert picture.format == "JPEG"
     assert picture.width > picture.height
     picture.verify()
+
+
+def test_manual_invite_never_uses_private_text_of_public_order(order):
+    text, _ = invitation_text(
+        {
+            "order_id": order.order_id,
+            "creator_offer_card": order.creator_offer_card,
+            "offer_text": "Private full briefing",
+            "geography": "Private location",
+            "instagram": "creator_demo",
+        },
+        "invite",
+    )
+    assert "Привычки в кадре" in text
+    assert "Private" not in text
+    assert "client_work" not in text

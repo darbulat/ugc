@@ -392,9 +392,13 @@ async def _send_public_offer(
     cover = (order.product_photo_file_id if approved else None) or NEUTRAL_COVER
     for chat_id, client, channel in targets:
         try:
-            message_id = await cast(OfferCardTransport, client).send_offer_card(
-                chat_id, card, cover
-            )
+            adapter = cast(OfferCardTransport, client)
+            try:
+                message_id = await adapter.send_offer_card(chat_id, card, cover)
+            except TelegramRetryAfter as exc:
+                # A flood-wait is an explicit rejection before delivery.
+                await asyncio.sleep(exc.retry_after)
+                message_id = await adapter.send_offer_card(chat_id, card, cover)
         except Exception as exc:
             logger.warning(
                 "Public offer delivery failed",

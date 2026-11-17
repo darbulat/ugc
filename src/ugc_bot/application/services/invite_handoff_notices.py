@@ -28,6 +28,7 @@ async def _claim(service, identity, kind):
                         INVITES,
                         OrderModel.advertiser_id,
                         OrderModel.offer_text,
+                        OrderModel.creator_offer_card,
                         OrderModel.geography,
                         OrderModel.complimentary,
                     )
