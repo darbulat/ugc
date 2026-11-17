@@ -133,6 +133,7 @@ def test_saved_dashboard_is_visible_without_waiting_for_new_counts(
     monkeypatch, days_old
 ):
     from datetime import timedelta
+    from zoneinfo import ZoneInfo
 
     payload = {
         "registrations": {
@@ -151,7 +152,7 @@ def test_saved_dashboard_is_visible_without_waiting_for_new_counts(
         orders=[],
         order_card={},
     )
-    then = datetime.now(timezone.utc) - timedelta(days=days_old)
+    then = datetime.now(ZoneInfo("Europe/Moscow")) - timedelta(days=days_old)
     saved = {
         "payload": payload,
         "creator_base": {},
