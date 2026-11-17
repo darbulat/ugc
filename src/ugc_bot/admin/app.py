@@ -841,6 +841,14 @@ async def _render_dashboard_page(
     """Render dashboard HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
+    response_headers = {
+        "Cache-Control": "private, no-store",
+        "Vary": "X-Dashboard-Content",
+    }
+    if request.headers.get("X-Dashboard-Content") != "1":
+        return templates.TemplateResponse(
+            request, "dashboard.html", {}, headers=response_headers
+        )
     period_key = _normalize_period(period)
     include_timings = (
         timings.lower() in ("1", "true", "yes") if timings else False
@@ -858,28 +866,31 @@ async def _render_dashboard_page(
         if use_cache
         else None
     )
-    payload = await _get_dashboard_payload_cached(
-        dashboard_service,
-        period_key,
-        cache,
-        use_cache,
-        cache_key,
-        referrers_page=referrers_page,
-        referrers_per_page=referrers_per_page,
-        referrers_sort=referrers_sort or None,
-        referrers_order=referrers_order or "desc",
-        referrers_filter=referrers_filter or None,
-        include_timings=include_timings,
-    )
-    creator_base = await _get_cached_or_fetch(
-        cache,
-        f"creator-base:v4:{period_key}" if cache else None,
-        _dashboard_cache_ttl(period_key),
-        lambda: dashboard_service.get_creator_base(period_key),
+    payload, creator_base, attention_counts = await asyncio.gather(
+        _get_dashboard_payload_cached(
+            dashboard_service,
+            period_key,
+            cache,
+            use_cache,
+            cache_key,
+            referrers_page=referrers_page,
+            referrers_per_page=referrers_per_page,
+            referrers_sort=referrers_sort or None,
+            referrers_order=referrers_order or "desc",
+            referrers_filter=referrers_filter or None,
+            include_timings=include_timings,
+        ),
+        _get_cached_or_fetch(
+            cache,
+            f"creator-base:v4:{period_key}" if cache else None,
+            _dashboard_cache_ttl(period_key),
+            lambda: dashboard_service.get_creator_base(period_key),
+        ),
+        dashboard_service.get_worklist_attention_counts(),
     )
     return templates.TemplateResponse(
         request,
-        "dashboard.html",
+        "dashboard_content.html",
         {
             "payload": payload,
             "creator_base": creator_base,
@@ -893,14 +904,13 @@ async def _render_dashboard_page(
             "status_labels": _STATUS_LABELS,
             "delay_reason_labels": _DELAY_REASON_LABELS,
             "order_quick_filter_labels": _ORDER_QUICK_FILTER_LABELS,
-            "order_attention_counts": (
-                await dashboard_service.get_worklist_attention_counts()
-            ),
+            "order_attention_counts": attention_counts,
             "order_inactivity_days": ORDER_INACTIVITY_DAYS,
             "referrers_sort": referrers_sort,
             "referrers_order": referrers_order,
             "referrers_filter": referrers_filter,
         },
+        headers=response_headers,
     )
 
 

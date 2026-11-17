@@ -613,7 +613,9 @@ def test_dashboard_shortcuts_count_the_same_orders_as_the_list(
             }
         ),
     )
-    dashboard = client.get("/admin/dashboard")
+    dashboard = client.get(
+        "/admin/dashboard", headers={"X-Dashboard-Content": "1"}
+    )
     assert dashboard.status_code == 200
     assert dashboard.text.count("attention-queue--shortcut") == 3
     for key, title in (

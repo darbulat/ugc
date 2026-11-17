@@ -206,6 +206,19 @@ body {
   max-width: none;
 }
 
+.dashboard-loading {
+  margin-top: 1.5rem;
+}
+
+.dashboard-loading__value {
+  display: block;
+  width: 45%;
+  height: 1.75rem;
+  margin-top: .75rem;
+  border-radius: .35rem;
+  background: #e5e7eb;
+}
+
 .dashboard-goal {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -232,7 +232,10 @@ def test_dashboard_social_counts_link_to_matching_creators(
     creator_audience_app, creator_audience_entries
 ):
     with TestClient(creator_audience_app) as client:
-        response = client.get("/admin/dashboard?period=today")
+        response = client.get(
+            "/admin/dashboard?period=today",
+            headers={"X-Dashboard-Content": "1"},
+        )
         assert response.status_code == 200
         assert "Соцсети креаторов" in response.text
 
