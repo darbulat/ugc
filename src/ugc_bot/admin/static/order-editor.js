@@ -37,6 +37,9 @@ const watched = [...audience.querySelectorAll("input, select, textarea"),
   editor.elements.namedItem("order_type"), editor.elements.namedItem("price")];
 const savedAudience = watched.map(readValue);
 const savedCount = document.getElementById("order-audience-saved");
+const savedCountValue = document.getElementById("order-audience-saved-count");
+const savedCountCaption = document.getElementById("order-audience-saved-caption");
+const savedCountHint = document.getElementById("order-audience-saved-hint");
 const preview = document.getElementById("order-audience-preview");
 const previewCount = document.getElementById("order-audience-count");
 const previewCaption = document.getElementById("order-audience-caption");
@@ -53,15 +56,21 @@ function scheduleAudiencePreview() {
   const changed = watched.some((item, i) => readValue(item) !== savedAudience[i]);
   savedCount.hidden = changed;
   preview.hidden = !changed;
-  if (!changed) return;
+  if (!changed) {
+    if (!savedCount.dataset.loaded) updateAudiencePreview(true);
+    return;
+  }
   previewCount.hidden = true;
   previewCaption.textContent = "Считаем выборку…";
   previewHint.textContent = "По фильтрам в редакторе";
   previewCaption.classList.remove("text-danger");
-  audienceTimer = setTimeout(updateAudiencePreview, 450);
+  audienceTimer = setTimeout(() => updateAudiencePreview(false), 450);
 }
 
-async function updateAudiencePreview() {
+async function updateAudiencePreview(saved) {
+  const count = saved ? savedCountValue : previewCount;
+  const caption = saved ? savedCountCaption : previewCaption;
+  const hint = saved ? savedCountHint : previewHint;
   const controller = new AbortController();
   audienceRequest = controller;
   const url = new URL(previewUrl, location.href);
@@ -75,20 +84,24 @@ async function updateAudiencePreview() {
     if (controller.signal.aborted) return;
     if (!response.ok) throw new Error(result.detail);
     const shortage = result.count < Number(needed);
-    previewCount.textContent = result.count;
-    previewCount.classList.toggle("order-editor__audience-value--short", shortage);
-    previewCount.hidden = false;
-    previewCaption.textContent = "Подходящие креаторы";
-    previewHint.textContent = shortage
-      ? `В заказе нужно ${needed}. Фильтры ещё не сохранены.`
-      : "По несохранённым фильтрам";
+    count.textContent = result.count;
+    count.classList.toggle("order-editor__audience-value--short", shortage);
+    count.hidden = false;
+    caption.textContent = "Подходящие креаторы";
+    caption.classList.remove("text-danger");
+    hint.textContent = saved
+      ? (shortage ? `По сохранённым фильтрам. В заказе нужно ${needed}.` : "По сохранённым фильтрам")
+      : (shortage ? `В заказе нужно ${needed}. Фильтры ещё не сохранены.` : "По несохранённым фильтрам");
+    if (saved) savedCount.dataset.loaded = "true";
   } catch (error) {
     if (controller.signal.aborted) return;
-    previewCaption.textContent = "Выборка недоступна";
-    previewCaption.classList.add("text-danger");
-    previewHint.textContent = error.message || "Проверьте фильтры.";
+    caption.textContent = "Выборка недоступна";
+    caption.classList.add("text-danger");
+    hint.textContent = error.message || "Проверьте фильтры.";
   }
 }
+
+updateAudiencePreview(true);
 
 function readValue(field) {
   return field.type === "checkbox" ? field.checked : field.value;

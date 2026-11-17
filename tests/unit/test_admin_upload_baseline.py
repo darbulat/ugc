@@ -247,12 +247,3 @@ async def test_manager_form_enrichment_preserves_only_known_usernames(
         )
     if mode == "failure":
         assert "Failed to inject order managers" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_eligible_count_does_not_modify_other_admin_views():
-    context = {"existing": 12}
-    await admin._inject_order_eligible_bloggers_count(
-        context, object(), object()
-    )
-    assert context == {"existing": 12}

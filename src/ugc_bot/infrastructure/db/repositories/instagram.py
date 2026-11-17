@@ -13,7 +13,11 @@ from ugc_bot.application.ports import (
     InstagramStatsRepository,
     InstagramVerificationRepository,
 )
-from ugc_bot.domain.entities import InstagramStats, InstagramVerificationCode
+from ugc_bot.domain.entities import (
+    InstagramAudienceCounts,
+    InstagramStats,
+    InstagramVerificationCode,
+)
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.models import (
     InstagramStatsModel,
@@ -169,6 +173,27 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
             rows = exec_result.scalars().all()
             return {
                 row.user_id: _to_instagram_stats_entity(row) for row in rows
+            }
+
+    async def get_audience_counts(
+        self, user_ids: List[UUID], session: object | None = None
+    ) -> Dict[UUID, InstagramAudienceCounts]:
+        """Read only matching counts, without transferring raw API responses."""
+        if not user_ids:
+            return {}
+        async with _resolve_session(self.session_factory, session) as db:
+            rows = await db.execute(
+                select(
+                    InstagramStatsModel.user_id,
+                    InstagramStatsModel.followers_count,
+                    InstagramStatsModel.media_count,
+                ).where(InstagramStatsModel.user_id.in_(user_ids))
+            )
+            return {
+                row.user_id: InstagramAudienceCounts(
+                    row.followers_count, row.media_count
+                )
+                for row in rows
             }
 
     async def save(

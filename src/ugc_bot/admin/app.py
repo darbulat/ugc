@@ -23,7 +23,7 @@ from pydantic import ValidationError
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import login_required
 from sqladmin.pagination import Pagination
-from sqlalchemy import exists, func, select, text
+from sqlalchemy import event, exists, func, select, text
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -3584,29 +3584,6 @@ class DashboardLinkView(BaseView):
         return RedirectResponse(url="/admin/dashboard")
 
 
-async def _inject_order_eligible_bloggers_count(
-    context: dict[str, Any],
-    model_view: Any,
-    model: Any,
-) -> None:
-    """Set context['eligible_bloggers_count'] for OrderAdmin edit view."""
-    if not isinstance(model_view, OrderAdmin):
-        return
-    try:
-        container = _get_admin_container()
-        if container and getattr(container, "session_factory", None):
-            dispatch_svc = container.build_offer_dispatch_service()
-            count = await dispatch_svc.count_eligible_bloggers(model.order_id)
-            context["eligible_bloggers_count"] = count
-        else:
-            context["eligible_bloggers_count"] = None
-    except OrderGeographyUnavailableError:
-        context["eligible_bloggers_count"] = None
-        context["order_geography_unavailable"] = True
-    except Exception:
-        context["eligible_bloggers_count"] = None
-
-
 def _register_order_audience_preview_route(app: FastAPI, require_admin) -> None:
     @app.get(
         "/admin/api/orders/{order_id}/audience",
@@ -3939,9 +3916,6 @@ class EnumAwareAdmin(Admin):
         }
         await _inject_order_editor_context(context, request, model_view, model)
         if request.method == "GET":
-            await _inject_order_eligible_bloggers_count(
-                context, model_view, model
-            )
             return await self.templates.TemplateResponse(
                 request, model_view.edit_template, context
             )
@@ -4313,6 +4287,17 @@ def _register_complaint_action(
         return RedirectResponse(_complaint_return_url(request), status_code=303)
 
 
+def _configure_admin_query_planning(engine: Engine) -> None:
+    if engine.dialect.name != "postgresql":
+        return
+
+    @event.listens_for(engine, "begin")
+    def disable_jit(connection):
+        # These short admin queries spend more time compiling than executing.
+        # SET LOCAL expires at transaction end, including through PgBouncer.
+        connection.exec_driver_sql("SET LOCAL jit = off")
+
+
 def create_admin_app() -> FastAPI:
     """Create a FastAPI app with SQLAdmin."""
 
@@ -4330,6 +4315,11 @@ def create_admin_app() -> FastAPI:
 
     container = Container(config)
     engine = container.get_admin_engine()
+    _configure_admin_query_planning(engine)
+    if container.session_factory is not None:
+        _configure_admin_query_planning(
+            container.session_factory.kw["bind"].sync_engine
+        )
     app = FastAPI(title=config.admin.admin_site_name)
     app.add_middleware(SessionMiddleware, secret_key=config.admin.admin_secret)
     app.state.checkout_review_bot = telegram_handle(config.bot.bot_username)
