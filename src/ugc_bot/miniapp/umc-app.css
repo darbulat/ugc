@@ -178,6 +178,8 @@ form .btn-secondary { background: var(--bg); }
 .agreement-checkbox { display: flex; align-items: flex-start; gap: var(--space-12); margin: var(--space-24) 0; padding: var(--space-20); border-radius: var(--radius-22); background: var(--card); cursor: pointer; font-size: 15px; font-weight: 400; }
 .agreement-checkbox input { flex: none; width: 20px; min-height: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--ink); }
 .instagram-instruction { white-space: pre-wrap; margin: var(--space-20) 0; }
+.instagram-code { font-family: ui-monospace, SFMono-Regular, monospace; -webkit-user-select: text; user-select: text; }
+#instagram-copy-status:empty { display: none; }
 .instagram-unconfirmed-warning { margin: var(--space-20) 0; padding: var(--space-24); border-radius: var(--radius-22); background: var(--peach); color: var(--on-pastel); line-height: 1.55; }
 .country-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-12); }
 .country-grid .btn { margin-top: 0; background: var(--card); color: var(--ink); min-height: 64px; }

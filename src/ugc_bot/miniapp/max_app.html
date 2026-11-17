@@ -325,8 +325,10 @@
   <div id="screen-instagram-verification" class="screen" data-umc-section="peach">
     <h1>Подтверждение Instagram</h1>
     <div id="instagram-verification-instruction" class="instagram-instruction"></div>
-    <p class="hint">Ваш код (действует 15 минут):</p>
-    <div id="instagram-verification-code" class="instagram-code" style="font-family: monospace; padding: 12px; background: var(--tg-theme-secondary-bg-color, #eee); border-radius: 8px; margin: 8px 0; word-break: break-all;"></div>
+    <p class="hint" id="instagram-code-hint">Ваш код (действует 15 минут):</p>
+    <input id="instagram-verification-code" class="instagram-code" type="text" readonly aria-labelledby="instagram-code-hint" autocomplete="off" spellcheck="false">
+    <button type="button" class="btn" id="btn-instagram-copy" disabled>Скопировать код</button>
+    <p id="instagram-copy-status" class="hint" role="status" aria-live="polite"></p>
     <button type="button" class="btn" id="btn-instagram-open">Открыть Instagram</button>
     <button type="button" class="btn btn-secondary" id="btn-instagram-verification-back" data-umc-back>В личный кабинет</button>
   </div>
@@ -930,6 +932,9 @@
           btn_update_blg_profile: 'Обновить профиль',
           btn_blogger_change_role: 'Сменить роль',
           instagram_code_hint: 'Ваш код (действует 15 минут):',
+          btn_copy_instagram_code: 'Скопировать код',
+          instagram_code_copied: 'Код скопирован.',
+          instagram_code_manual: 'Код выделен. Нажмите и удерживайте его, затем выберите «Скопировать».',
           instagram_warning: 'Без подтверждённого Instagram заказы вам не будут приходить. Подтвердите Instagram, чтобы получать заказы от рекламодателей.',
           instagram_instr_h1: 'Подтверждение Instagram',
           instagram_instr_title: 'Для верификации Instagram выполните 3 шага:',
@@ -1077,6 +1082,9 @@
           btn_update_blg_profile: 'Update profile',
           btn_blogger_change_role: 'Switch role',
           instagram_code_hint: 'Your code (valid for 15 minutes):',
+          btn_copy_instagram_code: 'Copy code',
+          instagram_code_copied: 'Code copied.',
+          instagram_code_manual: 'Code selected. Touch and hold it, then choose Copy.',
           instagram_warning: 'Without a confirmed Instagram account, you won\'t receive orders. Confirm Instagram to start receiving orders from advertisers.',
           instagram_instr_h1: 'Instagram verification',
           instagram_instr_title: 'To verify your Instagram account, follow 3 steps:',
@@ -1224,6 +1232,9 @@
           btn_update_blg_profile: 'Профильді жаңарту',
           btn_blogger_change_role: 'Рөлді өзгерту',
           instagram_code_hint: 'Сіздің кодыңыз (15 минутқа жарамды):',
+          btn_copy_instagram_code: 'Кодты көшіру',
+          instagram_code_copied: 'Код көшірілді.',
+          instagram_code_manual: 'Код белгіленді. Оны басып ұстап, «Көшіру» таңдаңыз.',
           instagram_warning: 'Расталмаған Instagram болмаса тапсырыстар келмейді. Жарнама берушілерден тапсырыс алу үшін Instagram растаңыз.',
           instagram_instr_h1: 'Instagram растау',
           instagram_instr_title: 'Instagram тіркелгіңізді растау үшін 3 қадамды орындаңыз:',
@@ -1688,6 +1699,7 @@
         setQ('#screen-instagram-verification h1', L.instagram_instr_h1);
         setQ('#screen-instagram-verification > .hint', L.instagram_code_hint);
         setText('btn-instagram-open', L.btn_open_instagram);
+        setText('btn-instagram-copy', L.btn_copy_instagram_code);
         setText('btn-instagram-verification-back', L.btn_back_to_cabinet);
         // Order detail
         setText('btn-order-detail-save', L.btn_save);
@@ -1943,6 +1955,7 @@
 
       var savedBloggerLocation = null;
       var bloggerLocation = window.UMCCreatorForm.bindCity(api, tx);
+      var setVerificationCode = window.UMCCreatorForm.bindVerificationCopy(tx);
       var bloggerInstagram = document.getElementById('blg-instagram');
       bloggerInstagram.addEventListener('input', function() {
         if (!/instagram\.com\//i.test(bloggerInstagram.value)) return;
@@ -2135,6 +2148,7 @@
       });
 
       document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
+        setVerificationCode('');
         verifiedProfileRequest('/blogger/instagram-verification/start', {}).then(function(res) {
           if (res.already_confirmed) {
             return loadMe().then(function() {
@@ -2143,7 +2157,6 @@
           }
           window._instagramVerificationUrl = res.instagram_url || '';
           var instrEl = document.getElementById('instagram-verification-instruction');
-          var codeEl = document.getElementById('instagram-verification-code');
           if (instrEl) {
             instrEl.textContent = '';
             var titleEl = document.createElement('strong');
@@ -2165,7 +2178,7 @@
               instrEl.appendChild(linkEl);
             }
           }
-          if (codeEl) codeEl.textContent = res.code || '';
+          setVerificationCode(res.code);
           showScreen('screen-instagram-verification');
         }).catch(function(err) {
           if (err.status === 403 && err.message === 'registration_agreement_required' && resumeAgreement('blogger', true)) return;
