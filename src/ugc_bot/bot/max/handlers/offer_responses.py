@@ -2,6 +2,7 @@
 
 import logging
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from uuid import UUID
 
 from ugc_bot.application.creator_offer_cards import CALLBACK_PREFIX
@@ -25,14 +26,16 @@ from ugc_bot.application.services.offer_response_service import (
 )
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.creator_offer_card_flow import CreatorOfferCardFlow
+from ugc_bot.bot.creator_offer_card_flow import (
+    CreatorOfferCardFlow,
+    prompt_offer_price,
+)
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.bot.telegram.handlers.offer_responses import (
     _REJECTION_REASON_BUTTONS,
     _SEND_CONTACT_TEXTS_KEYS,
     OFFER_RESPONSE_TEXTS_KEYS,
-    _notify_manager_low_price,
     _send_contact_immediately,
     _send_order_closed_and_remove_keyboard,
 )
@@ -42,6 +45,13 @@ router = MaxRouter()
 logger = logging.getLogger(__name__)
 
 STATE_WAITING_DESIRED_PRICE = "offer_desired_price"
+
+
+async def _begin_price_entry(state, order_id: UUID) -> None:
+    await state.set_state(STATE_WAITING_DESIRED_PRICE)
+    await state.update_data(
+        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
+    )
 
 
 @router.callback(lambda cb: (cb.data or "").startswith(CALLBACK_PREFIX))
@@ -58,6 +68,7 @@ async def handle_creator_offer_card(
         deps["messenger_client"],
         deps.get("locale", "ru"),
         deps.get("offer_response_rate_limiter"),
+        start_price_entry=partial(_begin_price_entry, deps["state_store"]),
     )
     direct = await flow.handle(incoming)
     if direct:
@@ -174,7 +185,10 @@ async def handle_cancel_price_entry(
     )
     if user is not None and order_id is not None:
         await offer_dispatch_service.record_skip(
-            order_id, user.user_id, channel=MessengerType.MAX
+            order_id,
+            user.user_id,
+            channel=MessengerType.MAX,
+            only_unanswered=True,
         )
 
     msg_cancelled = await bot_texts_service.get(
@@ -238,29 +252,13 @@ async def handle_rejection_reason(
         return
 
     if reason == RejectionReason.LOW_PRICE:
-        await state_store.set_state(STATE_WAITING_DESIRED_PRICE)
-        await state_store.update_data(
-            order_id=str(order_id), reason=reason.value
-        )
-        prompt = await bot_texts_service.get("msg_enter_desired_price", locale)
-        cancel_text = await bot_texts_service.get(
-            "btn_cancel_price_entry", locale
-        )
-        cancel_kb = Keyboard(
-            kind=KeyboardKind.INLINE,
-            rows=[
-                [
-                    Button(
-                        text=cancel_text,
-                        callback_data=f"orr_cancel:{order_hex}",
-                    )
-                ]
-            ],
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=prompt,
-            keyboard=cancel_kb,
+        await _begin_price_entry(state_store, order_id)
+        await prompt_offer_price(
+            messenger_client,
+            bot_texts_service,
+            locale,
+            incoming.chat_id,
+            order_id,
         )
     else:
         await offer_dispatch_service.record_skip(
@@ -268,6 +266,7 @@ async def handle_rejection_reason(
             user.user_id,
             rejection_reason=reason,
             channel=MessengerType.MAX,
+            only_unanswered=True,
         )
         reason_texts = await bot_texts_service.get_many(
             list(_REJECTION_REASON_BUTTONS.values()), locale
@@ -329,7 +328,11 @@ async def handle_desired_price(incoming: IncomingMessage, deps: dict) -> None:
         await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
         return
 
-    if value <= offer_price or value > max_price:
+    if (
+        not value.is_finite()
+        or not offer_price < value <= max_price
+        or round(value, 2) <= offer_price
+    ):
         msg_tpl = await bot_texts_service.get("msg_invalid_price", locale)
         msg = msg_tpl.format(min=offer_price, max=max_price, currency=currency)
         await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
@@ -353,23 +356,18 @@ async def handle_desired_price(incoming: IncomingMessage, deps: dict) -> None:
     )
     await state_store.clear()
 
-    msg_tpl = await bot_texts_service.get("msg_offer_skipped_low_price", locale)
-    msg = msg_tpl.format(price=value, currency=currency)
-    await messenger_client.send_text(chat_id=incoming.chat_id, text=msg)
-
-    if result.manager_id:
-        await _notify_manager_low_price(
-            result=result,
-            user=user,
-            external_id=external_id,
-            offer_price=offer_price,
-            desired_price=value,
-            currency=currency,
-            order_id=order_id,
-            user_role_service=user_role_service,
-            bot_texts_service=bot_texts_service,
-            messenger_client=messenger_client,
+    if result.desired_price is None:
+        response = await bot_texts_service.get(
+            "err_order_already_responded", locale
         )
+    else:
+        template = await bot_texts_service.get(
+            "msg_offer_skipped_low_price", locale
+        )
+        response = template.format(
+            price=result.desired_price, currency=currency
+        )
+    await messenger_client.send_text(chat_id=incoming.chat_id, text=response)
 
 
 async def _check_offer_response_eligibility(

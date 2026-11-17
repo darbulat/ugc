@@ -381,7 +381,9 @@ class TestRunProcessor:
         fake_container = Mock()
         fake_container.dispose = AsyncMock()
         unconfigured_publisher = Mock(
-            financial_delivery=None, financial_router=None
+            financial_delivery=None,
+            financial_router=None,
+            counteroffer_notifier=None,
         )
         fake_container.build_outbox_deps.return_value = (
             unconfigured_publisher,

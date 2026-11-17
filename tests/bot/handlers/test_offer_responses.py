@@ -55,7 +55,6 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryAdvertiserProfileRepository,
     InMemoryBloggerProfileRepository,
     InMemoryInteractionRepository,
-    InMemoryManagerOrderRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
     InMemoryUserRepository,
@@ -2167,7 +2166,8 @@ async def test_desired_price_valid(
     assert len(list(responses)) >= 1
     # Confirmation sent
     sent = messenger_client.sent_text
-    assert any("2000" in s["text"] for s in sent)
+    assert [s["chat_id"] for s in sent] == ["1"]
+    assert "2000" in sent[0]["text"]
 
 
 @pytest.mark.asyncio
@@ -2991,107 +2991,6 @@ async def test_desired_price_user_not_found(
     # No skip sent
     responses = await offer_dispatch_repo.list_responses_by_order(order_id)
     assert len(list(responses)) == 0
-
-
-@pytest.mark.asyncio
-async def test_desired_price_manager_notification(
-    user_repo,
-    config,
-    bot_texts_service,
-    messenger_client,
-    event_adapter,
-) -> None:
-    """Desired price notifies manager when assigned."""
-    blogger_user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000b50"),
-        telegram_id="1",
-        messenger_type=MessengerType.TELEGRAM,
-        username="blogger",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    manager_user = User(
-        user_id=UUID("00000000-0000-0000-0000-000000000b51"),
-        telegram_id="9001",
-        messenger_type=MessengerType.TELEGRAM,
-        username="manager",
-        status=UserStatus.ACTIVE,
-        issue_count=0,
-        created_at=datetime.now(timezone.utc),
-    )
-    await user_repo.save(blogger_user)
-    await user_repo.save(manager_user)
-    user_service = UserRoleService(user_repo=user_repo)
-
-    offer_dispatch_repo = InMemoryOfferDispatchRepository()
-    order_repo = InMemoryOrderRepository()
-    manager_order_repo = InMemoryManagerOrderRepository()
-
-    order_id = UUID("00000000-0000-0000-0000-000000000b52")
-    order = Order(
-        order_id=order_id,
-        advertiser_id=UUID("00000000-0000-0000-0000-000000000b53"),
-        order_type=OrderType.UGC_ONLY,
-        product_link="https://example.com",
-        offer_text="Test offer text",
-        barter_description=None,
-        price=1000.0,
-        bloggers_needed=1,
-        status=OrderStatus.ACTIVE,
-        created_at=datetime.now(timezone.utc),
-        completed_at=None,
-    )
-    await order_repo.save(order)
-    await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
-
-    # Assign manager to order
-    from ugc_bot.domain.entities import ManagerOrder
-
-    await manager_order_repo.save(
-        ManagerOrder(
-            user_id=manager_user.user_id,
-            order_id=order_id,
-            created_at=datetime.now(timezone.utc),
-        )
-    )
-
-    offer_dispatch_service = OfferDispatchService(
-        user_repo=user_repo,
-        blogger_repo=InMemoryBloggerProfileRepository(),
-        order_repo=order_repo,
-        offer_dispatch_repo=offer_dispatch_repo,
-        interaction_repo=InMemoryInteractionRepository(),
-        manager_order_repo=manager_order_repo,
-        transaction_manager=None,
-    )
-
-    fsm = FakeFSMContext()
-    await fsm.set_state(OfferSkipStates.waiting_desired_price.state)
-    await fsm.update_data(
-        order_id=str(order_id), reason=RejectionReason.LOW_PRICE.value
-    )
-
-    msg = FakeMessage(text="2000", user=FakeUser(1))
-    await handle_desired_price(
-        msg,
-        state=fsm,
-        user_role_service=user_service,
-        offer_dispatch_service=offer_dispatch_service,
-        bot_texts_service=bot_texts_service,
-        config=config,
-        messenger_client=messenger_client,
-        event_adapter=event_adapter,
-    )
-
-    # FSM should be cleared
-    assert fsm.state is None
-    # Confirmation sent to blogger
-    sent = messenger_client.sent_text
-    assert any("2000" in s["text"] for s in sent)
-    # Manager notification sent to manager external_id "9001"
-    manager_msgs = [s for s in sent if s["chat_id"] == "9001"]
-    assert len(manager_msgs) >= 1
 
 
 @pytest.mark.asyncio

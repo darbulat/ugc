@@ -21,12 +21,12 @@ from ugc_bot.application.services.offer_dispatch_service import (
     _build_dispatch_criteria,
     _passes_profile_based_filters,
 )
+from ugc_bot.domain.counteroffer import COUNTEROFFER_SUBMITTED
 from ugc_bot.domain.entities import (
     BloggerProfile,
     Country,
     InstagramStats,
     Interaction,
-    ManagerOrder,
     Order,
     User,
 )
@@ -46,9 +46,9 @@ from ugc_bot.infrastructure.memory_repositories import (
     InMemoryCountryRepository,
     InMemoryInstagramStatsRepository,
     InMemoryInteractionRepository,
-    InMemoryManagerOrderRepository,
     InMemoryOfferDispatchRepository,
     InMemoryOrderRepository,
+    InMemoryOutboxRepository,
     InMemoryUserRepository,
 )
 
@@ -3106,21 +3106,17 @@ async def test_record_skip_with_rejection_reason() -> None:
     assert isinstance(result, SkipResult)
     assert result.rejection_reason == RejectionReason.WRONG_FORMAT
     assert result.desired_price is None
-    assert result.manager_id is None
-    assert result.order_price is None
 
 
 @pytest.mark.asyncio
-async def test_record_skip_low_price_returns_manager_id() -> None:
-    """record_skip with LOW_PRICE returns manager_id and order_price."""
+async def test_closed_order_counteroffer_queues_once() -> None:
 
     order_id = UUID("00000000-0000-0000-0000-000000003010")
     blogger_id = UUID("00000000-0000-0000-0000-000000003011")
-    manager_id = UUID("00000000-0000-0000-0000-000000003012")
 
     order_repo = InMemoryOrderRepository()
     offer_dispatch_repo = InMemoryOfferDispatchRepository()
-    manager_order_repo = InMemoryManagerOrderRepository()
+    outbox = InMemoryOutboxRepository()
 
     await order_repo.save(
         Order(
@@ -3132,18 +3128,12 @@ async def test_record_skip_low_price_returns_manager_id() -> None:
             barter_description=None,
             price=2000.0,
             bloggers_needed=1,
-            status=OrderStatus.ACTIVE,
+            status=OrderStatus.CLOSED,
             created_at=datetime.now(timezone.utc),
             completed_at=None,
         )
     )
-    await manager_order_repo.save(
-        ManagerOrder(
-            user_id=manager_id,
-            order_id=order_id,
-            created_at=datetime.now(timezone.utc),
-        )
-    )
+    await offer_dispatch_repo.record_sent(order_id, blogger_id)
 
     service = OfferDispatchService(
         user_repo=InMemoryUserRepository(),
@@ -3151,22 +3141,36 @@ async def test_record_skip_low_price_returns_manager_id() -> None:
         order_repo=order_repo,
         offer_dispatch_repo=offer_dispatch_repo,
         interaction_repo=InMemoryInteractionRepository(),
-        manager_order_repo=manager_order_repo,
+        outbox_repo=outbox,
     )
 
     result = await service.record_skip(
         order_id,
         blogger_id,
         rejection_reason=RejectionReason.LOW_PRICE,
-        desired_price=Decimal("1800.00"),
+        desired_price=Decimal("3000.00"),
     )
 
     assert isinstance(result, SkipResult)
     assert result.rejection_reason == RejectionReason.LOW_PRICE
-    assert result.desired_price == Decimal("1800.00")
-    assert result.manager_id == manager_id
-    assert result.order_price == Decimal("2000.0")
-    assert result.offer_text == "Offer"
+    assert result.desired_price == Decimal("3000.00")
+    duplicate = await service.record_skip(
+        order_id,
+        blogger_id,
+        RejectionReason.LOW_PRICE,
+        Decimal("4000"),
+        channel=MessengerType.MAX,
+    )
+    assert duplicate == SkipResult()
+    [event] = await outbox.get_pending_events()
+    assert event.event_type == COUNTEROFFER_SUBMITTED
+    assert event.aggregate_id == str(order_id)
+    assert event.payload == {
+        "amount": "3000.00",
+        "offer_price": "2000.0",
+        "creator_id": str(blogger_id),
+        "currency": "RUB",
+    }
 
 
 @pytest.mark.asyncio
@@ -3191,9 +3195,6 @@ async def test_record_skip_without_reason() -> None:
     assert isinstance(result, SkipResult)
     assert result.rejection_reason is None
     assert result.desired_price is None
-    assert result.manager_id is None
-    assert result.order_price is None
-    assert result.offer_text is None
 
 
 @pytest.mark.asyncio
