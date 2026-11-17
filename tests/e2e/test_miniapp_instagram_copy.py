@@ -28,7 +28,7 @@ class VerificationNetwork(MiniAppNetwork):
             route.fulfill(
                 json={
                     "code": self.code,
-                    "instagram_url": "https://instagram.com/synthetic_umc",
+                    "instagram_url": "https://ig.me/m/synthetic_umc",
                 }
             )
             return
@@ -96,6 +96,10 @@ def test_verification_code_copies_and_recovers_in_messenger_webview(
         copy.click()
     expect(status).to_have_text("Код скопирован.")
     assert page.evaluate("window.clipboardForTest.readText()") == network.code
+    page.get_by_role("button", name="Открыть Direct", exact=True).click()
+    assert ["link", "https://ig.me/m/synthetic_umc"] in page.evaluate(
+        "window.__host.calls"
+    )
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     if clipboard == "native":
         screenshot(page, f"instagram-copy-{platform}")

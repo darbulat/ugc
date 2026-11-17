@@ -1307,10 +1307,10 @@ async def confirm_blogger_agreement_endpoint(
 def _format_instagram_verification_instruction(
     template: str, admin_username: str
 ) -> str:
-    """Format verification instruction with Instagram URL for miniapp."""
-    base = "https://www.instagram.com/"
+    """Format verification instruction with the Instagram conversation URL."""
+    base = "https://ig.me/m/"
     username = (admin_username or "usemycontent").strip().lstrip("@")
-    url = f"{base}{username}/"
+    url = f"{base}{username}"
     return template.replace("{url}", url)
 
 
@@ -1357,9 +1357,9 @@ async def start_instagram_verification(
     instruction = _format_instagram_verification_instruction(
         instruction_tpl, admin_username
     )
-    base_url = "https://www.instagram.com/"
+    base_url = "https://ig.me/m/"
     username = (admin_username or "usemycontent").strip().lstrip("@")
-    instagram_url = f"{base_url}{username}/"
+    instagram_url = f"{base_url}{username}"
     return {
         "code": verification.code,
         "instruction": instruction,
