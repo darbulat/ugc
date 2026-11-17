@@ -4,17 +4,15 @@
     <span class="metric__delta">{{ rate.converted }} из {{ rate.eligible }}</span>
   </span>
 {%- endmacro %}
-<div data-dashboard-content>
+<div data-dashboard-content
+     data-calculated-at="{{ snapshot.calculated_at }}"
+     data-counts-at="{{ snapshot.counts_at }}">
   {% set conversion = payload.get('order_conversion', {}) %}
   {% set previous = payload.get('previous_conversion') %}
   {% set launches = payload.get('admin_launches', []) %}
   {% set weekly = payload.get('weekly_registrations') %}
   {% set roles = [('creators', 'Креаторы'), ('advertisers', 'Заказчики')] %}
   {% set creators = payload.get('creator_metrics', {}) %}
-  <div class="section page-heading">
-    <h1>Дашборд</h1>
-    <a class="admin-button admin-button--primary" href="/admin/order-model/list">Открыть заказы</a>
-  </div>
 
   {% set creator_target = payload.get('completed_creators_target', 1000) %}
   <section class="section card dashboard-goal" id="dashboard-goals" aria-label="Цели дашборда">

@@ -1,5 +1,9 @@
 const panel = document.querySelector("#dashboard-panel");
 const status = document.querySelector("#dashboard-loading-status");
+const dates = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: panel.dataset.timezone || "Europe/Moscow",
+  day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+});
 const retry = document.querySelector("#dashboard-retry");
 
 function loadScript(url, timeout = 10000) {
@@ -24,7 +28,10 @@ async function loadDashboard() {
   retry.hidden = true;
   retry.disabled = true;
   panel.setAttribute("aria-busy", "true");
-  status.textContent = "Загружаем показатели…";
+  const previous = panel.querySelector("[data-dashboard-content]");
+  status.textContent = previous?.dataset.calculatedAt
+    ? `Срез рассчитан ${dates.format(new Date(previous.dataset.calculatedAt))} · Проверяем обновления…`
+    : "Загружаем показатели…";
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30000);
   const cancel = () => controller.abort();
@@ -46,9 +53,15 @@ async function loadDashboard() {
       throw new Error("Unexpected dashboard response");
     }
     panel.replaceChildren(template.content);
+    const current = panel.querySelector("[data-dashboard-content]");
+    status.textContent = current.dataset.calculatedAt
+      ? `Срез рассчитан ${dates.format(new Date(current.dataset.calculatedAt))} · Счётчики проверены ${dates.format(new Date(current.dataset.countsAt))}`
+      : "Показатели обновлены";
     startCharts();
   } catch {
-    status.textContent = "Не удалось загрузить показатели. Попробуйте ещё раз.";
+    status.textContent = previous?.dataset.calculatedAt
+      ? `Срез рассчитан ${dates.format(new Date(previous.dataset.calculatedAt))} · Не удалось обновить. Попробуйте ещё раз.`
+      : "Не удалось загрузить показатели. Попробуйте ещё раз.";
     retry.hidden = false;
     retry.disabled = false;
   } finally {
@@ -66,9 +79,5 @@ function startCharts() {
   });
 }
 
-if (panel.querySelector("[data-dashboard-content]")) {
-  startCharts();
-} else {
-  retry.addEventListener("click", loadDashboard);
-  loadDashboard();
-}
+retry.addEventListener("click", loadDashboard);
+loadDashboard();
