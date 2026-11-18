@@ -129,11 +129,48 @@ def rollout_environment(model, service, files, live):
     return os.environ | {name: live[key] for name, key in mapping.items()}
 
 
+def pin_resources(settings, current):
+    """Preserve live Docker updates when labels still reference older files."""
+    host = current.get("HostConfig", {})
+    mapping = {
+        "mem_limit": host.get("Memory"),
+        "mem_reservation": host.get("MemoryReservation"),
+        "memswap_limit": host.get("MemorySwap") if host.get("Memory") else 0,
+        "cpus": host.get("NanoCpus", 0) / 1_000_000_000,
+        "cpu_shares": host.get("CpuShares"),
+        "cpu_quota": max(0, host.get("CpuQuota", 0))
+        if not host.get("NanoCpus")
+        else 0,
+        "cpu_period": host.get("CpuPeriod")
+        if host.get("CpuQuota", 0) > 0
+        else 0,
+        "pids_limit": host.get("PidsLimit") if host.get("PidsLimit", 0) else 0,
+    }
+    for key, value in mapping.items():
+        settings.pop(key, None)
+        if value and (key != "pids_limit" or value > 0):
+            settings[key] = str(value) if key.startswith("mem") else value
+    resources = settings.get("deploy", {}).get("resources", {})
+    for section, keys in (
+        ("limits", ("memory", "cpus", "pids")),
+        ("reservations", ("memory",)),
+    ):
+        for key in keys:
+            resources.get(section, {}).pop(key, None)
+        if not resources.get(section):
+            resources.pop(section, None)
+    if not resources:
+        settings.get("deploy", {}).pop("resources", None)
+    if not settings.get("deploy"):
+        settings.pop("deploy", None)
+
+
 def pin_runtime(settings, current):
     settings.pop("build", None)
     settings.pop("env_file", None)
     settings["image"] = current["Image"]
     settings["environment"] = environment_of(current)
+    pin_resources(settings, current)
     logging = current.get("HostConfig", {}).get("LogConfig")
     if logging and logging["Type"]:
         settings["logging"] = {"driver": logging["Type"]}
@@ -382,7 +419,7 @@ def normalized_services(model):
 def runtime_signature(container):
     config = container["Config"]
     host = container["HostConfig"]
-    return {
+    signature = {
         "environment": environment_of(container),
         "config": {
             key: config.get(key)
@@ -411,6 +448,7 @@ def runtime_signature(container):
                 "NanoCpus",
                 "CpuQuota",
                 "CpuPeriod",
+                "CpuShares",
                 "PidsLimit",
                 "Ulimits",
                 "LogConfig",
@@ -422,6 +460,15 @@ def runtime_signature(container):
         ),
         "networks": sorted(container["NetworkSettings"]["Networks"]),
     }
+    # Docker represents the same unlimited settings as null, zero or -1.
+    values = signature["host"]
+    values["PidsLimit"] = max(0, values["PidsLimit"] or 0)
+    values["CpuQuota"] = max(0, values["CpuQuota"] or 0)
+    if not values["CpuQuota"]:
+        values["CpuPeriod"] = 0
+    if not values["Memory"]:
+        values["MemorySwap"] = 0
+    return signature
 
 
 def deploy_services(directory, services, previous, image_id):

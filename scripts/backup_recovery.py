@@ -88,6 +88,8 @@ def recovery_plan(snapshot, recipient):
         {"path": "/sources/operations/" + name, "name": "operations/" + name}
         for name in (
             "production_release.py",
+            "apply_resource_policy.py",
+            "production-resource-policy.json",
             "backup_recovery.py",
             "recovery_bundle.py",
             "run_recovery_backup.sh",
