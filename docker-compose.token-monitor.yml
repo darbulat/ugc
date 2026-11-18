@@ -1,0 +1,26 @@
+services:
+  meta_token_monitor:
+    image: ${META_TOKEN_MONITOR_IMAGE:?Set the merged release image}
+    command: ["python", "-m", "ugc_bot.meta_token_monitor"]
+    restart: unless-stopped
+    user: "${META_TOKEN_MONITOR_UID:-1000}:${META_TOKEN_MONITOR_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    cpus: 0.10
+    pids_limit: 32
+    environment:
+      META_TOKEN_MONITOR_SETTINGS: /settings/settings.json
+      META_TOKEN_MONITOR_STATE: /state/monitor.sqlite3
+    volumes:
+      - ${META_TOKEN_MONITOR_SETTINGS_DIR:?Set private settings directory}:/settings:ro
+      - ${META_TOKEN_MONITOR_STATE_DIR:?Set persistent state directory}:/state
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    healthcheck:
+      test: ["CMD", "python", "-m", "ugc_bot.meta_token_monitor", "--health"]
+      interval: 60s
+      timeout: 10s
+      start_period: 60s
+      retries: 3

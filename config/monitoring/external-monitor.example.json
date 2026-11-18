@@ -1,0 +1,17 @@
+{
+  "chat_id": "-1000000000000",
+  "bot_username": "replace_me_bot",
+  "probes": [
+    {
+      "name": "Mini App Telegram",
+      "url": "https://bot.usemycontent.ru/miniapp/app.html",
+      "contains": "<title>UMC"
+    },
+    {
+      "name": "Вход в админку",
+      "url": "https://bot.usemycontent.ru/admin/login",
+      "contains": "type=\"password\""
+    }
+  ],
+  "snapshot": null
+}

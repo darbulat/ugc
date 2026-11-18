@@ -219,3 +219,5 @@
 .order-detail__closure-editor > summary { color: #2059a8; }
 
 .order-detail__closure-editor[open] > .order-detail__closure { margin-top: .6rem; }
+
+.creator-transfer-count { color: #155bc1; font-size: 1.6rem; font-weight: 750; }

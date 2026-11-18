@@ -32,6 +32,25 @@ async def test_auth_login_logout() -> None:
 
 
 @pytest.mark.asyncio
+async def test_late_authenticated_response_preserves_action_token():
+    from ugc_bot.admin.app import _admin_action_token, _require_action_token
+
+    auth = AdminAuth(secret_key="secret", username="admin", password="pass")
+    request = FakeRequest({"username": "admin", "password": "pass"})
+    assert await auth.login(request)
+    # A dashboard request can finish after the user opens the next page.
+    login_snapshot = dict(request.session)
+    token = _admin_action_token(request)
+    late_response = FakeRequest({"csrf_token": token})
+    late_response.session = login_snapshot
+    assert await auth.authenticate(late_response)
+    await _require_action_token(late_response)
+    assert await auth.logout(request)
+    assert await auth.login(request)
+    assert _admin_action_token(request) != token
+
+
+@pytest.mark.asyncio
 async def test_auth_rejects_invalid() -> None:
     """Reject invalid credentials."""
 

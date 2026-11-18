@@ -1,0 +1,38 @@
+[Unit]
+Description=UMC independent external monitoring
+After=network-online.target
+Wants=network-online.target
+# A prolonged Telegram/network outage must not exhaust the restart budget.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/python3 /opt/umc-external-monitor/current/external_monitor.py --config /etc/umc-external-monitor/config.json
+LoadCredential=telegram_token:/etc/umc-external-monitor/telegram-token
+StateDirectory=umc-external-monitor
+StateDirectoryMode=0700
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=30
+MemoryMax=512M
+MemoryHigh=384M
+CPUQuota=25%
+TasksMax=32
+OOMPolicy=stop
+Nice=10
+OOMScoreAdjust=500
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

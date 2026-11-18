@@ -1508,6 +1508,9 @@ from ugc_bot.infrastructure.db import (  # noqa: E402
     correction_models as _correction_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
+    creator_transfer_models as _creator_transfer_models,  # noqa: F401
+)
+from ugc_bot.infrastructure.db import (  # noqa: E402
     customer_workflow_models as _customer_workflow_models,  # noqa: F401
 )
 from ugc_bot.infrastructure.db import (  # noqa: E402
