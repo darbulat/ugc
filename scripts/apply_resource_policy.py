@@ -193,9 +193,15 @@ def rollback_limits(current, host_memory, host_cpus):
     host = current["HostConfig"]
     # Docker update --memory 0 / --cpus 0 does not clear an existing limit.
     # Restore formerly unlimited workloads to the physical host's capacity.
+    memory = host.get("Memory") or host_memory
+    swap = host.get("MemorySwap") or memory
+    # With no host swap, equal combined/memory limits restore full capacity.
+    # Some runc versions reject raising memory with MemorySwap=-1 together.
+    if swap == -1:
+        swap = memory
     return {
-        "Memory": host.get("Memory") or host_memory,
-        "MemorySwap": host.get("MemorySwap") or -1,
+        "Memory": memory,
+        "MemorySwap": swap,
         "NanoCpus": host.get("NanoCpus") or host_cpus * 1_000_000_000,
         "PidsLimit": host.get("PidsLimit") or -1,
     }

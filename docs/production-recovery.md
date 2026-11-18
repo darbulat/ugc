@@ -82,9 +82,10 @@ identity, image, start time, restart count, memory events and all unrelated
 runtime settings, then checks public routes. A failure stops the sequence and
 restores attempted services in reverse order. Docker does not clear memory or
 CPU limits when `docker update` receives zero; rollback for a formerly unlimited
-service therefore restores physical host memory and CPU capacity, unlimited
-swap (the audited host has none), and unlimited processes. Previously bounded
-limits are restored to their original values. Inspect a failed attempt before
+service therefore restores physical host memory and CPU capacity, a combined
+memory/swap ceiling equal to physical memory (the audited host has no swap),
+and unlimited processes. Previously bounded limits are restored to their original
+values; unlimited swap becomes the same effective no-swap ceiling. Inspect a failed attempt before
 retrying; successful live updates are captured by subsequent release snapshots
 rather than trusting stale Compose labels.
 

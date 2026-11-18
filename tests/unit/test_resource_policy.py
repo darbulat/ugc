@@ -115,7 +115,7 @@ def test_rollback_restores_full_host_capacity_for_unlimited(policy_module):
     result = policy_module.rollback_limits(container(), 16 * 1024**3, 4)
     assert result == {
         "Memory": 16 * 1024**3,
-        "MemorySwap": -1,
+        "MemorySwap": 16 * 1024**3,
         "NanoCpus": 4000000000,
         "PidsLimit": -1,
     }
@@ -263,3 +263,10 @@ def test_unverified_snapshot_cannot_advance_current_pointer(
     with pytest.raises(RuntimeError, match="differ"):
         policy_module.publish(tmp_path, {"services": {}}, policy, "apply")
     assert not (tmp_path / "policy-operation.json").exists()
+
+
+def test_no_swap_rollback_avoids_runc_unlimited_swap_rejection(policy_module):
+    current = container()
+    current["HostConfig"].update(Memory=128 * 1024**2, MemorySwap=-1)
+    result = policy_module.rollback_limits(current, 16 * 1024**3, 4)
+    assert result["MemorySwap"] == result["Memory"] == 128 * 1024**2

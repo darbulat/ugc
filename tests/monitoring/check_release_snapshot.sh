@@ -35,6 +35,7 @@ import os
 from pathlib import Path
 import runpy
 import subprocess
+import sys
 
 namespace = runpy.run_path('scripts/production_release.py')
 snapshot = namespace['live_snapshot']
@@ -44,6 +45,7 @@ names = subprocess.check_output([
     'docker', 'ps', '-aq', '--filter',
     'label=com.docker.compose.project=' + os.environ['RELEASE_PROJECT'],
 ], text=True).split()
+original = json.loads(subprocess.check_output(['docker', 'inspect', *names]))[0]
 # Limits changed through the daemon must survive stale Compose labels.
 subprocess.run([
     'docker', 'update', '--memory', '64m', '--memory-swap', '64m',
@@ -77,4 +79,20 @@ current_name = os.environ['RELEASE_PROJECT'] + '-app-1'
 current = json.loads(subprocess.check_output(['docker', 'inspect', current_name]))[0]
 assert namespace['runtime_signature'](current) == before
 print('Durable Compose snapshot preserved runtime settings and literal secrets')
+
+# Exercise the actual recovery command, including formerly unlimited memory.
+sys.path.insert(0, 'scripts')
+import apply_resource_policy as policy
+info = json.loads(subprocess.check_output(['docker', 'info', '--format', 'json']))
+restored = policy.rollback_limits(original, info['MemTotal'], info['NCPU'])
+policy.update(current['Id'], restored)
+after = json.loads(subprocess.check_output(['docker', 'inspect', current_name]))[0]
+assert after['Id'] == current['Id']
+assert after['State']['StartedAt'] == current['State']['StartedAt']
+assert after['RestartCount'] == current['RestartCount']
+assert not after['State']['OOMKilled']
+for field in ('Memory', 'MemorySwap', 'NanoCpus'):
+    assert after['HostConfig'][field] == restored[field]
+assert after['HostConfig']['PidsLimit'] in (-1, 0, None)
+print('Real Docker rollback restored full host capacity without restarting')
 PY
