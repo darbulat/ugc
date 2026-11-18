@@ -14,6 +14,7 @@ from production_release import (
     escape_interpolation,
     inspect,
     live_snapshot,
+    open_lock,
 )
 
 UPLOADER = """
@@ -230,8 +231,8 @@ def main():
     args.output_directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(args.output_directory, 0o700)
     with (
-        open("/tmp/ugc-production-deploy.lock", "a") as deployment_lock,
-        open("/tmp/ugc-recovery-bundle.lock", "a") as backup_lock,
+        open_lock("/tmp/ugc-production-deploy.lock") as deployment_lock,
+        open_lock("/tmp/ugc-recovery-bundle.lock") as backup_lock,
     ):
         fcntl.flock(deployment_lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
         fcntl.flock(backup_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
