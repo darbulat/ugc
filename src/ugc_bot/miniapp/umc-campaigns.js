@@ -29,12 +29,84 @@
   if(!bridge || !screen) return;
   var keys=['entry','title','publisher','active','inactive','consent','subscribed','unsubscribed','inviter','missingInviter','terms','noPolicy','paused','noSending','allow','unsubscribe','admin','termsVersion','defaultLocale','reason','publish','suspend','accounts','search','find','grant','revoke','previous','next','back','refresh','loading','error','forbidden','session','conflict','saved','unknown','retry','storage','limits','language'];
   var rows={
-    ru:['Настройки рассылок','Условия и согласие','Право отправлять задания','Выдано','Не выдано','Сообщения от пригласившего','Согласие действует','Вы не подписаны','Ваш пригласивший','Пригласивший не найден','Полные условия','Условия пока не опубликованы','Приём новых согласий приостановлен','Отправка заданий в этом разделе пока недоступна.','Разрешить задания от пригласившего','Отписаться','Администрирование UMC','Версия условий','Основной язык условий','Основание решения','Опубликовать условия и лимиты','Приостановить новые согласия','Права владельцев базы','UUID существующего аккаунта (необязательно)','Найти','Выдать право','Отозвать право','Предыдущие','Следующие','Назад','Обновить','Загружаем сохранённые данные…','Не удалось выполнить действие. Проверьте поля и обновите данные.','Действие недоступно вашему аккаунту.','Откройте приложение заново.','Данные изменились. Проверьте обновлённое состояние.','Результат сохранён.','Результат запроса неизвестен. Автоматического повтора нет.','Проверить тем же запросом','Запрос не удалось сохранить для повтора.','Опубликованные лимиты','Язык показанных условий'],
+    ru:['Настройки рассылок','Условия и согласие','Право отправлять задания','Выдано','Не выдано','Сообщения от вашего менеджера','Согласие действует','Вы не подписаны','Ваш менеджер','Пригласивший не найден','Полные условия','Условия пока не опубликованы','Приём новых согласий приостановлен','Отправка заданий в этом разделе пока недоступна.','Разрешить сообщения от менеджера','Отписаться','Администрирование UMC','Версия условий','Основной язык условий','Основание решения','Опубликовать условия и лимиты','Приостановить новые согласия','Права владельцев базы','UUID существующего аккаунта (необязательно)','Найти','Выдать право','Отозвать право','Предыдущие','Следующие','Назад','Обновить','Загружаем сохранённые данные…','Не удалось выполнить действие. Проверьте поля и обновите данные.','Действие недоступно вашему аккаунту.','Откройте приложение заново.','Данные изменились. Проверьте обновлённое состояние.','Результат сохранён.','Результат запроса неизвестен. Автоматического повтора нет.','Проверить тем же запросом','Запрос не удалось сохранить для повтора.','Опубликованные лимиты','Язык показанных условий'],
     en:['Campaign settings','Terms and consent','Permission to publish tasks','Granted','Not granted','Messages from your inviter','Consent is current','You are unsubscribed','Your inviter','No inviter found','Full terms','No published terms yet','New consent is paused','Task delivery is not available in this section yet.','Allow tasks from this inviter','Unsubscribe','UMC administration','Terms version','Default terms language','Decision reason','Publish terms and limits','Pause new consent','Network owner permissions','Existing account UUID (optional)','Find','Grant permission','Revoke permission','Previous','Next','Back','Refresh','Loading saved data…','The action failed. Check the fields and refresh.','This action is unavailable to your account.','Reopen the app.','Data changed. Review the refreshed state.','Saved.','The request result is unknown. There is no automatic retry.','Check with the same request','The request could not be saved for retry.','Published limits','Displayed terms language'],
     kk:['Хабарлама баптаулары','Шарттар мен келісім','Тапсырма жариялау құқығы','Берілген','Берілмеген','Шақырушыдан хабарламалар','Келісім күшінде','Жазылмағансыз','Сізді шақырған','Шақырушы табылмады','Толық шарттар','Шарттар әлі жарияланбаған','Жаңа келісім қабылдау тоқтатылған','Бұл бөлімде тапсырма жіберу әзірге қолжетімсіз.','Осы шақырушыдан тапсырмаларға рұқсат беру','Жазылымнан бас тарту','UMC әкімшілігі','Шарттар нұсқасы','Шарттардың негізгі тілі','Шешім негізі','Шарттар мен шектеулерді жариялау','Жаңа келісімді тоқтату','База иелерінің құқықтары','Бар аккаунттың UUID коды (міндетті емес)','Табу','Құқық беру','Құқықты қайтару','Алдыңғы','Келесі','Артқа','Жаңарту','Сақталған деректер жүктелуде…','Әрекет орындалмады. Өрістерді тексеріп, жаңартыңыз.','Бұл әрекет аккаунтыңызға қолжетімсіз.','Қолданбаны қайта ашыңыз.','Деректер өзгерді. Жаңартылған күйді тексеріңіз.','Сақталды.','Сұрау нәтижесі белгісіз. Автоматты қайталау жоқ.','Сол сұраумен тексеру','Қайталау үшін сұрау сақталмады.','Жарияланған шектеулер','Көрсетілген шарттар тілі'],
     be:['Налады рассылкі','Умовы і згода','Права публікаваць заданні','Выдадзена','Не выдадзена','Паведамленні ад запрашальніка','Згода дзейнічае','Вы не падпісаны','Ваш запрашальнік','Запрашальнік не знойдзены','Поўныя ўмовы','Умовы яшчэ не апублікаваны','Новыя згоды прыпынены','Адпраўка заданняў у гэтым раздзеле пакуль недаступная.','Дазволіць заданні ад запрашальніка','Адпісацца','Адміністраванне UMC','Версія ўмоў','Асноўная мова ўмоў','Падстава рашэння','Апублікаваць умовы і ліміты','Прыпыніць новыя згоды','Правы ўладальнікаў базы','UUID існага акаўнта (неабавязкова)','Знайсці','Выдаць права','Адклікаць права','Папярэднія','Наступныя','Назад','Абнавіць','Загружаем захаваныя даныя…','Дзеянне не выканана. Праверце палі і абнавіце.','Дзеянне недаступнае вашаму акаўнту.','Адкрыйце праграму зноў.','Даныя змяніліся. Праверце абноўлены стан.','Захавана.','Вынік запыту невядомы. Аўтаматычнага паўтору няма.','Праверыць тым жа запытам','Не ўдалося захаваць запыт для паўтору.','Апублікаваныя ліміты','Мова паказаных умоў'],
     uz:['Xabar sozlamalari','Shartlar va rozilik','Topshiriq e’lon qilish huquqi','Berilgan','Berilmagan','Taklif qiluvchidan xabarlar','Rozilik amalda','Obuna bo‘lmagansiz','Sizni taklif qilgan','Taklif qiluvchi topilmadi','To‘liq shartlar','Shartlar hali e’lon qilinmagan','Yangi roziliklar to‘xtatilgan','Bu bo‘limda topshiriq yuborish hozircha mavjud emas.','Shu taklif qiluvchidan topshiriqlarga ruxsat berish','Obunani bekor qilish','UMC boshqaruvi','Shartlar versiyasi','Shartlarning asosiy tili','Qaror sababi','Shartlar va cheklovlarni e’lon qilish','Yangi roziliklarni to‘xtatish','Baza egalarining huquqlari','Mavjud hisob UUID kodi (ixtiyoriy)','Topish','Huquq berish','Huquqni bekor qilish','Oldingi','Keyingi','Orqaga','Yangilash','Saqlangan ma’lumotlar yuklanmoqda…','Amal bajarilmadi. Maydonlarni tekshirib, yangilang.','Bu amal hisobingizga ochiq emas.','Ilovani qayta oching.','Ma’lumotlar o‘zgardi. Yangilangan holatni tekshiring.','Saqlandi.','So‘rov natijasi noma’lum. Avtomatik qayta yuborilmaydi.','Ayni so‘rov bilan tekshirish','Qayta yuborish uchun so‘rov saqlanmadi.','E’lon qilingan cheklovlar','Ko‘rsatilgan shartlar tili']
   };
+  var displayCopy={
+    "ru": {
+        "explanation": "Здесь вы разрешаете своему менеджеру присылать задания в Telegram. Отказаться можно в любой момент кнопкой «Отписаться».",
+        "allowed": "Вы разрешили сообщения от этого менеджера.",
+        "disallowed": "Сообщения от этого менеджера не разрешены.",
+        "createAllowed": "Создание рассылок доступно. Можно сохранять задания.",
+        "createUnavailable": "Создание рассылок недоступно. Сохранённая история доступна в «Мои рассылки».",
+        "managerLimits": "Лимиты ваших рассылок",
+        "recipients": "Креаторов в одной рассылке",
+        "submissions": "Заданий на модерацию за",
+        "activeTasks": "Активных заданий одновременно",
+        "hours": "ч",
+        "minutes": "мин",
+        "seconds": "с"
+    },
+    "en": {
+        "explanation": "Here you can allow your manager to send tasks in Telegram. You can unsubscribe at any time.",
+        "allowed": "You have allowed messages from this manager.",
+        "disallowed": "Messages from this manager are not allowed.",
+        "createAllowed": "Campaign creation is available. You can save tasks.",
+        "createUnavailable": "Campaign creation is unavailable. Saved history is available in My campaigns.",
+        "managerLimits": "Your campaign limits",
+        "recipients": "Creators per campaign",
+        "submissions": "Review submissions per",
+        "activeTasks": "Active tasks at once",
+        "hours": "h",
+        "minutes": "min",
+        "seconds": "s"
+    },
+    "kk": {
+        "explanation": "Мұнда менеджеріңізге Telegram арқылы тапсырма жіберуге рұқсат бересіз. Кез келген уақытта жазылымнан бас тарта аласыз.",
+        "allowed": "Осы менеджерден хабарлама алуға рұқсат бердіңіз.",
+        "disallowed": "Осы менеджерден хабарлама алуға рұқсат жоқ.",
+        "createAllowed": "Хабарлама жасау қолжетімді. Тапсырмаларды сақтауға болады.",
+        "createUnavailable": "Хабарлама жасау қолжетімсіз. Сақталған тарих «Менің хабарламаларым» бөлімінде.",
+        "managerLimits": "Хабарламаларыңыздың шектеулері",
+        "recipients": "Бір хабарламадағы авторлар",
+        "submissions": "Модерацияға өтінімдер, әр",
+        "activeTasks": "Бір мезеттегі белсенді тапсырмалар",
+        "hours": "сағ",
+        "minutes": "мин",
+        "seconds": "с"
+    },
+    "be": {
+        "explanation": "Тут вы дазваляеце свайму менеджару дасылаць заданні ў Telegram. Адпісацца можна ў любы момант.",
+        "allowed": "Вы дазволілі паведамленні ад гэтага менеджара.",
+        "disallowed": "Паведамленні ад гэтага менеджара не дазволены.",
+        "createAllowed": "Стварэнне рассылкі даступнае. Можна захоўваць заданні.",
+        "createUnavailable": "Стварэнне рассылкі недаступнае. Захаваная гісторыя ў «Мае рассылкі».",
+        "managerLimits": "Ліміты вашых рассылкаў",
+        "recipients": "Аўтараў у адной рассылцы",
+        "submissions": "Заявак на мадэрацыю за",
+        "activeTasks": "Актыўных заданняў адначасова",
+        "hours": "гадз",
+        "minutes": "хв",
+        "seconds": "с"
+    },
+    "uz": {
+        "explanation": "Bu yerda menejeringizga Telegram orqali topshiriq yuborishga ruxsat berasiz. Istalgan payt obunani bekor qilishingiz mumkin.",
+        "allowed": "Bu menejerdan xabar olishga ruxsat bergansiz.",
+        "disallowed": "Bu menejerdan xabar olishga ruxsat yo‘q.",
+        "createAllowed": "Xabar yaratish mavjud. Topshiriqlarni saqlashingiz mumkin.",
+        "createUnavailable": "Xabar yaratish mavjud emas. Saqlangan tarix Mening xabarlarim bo‘limida.",
+        "managerLimits": "Xabarlaringiz cheklovlari",
+        "recipients": "Bitta xabardagi mualliflar",
+        "submissions": "Moderatsiya arizalari, har",
+        "activeTasks": "Bir vaqtdagi faol topshiriqlar",
+        "hours": "soat",
+        "minutes": "daq",
+        "seconds": "s"
+    }
+};
   var names=['recipients_per_campaign','submissions_per_owner','active_per_owner','attempts_per_owner','attempts_global','attempts_per_recipient','window_seconds','recipient_cooldown_seconds','title_max_chars','text_max_chars','link_max_chars','review_ttl_seconds','dispatch_ttl_seconds','claim_batch_size','worker_concurrency','starts_per_second','metrics_max_age_seconds'];
   var labels={
     ru:['Авторов в задании','Заявок владельца за период','Активных заданий владельца','Попыток владельца за период','Всего попыток за период','Попыток одному автору за период','Период учёта, секунд','Перерыв между сообщениями автору, секунд','Длина заголовка, символов','Длина текста, символов','Длина ссылки, символов','Срок модерации, секунд','Срок отправки, секунд','Размер пакета обработки','Параллельных обработчиков','Начал отправки в секунду','Возраст метрик, секунд'],
@@ -52,6 +124,8 @@
   function id(s){return document.getElementById(s);}
   function locale(){return rows[(window._me||{}).locale]?(window._me||{}).locale:'ru';}
   function words(){var result={};keys.forEach(function(k,i){result[k]=rows[locale()][i];});return result;}
+  function display(){return displayCopy[locale()];}
+  function duration(seconds){var c=display();return seconds%3600===0?seconds/3600+' '+c.hours:seconds%60===0?seconds/60+' '+c.minutes:seconds+' '+c.seconds;}
   function node(tag,text,cls){var el=document.createElement(tag);if(text!=null)el.textContent=text;if(cls)el.className=cls;return el;}
   function button(parent,key,name,handler){var el=node('button',words()[key],'btn btn-secondary');el.id=name;el.type='button';el.dataset.campaignCopy=key;if(handler)el.addEventListener('click',handler);parent.appendChild(el);return el;}
   function field(parent,label,name,type,required){var wrap=node('label'),caption=node('span',label),el=document.createElement(type==='textarea'?'textarea':type==='select'?'select':'input');if(type!=='textarea'&&type!=='select')el.type=type;el.id=name;el.required=!!required;wrap.append(caption,el);parent.appendChild(wrap);return el;}
@@ -61,8 +135,9 @@
   function heading(parent,key,tag){var h=node(tag||'h2',words()[key]);h.dataset.campaignCopy=key;parent.appendChild(h);}
   heading(screen,'title','h1');var loading=node('p','','hint');loading.id='campaign-loading';loading.setAttribute('role','status');screen.appendChild(loading);var error=node('p','','error');error.id='campaign-error';error.setAttribute('role','alert');screen.appendChild(error);
   var content=node('div');content.id='campaign-content';content.hidden=true;screen.appendChild(content);var notice=node('p','','hint');notice.id='campaign-delivery-status';content.appendChild(notice);var publisher=node('p');publisher.id='campaign-publisher';content.appendChild(publisher);
-  var consent=node('section');consent.id='campaign-consent';heading(consent,'consent');var inviter=node('p');inviter.id='campaign-inviter';consent.appendChild(inviter);var status=node('p');status.id='campaign-consent-status';consent.appendChild(status);var unavailable=node('p','','hint');unavailable.id='campaign-unavailable';consent.appendChild(unavailable);content.appendChild(consent);
-  var policy=node('section');heading(policy,'terms');var terms=node('div');terms.id='campaign-terms';policy.appendChild(terms);var limits=node('dl');limits.id='campaign-limits';policy.appendChild(limits);content.appendChild(policy);
+  var consent=node('section');consent.id='campaign-consent';heading(consent,'consent');var explanation=node('p','','hint');explanation.id='campaign-consent-explanation';consent.appendChild(explanation);var inviter=node('p');inviter.id='campaign-inviter';consent.appendChild(inviter);var status=node('p');status.id='campaign-consent-status';consent.appendChild(status);var unavailable=node('p','','hint');unavailable.id='campaign-unavailable';consent.appendChild(unavailable);content.appendChild(consent);
+  var policy=node('details');policy.id='campaign-policy-details';var summary=node('summary',words().terms);summary.dataset.campaignCopy='terms';policy.appendChild(summary);var terms=node('div');terms.id='campaign-terms';policy.appendChild(terms);content.appendChild(policy);
+  var limitSection=node('section');limitSection.id='campaign-manager-limits';var limitTitle=node('h2');limitSection.appendChild(limitTitle);var limits=node('dl');limits.id='campaign-limits';limitSection.appendChild(limits);content.appendChild(limitSection);
   button(consent,'allow','btn-campaign-consent',function(){var v=state.view;send('/consent/allow',{expected_version:v.consent.version,policy_version:v.policy.publication_version,terms_hash:v.policy.terms_hash,consent_context:v.consent_context});}).dataset.umcPrimary='10';
   button(consent,'unsubscribe','btn-campaign-unsubscribe',function(){send('/consent/revoke',{expected_version:state.view.consent.version});});
   var pending=node('section');pending.id='campaign-pending';content.appendChild(pending);
@@ -82,14 +157,50 @@
   function save(){sessionStorage.setItem(storageKey(),JSON.stringify(state.pending));}
   function restore(){if(state.restored)return;state.restored=true;var raw=sessionStorage.getItem(storageKey());if(!raw)return;var values=JSON.parse(raw);if(!Array.isArray(values))throw new Error('invalid saved operations');state.pending=values.filter(function(item){return item&&['/policy/publish','/policy/suspend','/publishers/grant','/publishers/revoke','/consent/allow','/consent/revoke'].includes(item.path)&&item.payload&&typeof item.payload.operation_key==='string';});}
   function renderPending(){pending.replaceChildren();state.pending.forEach(function(item){pending.appendChild(node('p',words().unknown,'hint'));var retry=button(pending,'retry','',function(){transmit(item,true);});retry.dataset.campaignRetry='';});}
-  function render(data){var navigation=data.navigation||{};if(state.view&&state.view.actor_id!==data.actor_id){state.pending=[];state.restored=false;}state.view=data;content.hidden=false;admin.hidden=!data.can_admin;consent.hidden=navigation.consent!==true;publisher.hidden=navigation.workbench!==true;publisher.textContent=words().publisher+': '+(data.publisher.active?words().active:words().inactive);notice.hidden=data.delivery_state==='enabled';notice.textContent=deliveryCopy(data.delivery_state);if(window.UMCCampaignNavigation)window.UMCCampaignNavigation.update(data);inviter.textContent=data.inviter?words().inviter+': '+(data.inviter.label||unnamed[locale()]):words().missingInviter;status.textContent=data.consent.effective?words().subscribed:data.consent.active?inactiveConsent[locale()]:words().unsubscribed;id('btn-campaign-consent').hidden=!data.can_consent;id('btn-campaign-unsubscribe').hidden=!data.can_unsubscribe;unavailable.textContent=data.consent_unavailable_reason?unavailableCopy(data.consent_unavailable_reason):'';terms.replaceChildren();limits.replaceChildren();
-    if(!data.policy){terms.appendChild(node('p',words().noPolicy));}else{var p=data.policy,lang=p.terms[locale()]?locale():p.default_locale;terms.append(node('p',words().termsVersion+': '+p.terms_version),node('p',words().language+': '+(languages[lang]||lang),'hint'),node('p',p.terms[lang],'umc-campaigns-full-terms'));if(!p.enabled)terms.appendChild(node('p',words().paused,'hint'));names.slice(0,8).forEach(function(name,i){var row=node('div');row.append(node('dt',labels[locale()][i]),node('dd',String(p.limits[name])));limits.appendChild(row);});if(data.can_admin){version.value=p.terms_version;defaultLocale.value=p.default_locale;Object.keys(languages).forEach(function(k){id('campaign-terms-'+k).value=p.terms[k]||'';});names.forEach(function(k){id('campaign-limit-'+k).value=p.limits[k];});}}
-    suspension.hidden=!data.policy;try{restore();}catch(_){error.textContent=words().storage;}renderPending();sync();}
+  function render(data){
+    var navigation=data.navigation||{},copy=display();
+    if(state.view&&state.view.actor_id!==data.actor_id){state.pending=[];state.restored=false;}
+    state.view=data;content.hidden=false;admin.hidden=!data.can_admin;
+    consent.hidden=navigation.consent!==true;
+    publisher.hidden=navigation.workbench!==true;
+    var canCreate=data.capabilities?data.capabilities.save_draft===true:!!(data.publisher.active&&data.policy&&data.policy.enabled);
+    publisher.textContent=canCreate?copy.createAllowed:copy.createUnavailable;
+    notice.hidden=data.delivery_state==='enabled';notice.textContent=deliveryCopy(data.delivery_state);
+    if(window.UMCCampaignNavigation)window.UMCCampaignNavigation.update(data);
+    explanation.textContent=copy.explanation;
+    inviter.textContent=data.inviter?words().inviter+': '+(data.inviter.label||unnamed[locale()]):words().missingInviter;
+    status.textContent=data.consent.effective?copy.allowed:data.consent.active?inactiveConsent[locale()]:copy.disallowed;
+    id('btn-campaign-consent').hidden=!data.can_consent;id('btn-campaign-unsubscribe').hidden=!data.can_unsubscribe;
+    unavailable.textContent=data.consent_unavailable_reason?unavailableCopy(data.consent_unavailable_reason):'';
+    terms.replaceChildren();limits.replaceChildren();
+    limitSection.hidden=!data.policy||navigation.workbench!==true;
+    limitTitle.textContent=copy.managerLimits;
+    // Keep a reader's disclosure choice across refreshes; administrators need the full policy.
+    if(data.can_admin)policy.open=true;
+    if(!data.policy){terms.appendChild(node('p',words().noPolicy));policy.open=true;}
+    else{
+      var p=data.policy,lang=p.terms[locale()]?locale():p.default_locale;
+      if(data.can_admin)terms.appendChild(node('p',words().termsVersion+': '+p.terms_version));
+      if(data.can_admin||lang!==locale())terms.appendChild(node('p',words().language+': '+(languages[lang]||lang),'hint'));
+      terms.appendChild(node('p',p.terms[lang],'umc-campaigns-full-terms'));
+      if(!p.enabled)terms.appendChild(node('p',words().paused,'hint'));
+      if(data.can_admin){
+        version.value=p.terms_version;defaultLocale.value=p.default_locale;
+        Object.keys(languages).forEach(function(k){id('campaign-terms-'+k).value=p.terms[k]||'';});
+        names.forEach(function(k){id('campaign-limit-'+k).value=p.limits[k];});
+      }
+      if(navigation.workbench===true){
+        [[copy.recipients,p.limits.recipients_per_campaign],[copy.submissions+' '+duration(p.limits.window_seconds),p.limits.submissions_per_owner],[copy.activeTasks,p.limits.active_per_owner]].forEach(function(item){var row=node('div');row.append(node('dt',item[0]),node('dd',String(item[1])));limits.appendChild(row);});
+      }
+    }
+    suspension.hidden=!data.policy;
+    try{restore();}catch(_){error.textContent=words().storage;}renderPending();sync();
+  }
   function unavailableCopy(value){var map={ru:{account_inactive:'Аккаунт приостановлен.',creator_unverified:'Сначала подтвердите Instagram.',inviter_missing:'Пригласивший не найден.',inviter_not_publisher:'У пригласившего нет действующего права на задания.',telegram_unavailable:'Нет доступного личного Telegram-бота.',policy_missing:'Условия ещё не опубликованы.',policy_suspended:'Новые согласия приостановлены.'},en:{account_inactive:'Account is inactive.',creator_unverified:'Confirm Instagram first.',inviter_missing:'No inviter found.',inviter_not_publisher:'Your inviter has no current publishing permission.',telegram_unavailable:'No usable private Telegram bot contact.',policy_missing:'No published terms yet.',policy_suspended:'New consent is paused.'},kk:{account_inactive:'Аккаунт тоқтатылған.',creator_unverified:'Алдымен Instagram-ды растаңыз.',inviter_missing:'Шақырушы табылмады.',inviter_not_publisher:'Шақырушының жариялау құқығы жоқ.',telegram_unavailable:'Жеке Telegram-бот байланысы жоқ.',policy_missing:'Шарттар әлі жарияланбаған.',policy_suspended:'Жаңа келісімдер тоқтатылған.'},be:{account_inactive:'Акаўнт прыпынены.',creator_unverified:'Спачатку пацвердзіце Instagram.',inviter_missing:'Запрашальнік не знойдзены.',inviter_not_publisher:'У запрашальніка няма права публікацыі.',telegram_unavailable:'Няма даступнага асабістага Telegram-бота.',policy_missing:'Умовы яшчэ не апублікаваны.',policy_suspended:'Новыя згоды прыпынены.'},uz:{account_inactive:'Hisob to‘xtatilgan.',creator_unverified:'Avval Instagram-ni tasdiqlang.',inviter_missing:'Taklif qiluvchi topilmadi.',inviter_not_publisher:'Taklif qiluvchida e’lon qilish huquqi yo‘q.',telegram_unavailable:'Shaxsiy Telegram-bot aloqasi yo‘q.',policy_missing:'Shartlar hali e’lon qilinmagan.',policy_suspended:'Yangi roziliklar to‘xtatilgan.'}};return map[locale()][value]||words().error;}
   function renderAccounts(data){accounts.replaceChildren();data.accounts.forEach(function(item){var row=node('article','','umc-campaigns-account');row.append(node('h3',item.label||unnamed[locale()]),node('p',item.owner_id,'hint'),node('p',item.active?words().active:words().inactive),node('p',statusLabels[locale()]+': '+(accountStates[locale()][item.status]||words().error),'hint'));var key=item.can_revoke?'revoke':item.can_grant?'grant':null;if(key)button(row,key,'',function(){if(!grantReason.value.trim()){grantReason.focus();error.textContent=words().reason;return;}send('/publishers/'+key,{owner_id:item.owner_id,expected_version:item.version,reason:grantReason.value});});accounts.appendChild(row);});id('btn-campaign-previous').hidden=!data.page;id('btn-campaign-next').hidden=!data.has_more;}
-  function deliveryCopy(value){var paused={ru:'Доставка сообщений приостановлена. Сохранённые задания, согласия и отписка доступны.',en:'Message delivery is paused. Saved tasks, consent and unsubscribe remain available.',kk:'Хабарлама жеткізу тоқтатылған. Сақталған тапсырмалар, келісім және бас тарту қолжетімді.',be:'Дастаўка паведамленняў прыпынена. Захаваныя заданні, згода і адпіска даступныя.',uz:'Xabar yetkazish to‘xtatilgan. Saqlangan topshiriqlar, rozilik va obunani bekor qilish mavjud.'};return value==='enabled'?'':value==='paused'?paused[locale()]:words().noSending;}
+  function deliveryCopy(value){var paused={ru:'Отправка выключена. Сейчас сообщения по рассылкам не отправляются.',en:'Sending is off. Campaign messages are not being sent.',kk:'Жіберу өшірулі. Хабарламалар қазір жіберілмейді.',be:'Адпраўка выключана. Паведамленні рассылкі зараз не адпраўляюцца.',uz:'Yuborish o‘chirilgan. Xabarlar hozir yuborilmayapti.'};return value==='enabled'?'':value==='paused'?paused[locale()]:words().noSending;}
   function current(bound){return bound&&bound===state.bound&&bound.isCurrent();}
-  function clearPrivate(){if(state.bound)state.bound.dispose();state.bound=null;state.view=null;state.pending=[];state.restored=false;state.page=0;content.hidden=true;admin.hidden=true;accounts.replaceChildren();terms.replaceChildren();limits.replaceChildren();pending.replaceChildren();form.reset();suspension.reset();lookup.reset();grantReason.value='';busy(false);}
+  function clearPrivate(){if(state.bound)state.bound.dispose();state.bound=null;state.view=null;state.pending=[];state.restored=false;state.page=0;content.hidden=true;admin.hidden=true;policy.open=false;accounts.replaceChildren();terms.replaceChildren();limits.replaceChildren();pending.replaceChildren();form.reset();suspension.reset();lookup.reset();grantReason.value='';busy(false);}
   function checkContext(){if(state.bound&&!state.bound.isCurrent()){clearPrivate();error.textContent=words().session;}}
   function accountRequest(bound){return bound.request('/campaigns/admin/accounts',{search:search.value.trim(),page:state.page}).then(function(data){if(current(bound))renderAccounts(data);});}
   function showError(e){error.textContent=e.status===401?words().session:e.status===403?words().forbidden:e.status===409?words().conflict:words().error;}

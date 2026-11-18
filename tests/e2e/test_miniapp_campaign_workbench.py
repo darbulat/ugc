@@ -733,3 +733,83 @@ def test_explicit_future_admin_review_binds_exact_server_context(
     )
     assert "decision" not in payload and "is_admin" not in payload
     assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("total,eligible", [(0, 0), (1, 0), (1, 1)])
+def test_preview_explains_own_base_and_eligible_creators_without_sending(
+    page, platform, total, eligible
+):
+    network = WorkbenchNetwork()
+    network.drafts = [draft()]
+    network.preview.update(
+        network_total=total,
+        eligible_count=eligible,
+        exclusions={"consent_absent": total - eligible},
+    )
+    errors = enter(page, network, platform)
+    page.set_viewport_size({"width": 320, "height": 700})
+    page.locator("[data-campaign-draft-open]").click()
+    page.locator("#campaign-draft-preview").click()
+    expect(page.locator("#campaign-preview-total")).to_have_text(str(total))
+    expect(page.locator("#campaign-preview-eligible")).to_have_text(
+        str(eligible)
+    )
+    expect(page.locator(".umc-campaign-statistics dt")).to_have_text(
+        ["Креаторов в вашей базе", "Подходят этому заданию"]
+    )
+    expect(page.locator("#campaign-preview-explanation")).to_contain_text(
+        "Предпросмотр никому ничего не отправляет"
+    )
+    expect(page.locator("#campaign-preview-explanation")).to_contain_text(
+        "разрешил сообщения"
+    )
+    if total > eligible:
+        expect(page.locator("#campaign-preview-exclusions")).to_contain_text(
+            "Нет согласия"
+        )
+    else:
+        expect(page.locator("#campaign-preview-exclusions")).to_have_count(0)
+    expect(page.locator("#campaign-draft-submit")).to_have_count(0)
+    expect(page.locator("#campaign-preview-result")).not_to_contain_text(AT)
+    expect(page.locator("#campaign-preview-result")).not_to_contain_text(
+        "Фильтры по подписчикам"
+    )
+    screenshot(page, f"campaign-{platform}-preview-{total}-{eligible}-320")
+    assert not any(
+        path.endswith(("/submit", "/draft", "/approve"))
+        for path, _ in network.requests
+    )
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize(
+    "state,label",
+    [
+        ("draft", "Черновик"),
+        ("submitted", "На модерации"),
+        ("approved_waiting", "Одобрено · статус отправки в отчёте"),
+        ("rejected", "Отклонено"),
+        ("cancelled", "Отменено"),
+        ("expired", "Срок задания истёк"),
+    ],
+)
+def test_history_uses_current_lifecycle_state_instead_of_draft(
+    page, platform, state, label
+):
+    network = WorkbenchNetwork()
+    network.drafts = [{**draft(), "state": state}]
+    errors = enter(page, network, platform)
+    history = page.locator("#campaign-workbench-list article")
+    expect(history.locator("p").first).to_have_text(label)
+    expect(history).not_to_contain_text(AT)
+    page.locator("[data-campaign-draft-open]").click()
+    expect(page.locator("#campaign-draft-saved")).to_have_text(
+        "Задание сохранено"
+    )
+    expect(page.locator("#campaign-draft-state")).to_have_text(label)
+    assert not errors

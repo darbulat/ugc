@@ -495,3 +495,107 @@ def test_paused_grant_owner_has_status_and_revoke_without_regrant(
     )
     assert payload["owner_id"] == OWNER and payload["expected_version"] == 1
     assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("locale", ["ru", "en", "kk", "be", "uz"])
+def test_creator_permission_and_delivery_are_clear_without_service_limits(
+    page, platform, locale
+):
+    network = CampaignNetwork(locale=locale)
+    network.settings["policy"]["limits"].update(
+        window_seconds=86400, recipient_cooldown_seconds=86400
+    )
+    errors = open_app(page, network, platform, native=True)
+    page.set_viewport_size({"width": 320, "height": 700})
+    page.locator(".screen.active [data-campaign-settings-open]").click()
+    expect(page.locator("#campaign-consent-explanation")).to_be_visible()
+    expect(page.locator("#campaign-delivery-status")).to_be_visible()
+    expect(page.locator("#campaign-manager-limits")).to_be_hidden()
+    expect(page.locator("#campaign-publisher")).to_be_hidden()
+    expect(page.locator("#campaign-terms")).to_be_hidden()
+    expect(page.locator("#campaign-terms")).not_to_contain_text("synthetic-v1")
+    expect(page.locator("#screen-campaign-settings")).not_to_contain_text(
+        "86400"
+    )
+    if locale == "ru":
+        screenshot(page, "campaign-" + platform + "-creator-summary-320")
+    before = page.locator("#campaign-consent-status").inner_text()
+    page.locator("#campaign-policy-details summary").click()
+    expect(page.locator("#campaign-terms")).to_be_visible()
+    expected_language = "en" if locale == "en" else "ru"
+    expect(page.locator(".umc-campaigns-full-terms")).to_have_text(
+        network.settings["policy"]["terms"][expected_language]
+    )
+    # Native opt-in changes permission while delivery remains paused.
+    page.evaluate("window.__host.wa.MainButton.click()")
+    expect(page.locator("#btn-campaign-unsubscribe")).to_be_visible()
+    expect(page.locator("#campaign-consent-status")).not_to_have_text(before)
+    expect(page.locator("#campaign-delivery-status")).to_be_visible()
+    if locale == "ru":
+        expect(page.locator("#campaign-consent-status")).to_have_text(
+            "Вы разрешили сообщения от этого менеджера."
+        )
+        expect(page.locator("#campaign-delivery-status")).to_contain_text(
+            "Отправка выключена"
+        )
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    page.locator("#btn-campaign-unsubscribe").click()
+    expect(page.locator("#campaign-consent-status")).to_have_text(before)
+    expect(page.locator("#campaign-delivery-status")).to_be_visible()
+    assert all(
+        path.endswith(("/settings", "/consent/allow", "/consent/revoke"))
+        for path, _ in network.requests
+        if "/campaigns/" in path
+    )
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("seconds,period", [(86400, "24 ч"), (90, "90 с")])
+def test_manager_sees_business_limits_and_current_creation_permission(
+    page, platform, seconds, period
+):
+    network = CampaignNetwork()
+    network.manager = True
+    network.blogger_registered = False
+    network.settings["publisher"].update(active=True, version=1)
+    network.settings["policy"]["limits"].update(
+        recipients_per_campaign=3,
+        submissions_per_owner=1,
+        active_per_owner=1,
+        window_seconds=seconds,
+    )
+    network.settings["capabilities"] = {"save_draft": True}
+    errors = open_app(page, network, platform)
+    page.set_viewport_size({"width": 320, "height": 700})
+    page.evaluate("window.__umcAppBridge.showScreen('screen-manager-orders')")
+    page.locator("#screen-manager-orders [data-campaign-settings-open]").click()
+    expect(page.locator("#campaign-consent")).to_be_hidden()
+    expect(page.locator("#campaign-publisher")).to_contain_text(
+        "Создание рассылок доступно"
+    )
+    limits = page.locator("#campaign-limits")
+    expect(limits.locator("dt")).to_have_text(
+        [
+            "Креаторов в одной рассылке",
+            f"Заданий на модерацию за {period}",
+            "Активных заданий одновременно",
+        ]
+    )
+    expect(limits.locator("dd")).to_have_text(["3", "1", "1"])
+    expect(page.locator("#campaign-admin")).to_be_hidden()
+    screenshot(page, "campaign-" + platform + "-manager-limits-320")
+    # An active grant alone must not imply the server allows creation.
+    network.settings["capabilities"]["save_draft"] = False
+    network.settings["policy"]["enabled"] = False
+    page.locator("#btn-campaign-refresh").click()
+    expect(page.locator("#campaign-publisher")).to_contain_text(
+        "Создание рассылок недоступно"
+    )
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= window.innerWidth"
+    )
+    assert not errors

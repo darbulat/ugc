@@ -417,7 +417,12 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-campaigns .umc-campaigns-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1rem; }
 .umc-campaigns-full-terms { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .umc-campaigns dl > div { display: flex; justify-content: space-between; gap: 1rem; padding: .55rem 0; border-bottom: 1px solid var(--line); }
-.umc-campaigns dd { margin: 0; }
+.umc-campaigns dt { min-width: 0; }
+.umc-campaigns dd { margin: 0; flex-shrink: 0; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.umc-campaigns details { margin: 1.4rem 0; }
+.umc-campaigns summary { cursor: pointer; font-weight: 600; }
+.umc-campaigns #campaign-inviter { overflow-wrap: anywhere; }
+.umc-campaigns #campaign-consent-status { font-weight: 600; }
 .umc-campaigns-account { padding: .8rem 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .umc-campaigns button { white-space: normal; }
 @media (max-width: 480px) { .umc-campaigns .umc-campaigns-grid { grid-template-columns: minmax(0, 1fr); } }
