@@ -220,3 +220,32 @@ def test_recovery_keeps_primary_minimums_instead_of_lowering_connections():
         recovery_settings({"max_connections": "10"})
     with pytest.raises(ValueError, match="Invalid"):
         recovery_settings(settings | {"max_connections": "100';include='bad"})
+
+
+def test_failed_base_cleans_only_owned_plaintext_staging(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import pitr_receiver
+
+    work = tmp_path / "work"
+    work.mkdir()
+    abandoned = work / "base-work-abandoned"
+    abandoned.mkdir()
+    (abandoned / "private-row").write_text("synthetic")
+    foreign = work / "operator-notes"
+    foreign.mkdir()
+    (foreign / "preserve").write_text("keep")
+    pg = SimpleNamespace(
+        control=lambda: {"recovery_parameters": {}},
+        binary=lambda name: "/fixture/" + name,
+        environment=lambda: {},
+    )
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("synthetic failed backup")
+
+    monkeypatch.setattr(pitr_receiver, "checked", fail)
+    with pytest.raises(RuntimeError, match="synthetic failed"):
+        pitr_receiver.take_base(pg, SimpleNamespace(root=tmp_path))
+    assert not list(work.glob("base-work-*"))
+    assert (foreign / "preserve").read_text() == "keep"

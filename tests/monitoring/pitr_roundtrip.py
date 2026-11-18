@@ -5,10 +5,12 @@ import os
 import secrets
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 sys.path.insert(0, "/pitr")
+import pitr_tunnel  # noqa: E402
 from pitr_receiver import PostgreSQL, archive_completed, take_base  # noqa: E402
 from pitr_restore_isolated import prepare, verify  # noqa: E402
 from pitr_store import Store  # noqa: E402
@@ -52,7 +54,7 @@ def setup():
     creds = ROOT / "credentials"
     creds.mkdir(mode=0o700)
     password_file = creds / "pgpass"
-    password_file.write_text("127.0.0.1:5432:*:ugc_pitr_v1:fixture-replica\n")
+    password_file.write_text("127.0.0.1:16543:*:ugc_pitr_v1:fixture-replica\n")
     password_file.chmod(0o600)
     os.environ["CREDENTIALS_DIRECTORY"] = str(creds)
     admin(
@@ -77,7 +79,8 @@ def setup():
         "max_bytes": 2 * 1024**3,
         "min_free_bytes": 0,
         "pg_host": "127.0.0.1",
-        "pg_port": 5432,
+        "pg_port": 16543,
+        "ssh_host": "synthetic",
         "pg_user": "ugc_pitr_v1",
         "pg_bin": BIN,
         "restore_superuser": "postgres",
@@ -91,6 +94,18 @@ def setup():
         max_bytes=2 * 1024**3,
         min_free_bytes=0,
     )
+    # Exercise both production byte-relay implementations. The fixture replaces
+    # only the SSH transport with a local child process; no public host is used.
+    relay_code = (
+        "import sys;sys.path.insert(0,'/pitr');import pitr_primary;"
+        "connect=pitr_primary.socket.create_connection;"
+        "pitr_primary.socket.create_connection=lambda *a,**k:"
+        "connect(('127.0.0.1',5432),timeout=8);"
+        "pitr_primary.relay_database()"
+    )
+    pitr_tunnel.ssh_command = lambda config: [sys.executable, "-c", relay_code]
+    relay = pitr_tunnel.Relay(config)
+    threading.Thread(target=relay.serve_forever, daemon=True).start()
     pg = PostgreSQL(config)
     pg.control()
     subprocess.run(
@@ -177,6 +192,7 @@ def setup():
                     "base_encrypted": True,
                     "wal_segments": len(chain),
                     "missing_wal_rejected": True,
+                    "production_byte_relays_exercised": True,
                     "prepared": directory.name,
                 }
             )
@@ -184,6 +200,9 @@ def setup():
     finally:
         receiver.terminate()
         receiver.wait(timeout=10)
+        relay.shutdown()
+        relay.close_children()
+        relay.server_close()
 
 
 def proof():

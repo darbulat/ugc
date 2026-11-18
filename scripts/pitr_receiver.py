@@ -360,6 +360,10 @@ def take_base(pg, store):
     root = store.root / "work"
     with (root / "base.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # A killed oneshot cannot run finally. Only a new holder of the same
+        # exclusive base lock may remove its abandoned plaintext staging dirs.
+        for abandoned in root.glob("base-work-*"):
+            safe_remove_tree(abandoned, root)
         work = Path(tempfile.mkdtemp(prefix="base-work-", dir=root))
         work.rmdir()
         started = utc_now()
