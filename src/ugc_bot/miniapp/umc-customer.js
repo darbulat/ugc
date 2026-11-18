@@ -54,7 +54,6 @@
       if(order.selection_due_at){var selectionDue=new Date(order.selection_due_at);if(!isNaN(selectionDue.getTime()))card.appendChild(element('p',word('selectionDeadline')+': '+selectionDue.toLocaleString((window._me||{}).locale||'ru')));}
       if(order.deadlines)card.appendChild(element('p',word('deadline')+': '+order.deadlines));
       if(order.payment_state&&paymentText!==statusText)card.appendChild(element('p',paymentText));
-      if(order.progress&&Number.isInteger(order.progress.delivered)){var copy=feedbackCopy[(window._me||{}).locale]||feedbackCopy.ru;card.appendChild(element('strong',copy[0]+': '+order.progress.delivered+' '+copy[1]+' '+order.progress.total));}
       if(order.progress&&Number.isSafeInteger(order.progress.delivered)){var deliveredCopy=feedbackCopy[(window._me||{}).locale]||feedbackCopy.ru;card.appendChild(element('strong',deliveredCopy[0]+': '+order.progress.delivered+' '+deliveredCopy[1]+' '+order.progress.total));}
       if(order.progress)card.appendChild(element('p',word('progress')+': '+order.progress.completed+' / '+order.progress.total+' · '+word('assigned')+': '+order.progress.assigned));
       card.append(button(word(canResume?'returnOrder':'open'),function(){state.scroll=window.scrollY;state.current=order.order_id;if(order.financial_version)window.UMCSelection.open(order.order_id);else bridge.openOrder(order.order_id);}),button(word('problem'),function(){openSupport(order.order_id);}),...(canRate?[button(word('rating'),function(){openRatings(order.order_id);})]:[]));

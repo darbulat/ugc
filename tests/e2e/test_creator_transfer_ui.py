@@ -17,6 +17,20 @@ class TransferNetwork(CustomerNetwork):
     def __init__(self):
         super().__init__()
         self.feedback = None
+        self.orders = [
+            dict(
+                order_id=ORDER,
+                public_title="ReBody",
+                status="closed",
+                created_at="2026-11-18T10:00:00Z",
+                financial_version=POLICY,
+                bloggers_needed=10,
+                payment_state="paid",
+                progress=dict(
+                    delivered=15, completed=10, assigned=10, total=10
+                ),
+            )
+        ]
 
     def route(self, route):
         path = urlparse(route.request.url).path
@@ -80,7 +94,12 @@ def test_customer_keeps_all_fifteen_contacts_and_can_review_extra_author(
     page.set_viewport_size({"width": 390, "height": 844})
     network = TransferNetwork()
     open_app(page, network, platform, init_data=SIGNED)
-    page.evaluate("order => window.UMCSelection.open(order)", ORDER)
+    page.evaluate("window.UMCCustomer.orders()")
+    card = page.locator("#orders-list article")
+    expect(
+        card.get_by_text("Передано авторов: 15 из 10", exact=True)
+    ).to_have_count(1)
+    card.get_by_role("button", name="Открыть заказ", exact=True).click()
     section = page.locator("[data-creator-handoffs]")
     expect(
         section.get_by_role("heading", name="Передано авторов: 15 из 10")
