@@ -217,8 +217,7 @@ async def test_preview_stages_and_order_scoped_manager_endpoint(
         assert "Подбор до" in page.text
         assert 'aria-current="page"' in page.text
         assert (
-            "В предпросмотре"
-            not in admin_web.get(path + "&stage=waiting").text
+            "В предпросмотре" not in admin_web.get(path + "&stage=waiting").text
         )
 
 
