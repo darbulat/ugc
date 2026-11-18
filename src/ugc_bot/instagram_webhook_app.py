@@ -33,6 +33,7 @@ from ugc_bot.infrastructure.db.repositories.manager_applications import (
 )
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.manager_application_delivery import ManagerApplicationDelivery
+from ugc_bot.readiness import readiness_response
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,14 @@ async def health() -> dict[str, str]:
     """Lightweight health check for webhook app."""
 
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready(request: Request) -> JSONResponse:
+    container = getattr(request.app.state, "container", None)
+    return await readiness_response(
+        container.session_factory if container is not None else None
+    )
 
 
 def _get_config(request: Request) -> AppConfig:

@@ -128,6 +128,7 @@ def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] in ("ok", "degraded")
+    assert client.get("/ready").status_code == 200
 
 
 def test_enum_aware_admin_edit_form_data_converts_enum_to_value() -> None:
