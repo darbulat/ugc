@@ -38,20 +38,24 @@ async def transfers_installed(db):
 
 
 def delivered_authors(order_id):
-    client = (
-        select(OrderModel.advertiser_id)
-        .where(OrderModel.order_id == order_id)
-        .scalar_subquery()
-    )
+    rows = delivered_author_rows([order_id])
+    return select(rows.c.creator_id).subquery()
+
+
+def delivered_author_rows(order_ids):
+    """Unique delivered people for a bounded set of orders."""
     allocations, contacts = (
         REPLACEMENTS["allocations"],
         REPLACEMENTS["contacts"],
     )
     return union(
-        select(ACCEPTED.c.creator_id).where(
-            ACCEPTED.c.order_id == order_id, ACCEPTED.c.client_id == client
+        select(ACCEPTED.c.order_id, ACCEPTED.c.creator_id)
+        .join(OrderModel, OrderModel.order_id == ACCEPTED.c.order_id)
+        .where(
+            ACCEPTED.c.order_id.in_(order_ids),
+            ACCEPTED.c.client_id == OrderModel.advertiser_id,
         ),
-        select(ItemAssignmentModel.creator_id)
+        select(OrderItemModel.order_id, ItemAssignmentModel.creator_id)
         .join(
             allocations,
             allocations.c.assignment_id == ItemAssignmentModel.assignment_id,
@@ -65,13 +69,15 @@ def delivered_authors(order_id):
         )
         .join(OrderModel, OrderModel.order_id == OrderItemModel.order_id)
         .where(
-            OrderModel.order_id == order_id,
+            OrderModel.order_id.in_(order_ids),
             contacts.c.actor_id == OrderModel.advertiser_id,
         ),
-        select(TRANSFERS.c.creator_id).where(
-            TRANSFERS.c.order_id == order_id,
+        select(TRANSFERS.c.order_id, TRANSFERS.c.creator_id)
+        .join(OrderModel, OrderModel.order_id == TRANSFERS.c.order_id)
+        .where(
+            TRANSFERS.c.order_id.in_(order_ids),
             TRANSFERS.c.state == "sent",
-            TRANSFERS.c.client_id == client,
+            TRANSFERS.c.client_id == OrderModel.advertiser_id,
         ),
     ).subquery()
 

@@ -177,6 +177,65 @@ def test_workspace_has_safe_empty_and_legacy_fallback():
     assert row["response"] == "Назначен" and row["responded_at"] == "saved-time"
 
 
+@pytest.mark.parametrize(
+    "current, expected",
+    [
+        ({"instagram": "https://www.instagram.com/Old/?igsh=example"}, None),
+        ({"instagram": "@OLD", "telegram": "@OLD_HANDLE"}, None),
+        ({"telegram": "https://t.me/old_handle"}, None),
+        ({"name": "  Имя\u00a0автора "}, None),
+        (
+            {"instagram": "https://instagram.com/new/"},
+            {"instagram": "https://instagram.com/new/"},
+        ),
+        ({"telegram": "new_handle"}, {"telegram": "new_handle"}),
+        ({"name": "Новое имя"}, {"name": "Новое имя"}),
+        (
+            {"instagram": "https://example.test/old"},
+            {"instagram": "https://example.test/old"},
+        ),
+    ],
+)
+def test_history_details_only_show_real_contact_changes(current, expected):
+    creator = uuid4()
+    contact = dict(
+        name="Имя автора",
+        instagram="https://instagram.com/old/",
+        telegram="old_handle",
+        phone="saved-phone",
+    )
+    response = dict(
+        blogger_id=str(creator), accepted=True, in_offer=True, **contact
+    )
+    response.update(current)
+    transfers = dict(
+        count=1,
+        needed=10,
+        can_send=True,
+        candidates=[],
+        history=[dict(creator_id=creator, contact=contact, source="selection")],
+    )
+    (row,) = creator_workspace([response], transfers=transfers)["rows"]
+    assert row["current_contact"] == expected
+    assert row["contact"] == contact
+    assert row["contact"]["phone"] == "saved-phone"
+
+
+def test_history_without_saved_name_does_not_repeat_current_name():
+    creator = uuid4()
+    transfers = dict(
+        count=1,
+        needed=10,
+        can_send=True,
+        candidates=[],
+        history=[dict(creator_id=creator, contact={}, source="selection")],
+    )
+    (row,) = creator_workspace(
+        [dict(blogger_id=str(creator), name="Имя автора")], transfers=transfers
+    )["rows"]
+    assert row["name"] == "Имя автора" and row["current_contact"] is None
+
+
 def test_paid_assignment_waits_for_normal_delivery_not_manual_handoff():
     creator = uuid4()
     transfers = dict(

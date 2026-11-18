@@ -2,6 +2,7 @@
 {% block head %}
 {{ super() }}
 <link rel="stylesheet" href="{{ admin_asset(request, 'order-worklist.css') }}">
+<link rel="stylesheet" href="{{ admin_asset(request, 'order-progress.css') }}">
 {% endblock %}
 {% block content %}
 {% set groups = [('work', 'В работе'), ('repeat', 'Повторные'), ('closed', 'Закрытые')] %}

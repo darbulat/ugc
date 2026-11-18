@@ -1,23 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Очередь по позициям{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ admin_asset(request, 'order-review.css') }}">{% endblock %}
 {% block content %}
 {% set attention_title = "Требуют проверки" if include_unpicked else "Позиции на проверку" %}
-<div class="section">
+<div class="section order-review">
   <div class="admin-actions">
     <a class="admin-button" href="/admin/order-model/list">← К заказам</a>
   </div>
   <h1>{{ attention_title if stage == "attention" else "Очередь по позициям" }}</h1>
+  <p class="order-review__description">Контроль мест заказа: подбор, передача контакта, сроки и ответственные. Дополнительные авторы сверх плана доступны в карточке заказа.</p>
   {% if message %}<p class="alert alert-info" role="status">{{ message }}</p>{% endif %}
   <nav class="admin-actions" aria-label="Этапы подбора">
     {% for key, label in [('attention', attention_title), ('all', 'Все позиции')] + (stages.items()|list) %}
       <a class="admin-button" {% if stage == key %}aria-current="page"{% endif %} href="{{ request.url.include_query_params(stage=key, page=1) }}">{{ label }}</a>
     {% endfor %}
   </nav>
-  <nav class="admin-actions" aria-label="Ответственные">
+  <nav class="admin-actions order-review__filters" aria-label="Ответственные">
     <a class="admin-button" href="{{ request.url.remove_query_params('manager_id').include_query_params(unassigned='false', page=1) }}">Все ответственные</a>
     <a class="admin-button" href="{{ request.url.include_query_params(unassigned='true', page=1) }}">Без ответственного</a>
-    {% if order_id %}<span>Выбран один заказ</span>{% endif %}
-    {% if manager_id %}<span>Фильтр по менеджеру</span>{% endif %}
+    {% if order_id %}<span class="order-review__scope">Выбран один заказ</span>{% endif %}
+    {% if manager_id %}<span class="order-review__scope">Фильтр по менеджеру</span>{% endif %}
   </nav>
   {% for order in orders %}
   <section class="card section" aria-labelledby="review-{{ order.id }}">
