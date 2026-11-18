@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+from secrets import token_urlsafe
 from urllib.parse import unquote, urlsplit
 
 from argon2 import PasswordHasher
@@ -84,7 +85,15 @@ class AdminAuth(AuthenticationBackend):
         if _verify_credentials(
             username, password, self._username, self._password_hash
         ):
-            request.session.update({"admin_token": self._token})
+            # Every authenticated response must carry the same action token.
+            # Otherwise a late dashboard response can erase a token created
+            # by the next HTML page and cause an intermittent POST rejection.
+            request.session.update(
+                {
+                    "admin_token": self._token,
+                    "order_worklist_csrf": token_urlsafe(),
+                }
+            )
             return True
         return False
 

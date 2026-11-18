@@ -35,6 +35,10 @@ The 24-hour notice remains; the scheduler no longer selects a reserve creator
 or calls the automatic financial replacement command. Manual paid replacement
 commands retain their existing policy checks.
 
+Action tokens are initialized during successful admin login. All subsequent
+asynchronous responses therefore carry the same token; a late dashboard response
+cannot erase a token created by a newer page. A fresh login rotates the token.
+
 ## Release
 
 Migration `0144_manual_creator_transfers` only adds a table and its history
