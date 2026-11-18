@@ -25,7 +25,7 @@
       <thead><tr><th scope="col">Креатор и контакты</th><th scope="col">Отклик / причина</th><th scope="col">Цена автора</th><th scope="col">Передача заказчице</th><th scope="col">Работа / UGC</th></tr></thead>
       <tbody>
       {% for row in workspace.rows %}
-        <tr data-creator-row="{{ row.creator_id }}" data-creator-group="{{ row.group }}" data-creator-search-text="{{ row.name }} {{ row.contact.get('instagram') or '' }} {{ row.contact.get('telegram') or '' }} {{ row.contact.get('phone') or '' }} {{ row.reason or '' }} {% if row.current_contact %}{{ row.current_contact.get('name') or '' }} {{ row.current_contact.get('instagram') or '' }} {{ row.current_contact.get('telegram') or '' }}{% endif %}">
+        <tr data-creator-row="{{ row.creator_id }}" data-creator-group="{{ row.group }}" data-creator-search-text="{{ row.name }} {{ row.contact.get('instagram') or '' }} {{ row.contact.get('telegram') or '' }} {{ row.contact.get('phone') or '' }} {{ row.reason or '' }} {% if row.search_contact %}{{ row.search_contact.get('name') or '' }} {{ row.search_contact.get('instagram') or '' }} {{ row.search_contact.get('telegram') or '' }}{% endif %}">
           <td data-label="Креатор">
             <a class="order-detail__creator" href="{{ request.url_for('admin_user_card', user_id=row.creator_id).include_query_params(from_order=order_id, return_to=order_return_url(request)) }}">{{ row.name }}</a>
             <div class="order-detail__contacts">
@@ -38,10 +38,12 @@
               {% if row.contact.get('phone') %}<p>Телефон: {{ row.contact.phone }}</p>{% endif %}
               {% if row.responded_at %}<p>Отклик / назначение: {{ row.responded_at|admin_date }}</p>{% endif %}
               {% if row.current_contact %}
-              <p class="muted">В строке сохранены контакты на момент передачи. Текущие контакты профиля:</p>
-              {% if row.current_contact.get('name') %}<p>{{ row.current_contact.name }}</p>{% endif %}
+              <p class="muted">Изменения в текущем профиле:</p>
+              {% if row.current_contact.get('name') %}<p>Имя: {{ row.current_contact.name }}</p>{% endif %}
+              {% if row.current_contact.get('instagram') or row.current_contact.get('telegram') %}<div class="order-detail__contacts">
               {% if row.current_contact.get('instagram') %}{{ instagram(row.current_contact.instagram, show_platform=true) }}{% endif %}
               {% if row.current_contact.get('telegram') %}{{ telegram(row.current_contact.telegram, show_platform=true) }}{% endif %}
+              </div>{% endif %}
               {% endif %}
             </details>
             {% endif %}

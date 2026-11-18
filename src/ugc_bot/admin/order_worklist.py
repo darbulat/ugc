@@ -22,6 +22,10 @@ from sqlalchemy.orm import InstrumentedAttribute, Session
 from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.admin.complaints import OPEN_COMPLAINT_STATUSES
+from ugc_bot.admin.order_progress import (
+    financial_order_ids,
+    load_order_progress,
+)
 from ugc_bot.admin.order_summary import (
     DelayThresholds,
     active_pick_reasons,
@@ -534,12 +538,20 @@ def worklist_row_details(
             AdvertiserProfileModel.user_id == OrderModel.advertiser_id,
         )
         .where(OrderModel.order_id.in_(order_ids))
+    ).all()
+    progress = load_order_progress(
+        session, financial_order_ids(row[0] for row in rows)
     )
     now = datetime.now(timezone.utc)
     return {
         row[0].order_id: {
             **{k: v for k, v in row._mapping.items() if k != "OrderModel"},
             "managers": managers[row[0].order_id],
+            "transferred_count": (
+                progress[row[0].order_id].transferred_count
+                if row[0].order_id in progress
+                else None
+            ),
             "replaceable_managers": replaceable[row[0].order_id],
             "attention_reasons": active_pick_reasons(
                 now, row[0], row.picked, row.dispatch_paused, thresholds

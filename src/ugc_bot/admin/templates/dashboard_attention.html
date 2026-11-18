@@ -1,3 +1,4 @@
+{% from 'order_progress.html' import order_progress %}
 {% macro day_count(days) -%}
   {{ ('%.1f'|format(days)).removesuffix('.0')|replace('.', ',') }} дн.
 {%- endmacro %}
@@ -45,8 +46,8 @@
                     · <strong>{% if row.days_until_selection_due < 0 %}Просрочено {% if row.days_until_selection_due <= -1 %}на {% endif %}{{ deadline_duration(-row.days_until_selection_due) }}{% elif row.days_until_selection_due > 0 %}Осталось {{ deadline_duration(row.days_until_selection_due) }}{% else %}Срок истёк{% endif %}</strong>
                   {% endif %}
                 {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
-                · подобрано {{ row.picked_count }} / {{ row.needed_count }}
               </small>
+              {{ order_progress(row.picked_count, row.needed_count, row.get('transferred_count')) }}
             {% else %}
               <small>{{ row.age_hours|round|int }} ч с создания</small>
             {% endif %}

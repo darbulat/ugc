@@ -13,10 +13,12 @@ from fastapi.testclient import TestClient
 from playwright.sync_api import expect
 
 from tests.e2e.test_miniapp_design_system import screenshot
+from tests.integration.test_admin_order_worklist import worklist
 from ugc_bot.admin import app as admin_app
 from ugc_bot.admin.order_creators import creator_workspace
 
 pytestmark = [pytest.mark.e2e, pytest.mark.timeout(45)]
+__all__ = ["worklist"]
 ORDER_ID = str(UUID(int=900))
 BASE = "http://workspace.test"
 
@@ -38,8 +40,12 @@ def snapshot():
                 dict(
                     blogger_id=str(cid),
                     name=name,
-                    instagram=contact["instagram"],
-                    telegram=contact["telegram"],
+                    instagram="https://www.instagram.com/synthetic_author_1/"
+                    if i == 1
+                    else contact["instagram"],
+                    telegram="@synthetic_author_1"
+                    if i == 1
+                    else contact["telegram"],
                     in_offer=i <= 10,
                     accepted=True,
                     responded_at=at,
@@ -226,6 +232,11 @@ def test_one_creator_table_preserves_filters_and_contacts_during_refresh(
             path=str(Path(directory) / "order-workspace-overview.png")
         )
 
+    search = page.get_by_label("Найти креатора")
+    search.fill("https://www.instagram.com/synthetic_author_1/")
+    expect(page.locator("[data-creator-row]:visible")).to_have_count(1)
+    search.fill("")
+
     page.locator('[data-creator-filter="reserve"]').click()
     expect(page.locator("[data-creator-row]:visible")).to_have_count(6)
     expect(
@@ -293,6 +304,17 @@ def test_one_creator_table_preserves_filters_and_contacts_during_refresh(
     )
     row.locator("summary").click()
     expect(row).to_contain_text("Тестовый контакт 1")
+    expect(
+        row.locator('a[aria-label="Instagram @synthetic_author_1"]')
+    ).to_have_count(1)
+    expect(
+        row.locator('a[aria-label="Telegram @synthetic_author_1"]')
+    ).to_have_count(1)
+    expect(row).not_to_contain_text("Изменения в текущем профиле")
+    if directory := os.environ.get("UMC_UI_SCREENSHOTS"):
+        row.screenshot(
+            path=str(Path(directory) / "creator-details-without-duplicates.png")
+        )
     assert all("send-to-customer" not in path for path in requests)
 
     page.set_viewport_size({"width": 390, "height": 844})
@@ -319,3 +341,80 @@ def test_unfinished_payment_remains_actionable(page, monkeypatch, state, text):
         expect(
             page.get_by_role("button", name="Скопировать ссылку", exact=True)
         ).to_be_visible()
+
+
+def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
+    from sqlalchemy.orm import Session
+
+    from ugc_bot.infrastructure.db.models import OrderModel
+
+    client, engine, ids = worklist
+    oid = ids["Financial example"]
+    with Session(engine) as db, db.begin():
+        order = db.get(OrderModel, oid)
+        order.offer_text = "ReBody · тестовая карточка"
+        order.geography = "Россия"
+        order.bloggers_needed = 10
+    original = admin_app.worklist_row_details
+    plan = {"picked": 10, "transferred_count": 15}
+
+    def details(*args):
+        result = original(*args)
+        if oid in result:
+            result[oid].update(plan)
+        return result
+
+    monkeypatch.setattr(admin_app, "worklist_row_details", details)
+    client.post(
+        "/admin/login",
+        data={"username": "test_admin", "password": "test_pass"},
+        follow_redirects=False,
+    )
+    base = "http://testserver"
+
+    def bridge(route):
+        request = route.request
+        if not request.url.startswith(base + "/"):
+            route.abort()
+            return
+        assert request.method == "GET"
+        response = client.get(request.url, follow_redirects=False)
+        route.fulfill(
+            status=response.status_code,
+            headers=dict(response.headers),
+            body=response.content,
+        )
+
+    page.route("**/*", bridge)
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.goto(
+        base + "/admin/order-model/list?group=all&search=тестовая+карточка"
+    )
+    progress = page.locator("[data-order-progress]")
+    expect(progress).to_have_count(1)
+    expect(progress.locator("strong")).to_have_text("15 / 10")
+    expect(progress.locator(".order-progress__extra")).to_have_text("+5")
+    expect(progress.get_by_role("progressbar")).to_have_attribute(
+        "aria-valuenow", "100"
+    )
+    expect(progress).to_contain_text("По плану 10 / 10")
+    screenshot(page, "order-list-delivered-progress")
+    if directory := os.environ.get("UMC_UI_SCREENSHOTS"):
+        progress.screenshot(
+            path=str(Path(directory) / "order-list-progress-cell.png")
+        )
+    plan["picked"] = 9
+    page.reload()
+    expect(progress.get_by_role("progressbar")).to_have_attribute(
+        "aria-valuenow", "90"
+    )
+    expect(progress).to_contain_text("Осталось 1")
+    page.goto(base + f"/admin/order-review?order_id={oid}&stage=all")
+    scope = page.get_by_text("Выбран один заказ", exact=True)
+    button = page.get_by_role("link", name="Все ответственные", exact=True)
+    sb, bb = scope.bounding_box(), button.bounding_box()
+    assert abs((sb["y"] + sb["height"] / 2) - (bb["y"] + bb["height"] / 2)) < 2
+    screenshot(page, "position-queue-aligned-scope")
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(scope).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

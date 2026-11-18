@@ -1,0 +1,18 @@
+{% macro order_progress(picked, needed, transferred=none, compact=false) -%}
+{% if picked is not defined or needed is not defined %}<span class="order-progress__label">—</span>{% else %}
+{% set picked = picked|int %}
+{% set needed = needed|int %}
+{% set extra = [transferred - needed, 0]|max if transferred is not none else 0 %}
+{% set percent = [100, [0, picked * 100 / needed]|max]|min if needed > 0 else 0 %}
+<div class="order-progress" data-order-progress>
+  <span class="order-progress__label">{{ 'Передано' if transferred is not none else 'Подобрано' }}</span>
+  <div class="order-progress__line">
+    <strong><span{% if extra %} class="order-progress__over"{% endif %}>{{ transferred if transferred is not none else picked }}</span> / {{ needed }}</strong>
+    {% if extra %}<span class="order-progress__extra" title="{{ extra }} сверх плана" aria-label="{{ extra }} сверх плана">+{{ extra }}{% if not compact %} сверх плана{% endif %}</span>{% endif %}
+  </div>
+  <div class="order-progress__bar" role="progressbar" aria-label="Подбор мест по плану" aria-valuenow="{{ percent|round|int }}" aria-valuemin="0" aria-valuemax="100" title="Подобрано по плану {{ picked }} из {{ needed }}"><span style="width: {{ percent|round|int }}%"></span></div>
+  {% if transferred is not none and transferred != picked %}<small class="order-progress__note">По плану {{ picked }} / {{ needed }}</small>{% endif %}
+  {% if picked < needed %}<small class="order-progress__note">Осталось{{ ' подобрать' if not compact else '' }} {{ needed - picked }}</small>{% endif %}
+</div>
+{% endif %}
+{%- endmacro %}
