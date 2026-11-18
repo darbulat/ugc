@@ -281,9 +281,7 @@ def load_config(path: Path) -> dict[str, Any]:
     if len(set(names)) != len(names):
         raise ValueError("duplicate_probe_names")
     username = config.get("bot_username", "")
-    if not re.fullmatch(
-        r"[A-Za-z0-9_]{5,64}", username
-    ) or not username.lower().endswith("bot"):
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,64}", username):
         raise ValueError("dedicated_bot_username_required")
     if not re.fullmatch(r"-100[0-9]{5,}", str(config.get("chat_id", ""))):
         raise ValueError("channel_or_supergroup_id_required")
@@ -316,6 +314,8 @@ def validate_recipient(
     token: str, chat_id: str, expected_bot: str | None = None
 ) -> None:
     identity = telegram(token, "getMe", {})
+    if identity.get("is_bot") is not True:
+        raise ValueError("bot_identity_required")
     if (
         expected_bot
         and identity.get("username", "").lower() != expected_bot.lower()
