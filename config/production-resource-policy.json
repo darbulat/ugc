@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "minimum_host_reserve_mib": 3584,
+  "peak_headroom_percent": 140,
+  "logging": {"driver": "json-file", "options": {"max-size": "20m", "max-file": "5"}},
+  "services": {
+    "instagram_stats_collector_scheduler": {"memory_mib": 384, "cpus": 0.75, "pids": 256},
+    "instagram_stats_scheduler": {"memory_mib": 384, "cpus": 0.75, "pids": 256},
+    "certbot": {"memory_mib": 128, "cpus": 0.25, "pids": 64},
+    "db_backup": {"memory_mib": 1024, "cpus": 1, "pids": 128},
+    "kafka_consumer": {"memory_mib": 640, "cpus": 1, "pids": 256},
+    "outbox_processor": {"memory_mib": 384, "cpus": 1, "pids": 256},
+    "scheduler": {"memory_mib": 640, "cpus": 1, "pids": 256},
+    "app": {"memory_mib": 768, "cpus": 2, "pids": 256},
+    "app_2": {"memory_mib": 768, "cpus": 2, "pids": 256},
+    "admin": {"memory_mib": 768, "cpus": 1.5, "pids": 256},
+    "max_bot": {"memory_mib": 768, "cpus": 1.5, "pids": 256},
+    "instagram_webhook": {"memory_mib": 768, "cpus": 1.5, "pids": 256},
+    "pgbouncer": {"memory_mib": 128, "cpus": 0.5, "pids": 128},
+    "redis": {"memory_mib": 256, "cpus": 1, "pids": 128},
+    "zookeeper": {"memory_mib": 768, "cpus": 1, "pids": 256},
+    "kafka": {"memory_mib": 1536, "cpus": 1.5, "pids": 512},
+    "db": {"memory_mib": 2048, "cpus": 3, "pids": 256},
+    "nginx": {"memory_mib": 128, "cpus": 0.5, "pids": 128}
+  }
+}

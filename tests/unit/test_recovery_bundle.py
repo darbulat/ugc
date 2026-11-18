@@ -146,6 +146,8 @@ def test_bundle_plan_includes_configuration_assets_and_certificates(
         "order-images",
         "certificates",
         "operations/production_release.py",
+        "operations/apply_resource_policy.py",
+        "operations/production-resource-policy.json",
         "operations/backup_recovery.py",
         "operations/snapshot-environment.json",
         "operations/installed.json",

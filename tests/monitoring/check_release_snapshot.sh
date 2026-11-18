@@ -44,8 +44,16 @@ names = subprocess.check_output([
     'docker', 'ps', '-aq', '--filter',
     'label=com.docker.compose.project=' + os.environ['RELEASE_PROJECT'],
 ], text=True).split()
+# Limits changed through the daemon must survive stale Compose labels.
+subprocess.run([
+    'docker', 'update', '--memory', '64m', '--memory-swap', '64m',
+    '--cpus', '0.5', '--pids-limit', '64', names[0],
+], check=True, capture_output=True)
 containers = json.loads(subprocess.check_output(['docker', 'inspect', *names]))
 config = snapshot(containers)
+assert config['services']['app']['mem_limit'] == str(64 * 1024**2)
+assert config['services']['app']['cpus'] == 0.5
+assert config['services']['app']['pids_limit'] == 64
 assert config['services']['app']['environment']['SYNTHETIC_TOKEN'] == 'literal$value${HOME}$$'
 destination = Path(os.environ['RELEASE_FIXTURE']) / 'durable.json'
 try:
