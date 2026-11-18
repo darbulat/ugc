@@ -1,13 +1,15 @@
 """Protect archive boundaries, recovery chains and retention dependencies."""
 
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts")
+sys.path.insert(0, SCRIPTS)
 from pitr_store import (  # noqa: E402
     BASE_NAME,
     Store,
@@ -19,6 +21,20 @@ from pitr_store import (  # noqa: E402
     wal_filename,
     wal_number,
 )
+
+sys.path.pop(0)
+
+
+@pytest.fixture(autouse=True)
+def isolated_script_environment(monkeypatch):
+    monkeypatch.syspath_prepend(SCRIPTS)
+    previous = os.umask(0o077)
+    os.umask(previous)
+    try:
+        yield
+    finally:
+        os.umask(previous)
+
 
 RECIPIENT = "age1" + "q" * 58
 SYSTEM = "7598122211340197923"

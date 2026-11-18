@@ -1,15 +1,30 @@
 """Regression checks for production and reserve isolation boundaries."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
+SCRIPTS = str(Path(__file__).resolve().parents[2] / "scripts")
+sys.path.insert(0, SCRIPTS)
 import pitr_operator as operator  # noqa: E402
 import pitr_primary as primary  # noqa: E402
 from pitr_receiver import load_config  # noqa: E402
+
+sys.path.pop(0)
+
+
+@pytest.fixture(autouse=True)
+def isolated_script_environment(monkeypatch):
+    monkeypatch.syspath_prepend(SCRIPTS)
+    previous = os.umask(0o077)
+    os.umask(previous)
+    try:
+        yield
+    finally:
+        os.umask(previous)
 
 
 def preflight():
