@@ -684,7 +684,8 @@ def test_order_worklist_search_hide_and_restore(
     audience_requests = []
     audience_path = f"**/admin/api/orders/{order_id}/audience*"
     page.route(audience_path, lambda route: audience_requests.append(route))
-    row.get_by_role("link", name="Редактировать", exact=True).click()
+    with page.expect_request(audience_path):
+        row.get_by_role("link", name="Редактировать", exact=True).click()
     expect(page.get_by_role("heading", name="Бриф заказа")).to_be_visible()
     expect(page.locator("#order-audience-saved-caption")).to_have_text(
         "Считаем выборку…"

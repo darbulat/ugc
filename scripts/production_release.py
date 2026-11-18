@@ -231,14 +231,15 @@ def webhook_on_peer(service):
 import asyncio
 from aiogram import Bot
 from ugc_bot.config import load_config
+from ugc_bot.telegram_webhook_app import _set_webhook_with_retry
 async def main():
     config = load_config()
     expected = config.webhook.webhook_base_url.rstrip('/') + '/webhook/telegram'
     async with Bot(token=config.bot.bot_token) as bot:
         info = await bot.get_webhook_info()
         if not info.url:
-            await bot.set_webhook(
-                expected, secret_token=config.webhook.webhook_secret.strip()
+            await _set_webhook_with_retry(
+                bot, expected, config.webhook.webhook_secret.strip()
             )
             info = await bot.get_webhook_info()
         if info.url != expected:
