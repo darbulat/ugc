@@ -800,7 +800,8 @@ class AdminDashboardService:
             if session.get_bind().dialect.name == "postgresql":
                 await session.execute(
                     text(
-                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, "
+                        "READ ONLY"
                     )
                 )
             activity = await load_order_offer_activity(session, order_id)
