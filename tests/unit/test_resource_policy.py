@@ -216,3 +216,50 @@ def test_snapshot_pins_docker_update_over_stale_compose(policy_module):
         "reservations": {"devices": [{"capabilities": ["gpu"]}]}
     }
     assert "mem_reservation" not in settings
+
+
+def test_rotation_only_replaces_app_replicas_with_their_own_images(
+    policy_module,
+    monkeypatch,
+    tmp_path,
+    policy,
+):
+    containers = {s: container() for s in policy_module.SERVICES}
+    for service, current in containers.items():
+        current["Image"] = "sha256:" + service
+    snapshot = {
+        "services": {s: {"image": c["Image"]} for s, c in containers.items()}
+    }
+    writes = []
+    calls = []
+    monkeypatch.setattr(
+        policy_module.release,
+        "write_snapshot",
+        lambda path, value: writes.append(copy.deepcopy(value)),
+    )
+    monkeypatch.setattr(
+        policy_module.release,
+        "deploy_services",
+        lambda *args: calls.append(args),
+    )
+    policy_module.rotate_replicas(
+        tmp_path, containers, snapshot, policy["logging"]
+    )
+    assert [call[1] for call in calls] == [["app"], ["app_2"]]
+    assert [call[3] for call in calls] == ["sha256:app", "sha256:app_2"]
+    for service in policy_module.SERVICES - {"app", "app_2"}:
+        assert writes[0]["services"][service] == snapshot["services"][service]
+    assert "logging" not in snapshot["services"]["app"]
+
+
+def test_unverified_snapshot_cannot_advance_current_pointer(
+    policy_module,
+    policy,
+    tmp_path,
+):
+    (tmp_path / "compose.json").write_text(
+        json.dumps({"services": {"app": {}}})
+    )
+    with pytest.raises(RuntimeError, match="differ"):
+        policy_module.publish(tmp_path, {"services": {}}, policy, "apply")
+    assert not (tmp_path / "policy-operation.json").exists()

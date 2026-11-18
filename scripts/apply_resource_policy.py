@@ -304,6 +304,11 @@ def rotate_replicas(directory, containers, snapshot, logging):
 def publish(directory, snapshot, policy, mode):
     if not (directory / "compose.json").exists():
         release.write_snapshot(directory / "compose.json", snapshot)
+    saved = release.normalized_services(
+        json.loads((directory / "compose.json").read_text())
+    )
+    if saved != snapshot["services"]:
+        raise RuntimeError("Verified settings differ from prepared snapshot")
     pending = copy.deepcopy(snapshot)
     for service in SERVICES:
         pending["services"][service]["logging"] = policy["logging"]
