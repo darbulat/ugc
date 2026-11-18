@@ -5,7 +5,16 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, cast
 from uuid import UUID
 
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import (
+    CursorResult,
+    and_,
+    case,
+    exists,
+    func,
+    or_,
+    select,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ugc_bot.application.legacy_link_ports import LegacySqlParticipant
@@ -19,9 +28,12 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
 )
 from ugc_bot.domain.enums import MessengerType
+from ugc_bot.infrastructure.db.instagram_maintenance_models import HEALTH
 from ugc_bot.infrastructure.db.models import (
+    BloggerProfileModel,
     InstagramStatsModel,
     InstagramVerificationCodeModel,
+    UserModel,
 )
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 
@@ -187,7 +199,33 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
                     InstagramStatsModel.user_id,
                     InstagramStatsModel.followers_count,
                     InstagramStatsModel.media_count,
-                ).where(InstagramStatsModel.user_id.in_(user_ids))
+                )
+                .outerjoin(
+                    BloggerProfileModel,
+                    BloggerProfileModel.user_id == InstagramStatsModel.user_id,
+                )
+                .outerjoin(
+                    HEALTH,
+                    and_(
+                        HEALTH.c.user_id == InstagramStatsModel.user_id,
+                        HEALTH.c.meta_id
+                        == BloggerProfileModel.instagram_user_id,
+                    ),
+                )
+                .where(
+                    InstagramStatsModel.user_id.in_(user_ids),
+                    or_(
+                        HEALTH.c.identity_since.is_(None),
+                        and_(
+                            HEALTH.c.metrics_observed_at
+                            >= HEALTH.c.identity_since,
+                            func.lower(InstagramStatsModel.instagram_username)
+                            == func.lower(
+                                BloggerProfileModel.instagram_username
+                            ),
+                        ),
+                    ),
+                )
             )
             return {
                 row.user_id: InstagramAudienceCounts(
@@ -203,6 +241,39 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
+            # Same User -> health -> stats order as ownership/profile writers.
+            await db_session.scalar(
+                select(UserModel.user_id)
+                .where(UserModel.user_id == stats.user_id)
+                .with_for_update(key_share=True)
+                .execution_options(autoflush=False)
+            )
+            matches_identity = exists().where(
+                BloggerProfileModel.user_id == stats.user_id,
+                BloggerProfileModel.instagram_user_id == HEALTH.c.meta_id,
+                func.lower(BloggerProfileModel.instagram_username)
+                == (stats.instagram_username or "").lower(),
+            )
+            await db_session.execute(
+                update(HEALTH)
+                .execution_options(autoflush=False)
+                .where(
+                    HEALTH.c.user_id == stats.user_id,
+                    HEALTH.c.identity_since.is_not(None),
+                )
+                .values(
+                    metrics_observed_at=case(
+                        (
+                            and_(
+                                HEALTH.c.identity_since <= stats.fetched_at,
+                                matches_identity,
+                            ),
+                            stats.fetched_at,
+                        ),
+                        else_=None,
+                    )
+                )
+            )
             model = _to_instagram_stats_model(stats)
             await db_session.merge(model)
 

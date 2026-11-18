@@ -24,6 +24,8 @@ def maintenance_tables(metadata: sa.MetaData) -> tuple[sa.Table, ...]:
         sa.Column("failure_count", sa.Integer(), nullable=False),
         instant("last_failure_at"),
         instant("last_success_at"),
+        instant("identity_since"),
+        instant("metrics_observed_at"),
         instant("checked_at", nullable=False),
         sa.Column("episode", sa.Uuid(), nullable=False),
         sa.CheckConstraint("status IN ('healthy', 'suspect', 'review')"),

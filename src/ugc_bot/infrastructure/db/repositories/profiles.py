@@ -8,7 +8,7 @@ from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
-from sqlalchemy import case, func, or_, select, text
+from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -22,6 +22,7 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile
 from ugc_bot.domain.enums import BloggerGender, MessengerType, WorkFormat
+from ugc_bot.domain.instagram_maintenance import FAILURE_SPACING
 from ugc_bot.domain.social import CreatorIdentityConflict
 from ugc_bot.infrastructure.db.identity_history_models import (
     IDENTITY_OBSERVATIONS,
@@ -359,13 +360,24 @@ class SqlAlchemyBloggerProfileRepository(
             )
             if stats_older_than is None:
                 fetched_at = BloggerProfileModel.instagram_stats_fetched_at
+                recheck_due = and_(
+                    HEALTH.c.status == "suspect",
+                    HEALTH.c.last_failure_at
+                    <= (datetime.now(timezone.utc) - FAILURE_SPACING),
+                )
                 stmt = (
                     select(BloggerProfileModel)
                     .outerjoin(
-                        HEALTH, HEALTH.c.user_id == BloggerProfileModel.user_id
+                        HEALTH,
+                        and_(
+                            HEALTH.c.user_id == BloggerProfileModel.user_id,
+                            HEALTH.c.meta_id
+                            == BloggerProfileModel.instagram_user_id,
+                        ),
                     )
                     .where(*base_conditions)
                     .order_by(
+                        case((recheck_due, 0), else_=1),
                         case(
                             (
                                 HEALTH.c.checked_at > fetched_at,

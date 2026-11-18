@@ -94,6 +94,8 @@ class SqlAlchemyInstagramMaintenanceRepository:
             failure_count=0,
             last_failure_at=None,
             last_success_at=None,
+            identity_since=None,
+            metrics_observed_at=None,
             checked_at=at,
             episode=uuid4(),
         )
@@ -232,6 +234,20 @@ class SqlAlchemyInstagramMaintenanceRepository:
         health = await self._health(profile, at, db)
         if previous is not None:
             health["handle"] = previous["handle"]
+        identity_changed = bool(
+            previous is not None
+            and (
+                previous["meta_id"] != profile.instagram_user_id
+                or previous["identity_context"] != self.context
+            )
+        )
+        if previous_profile is not None and previous_profile.instagram_user_id:
+            identity_changed |= (
+                previous_profile.instagram_user_id != profile.instagram_user_id
+            )
+        if identity_changed:
+            health["identity_since"] = at
+            health["metrics_observed_at"] = None
         _, handle = normalize_social_url(
             SocialPlatform.INSTAGRAM, profile.instagram_url
         )

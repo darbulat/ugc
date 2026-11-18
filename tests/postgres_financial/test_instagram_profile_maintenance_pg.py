@@ -29,6 +29,7 @@ from ugc_bot.application.services.instagram_verification_service import (
 from ugc_bot.application.services.social_account_service import (
     instagram_account,
 )
+from ugc_bot.domain.entities import InstagramStats
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.instagram_maintenance_models import (
     HEALTH,
@@ -42,6 +43,7 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.repositories.instagram import (
+    SqlAlchemyInstagramStatsRepository,
     SqlAlchemyInstagramVerificationRepository,
 )
 from ugc_bot.infrastructure.db.repositories.instagram_maintenance import (
@@ -382,6 +384,86 @@ async def test_nontransactional_observer_rejected(runtime):
     _, profile, repo, _, _, _, _ = runtime
     with pytest.raises(ValueError, match="transaction_required"):
         await repo.observe(profile, None, NOW, error="100/33", session=object())
+
+
+@pytest.mark.asyncio
+async def test_suspect_gets_next_scheduled_recheck_without_extra_collection(
+    runtime,
+):
+    owner, profile, _, service, tx, profiles, _ = runtime
+    await service.observe(
+        profile,
+        None,
+        datetime.now(timezone.utc) - timedelta(hours=7),
+        error="100/33",
+    )
+    async with tx.transaction() as db:
+        batch = await profiles.list_confirmed_with_instagram_id(1, session=db)
+    assert [p.user_id for p in batch] == [owner]
+
+
+@pytest.mark.asyncio
+async def test_old_statistics_stay_stored_but_leave_new_identity_filters(
+    runtime,
+):
+    owner, profile, _, maintenance, tx, profiles, sessions = runtime
+    stats_repo = SqlAlchemyInstagramStatsRepository(sessions)
+    old_stats = InstagramStats(
+        user_id=owner,
+        raw_response={"id": "public_native_id"},
+        fetched_at=NOW - timedelta(days=1),
+        followers_count=9999,
+        media_count=999,
+        instagram_username="old_handle",
+    )
+    async with tx.transaction() as db:
+        await stats_repo.save(old_stats, session=db)
+        assert owner in await stats_repo.get_audience_counts(
+            [owner], session=db
+        )
+    handle = "new" + owner.hex[:12]
+    confirmed = replace(
+        profile,
+        instagram_user_id="newscoped" + owner.hex,
+        instagram_username=handle,
+        instagram_followers_count=None,
+        instagram_url=f"https://instagram.com/{handle}",
+    )
+    async with tx.transaction() as db:
+        await profiles.save(confirmed, session=db)
+        await maintenance.verified(
+            confirmed, NOW, previous_profile=profile, session=db
+        )
+        assert await stats_repo.get_audience_counts([owner], session=db) == {}
+        stored = await stats_repo.get_by_user_id(owner, session=db)
+        assert stored.raw_response == old_stats.raw_response
+        # A late response for the old handle still cannot become new evidence.
+        await stats_repo.save(
+            replace(old_stats, fetched_at=NOW + timedelta(minutes=1)),
+            session=db,
+        )
+        assert await stats_repo.get_audience_counts([owner], session=db) == {}
+        await stats_repo.save(
+            replace(
+                old_stats,
+                instagram_username=handle,
+                fetched_at=NOW + timedelta(minutes=2),
+                followers_count=81,
+                media_count=7,
+            ),
+            session=db,
+        )
+        current = await stats_repo.get_audience_counts([owner], session=db)
+        assert current[owner].followers_count == 81
+        assert current[owner].media_count == 7
+        # Attempt time after a failed request is not new metric evidence.
+        await stats_repo.save(
+            replace(old_stats, instagram_username=handle), session=db
+        )
+        await stats_repo.touch_fetched_at(
+            owner, NOW + timedelta(minutes=3), session=db
+        )
+        assert await stats_repo.get_audience_counts([owner], session=db) == {}
 
 
 @pytest.mark.asyncio
