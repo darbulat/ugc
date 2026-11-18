@@ -372,6 +372,170 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
   text-underline-offset: 3px;
 }
 .umc-partner-rate { font-size: 3rem; font-weight: 700; line-height: 1; margin-block: 0.75rem; }
+.umc-partner-level {
+  gap: var(--space-16);
+  margin-block: var(--space-12) var(--space-20);
+  padding: var(--space-20);
+}
+.umc-partner-level {
+  display: grid;
+  gap: var(--space-16);
+}
+.screen .umc-partner-level-label,
+#screen-partner .umc-partner-level-label {
+  margin: 0 0 var(--space-6);
+  color: var(--on-pastel-muted);
+  font: 600 13px/1.4 var(--font-body);
+}
+.umc-partner-level-name { margin: 0 0 var(--space-6); font-size: 42px; line-height: 1.1; }
+.umc-partner-level-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+.umc-partner-level-heading > div { min-width: 0; }
+.screen .umc-partner-level .umc-partner-level-label,
+#screen-partner .umc-partner-level .umc-partner-level-label {
+  margin: 0;
+  font: 500 13px/1.4 var(--font-body);
+  color: var(--on-pastel-muted);
+}
+.umc-partner-level .umc-partner-level-name {
+  margin: var(--space-6) 0;
+  font-size: 42px;
+  line-height: 1.05;
+}
+.umc-partner-level-count,
+.umc-partner-level-remaining,
+.umc-partner-level-endpoints {
+  margin: 0;
+  color: var(--on-pastel-muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.umc-partner-level-emblem {
+  display: grid;
+  place-items: center;
+  flex: 0 0 52px;
+  height: 60px;
+  color: var(--on-pastel);
+  background: var(--pastel-glass);
+  clip-path: polygon(50% 0, 100% 24%, 100% 76%, 50% 100%, 0 76%, 0 24%);
+  font-size: 27px;
+}
+.umc-partner-level-progress { display: grid; gap: var(--space-6); }
+.umc-partner-level-progress > p:first-child { margin: 0; font-weight: 600; }
+.umc-partner-level-track {
+  height: 8px;
+  margin-top: var(--space-6);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--pastel-glass);
+}
+.umc-partner-level-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--on-pastel);
+}
+.umc-partner-level-endpoints {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-6) var(--space-12);
+  font-size: 12px;
+}
+.umc-partner-level-rate {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--on-pastel-muted);
+}
+.umc-partner-level-rate .umc-partner-rate {
+  margin: 0;
+  font: 700 35px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.umc-partner-level-rate p { margin: 0; font-size: 12px; color: var(--on-pastel-muted); }
+.umc-partner-invite { display: grid; gap: var(--space-8); }
+.umc-partner-level .umc-partner-copy-status,
+.umc-partner-level-loading { margin: 0; color: var(--on-pastel-muted); font-size: 13px; }
+.umc-partner-level .umc-btn--ghost {
+  color: var(--on-pastel);
+  background: var(--pastel-glass);
+  border-color: transparent;
+  white-space: normal;
+  line-height: 1.4;
+}
+.umc-partner-level-rules { color: var(--on-pastel-muted); font-size: 12px; }
+.umc-partner-level-rules summary { min-height: 32px; cursor: pointer; }
+.umc-partner-level-rules p { margin: var(--space-8) 0 0; }
+.umc-partner-level--compact { gap: var(--space-12); }
+.umc-partner-level--compact .umc-partner-level-name { font-size: 30px; }
+.umc-partner-level--compact .umc-partner-level-emblem { flex-basis: 40px; height: 46px; font-size: 22px; }
+.umc-partner-level--compact .umc-partner-level-rate { padding-top: var(--space-8); }
+.umc-partner-level--compact .umc-partner-rate { font-size: 26px; }
+.umc-partner-achievements-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+#screen-partner .umc-partner-achievements-heading h2 { margin: 0; }
+.umc-partner-achievements-heading > span { color: var(--muted); font-size: 13px; }
+.umc-partner-achievements {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-12) var(--space-8);
+  margin: var(--space-16) 0;
+  padding: 0;
+  list-style: none;
+}
+.umc-partner-achievement {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-height: 80px;
+  padding: var(--space-6) 0;
+  border: 0;
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--muted);
+  font: 400 12px/1.4 var(--font-body);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.umc-partner-achievement-mark {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  font-size: 22px;
+}
+.umc-partner-achievement[data-achieved="true"] { color: var(--ink); }
+.umc-partner-achievement[data-achieved="true"] .umc-partner-achievement-mark {
+  background: var(--mint);
+  color: var(--on-pastel);
+}
+.umc-partner-achievement[aria-pressed="true"] .umc-partner-achievement-mark {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+.umc-partner-achievement-detail { margin: 0; color: var(--muted); font-size: 13px; }
+@media (max-width: 360px) {
+  .umc-partner-level { padding: var(--space-16); }
+  .umc-partner-level .umc-partner-level-name { font-size: 35px; }
+  .umc-partner-level--compact .umc-partner-level-name { font-size: 28px; }
+  .umc-partner-achievements { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 .umc-partner-notice { padding: 0.875rem; background: var(--card); border: 1px solid var(--line); border-radius: 0.75rem; }
 .umc-partner-notice:empty { display: none; }
 .umc-partner-row { border-top: 1px solid var(--line); padding-block: 1rem; }
