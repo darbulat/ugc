@@ -41,6 +41,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --locked
 
+      - name: Verify dynamically loaded code stays in coverage scope
+        run: uv run python tests/monitoring/check_coverage_scope.py
+
       - name: Run linters (format check, lint, typecheck)
         run: make format-check lint typecheck
 
@@ -150,7 +153,7 @@ jobs:
           --durations-path .test_durations
           --store-durations
           --clean-durations
-          --cov=ugc_bot
+          --cov=src/ugc_bot
           --cov-config=pyproject.toml
           --cov-fail-under=0
           --cov-report=
