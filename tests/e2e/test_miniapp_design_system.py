@@ -460,6 +460,46 @@ def test_native_click_after_screen_transition_uses_current_action(
     assert not errors
 
 
+@pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("has_creator_profile", [False, True])
+@pytest.mark.parametrize(
+    ("locale", "registration_title", "editing_title"),
+    [
+        ("ru", "Регистрация креатора", "Редактирование профиля"),
+        ("en", "Creator registration", "Edit profile"),
+        ("kk", "Креатордың тіркелуі", "Профильді өңдеу"),
+    ],
+)
+def test_creator_form_title_matches_its_own_profile(
+    page: Page,
+    platform: str,
+    has_creator_profile: bool,
+    locale: str,
+    registration_title: str,
+    editing_title: str,
+) -> None:
+    # The title depends on the creator profile, even for existing advertisers.
+    network = MiniAppNetwork(locale, registered=True)
+    network.blogger_registered = has_creator_profile
+    network.blogger_agreement_confirmed = True
+    network.blogger_city = "Saved city"
+    errors = open_app(page, network, platform, native=True)
+    expect(page.locator("#screen-advertiser-dashboard")).to_be_visible()
+    page.locator("#btn-change-role-from-adv").click()
+    page.locator('[data-role="blogger"]').click()
+    if has_creator_profile:
+        expect(page.locator("#screen-blogger-dashboard")).to_be_visible()
+        page.locator("#btn-blogger-update-profile").click()
+        expect(page.locator("#blg-city")).to_have_value("Saved city")
+    expect(page.locator("#screen-register-blogger h1")).to_have_text(
+        editing_title if has_creator_profile else registration_title
+    )
+    assert not any(
+        path.startswith("/register/") for path, _ in network.requests
+    )
+    assert not errors
+
+
 @pytest.mark.parametrize("locale", ["ru", "kk"])
 def test_creator_registration_city_search_and_empty_orders(
     page: Page, locale: str
