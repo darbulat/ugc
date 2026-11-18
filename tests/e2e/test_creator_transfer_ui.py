@@ -1,5 +1,6 @@
 """Customer sees every delivered author and can review supplemental work."""
 
+import re
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -54,7 +55,9 @@ class TransferNetwork(CustomerNetwork):
                             source="selection"
                             if index <= 10
                             else "counteroffer",
-                            requested_price=None if index <= 10 else 3500,
+                            requested_price=None
+                            if index <= 10
+                            else (4096.02 if index == 15 else 3500),
                             sent_at="2026-11-18T10:00:00Z",
                         )
                         for index in range(1, 16)
@@ -112,6 +115,11 @@ def test_customer_keeps_all_fifteen_contacts_and_can_review_extra_author(
     ).to_be_visible()
     expect(
         section.locator('a[href="https://t.me/synthetic_author_15"]')
+    ).to_be_visible()
+    expect(
+        section.locator("[data-delivered-creator]").last.get_by_text(
+            re.compile(r"4\s096,02\sруб\.")
+        )
     ).to_be_visible()
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"

@@ -294,7 +294,7 @@
       if(contact.telegram){var handle=/^(?:@)?([A-Za-z0-9_]{5,32})$/.exec(contact.telegram);if(handle){link(row,'https://t.me/'+handle[1],'Telegram · @'+handle[1]);row.lastElementChild.className='btn btn-secondary';}else row.appendChild(node('p',contact.telegram));}
       if(contact.phone)row.appendChild(node('p',contact.phone));
       row.appendChild(node('p',date(author.sent_at)));
-      if(author.requested_price!==null&&author.requested_price!==undefined)row.appendChild(node('p',money(Number(author.requested_price)*100,author.currency||'RUB')));
+      if(author.requested_price!==null&&author.requested_price!==undefined)row.appendChild(node('p',money(Math.round(Number(author.requested_price)*100),author.currency||'RUB')));
       if(author.source==='counteroffer')row.appendChild(node('p',copy[3]));
       list.appendChild(row);
     });
