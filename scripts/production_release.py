@@ -17,6 +17,11 @@ from pathlib import Path
 PROJECT = "ugc"
 PROJECT_DIRECTORY = "/opt/myapp/ugc"
 RELEASE_ROOT = Path("/opt/myapp/ugc-releases")
+SNAPSHOT_ENVIRONMENT = Path("/opt/myapp/ugc-ops/snapshot-environment.json")
+SNAPSHOT_KEYS = frozenset(
+    "META_TOKEN_MONITOR_" + suffix
+    for suffix in ("IMAGE", "SETTINGS_DIR", "STATE_DIR", "UID", "GID")
+)
 PORTS = {
     "app": 9999,
     "app_2": 9999,
@@ -110,6 +115,26 @@ def compose_environment(settings):
     return environment
 
 
+def load_snapshot_environment(path=None):
+    """Load only the configured host-side reconstruction parameters."""
+    source = path if path is not None else SNAPSHOT_ENVIRONMENT
+    if not source.exists() and path is None:
+        return
+    if source.stat().st_mode & 0o077:
+        raise ValueError("Snapshot environment file must be owner-only")
+    try:
+        values = json.loads(source.read_text())
+    except (OSError, ValueError):
+        raise ValueError("Could not read snapshot environment") from None
+    if (
+        not isinstance(values, dict)
+        or not values.keys() <= SNAPSHOT_KEYS
+        or not all(isinstance(value, str) for value in values.values())
+    ):
+        raise ValueError("Unexpected snapshot environment parameter")
+    os.environ.update(values)
+
+
 def rollout_environment(model, service, files, live):
     """Resolve the placeholder scheme used by previous production rollouts."""
     placeholders = re.compile(r"(?<!\$)\$\{(UGC_ROLLOUT_[A-Z0-9_]+)[^}]*\}")
@@ -193,9 +218,36 @@ def pin_runtime(settings, current):
     return settings
 
 
+def pin_networks(settings, definitions, current, verified):
+    """Reference the networks already attached to this exact container."""
+    if settings.get("network_mode"):
+        return {}
+    attached = current["NetworkSettings"]["Networks"]
+    references = {}
+    names = set()
+    for key in settings.get("networks", {}):
+        name = definitions.get(key, {}).get("name")
+        membership = attached.get(name, {})
+        if not name or not membership.get("NetworkID"):
+            raise RuntimeError("Compose network has no matching live network")
+        if name not in verified:
+            network = inspect(name, "network")
+            if network["Name"] != name or not network.get("Id"):
+                raise RuntimeError("Network identity unavailable")
+            verified[name] = network["Id"]
+        if verified[name] != membership["NetworkID"]:
+            raise RuntimeError("Network identity mismatch")
+        references[key] = {"name": name, "external": True}
+        names.add(name)
+    if names != set(attached):
+        raise RuntimeError("Unrepresented live network membership")
+    return references
+
+
 def live_snapshot(containers):
     """Resolve each service with its live environment and immutable image."""
     combined = {"name": PROJECT, "services": {}}
+    verified_networks = {}
     for current in containers:
         labels = current["Config"]["Labels"]
         if labels.get("com.docker.compose.oneoff") == "True":
@@ -224,7 +276,12 @@ def live_snapshot(containers):
             )
         )
         settings = pin_runtime(resolved["services"][service], current)
+        if service in combined["services"]:
+            raise RuntimeError("Ambiguous live service identity")
         combined["services"][service] = settings
+        resolved["networks"] = pin_networks(
+            settings, resolved.get("networks", {}), current, verified_networks
+        )
         for section in ("volumes", "networks", "configs", "secrets"):
             for name, item in resolved.get(section, {}).items():
                 existing = combined.setdefault(section, {})
@@ -232,6 +289,21 @@ def live_snapshot(containers):
                     raise RuntimeError(f"Conflicting {section} configuration")
                 existing[name] = item
     return combined
+
+
+def live_containers():
+    names = checked(
+        [
+            "docker",
+            "ps",
+            "-aq",
+            "--filter",
+            "label=com.docker.compose.project=" + PROJECT,
+        ]
+    ).split()
+    if not names:
+        raise RuntimeError("No live Compose project containers")
+    return json.loads(checked(["docker", "container", "inspect", *names]))
 
 
 def verify_archive(directory):
@@ -255,7 +327,7 @@ def verify_archive(directory):
 def wait_ready(service, image_id, timeout=150):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        current = inspect(f"ugc-{service}-1")
+        current = inspect(f"{PROJECT}-{service}-1")
         state = current["State"]
         if (
             current["Image"] == image_id
@@ -463,6 +535,12 @@ def runtime_signature(container):
             for item in container["Mounts"]
         ),
         "networks": sorted(container["NetworkSettings"]["Networks"]),
+        "network_ids": {
+            name: network.get("NetworkID")
+            for name, network in container["NetworkSettings"][
+                "Networks"
+            ].items()
+        },
     }
     # Docker represents the same unlimited settings as null, zero or -1.
     values = signature["host"]
@@ -569,16 +647,7 @@ def release(directory, services):
     if result.returncode:
         raise RuntimeError("CI image could not be loaded")
     image = loaded_ci_image(directory, manifest)
-    names = checked(
-        [
-            "docker",
-            "ps",
-            "-aq",
-            "--filter",
-            "label=com.docker.compose.project=" + PROJECT,
-        ]
-    ).split()
-    containers = json.loads(checked(["docker", "container", "inspect", *names]))
+    containers = live_containers()
     previous = {
         x["Config"]["Labels"]["com.docker.compose.service"]: {
             "image_id": x["Image"],
@@ -631,18 +700,35 @@ def release(directory, services):
     print(f"Release {revision} verified", flush=True)
 
 
+def check_release(directory, services):
+    """Validate the normal snapshot path without replacing a container."""
+    verify_archive(directory)
+    snapshot = live_snapshot(live_containers())
+    for service in services:
+        wait_ready(service, snapshot["services"][service]["image"])
+    with tempfile.TemporaryDirectory(prefix="ugc-release-check-") as temporary:
+        write_snapshot(Path(temporary) / "compose.json", snapshot)
+    print(
+        "Verified release configuration for " + ", ".join(services), flush=True
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("services", nargs="+", choices=tuple(PORTS))
+    parser.add_argument("--snapshot-environment", type=Path)
+    parser.add_argument("--check-only", action="store_true")
     args = parser.parse_args()
     if len(args.services) != len(set(args.services)):
         parser.error("Services must be unique")
     ordered = [service for service in PORTS if service in args.services]
     os.umask(0o077)
+    load_snapshot_environment(args.snapshot_environment)
     with open_lock("/tmp/ugc-production-deploy.lock") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        release(args.directory.resolve(strict=True), ordered)
+        operation = check_release if args.check_only else release
+        operation(args.directory.resolve(strict=True), ordered)
 
 
 if __name__ == "__main__":

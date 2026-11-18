@@ -188,9 +188,9 @@ class PartnerNetwork(MiniAppNetwork):
                     "locale": self.locale,
                     "country": "ru",
                     "currency_symbol": "₽",
-                    "has_advertiser_profile": True,
-                    "has_blogger_profile": False,
-                    "is_manager": False,
+                    "has_advertiser_profile": self.registered,
+                    "has_blogger_profile": self.blogger_registered,
+                    "is_manager": self.manager,
                 }
             )
             return

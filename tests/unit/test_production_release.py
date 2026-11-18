@@ -8,6 +8,7 @@ import json
 import os
 import runpy
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -407,6 +408,320 @@ def test_old_rollout_unresolved_placeholder_blocks_release(
     model = {"services": {"app": {"environment": {}}}}
     with pytest.raises(RuntimeError, match="Unresolved"):
         release_module["rollout_environment"](model, "app", [source], {})
+
+
+@pytest.fixture
+def network_snapshots(release_module, tmp_path, monkeypatch):
+    snapshot = release_module["live_snapshot"]
+    models, containers, inspected = {}, [], []
+    identities = {"ugc_default": "network-1", "other_default": "network-2"}
+    for service, definition in (
+        ("app", {"name": "ugc_default", "driver": "bridge", "ipam": {}}),
+        ("worker", {"name": "ugc_default", "external": True, "ipam": {}}),
+    ):
+        source = tmp_path / (service + ".json")
+        source.write_text("{}")
+        models[str(source)] = {
+            "services": {
+                service: {
+                    "image": "unchanged-" + service,
+                    "networks": {"default": {"aliases": [service + "-alias"]}},
+                }
+            },
+            "networks": {"default": definition},
+        }
+        containers.append(
+            {
+                "Config": {
+                    "Env": [],
+                    "Labels": {
+                        "com.docker.compose.service": service,
+                        "com.docker.compose.project.config_files": str(source),
+                    },
+                },
+                "NetworkSettings": {
+                    "Networks": {"ugc_default": {"NetworkID": "network-1"}}
+                },
+            }
+        )
+
+    def inspect_network(name, kind):
+        assert kind == "network"
+        inspected.append(name)
+        return {"Name": name, "Id": identities[name]}
+
+    monkeypatch.setitem(snapshot.__globals__, "inspect", inspect_network)
+    monkeypatch.setitem(
+        snapshot.__globals__,
+        "checked",
+        lambda command, **kwargs: json.dumps(
+            models[command[command.index("-f") + 1]]
+        ),
+    )
+    monkeypatch.setitem(
+        snapshot.__globals__, "pin_runtime", lambda settings, _: settings
+    )
+    return snapshot, containers, models, inspected
+
+
+def test_mixed_network_descriptions_pin_the_same_existing_identity(
+    network_snapshots,
+):
+    snapshot, containers, models, inspected = network_snapshots
+    original = copy.deepcopy(models)
+    result = snapshot(containers)
+    assert result["networks"] == {
+        "default": {"name": "ugc_default", "external": True}
+    }
+    assert result["services"]["worker"]["networks"]["default"]["aliases"] == [
+        "worker-alias"
+    ]
+    assert inspected == ["ugc_default"]
+    assert models == original
+
+
+def test_unused_network_definitions_do_not_block_or_create_resources(
+    network_snapshots,
+):
+    snapshot, containers, models, inspected = network_snapshots
+    for index, model in enumerate(models.values()):
+        model["networks"]["unused"] = {"name": f"missing-{index}"}
+    assert set(snapshot(containers)["networks"]) == {"default"}
+    assert inspected == ["ugc_default"]
+
+
+@pytest.mark.parametrize(
+    "failure", ["wrong_id", "missing", "extra", "different"]
+)
+def test_genuine_network_identity_conflicts_still_block_release(
+    network_snapshots, failure
+):
+    snapshot, containers, models, _ = network_snapshots
+    attached = containers[1]["NetworkSettings"]["Networks"]
+    worker = list(models.values())[1]
+    if failure == "wrong_id":
+        attached["ugc_default"]["NetworkID"] = "recreated-network"
+    elif failure == "missing":
+        attached.clear()
+    elif failure == "extra":
+        attached["unexpected"] = {"NetworkID": "extra-network"}
+    else:
+        worker["networks"]["default"]["name"] = "other_default"
+        attached.clear()
+        attached["other_default"] = {"NetworkID": "network-2"}
+    with pytest.raises(RuntimeError, match="[Nn]etwork"):
+        snapshot(containers)
+
+
+def test_other_shared_resource_conflicts_are_not_normalized(network_snapshots):
+    snapshot, containers, models, _ = network_snapshots
+    for index, model in enumerate(models.values()):
+        model["volumes"] = {"data": {"name": f"different-{index}"}}
+    with pytest.raises(RuntimeError, match="Conflicting volumes"):
+        snapshot(containers)
+
+
+def test_duplicate_service_identity_is_rejected(network_snapshots):
+    snapshot, containers, _, _ = network_snapshots
+    with pytest.raises(RuntimeError, match="Ambiguous live service"):
+        snapshot([containers[0], containers[0]])
+
+
+@pytest.mark.parametrize("mode", ["host", "none"])
+def test_network_mode_does_not_import_unused_bridge_definitions(
+    network_snapshots, mode
+):
+    snapshot, containers, models, inspected = network_snapshots
+    model = next(iter(models.values()))
+    settings = model["services"]["app"]
+    settings.pop("networks")
+    settings["network_mode"] = mode
+    result = snapshot([containers[0]])
+    assert result["services"]["app"]["network_mode"] == mode
+    assert not result.get("networks")
+    assert inspected == []
+
+
+def test_snapshot_environment_loads_only_host_reconstruction_parameters(
+    release_module, tmp_path, monkeypatch
+):
+    source = tmp_path / "snapshot-environment.json"
+    source.write_text(
+        json.dumps({"META_TOKEN_MONITOR_IMAGE": "verified:image"})
+    )
+    source.chmod(0o600)
+    load = release_module["load_snapshot_environment"]
+    monkeypatch.setitem(load.__globals__, "SNAPSHOT_ENVIRONMENT", source)
+    monkeypatch.setenv("META_TOKEN_MONITOR_IMAGE", "old")
+    monkeypatch.delenv("META_TOKEN_MONITOR_IMAGE")
+    monkeypatch.setenv("BOT_TOKEN", "unchanged")
+    load()
+    assert os.environ["META_TOKEN_MONITOR_IMAGE"] == "verified:image"
+    assert os.environ["BOT_TOKEN"] == "unchanged"
+    monkeypatch.delenv("META_TOKEN_MONITOR_IMAGE")
+    load(source)
+    assert os.environ["META_TOKEN_MONITOR_IMAGE"] == "verified:image"
+
+
+@pytest.mark.parametrize(
+    "values", [{"BOT_TOKEN": "private"}, [], {"META_TOKEN_MONITOR_UID": 1000}]
+)
+def test_invalid_reconstruction_parameters_are_rejected_without_values(
+    release_module, tmp_path, values
+):
+    source = tmp_path / "snapshot-environment.json"
+    source.write_text(json.dumps(values))
+    source.chmod(0o600)
+    with pytest.raises(
+        ValueError, match="Unexpected snapshot environment"
+    ) as exc:
+        release_module["load_snapshot_environment"](source)
+    assert "private" not in str(exc.value)
+
+
+def test_snapshot_environment_requires_private_permissions(
+    release_module, tmp_path
+):
+    source = tmp_path / "snapshot-environment.json"
+    source.write_text("{}")
+    source.chmod(0o644)
+    with pytest.raises(ValueError, match="owner-only"):
+        release_module["load_snapshot_environment"](source)
+
+
+def test_default_snapshot_parameters_are_optional_but_explicit_path_is_required(
+    release_module, tmp_path, monkeypatch
+):
+    load = release_module["load_snapshot_environment"]
+    source = tmp_path / "missing.json"
+    monkeypatch.setitem(load.__globals__, "SNAPSHOT_ENVIRONMENT", source)
+    load()
+    with pytest.raises(FileNotFoundError):
+        load(source)
+
+
+def test_malformed_snapshot_parameters_do_not_expose_contents(
+    release_module, tmp_path
+):
+    source = tmp_path / "snapshot-environment.json"
+    source.write_text('{"META_TOKEN_MONITOR_IMAGE":"private"')
+    source.chmod(0o600)
+    with pytest.raises(ValueError, match="Could not read") as exc:
+        release_module["load_snapshot_environment"](source)
+    assert "private" not in str(exc.value)
+
+
+def test_check_only_validates_and_removes_its_private_snapshot(
+    release_module, tmp_path, monkeypatch
+):
+    check = release_module["check_release"]
+    globals_ = check.__globals__
+    snapshot = {"services": {"app": {"image": "unchanged"}}}
+    commands, files, readiness = [], [], []
+    monkeypatch.setitem(globals_, "verify_archive", lambda _: {})
+    monkeypatch.setitem(globals_, "live_containers", lambda: [])
+    monkeypatch.setitem(globals_, "live_snapshot", lambda _: snapshot)
+    monkeypatch.setitem(
+        globals_, "wait_ready", lambda *args: readiness.append(args)
+    )
+
+    def checked(command, **kwargs):
+        commands.append(command)
+        return json.dumps(snapshot)
+
+    write = globals_["write_snapshot"]
+
+    def record_write(path, settings):
+        write(path, settings)
+        files.append(path)
+        assert path.stat().st_mode & 0o777 == 0o600
+        assert path.parent.stat().st_mode & 0o777 == 0o700
+
+    monkeypatch.setitem(globals_, "checked", checked)
+    monkeypatch.setitem(globals_, "write_snapshot", record_write)
+    check(tmp_path, ["app"])
+    assert readiness == [("app", "unchanged")]
+    assert len(commands) == 1 and "config" in commands[0]
+    assert files and not files[0].parent.exists()
+
+
+def test_check_only_cli_loads_parameters_without_running_release(
+    release_module, tmp_path, monkeypatch
+):
+    main = release_module["main"]
+    calls = []
+    source = tmp_path / "parameters.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "production_release.py",
+            str(tmp_path),
+            "app",
+            "--check-only",
+            "--snapshot-environment",
+            str(source),
+        ],
+    )
+    monkeypatch.setitem(
+        main.__globals__,
+        "load_snapshot_environment",
+        lambda path: calls.append(("parameters", path)),
+    )
+    monkeypatch.setitem(
+        main.__globals__,
+        "check_release",
+        lambda directory, services: calls.append(
+            ("check", directory, services)
+        ),
+    )
+    monkeypatch.setitem(
+        main.__globals__, "open_lock", lambda _: (tmp_path / "lock").open("w+")
+    )
+    monkeypatch.setattr(os, "umask", lambda _: 0)
+
+    def unexpected_release(*args):
+        raise AssertionError("Check-only must not release")
+
+    monkeypatch.setitem(main.__globals__, "release", unexpected_release)
+    main()
+    assert calls == [
+        ("parameters", source),
+        ("check", tmp_path.resolve(), ["app"]),
+    ]
+
+
+def test_runtime_signature_detects_same_name_network_replacement(
+    release_module,
+):
+    first = fake_container("app")
+    first["NetworkSettings"]["Networks"]["ugc_default"]["NetworkID"] = (
+        "network-1"
+    )
+    second = copy.deepcopy(first)
+    second["NetworkSettings"]["Networks"]["ugc_default"]["NetworkID"] = (
+        "network-2"
+    )
+    assert release_module["runtime_signature"](first) != release_module[
+        "runtime_signature"
+    ](second)
+
+
+def test_readiness_uses_the_same_project_as_snapshot_discovery(
+    release_module, monkeypatch
+):
+    wait = release_module["wait_ready"]
+    monkeypatch.setitem(wait.__globals__, "PROJECT", "isolated-fixture")
+
+    def inspect_container(name):
+        assert name == "isolated-fixture-app-1"
+        return {
+            "Image": "verified",
+            "State": {"Status": "running", "Health": {"Status": "healthy"}},
+        }
+
+    monkeypatch.setitem(wait.__globals__, "inspect", inspect_container)
+    wait("app", "verified")
 
 
 def fake_container(service, image="old"):
