@@ -48,6 +48,16 @@ In the Docker stack, app services connect to PostgreSQL via PgBouncer
 (pgbouncer:6432); backup and postgres_exporter use a direct connection to db:5432.
 PgBouncer uses session pooling so Alembic migrations work without changes.
 
+## Local admin
+
+With local development settings configured, run `make admin` and open
+`http://127.0.0.1:18001`. The server listens on the local loopback interface.
+To use another port, run `make admin UMC_ADMIN_PORT=18002` and open
+`http://127.0.0.1:18002`. You can also set `UMC_ADMIN_PORT` in the environment.
+
+Local E2E tests start their own admin server on an automatically selected free
+loopback port, so they can run alongside the manual admin session.
+
 ## Local tests
 
 - Run `make test-local-full` for unit and integration tests, including the PostgreSQL financial suite. The runner and PostgreSQL share the Docker VM clock, so host and VM clock drift cannot invalidate timestamp checks. The test stack uses a fresh database. `UGC_TEST_POSTGIS_IMAGE` can select a compatible PostgreSQL 16/PostGIS test image for the local Docker architecture.

@@ -9,6 +9,7 @@ SRC_DIR ?= src
 TEST_DIR ?= tests
 COV_FAIL ?= 98
 E2E_TIMEOUT ?= 90
+UMC_ADMIN_PORT ?= 18001
 
 # DB-changing targets must not run in parallel with make -j
 .NOTPARALLEL: migrate restore-db restore-db-s3
@@ -22,7 +23,7 @@ help:
 	@echo "E2E:          e2e, e2e-synthetic (isolated Docker stack), e2e-dev (Playwright vs dev), e2e-telegram-dev (Telegram vs dev; E2E_DATABASE_URL, E2E_CLEAN_TELEGRAM=darbulat), e2e-docker, e2e-telegram, e2e-telegram-docker, e2e-telegram-docker-auth, e2e-telegram-clean"
 	@echo "Infra:        docker-up, docker-down, deploy-apps-zero-downtime, dev-up, dev-down, migrate, backup-db, restore-db, restore-db-s3, list-backups, list-backups-s3"
 	@echo "PITR:         base-backup, list-base-backups-s3, upload-wal, pitr-restore TARGET_TIME=\"...\""
-	@echo "Run:          admin, instagram-stats"
+	@echo "Run:          admin (127.0.0.1:$(UMC_ADMIN_PORT); override UMC_ADMIN_PORT), instagram-stats"
 	@echo "Full check:   make all   (format + lint + typecheck + coverage)"
 	@echo "Full local non-E2E suite with PostgreSQL: make test-local-full"
 	@echo "Tests (Docker): test-docker, e2e-docker, test-all-docker (unit + integration + e2e in one run)"
@@ -139,7 +140,7 @@ dev-down:
 	$(COMPOSE_DEV) down
 
 admin:
-	uv run uvicorn ugc_bot.admin.app:app --host 0.0.0.0 --port 8001 --log-config config/uvicorn_log_config.json
+	uv run uvicorn ugc_bot.admin.app:app --host 127.0.0.1 --port "$(UMC_ADMIN_PORT)" --log-config config/uvicorn_log_config.json
 
 # Database backup commands (DB params from DATABASE_URL or POSTGRES_* in .env)
 backup-db:
