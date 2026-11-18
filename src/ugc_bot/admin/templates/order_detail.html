@@ -22,6 +22,8 @@
       <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
       {% if customer_url %}<a class="admin-button" href="{{ customer_url }}">{{ order.advertiser or 'Профиль заказчика' }}</a>{% endif %}
       <a class="admin-button" href="#order-detail-actions">Действия с заказом</a>
+      <a class="admin-button" href="#order-offer-heading">Креаторы</a>
+      <a class="admin-button" href="#order-brief-heading">Бриф и условия</a>
       {% if status == 'active' %}
         <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(order_id=order.order_id, stage="all") }}">Очередь по позициям</a>
         {% if order.get('financial_selection') %}
@@ -34,6 +36,11 @@
         <div>
           <div class="order-detail__badges">
             <span class="badge order-detail__status">{{ status_labels.get(status, status) }}</span>
+            {% if browser_payment %}
+              {% if browser_payment.state == 'paid' %}<span class="badge badge--ok" role="status">Оплачен</span>
+              {% elif browser_payment.state in ('review', 'telegram_pending') %}<a class="badge badge--alert" href="#browser-payment">Проверка оплаты</a>
+              {% else %}<a class="badge" href="#browser-payment">Ожидает оплаты</a>{% endif %}
+            {% endif %}
             {% if order.get('is_test') %}<span class="badge">Служебный</span>{% endif %}
             {% if order.get('test_candidate') %}<span class="badge badge--alert">Проверить назначение</span>{% endif %}
             {% if order.get('archived') %}<span class="badge">Удалён из списка</span>{% endif %}
@@ -43,11 +50,15 @@
         </div>
         <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
       </div>
+      {% if browser_payment_message and browser_payment and browser_payment.state == 'paid' %}<p role="alert">{{ browser_payment_message }}</p>{% endif %}
       <div class="order-detail__stats">
         <article>
           <h2>{{ 'Оплаченные места' if order.get('financial_selection') else 'Подбор' }}</h2>
           <strong>{{ picked }} из {{ needed }}</strong>
-          <p id="order-transferred-counter" class="creator-transfer-count" aria-live="polite"></p>
+          <div id="order-transferred-counter" class="order-detail__transfer" aria-live="polite" hidden>
+            <span class="order-detail__transfer-label">Передано заказчице</span>
+            <div class="order-detail__transfer-line"><strong><span id="order-transferred-value">—</span> / <span id="order-transferred-plan">{{ needed }}</span></strong><span id="order-transferred-extra" class="order-detail__over-plan" hidden></span></div>
+          </div>
           <div class="order-detail__progress" role="progressbar" aria-label="Подобрано креаторов" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
             <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>
           </div>
@@ -89,17 +100,21 @@
     </section>
 
     <section class="card order-detail__section" aria-labelledby="order-offer-heading">
-      <h2 id="order-offer-heading">Рассылка и отклики</h2>
+      <h2 id="order-offer-heading">Креаторы, отклики и резерв</h2>
       <div id="order-offer-activity"
            data-url="{{ request.url_for('admin_order_offer_activity', order_id=order.order_id).include_query_params(return_to=back_url) }}">
-        <p class="muted">Отправлено офферов {{ order.dispatched_count|default(0) }} · Согласились {{ order.accepted_count|default(0) }}</p>
+        <div class="order-detail__stats">
+          <article><h3>Отправлено</h3><strong>{{ order.dispatched_count|default(0) }}</strong></article>
+          <article><h3>Согласились</h3><strong>{{ order.accepted_count|default(0) }}</strong></article>
+        </div>
+        {% set order_id = order.order_id %}{% include 'order_creators.html' %}
       </div>
       <small class="muted" id="order-offer-refresh-status" role="status"></small>
     </section>
 
-    {% if browser_payment or browser_payment_message %}
+    {% if (browser_payment and browser_payment.state != 'paid') or (browser_payment_message and not browser_payment) %}
     <section class="card order-detail__section" id="browser-payment" aria-labelledby="browser-payment-heading">
-      <h2 id="browser-payment-heading">Оплата в браузере</h2>
+      <h2 id="browser-payment-heading">Оплата заказа</h2>
       {% if browser_payment_message %}<p role="alert">{{ browser_payment_message }}</p>{% endif %}
       {% if browser_payment %}
         {% set payment_state = browser_payment.state %}
@@ -208,39 +223,6 @@
       {% endif %}
     </section>
     {% endif %}
-
-    <section class="card order-detail__section" aria-labelledby="order-responses-heading">
-      <h2 id="order-responses-heading">{{ 'Подобранные креаторы и отклики' if order.responses_list else 'Креаторы и отклики' }}</h2>
-      {% if order.responses_list %}
-      {% set work_labels = {'assigned': 'Назначен', 'in_progress': 'В работе', 'success_claimed': 'Ждёт подтверждения', 'disputed': 'Спор', 'success_final': 'Завершено', 'unconfirmed_expired': 'Истёк срок подтверждения', 'available': 'Можно заменить', 'rejected': 'Отклонён'} %}
-      <div class="admin-table-scroll order-detail__table" role="region" aria-label="Отклики на заказ" tabindex="0">
-        <table class="table">
-          <thead><tr><th scope="col">Креатор</th><th scope="col">Статус</th><th scope="col">Отклик / назначение</th><th scope="col">UGC-видео</th></tr></thead>
-          <tbody>
-            {% for response in order.responses_list %}
-            <tr>
-              <td>
-                <a class="order-detail__creator" href="{{ request.url_for('admin_user_card', user_id=response.blogger_id).include_query_params(from_order=order.order_id, return_to=back_url) }}">{{ response.name or 'Профиль креатора' }}</a>
-                <div class="order-detail__contacts">
-                  {% if response.get('instagram') %}{{ instagram(response.instagram, show_platform=true) }}{% endif %}
-                  {% if response.get('telegram') %}{{ telegram(response.telegram, show_platform=true) }}{% endif %}
-                </div>
-              </td>
-              <td><span class="badge{% if response.in_offer %} badge--ok{% endif %}">{{ work_labels.get(response.get('work_state'), 'Подобран') if response.in_offer else 'В резерве' }}</span></td>
-              <td>
-                {% if response.get('responded_at') %}{{ response.responded_at|admin_date }}
-                {% elif response.get('assigned_at') %}{{ response.assigned_at|admin_date }}{% else %}—{% endif %}
-              </td>
-              <td>{% if response.get('ugc_video_url')|safe_order_link %}<a href="{{ response.ugc_video_url|safe_order_link }}" target="_blank" rel="noopener noreferrer">Открыть видео</a>{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-        <p class="muted">Откликов пока нет.</p>
-      {% endif %}
-    </section>
 
     <section class="card order-detail__section" aria-labelledby="order-brief-heading">
       <h2 id="order-brief-heading">Бриф и условия</h2>

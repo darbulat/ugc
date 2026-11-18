@@ -1290,11 +1290,19 @@ async def _render_order_detail_page(
     checkout = getattr(request.app.state, "browser_checkout", None)
     browser_payment = await checkout.view(order_id) if checkout else None
     review_bot = getattr(request.app.state, "checkout_review_bot", None)
+    from ugc_bot.admin.order_creators import creator_workspace
+
+    workspace = creator_workspace(
+        order.get("responses_list", []),
+        {"currency": order.get("currency", "RUB")},
+        offer_price=order.get("price"),
+    )
     return templates.TemplateResponse(
         request,
         "order_detail.html",
         {
             "order": order,
+            "workspace": workspace,
             "status_labels": ORDER_STATUS_LABELS,
             "closure_reason_limit": ORDER_CLOSURE_REASON_LIMIT,
             "closure_result": closure_result,
@@ -2025,23 +2033,20 @@ def _register_order_offer_activity_route(
         dependencies=[Depends(require_admin)],
     )
     async def admin_order_offer_activity(request: Request, order_id: UUID):
-        activity = await dashboard_service.get_order_offer_activity(order_id)
-        if activity is None:
-            raise HTTPException(status_code=404, detail="Заказ не найден")
-        transfers = await dashboard_service.get_order_transfer_activity(
-            order_id
-        )
-        if transfers:
-            transfers["can_send"] &= getattr(
+        data = await dashboard_service.get_order_workspace_activity(
+            order_id,
+            can_send=getattr(
                 request.app.state, "creator_transfers_enabled", False
-            )
+            ),
+        )
+        if data is None:
+            raise HTTPException(status_code=404, detail="Заказ не найден")
         return templates.TemplateResponse(
             request,
             "order_offer_activity.html",
             {
-                "activity": activity,
+                **data,
                 "order_id": order_id,
-                "transfers": transfers,
             },
             headers={"Cache-Control": "private, no-store"},
         )

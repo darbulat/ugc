@@ -4,14 +4,19 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, Request
-from fastapi.templating import Jinja2Templates
 from fastapi.testclient import TestClient
 from starlette.middleware.sessions import SessionMiddleware
 
 from ugc_bot.admin import creator_transfers as module
-from ugc_bot.admin.app import _admin_action_token, _require_action_token
+from ugc_bot.admin.app import (
+    _admin_action_token,
+    _build_templates,
+    _require_action_token,
+)
+from ugc_bot.admin.order_creators import creator_workspace
 from ugc_bot.config import AppConfig
 
 
@@ -46,9 +51,7 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
         config,
         object(),
     )
-    templates = Jinja2Templates(directory="src/ugc_bot/admin/templates")
-    templates.env.globals["admin_action_token"] = _admin_action_token
-    templates.env.filters["admin_date"] = str
+    templates = _build_templates(app, ZoneInfo("Europe/Moscow"))
 
     @app.get("/admin/users/{user_id}", name="admin_user_card")
     async def user_card(user_id: UUID):
@@ -73,19 +76,20 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
             )
             for state in (None, "sent", "failed", "unknown")
         ]
+        transfers = dict(
+            count=15,
+            needed=10,
+            candidates=candidates,
+            history=[],
+            can_send=True,
+        )
         return templates.TemplateResponse(
             request,
-            "creator_transfers.html",
+            "order_creators.html",
             dict(
                 order_id=order_id,
-                transfers=dict(
-                    count=15,
-                    needed=10,
-                    candidates=candidates,
-                    history=[],
-                    labels=module.STATES,
-                    can_send=True,
-                ),
+                activity=None,
+                workspace=creator_workspace([], transfers=transfers),
             ),
         )
 
@@ -99,7 +103,7 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
         assert client.post(path, follow_redirects=False).status_code == 403
         send.assert_not_awaited()
         html = client.get(f"/preview/{oid}").text
-        assert "15 из 10" in html and "&lt;Автор&gt;" in html
+        assert 'data-transferred-count="15"' in html and "&lt;Автор&gt;" in html
         assert html.count("data-creator-transfer-form") == 2
         config.financial.core_enabled = False
         disabled = client.post(path, data={"csrf_token": token})

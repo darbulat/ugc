@@ -687,7 +687,8 @@ def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(
     checkout.view.return_value = {"state": "paid", "url": None}
     assert client.get(url).json() == {"state": "paid", "url": None}
     paid = client.get(f"/admin/orders/{order_id}")
-    assert "Заказ оплачен." in paid.text
+    assert 'class="badge badge--ok" role="status">Оплачен</span>' in paid.text
+    assert 'id="browser-payment"' not in paid.text
     assert "Переключить на оплату в браузере" not in paid.text
     monkeypatch.setattr(
         AdminAuth, "authenticate", AsyncMock(return_value=False)

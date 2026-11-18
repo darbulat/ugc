@@ -810,7 +810,7 @@ def test_order_worklist_search_hide_and_restore(
     expect(page.get_by_role("link", name="Открыть видео")).to_have_attribute(
         "href", "https://example.test/ugc"
     )
-    activity = page.get_by_role("region", name="Рассылка и отклики")
+    activity = page.get_by_role("region", name="Креаторы, отклики и резерв")
     counters = activity.locator("article strong")
     expect(counters).to_have_text(["2 из 4", "1", "1", "1"])
     expect(activity).to_contain_text("Авторов без результата отправки — 1")
@@ -819,8 +819,7 @@ def test_order_worklist_search_hide_and_restore(
     )
     expect(counteroffer).to_contain_text("Низкая цена")
     expect(counteroffer).to_contain_text("5 000 ₽")
-    details = activity.get_by_text("Причины отказов и предложенные цены")
-    details.click()
+    activity.get_by_label("Найти креатора").fill("несуществующий автор")
     expect(counteroffer).to_be_hidden()
     with Session(engine) as session, session.begin():
         session.add(
@@ -837,7 +836,8 @@ def test_order_worklist_search_hide_and_restore(
     expect(counters).to_have_text(["3 из 4", "1", "1", "2"], timeout=25_000)
     expect(activity).to_contain_text("Рассылка завершена")
     expect(counteroffer).to_be_hidden()
-    details.click()
+    activity.get_by_label("Найти креатора").fill("")
+    activity.get_by_role("button", name="Отказы 1", exact=True).click()
     expect(
         activity.get_by_role("row").filter(has_text="Автор из очереди")
     ).to_contain_text("Не подходит формат")
