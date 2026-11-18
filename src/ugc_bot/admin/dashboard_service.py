@@ -20,6 +20,7 @@ from sqlalchemy import (
     null,
     or_,
     select,
+    text,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased, defer
@@ -52,12 +53,10 @@ from ugc_bot.admin.order_offer_activity import load_order_offer_activity
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
     active_pick_reasons,
-    financial_positions,
     latest_order_activity,
     manager_contact,
     order_activity_at,
     order_age_hours,
-    order_creator_contacts,
     order_has_manager,
     order_is_inactive,
     order_managers_query,
@@ -790,6 +789,32 @@ class AdminDashboardService:
                 search=search_term,
             )
         return _paginated(total, page, per_page, items)
+
+    async def get_order_workspace_activity(
+        self, order_id: UUID, *, can_send=False
+    ):
+        from ugc_bot.admin.creator_transfers import transfer_activity
+        from ugc_bot.admin.order_creators import load_creator_workspace
+
+        async with self._session_factory() as session:
+            if session.get_bind().dialect.name == "postgresql":
+                await session.execute(
+                    text(
+                        "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY"
+                    )
+                )
+            activity = await load_order_offer_activity(session, order_id)
+            if activity is None:
+                return None
+            transfers = await transfer_activity(session, order_id)
+            if transfers:
+                transfers["can_send"] &= can_send
+            workspace = await load_creator_workspace(
+                session, order_id, activity, transfers
+            )
+            return dict(
+                activity=activity, transfers=transfers, workspace=workspace
+            )
 
     async def get_order_transfer_activity(self, order_id: UUID):
         from ugc_bot.admin.creator_transfers import transfer_activity
@@ -2199,59 +2224,13 @@ class AdminDashboardService:
             payment_status,
             dispatch_paused,
         ) = row
-        resp_list_result = await session.execute(
-            select(OfferDispatchModel)
-            .where(OfferDispatchModel.order_id == order_id)
-            .order_by(
-                func.coalesce(
-                    OfferDispatchModel.updated_at, OfferDispatchModel.created_at
-                ).desc(),
-                OfferDispatchModel.blogger_id,
-            )
+        from ugc_bot.admin.order_creators import load_order_responses
+
+        responses_list, financial_picked = await load_order_responses(
+            session, order
         )
-        response_models = resp_list_result.scalars().all()
-        # Only creators who accepted or are in_offer (exclude "Пропустил")
-        responses_list: list[dict[str, Any]] = [
-            {
-                "blogger_id": str(r.blogger_id),
-                "responded_at": r.updated_at or r.created_at,
-                "accepted": getattr(r, "accepted", None),
-                "in_offer": getattr(r, "in_offer", True),
-                "ugc_video_url": getattr(r, "ugc_video_url", None),
-            }
-            for r in response_models
-            if r.accepted is not None
-            and (getattr(r, "in_offer", True) or r.accepted is True)
-        ]
-        if order.financial_version is not None and not order.complimentary:
-            positions = (
-                await session.execute(financial_positions([order_id]))
-            ).all()
-            responses_count = len(positions)
-            for item in responses_list:
-                item["in_offer"] = False
-            by_creator = {item["blogger_id"]: item for item in responses_list}
-            assigned = [
-                dict(
-                    by_creator.get(str(position.creator_id), {}),
-                    blogger_id=str(position.creator_id),
-                    in_offer=True,
-                    assigned_at=position.valid_from,
-                    work_state=position.state,
-                )
-                for position in positions
-            ]
-            assigned_ids = {item["blogger_id"] for item in assigned}
-            responses_list = assigned + [
-                item
-                for item in responses_list
-                if item["blogger_id"] not in assigned_ids
-            ]
-        creator_contacts = await order_creator_contacts(
-            session, [UUID(item["blogger_id"]) for item in responses_list]
-        )
-        for item in responses_list:
-            item.update(creator_contacts.get(item["blogger_id"], {}))
+        if financial_picked is not None:
+            responses_count = financial_picked
         manager_rows = (
             await session.execute(order_managers_query([order_id]))
         ).all()

@@ -46,6 +46,7 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
         "order_creator_invites",
         "order_dispatch_controls",
         "order_dispatch_claims",
+        "creator_social_accounts",
     ]
     Base.metadata.create_all(
         engine, tables=[Base.metadata.tables[t] for t in tables]

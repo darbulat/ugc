@@ -1,5 +1,5 @@
 <div>
-  <div class="order-detail__stats">
+  <div class="order-detail__stats order-detail__delivery-stats">
     <article>
       <h3>Отправлено</h3>
       <strong>{{ activity.sent }}{% if activity.targeted is not none %} из {{ activity.targeted }}{% endif %}</strong>
@@ -15,34 +15,9 @@
       <strong>{{ activity.accepted }}</strong>
     </article>
     <article>
-      <h3>Отказались</h3>
+      <h3>Отказ / новая цена</h3>
       <strong>{{ activity.declined }}</strong>
     </article>
   </div>
-  {% if activity.refused %}
-  <details class="order-detail__declines" data-order-declines open>
-    <summary id="order-offer-decline-heading">Причины отказов и предложенные цены</summary>
-    <div class="order-detail__alerts order-detail__decline-reasons">
-      {% for reason, count in activity.reasons.items() %}
-      <span class="badge">{{ reason }} · {{ count }}</span>
-      {% endfor %}
-    </div>
-    <div class="admin-table-scroll order-detail__table" id="order-offer-decline-list" role="region" aria-label="Авторы, отказавшиеся от оффера" tabindex="0">
-      <table class="table">
-        <thead><tr><th scope="col">Креатор</th><th scope="col">Причина</th><th scope="col">Предложенная цена</th></tr></thead>
-        <tbody>
-          {% for refusal in activity.refused %}
-          <tr>
-            <td><a id="offer-decline-{{ refusal.creator_id }}" href="{{ request.url_for('admin_user_card', user_id=refusal.creator_id).include_query_params(from_order=order_id, return_to=order_return_url(request)) }}">{{ refusal.name or 'Профиль креатора' }}</a></td>
-            <td>{{ refusal.reason }}</td>
-            <td>{% if refusal.price is not none %}{{ '{:,.2f}'.format(refusal.price).replace(',', ' ').replace('.', ',').removesuffix(',00') }} {{ '₽' if activity.currency == 'RUB' else activity.currency }}{% else %}—{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </details>
-  {% endif %}
 </div>
-
-{% include 'creator_transfers.html' %}
+{% include 'order_creators.html' %}

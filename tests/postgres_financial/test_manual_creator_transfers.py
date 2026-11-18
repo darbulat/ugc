@@ -16,6 +16,10 @@ from tests.postgres_financial.test_creator_social import seed_profile
 from tests.postgres_financial.test_order_intake import intake_env
 from tests.postgres_financial.test_telegram_order_summary import paid_order
 from ugc_bot.admin.creator_transfers import transfer_activity
+from ugc_bot.admin.dashboard_service import (
+    AdminDashboardService,
+    DelayThresholds,
+)
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
@@ -130,6 +134,17 @@ async def test_manual_delivery_keeps_history_and_can_reach_twenty_of_ten(
         assert len(activity["candidates"]) == 10
         assert all(row["state"] == "sent" for row in activity["candidates"])
         assert activity["can_send"] is True
+    workspace = await AdminDashboardService(
+        env["container"].session_factory,
+        "Europe/Moscow",
+        DelayThresholds(7, 24, 48, 30),
+    ).get_order_workspace_activity(oid, can_send=True)
+    rows = workspace["workspace"]["rows"]
+    assert len(rows) == len({row["creator_id"] for row in rows}) == 20
+    assert all(row["delivered"] and not row["can_send"] for row in rows)
+    assert all(row["contact"]["instagram"] for row in rows)
+    assert workspace["workspace"]["transfer_count"] == 20
+    assert transport.send.await_count == 10  # Rendering never resends contacts.
     with Session(env["pg"]) as db:
         assert (
             db.scalar(

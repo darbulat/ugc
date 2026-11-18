@@ -1,0 +1,90 @@
+{% from "people_parts.html" import telegram, instagram %}
+{% macro amount(value) -%}
+{{ '{:,.2f}'.format(value).replace(',', ' ').replace('.', ',').removesuffix(',00') }} {{ '₽' if workspace.currency == 'RUB' else workspace.currency }}
+{%- endmacro %}
+<div class="order-creators" data-creator-workspace
+     {% if workspace.transfer_count is not none %}data-transferred-count="{{ workspace.transfer_count }}" data-transfer-needed="{{ workspace.needed }}"{% endif %}>
+  <div class="order-creators__toolbar">
+    <div class="order-creators__filters" role="group" aria-label="Показать креаторов">
+      {% for filter in workspace.filters %}
+      <button type="button" class="order-creators__filter" data-creator-filter="{{ filter.key }}" data-creator-filter-count="{{ filter.count }}" aria-pressed="{{ 'true' if filter.key == 'all' else 'false' }}"{% if filter.count == 0 and filter.key != 'all' %} hidden{% endif %}>{{ filter.label }} <span>{{ filter.count }}</span></button>
+      {% endfor %}
+    </div>
+    <label class="order-creators__search">Найти креатора<input id="order-creator-search" type="search" data-creator-search placeholder="Имя, контакт или причина" autocomplete="off"></label>
+  </div>
+  {% if activity and activity.reasons %}
+  <details class="order-creators__reasons" data-creator-detail="reasons">
+    <summary>Сводка причин отказа</summary>
+    <div class="order-detail__alerts order-detail__decline-reasons">
+      {% for reason, count in activity.reasons.items() %}<span class="badge">{{ reason }} · {{ count }}</span>{% endfor %}
+    </div>
+  </details>
+  {% endif %}
+  <div class="admin-table-scroll order-creators__scroll" role="region" aria-label="Креаторы заказа" tabindex="0">
+    <table class="table order-creators__table">
+      <thead><tr><th scope="col">Креатор и контакты</th><th scope="col">Отклик / причина</th><th scope="col">Цена автора</th><th scope="col">Передача заказчице</th><th scope="col">Работа / UGC</th></tr></thead>
+      <tbody>
+      {% for row in workspace.rows %}
+        <tr data-creator-row="{{ row.creator_id }}" data-creator-group="{{ row.group }}" data-creator-search-text="{{ row.name }} {{ row.contact.get('instagram') or '' }} {{ row.contact.get('telegram') or '' }} {{ row.contact.get('phone') or '' }} {{ row.reason or '' }} {% if row.current_contact %}{{ row.current_contact.get('name') or '' }} {{ row.current_contact.get('instagram') or '' }} {{ row.current_contact.get('telegram') or '' }}{% endif %}">
+          <td data-label="Креатор">
+            <a class="order-detail__creator" href="{{ request.url_for('admin_user_card', user_id=row.creator_id).include_query_params(from_order=order_id, return_to=order_return_url(request)) }}">{{ row.name }}</a>
+            <div class="order-detail__contacts">
+              {% if row.contact.get('instagram') %}{{ instagram(row.contact.instagram, show_platform=true) }}{% endif %}
+              {% if row.contact.get('telegram') %}{{ telegram(row.contact.telegram, show_platform=true) }}{% endif %}
+            </div>
+            {% if row.contact.get('phone') or row.responded_at or row.current_contact %}
+            <details class="order-creators__details" data-creator-detail="{{ row.creator_id }}">
+              <summary>Подробности</summary>
+              {% if row.contact.get('phone') %}<p>Телефон: {{ row.contact.phone }}</p>{% endif %}
+              {% if row.responded_at %}<p>Отклик / назначение: {{ row.responded_at|admin_date }}</p>{% endif %}
+              {% if row.current_contact %}
+              <p class="muted">В строке сохранены контакты на момент передачи. Текущие контакты профиля:</p>
+              {% if row.current_contact.get('name') %}<p>{{ row.current_contact.name }}</p>{% endif %}
+              {% if row.current_contact.get('instagram') %}{{ instagram(row.current_contact.instagram, show_platform=true) }}{% endif %}
+              {% if row.current_contact.get('telegram') %}{{ telegram(row.current_contact.telegram, show_platform=true) }}{% endif %}
+              {% endif %}
+            </details>
+            {% endif %}
+          </td>
+          <td data-label="Отклик">
+            <span class="badge{% if row.response == 'Согласен' %} badge--ok{% endif %}">{{ row.response }}</span>
+            {% if row.reason %}<small>{{ row.reason }}</small>{% endif %}
+            {% if row.group == 'reserve' %}<small>В резерве</small>{% endif %}
+          </td>
+          <td data-label="Цена">
+            {% if row.price is not none %}<span class="order-creators__price">{{ amount(row.price) }}</span><small>Предложена автором</small>
+            {% elif workspace.offer_price is not none and row.response in ('Согласен', 'Назначен') %}<span class="order-creators__price">{{ amount(workspace.offer_price) }}</span><small>По офферу</small>
+            {% else %}—{% endif %}
+          </td>
+          <td data-label="Передача">
+            {% if row.delivered %}
+              <span class="badge badge--ok">Передан</span>
+              <small>{{ row.sent_at|admin_date }}</small>
+              <small>{{ {'selection':'Основной подбор','replacement':'Ранее переданная замена','reserve':'Дополнительно из резерва','counteroffer':'Дополнительно · новая цена'}.get(row.source, '') }}</small>
+            {% elif row.state %}
+              <span class="order-creators__delivery-state" role="status">{{ {'sent':'Отправлено заказчице','sending':'Отправка началась','failed':'Не доставлено','unknown':'Результат неизвестен'}.get(row.state, row.state) }}</span>
+              {% if row.state == 'unknown' %}<small>Проверьте Telegram перед повтором</small>{% endif %}
+            {% elif row.in_offer and workspace.transfer_count is not none %}<small>Ждёт передачи контактов</small>
+            {% elif row.can_send %}<small>Ещё не передан</small>
+            {% else %}<span class="muted">—</span>{% endif %}
+            {% if row.can_send %}
+            <form method="post" action="{{ request.url_for('admin_send_creator_to_customer', order_id=order_id, creator_id=row.creator_id) }}" data-creator-transfer-form>
+              <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+              <button type="submit" class="admin-button admin-button--primary">{{ 'Повторить отправку' if row.state == 'failed' else 'Отправить заказчице' }}</button>
+            </form>
+            {% endif %}
+          </td>
+          <td data-label="Работа / UGC">
+            {% if row.work %}<span class="badge">{{ row.work }}</span>
+            {% elif row.in_offer %}<span class="badge badge--ok">Подобран</span>{% endif %}
+            {% if row.feedback %}<small>{{ {'worked':'Работали','not_worked':'Не работали','not_agreed':'Не договорились'}.get(row.feedback, row.feedback) }}</small>{% endif %}
+            {% if row.video|safe_order_link %}<a href="{{ row.video|safe_order_link }}" target="_blank" rel="noopener noreferrer">Открыть видео</a>{% elif not row.work and not row.in_offer and not row.feedback %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" data-creator-empty{% if workspace.rows %} hidden{% endif %}>Креаторов по этому фильтру нет.</p>
+  <p class="order-creators__hint muted">Каждый автор показан один раз. Контакты переданных авторов сохраняются после отказов и замен. Предложенная цена требует согласования с заказчицей.</p>
+</div>

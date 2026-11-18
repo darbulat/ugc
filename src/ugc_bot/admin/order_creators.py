@@ -1,0 +1,249 @@
+"""One row per creator; delivery history stays distinct from paid work."""
+
+from collections import Counter
+from uuid import UUID
+
+from sqlalchemy import func, select
+
+from ugc_bot.admin.order_summary import (
+    financial_positions,
+    order_creator_contacts,
+)
+from ugc_bot.infrastructure.db.models import OfferDispatchModel, OrderModel
+
+WORK_LABELS = {
+    "assigned": "Назначен",
+    "in_progress": "В работе",
+    "success_claimed": "Ждёт подтверждения",
+    "disputed": "Спор",
+    "success_final": "Завершено",
+    "unconfirmed_expired": "Истёк срок подтверждения",
+    "available": "Можно заменить",
+    "rejected": "Отклонён",
+}
+FILTERS = (
+    ("all", "Все"),
+    ("delivered", "Переданы"),
+    ("reserve", "Резерв"),
+    ("price", "Новая цена"),
+    ("declined", "Отказы"),
+    ("selected", "Подобраны"),
+)
+
+
+async def load_order_responses(session, order):
+    """Reuse the existing paid-assignment projection without money writes."""
+    models = (
+        (
+            await session.execute(
+                select(OfferDispatchModel)
+                .where(OfferDispatchModel.order_id == order.order_id)
+                .order_by(
+                    func.coalesce(
+                        OfferDispatchModel.updated_at,
+                        OfferDispatchModel.created_at,
+                    ).desc(),
+                    OfferDispatchModel.blogger_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    responses = [
+        dict(
+            blogger_id=str(row.blogger_id),
+            responded_at=row.updated_at or row.created_at,
+            accepted=row.accepted,
+            in_offer=row.in_offer,
+            ugc_video_url=row.ugc_video_url,
+        )
+        for row in models
+        if row.accepted is not None and (row.in_offer or row.accepted is True)
+    ]
+    picked = None
+    if order.financial_version is not None and not order.complimentary:
+        positions = (
+            await session.execute(financial_positions([order.order_id]))
+        ).all()
+        picked = len(positions)
+        for item in responses:
+            item["in_offer"] = False
+        by_creator = {item["blogger_id"]: item for item in responses}
+        assigned = [
+            dict(
+                by_creator.get(str(position.creator_id), {}),
+                blogger_id=str(position.creator_id),
+                in_offer=True,
+                assigned_at=position.valid_from,
+                work_state=position.state,
+            )
+            for position in positions
+        ]
+        assigned_ids = {item["blogger_id"] for item in assigned}
+        responses = assigned + [
+            item for item in responses if item["blogger_id"] not in assigned_ids
+        ]
+    contacts = await order_creator_contacts(
+        session, [UUID(item["blogger_id"]) for item in responses]
+    )
+    for item in responses:
+        item.update(contacts.get(item["blogger_id"], {}))
+    return responses, picked
+
+
+def creator_workspace(
+    responses, activity=None, transfers=None, contacts=None, offer_price=None
+):
+    """Merge overlapping projections by identity, never by display name."""
+    rows = {}
+
+    def row_for(creator_id):
+        key = str(creator_id)
+        if key not in rows:
+            rows[key] = dict(
+                creator_id=key,
+                name="Профиль креатора",
+                contact={},
+                response="—",
+                reason=None,
+                price=None,
+                responded_at=None,
+                in_offer=False,
+                work=None,
+                video=None,
+                delivered=False,
+                state=None,
+                can_send=False,
+                source=None,
+                sent_at=None,
+                feedback=None,
+                group="selected",
+                current_contact=None,
+            )
+        return rows[key]
+
+    for response in responses:
+        row = row_for(response["blogger_id"])
+        row.update(
+            name=response.get("name") or row["name"],
+            contact={
+                key: response.get(key) for key in ("instagram", "telegram")
+            },
+            response="Согласен" if response.get("accepted") else "Назначен",
+            responded_at=response.get("responded_at")
+            or response.get("assigned_at"),
+            in_offer=bool(response.get("in_offer")),
+            work=WORK_LABELS.get(response.get("work_state")),
+            video=response.get("ugc_video_url"),
+            group="selected" if response.get("in_offer") else "reserve",
+        )
+    for refusal in (activity or {}).get("refused", []):
+        row = row_for(refusal["creator_id"])
+        row.update(
+            name=refusal.get("name") or row["name"],
+            response="Новая цена"
+            if refusal.get("price") is not None
+            else "Отказ",
+            reason=refusal.get("reason"),
+            price=refusal.get("price"),
+            group="price" if refusal.get("price") is not None else "declined",
+        )
+    for candidate in (transfers or {}).get("candidates", []):
+        row = row_for(candidate["creator_id"])
+        state = candidate.get("state")
+        row.update(
+            name=candidate.get("name") or row["name"],
+            state=state,
+            can_send=bool(transfers["can_send"])
+            and state in (None, "failed")
+            and not row["in_offer"],
+        )
+        if candidate["source"] == "Новая цена":
+            row.update(
+                response="Новая цена",
+                price=candidate.get("price"),
+                group="price",
+            )
+        elif not row["in_offer"]:
+            row.update(response="Согласен", group="reserve")
+    for creator_id, contact in (contacts or {}).items():
+        row = row_for(creator_id)
+        row["name"] = contact.get("name") or row["name"]
+        row["contact"] = contact
+    for item in (transfers or {}).get("history", []):
+        _apply_history(row_for(item["creator_id"]), item)
+    counts = Counter(row["group"] for row in rows.values())
+    groups = {key: index for index, (key, _) in enumerate(FILTERS)}
+    items = sorted(
+        rows.values(),
+        key=lambda row: (
+            groups[row["group"]],
+            row["name"].casefold(),
+            row["creator_id"],
+        ),
+    )
+    return dict(
+        rows=items,
+        filters=[
+            dict(
+                key=key,
+                label=label,
+                count=len(items) if key == "all" else counts[key],
+            )
+            for key, label in FILTERS
+        ],
+        transfer_count=transfers["count"] if transfers else None,
+        needed=transfers["needed"] if transfers else None,
+        currency=(activity or {}).get("currency", "RUB"),
+        offer_price=offer_price,
+    )
+
+
+def _apply_history(row, item):
+    snapshot = item["contact"]
+    current = dict(row["contact"])
+    saved_name = snapshot.get("name") or snapshot.get("username")
+    if row["name"] != "Профиль креатора":
+        current["name"] = row["name"]
+    if any(
+        current.get(key) and current[key] != snapshot.get(key)
+        for key in ("instagram", "telegram")
+    ) or (saved_name and current.get("name") and current["name"] != saved_name):
+        row["current_contact"] = current
+    row.update(
+        name=saved_name or row["name"],
+        contact=snapshot,
+        delivered=True,
+        state="sent",
+        can_send=False,
+        group="delivered",
+        source=item.get("source"),
+        sent_at=item.get("sent_at"),
+        feedback=item.get("feedback"),
+    )
+    if item.get("requested_price") is not None:
+        row["price"] = item["requested_price"]
+    if item.get("source") == "counteroffer":
+        row["response"] = "Новая цена"
+    elif row["response"] == "—":
+        row["response"] = "Согласен"
+
+
+async def load_creator_workspace(session, order_id, activity, transfers):
+    order = await session.get(OrderModel, order_id)
+    responses, _ = await load_order_responses(session, order)
+    known = {row["blogger_id"] for row in responses}
+    extra = {
+        str(row["creator_id"]) for row in (activity or {}).get("refused", [])
+    } | {
+        str(row["creator_id"])
+        for row in (transfers or {}).get("history", [])
+        + (transfers or {}).get("candidates", [])
+    }
+    contacts = await order_creator_contacts(
+        session, [UUID(key) for key in extra - known]
+    )
+    return creator_workspace(
+        responses, activity, transfers, contacts, offer_price=order.price
+    )
