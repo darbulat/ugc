@@ -83,8 +83,8 @@
           {% if info.picked < row.bloggers_needed %}<small class="order-row-note">Осталось {{ row.bloggers_needed - info.picked }}</small>{% endif %}
         </td>
         <td>
-          {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Тестовый</small>{% endif %}
-          {% if info.test_candidate %}<small class="badge bg-yellow-lt mb-1">Проверить на тест</small>{% endif %}
+          {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Служебный</small>{% endif %}
+          {% if info.test_candidate %}<small class="badge bg-yellow-lt mb-1">Проверить назначение</small>{% endif %}
           <a class="order-clamp fw-semibold" href="{{ detail_url }}" title="{{ row.offer_text }}">{{ row.offer_text or 'Открыть заказ' }}</a>
         </td>
         <td>
@@ -152,7 +152,7 @@
                 {% if info.is_test %}
                   <button type="submit" class="btn btn-sm btn-outline-secondary">Снять отметку</button>
                 {% else %}
-                  <button type="button" class="btn btn-sm btn-outline-secondary" data-admin-confirm="Отметить заказ «{{ row.offer_text|truncate(70) }}» как тестовый? Заказ уйдёт во вкладку «Тестовые» и будет исключён из рабочих показателей.">Это тест</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" data-admin-confirm="Отметить заказ «{{ row.offer_text|truncate(70) }}» как служебный? Заказ уйдёт во вкладку «Служебные» и будет исключён из рабочих показателей.">Служебный заказ</button>
                 {% endif %}
               </form>
             {% endif %}

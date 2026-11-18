@@ -28,9 +28,9 @@ def _back(order: Order, ru: bool) -> Button:
 
 def _result(order: Order, locale: str, accepted: bool, ru: bool) -> OfferCard:
     title = (
-        ("Тестовый отклик подтверждён" if accepted else "Тестовый пропуск")
+        ("Предпросмотр отклика" if accepted else "Предпросмотр пропуска")
         if ru
-        else ("Test response confirmed" if accepted else "Test skip")
+        else ("Response preview" if accepted else "Skip preview")
     )
     notice = (
         "Реальный отклик не создан. Заказ и рассылка не изменены."
@@ -60,8 +60,8 @@ def render_offer_preview(
     if view == "done" or view.startswith("s_"):
         return _result(order, locale, view == "done", ru)
     labels = {
-        "confirm": "Откликнуться · тест" if ru else "Respond · test",
-        "done": "Подтвердить тест" if ru else "Confirm test",
+        "confirm": "Откликнуться · просмотр" if ru else "Preview response",
+        "done": "Посмотреть результат" if ru else "View result",
     }
     rows = []
     for row in card.keyboard.rows if card.keyboard else []:
@@ -81,7 +81,7 @@ def render_offer_preview(
         rows.append(rewritten)
     text = card.text
     if view == "confirm":
-        title = "Тестовый отклик" if ru else "Test response"
+        title = "Предпросмотр отклика" if ru else "Response preview"
         notice = (
             "Это предпросмотр. Реальный отклик не будет создан, "
             "контакты и уведомления никому не отправятся."

@@ -305,7 +305,7 @@ async def test_admin_reads_paid_assignment_in_order_list_and_card(
     assert row["picked"] == card["picked_count"]
     assert row["managers"] == card["managers"]
     assert row["replaceable_managers"] == []
-    assert row["deletion_blocker"] == "Заказ не отмечен как тестовый"
+    assert row["deletion_blocker"] == "Заказ не отмечен как служебный"
 
 
 def command(data, action, actor, version, key=None, **extra):

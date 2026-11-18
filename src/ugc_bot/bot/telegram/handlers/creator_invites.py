@@ -216,8 +216,8 @@ async def _preview_card(event, roles, service, order_id):
     )
     rows = await service.preview_card(principal, order_id)
     lines = [
-        f"Итоги тестового заказа {public_order_number(order_id)}",
-        "Проверка приглашений. Без оплаты и рассылки.",
+        f"Предпросмотр заказа {public_order_number(order_id)}",
+        "Приглашения без оплаты и рассылки.",
     ]
     for row in rows:
         if row.telegram is None:
@@ -268,7 +268,7 @@ async def open_preview_card(
             UUID(hex=(command.args or "")[3:]),
         )
     except (ValueError, PermissionError):
-        await message.answer("Тестовый заказ недоступен.")
+        await message.answer("Предпросмотр заказа недоступен.")
         return
     await message.answer(text, reply_markup=markup, parse_mode=None)
 
@@ -293,7 +293,9 @@ async def refresh_preview_card(
         )
         await message.edit_text(text, reply_markup=markup, parse_mode=None)
     except (ValueError, PermissionError):
-        await callback.answer("Тестовый заказ недоступен.", show_alert=True)
+        await callback.answer(
+            "Предпросмотр заказа недоступен.", show_alert=True
+        )
         return
     except TelegramBadRequest as exc:
         if "message is not modified" not in str(exc).lower():

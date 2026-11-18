@@ -5,7 +5,7 @@
 {% elif deletion_blocker is none %}
   {% set operation = 'delete-test' %}
   {% set label = 'Удалить заказ' %}
-  {% set prompt = 'Удалить тестовый черновик «' ~ (delete_title|truncate(70)) ~ '»? Заказ исчезнет из списка. Запись в журнале сохранится.' %}
+  {% set prompt = 'Удалить служебный черновик «' ~ (delete_title|truncate(70)) ~ '»? Заказ исчезнет из списка. Запись в журнале сохранится.' %}
 {% else %}
   {% set operation = 'archive-order' %}
   {% set label = 'Удалить из списка' %}

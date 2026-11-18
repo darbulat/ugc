@@ -54,7 +54,7 @@
     <div class="order-editor__heading">
       <div class="order-editor__intro">
         <span class="order-editor__status">{{ order_status_labels.get(obj.status, obj.status) }}</span>
-        {% if order_actions.is_test %}<span class="order-editor__status">Тестовый</span>{% endif %}
+        {% if order_actions.is_test %}<span class="order-editor__status">Служебный</span>{% endif %}
         {% if order_actions.archived %}<span class="order-editor__status">Удалён из списка</span>{% endif %}
         {% if obj.complimentary %}<span class="order-editor__status">Запущен без оплаты</span>{% endif %}
         <h1>{{ obj.offer_text|default('Заказ', true)|truncate(120) }}</h1>

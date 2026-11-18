@@ -5,7 +5,7 @@
 {% endblock %}
 {% block content %}
 {% set groups = [('work', 'В работе'), ('repeat', 'Повторные'), ('closed', 'Закрытые')] %}
-{% set more_groups = {'unpaid': 'Давно без оплаты', 'missing-reason': 'Без причины закрытия', 'check-test': 'Проверить на тест', 'test': 'Тестовые', 'hidden': 'Скрытые', 'removed': 'Удалённые'} %}
+{% set more_groups = {'unpaid': 'Давно без оплаты', 'missing-reason': 'Без причины закрытия', 'check-test': 'Проверить назначение', 'test': 'Служебные', 'hidden': 'Скрытые', 'removed': 'Удалённые'} %}
 {% set group = request.query_params.get('group', 'work') %}
 {% if group not in ['all', 'work', 'repeat', 'closed'] and group not in more_groups %}{% set group = 'work' %}{% endif %}
 {% set status = request.query_params.get('status', '') %}
@@ -62,10 +62,10 @@
         {{ group_link('all', 'Все', 'nav-link') }}
       </nav>
       {% if group == 'test' %}
-        <p class="text-muted mb-3">Пометьте свой заказ кнопкой «Это тест». Удаление доступно для черновиков без оплаты, рассылки и других связанных действий. Остальные тестовые заказы можно хранить здесь отдельно.</p>
+        <p class="text-muted mb-3">Пометьте свой заказ кнопкой «Служебный заказ». Удаление доступно для черновиков без оплаты, рассылки и других связанных действий. Остальные служебные заказы можно хранить здесь отдельно.</p>
       {% endif %}
       {% if group == 'check-test' %}
-        <p class="text-muted mb-3">Заказы от аккаунтов, которые могли использоваться для тестов. После проверки выберите «Это тест» или «Реальный заказ».</p>
+        <p class="text-muted mb-3">Заказы от аккаунтов, которые могли использоваться для служебных проверок. После проверки выберите «Служебный заказ» или «Реальный заказ».</p>
       {% endif %}
       {% if group == 'removed' %}
         <p class="text-muted mb-3">Заказы убраны из рабочего списка. Здесь их можно вернуть.</p>
