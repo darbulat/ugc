@@ -43,14 +43,14 @@ def test_interpolation_preserves_passwords_and_shell_variables(release_module):
     assert settings == original
 
 
-def test_compose_serialized_commands_decode_without_changing_environment(
+def test_compose_serialized_settings_preserve_literal_dollars(
     release_module,
 ):
-    decoded = release_module["decoded_commands"](
+    decoded = release_module["unescape_interpolation"](
         {
             "entrypoint": None,
             "command": ["sh", "-c", "echo $$READY $$$$"],
-            "environment": {"TOKEN": "literal$$value"},
+            "environment": {"TOKEN": "literal$$$$value"},
             "healthcheck": {"test": ["CMD-SHELL", "test $$READY"]},
         }
     )

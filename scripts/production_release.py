@@ -145,10 +145,12 @@ def live_snapshot(containers):
         environment = rollout_environment(
             model, service, files, environment_of(current)
         )
-        resolved = json.loads(
-            checked(
-                command + ["config", "--format", "json"],
-                environment=environment,
+        resolved = unescape_interpolation(
+            json.loads(
+                checked(
+                    command + ["config", "--format", "json"],
+                    environment=environment,
+                )
             )
         )
         settings = pin_runtime(resolved["services"][service], current)
@@ -254,10 +256,7 @@ def write_snapshot(path, snapshot):
             stdin=content,
         )
     )
-    normalized = {
-        service: decoded_commands(settings)
-        for service, settings in resolved["services"].items()
-    }
+    normalized = unescape_interpolation(resolved["services"])
     if normalized != snapshot["services"]:
         differences = {
             service: sorted(
@@ -274,18 +273,19 @@ def write_snapshot(path, snapshot):
     private_json(path, escape_interpolation(snapshot))
 
 
-def decoded_commands(settings):
-    """Compose config preserves dollar escaping in executable expressions."""
-    decoded = copy.deepcopy(settings)
-    for key in ("command", "entrypoint"):
-        if decoded.get(key) is None:
-            decoded.pop(key, None)
-        else:
-            decoded[key] = [part.replace("$$", "$") for part in decoded[key]]
-    health = decoded.get("healthcheck", {})
-    if "test" in health:
-        health["test"] = [part.replace("$$", "$") for part in health["test"]]
-    return decoded
+def unescape_interpolation(value):
+    """Decode the escaped dollar signs emitted by Compose config."""
+    if isinstance(value, str):
+        return value.replace("$$", "$")
+    if isinstance(value, list):
+        return [unescape_interpolation(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: unescape_interpolation(item)
+            for key, item in value.items()
+            if value[key] is not None or key not in ("command", "entrypoint")
+        }
+    return value
 
 
 def runtime_signature(container):
