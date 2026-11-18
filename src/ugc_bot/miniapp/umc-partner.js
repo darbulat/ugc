@@ -287,6 +287,7 @@
       achievements.type = 'button';
       achievements.dataset.partnerOpen = '';
       achievements.addEventListener('click',function () {
+        if (!current()) return;
         state.focusAchievements = true;
         open();
       });
@@ -327,6 +328,7 @@
       mark.setAttribute('aria-hidden','true');
       button.append(mark,node('span',achievementName(threshold,c)));
       button.addEventListener('click',function () {
+        if (!current()) return;
         list.querySelectorAll('button').forEach(function (other) { other.setAttribute('aria-pressed',String(other === button)); });
         detail.textContent = description;
       });

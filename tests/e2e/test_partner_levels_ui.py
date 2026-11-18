@@ -177,10 +177,8 @@ def test_account_change_clears_levels_and_achievements(page, platform):
     set_verified_count(network, 400)
     errors = open_app(page, network, platform, query="?view=partner")
     expect(page.locator("#partner-grade-value")).to_have_text("20%")
-    page.evaluate("""() => {
-        window._me.user_id = 'another-account';
-        document.dispatchEvent(new Event('visibilitychange'));
-    }""")
+    page.evaluate("window._me.user_id = 'another-account'")
+    page.locator('#partner-achievements [data-threshold="400"]').click()
     expect(page.locator("#partner-content")).to_be_hidden()
     expect(page.locator("#partner-grade")).to_be_empty()
     expect(page.locator("#partner-achievements")).to_be_empty()
