@@ -1,7 +1,7 @@
 """Read-only Meta token checks and durable Telegram expiry notifications.
 
 This process never refreshes credentials or calls creator/verification writers.
-Its only external writes are notifications to the three configured admins.
+Its only external writes are notifications to the explicitly configured admins.
 """
 
 import argparse
@@ -68,8 +68,10 @@ class MonitorSettings(BaseModel):
 
     @model_validator(mode="after")
     def validate_targets(self) -> "MonitorSettings":
-        if len(self.recipients) != 3 or len(set(self.recipients)) != 3:
-            raise ValueError("Exactly three distinct admin recipients required")
+        if not 1 <= len(self.recipients) <= 3 or len(
+            set(self.recipients)
+        ) != len(self.recipients):
+            raise ValueError("One to three distinct admin recipients required")
         if any(not value.isdecimal() for value in self.recipients):
             raise ValueError(
                 "Admin recipients must be private Telegram chat IDs"
