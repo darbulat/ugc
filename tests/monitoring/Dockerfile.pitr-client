@@ -1,0 +1,7 @@
+ARG APPLICATION_IMAGE=ugc-admin-import:ci
+FROM ${APPLICATION_IMAGE}
+USER root
+# pg_verifybackup also needs pg_waldump, shipped by the server package.
+# This package is installed only in the synthetic CI fixture.
+RUN apt-get update && apt-get install --no-install-recommends -y postgresql-16 \
+    && rm -rf /var/lib/apt/lists/*

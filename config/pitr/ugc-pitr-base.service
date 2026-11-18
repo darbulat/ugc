@@ -1,0 +1,27 @@
+[Unit]
+Description=Verified encrypted UMC physical base backup
+Requires=ugc-pitr-receiver.service
+After=ugc-pitr-receiver.service
+
+[Service]
+Type=oneshot
+User=ugc-pitr
+Group=ugc-pitr
+Slice=ugc-pitr.slice
+UMask=0077
+WorkingDirectory=/var/lib/ugc-pitr
+LoadCredential=pgpass:/etc/ugc-pitr/pgpass
+LoadCredential=tunnel_key:/etc/ugc-pitr/tunnel_key
+ExecStart=/usr/bin/python3 -Es /opt/ugc-pitr/current/pitr_receiver.py base --config /etc/ugc-pitr/config.json
+TimeoutStartSec=20min
+OOMScoreAdjust=900
+Nice=19
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/ugc-pitr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
