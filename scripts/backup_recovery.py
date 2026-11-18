@@ -134,6 +134,43 @@ def recovery_plan(snapshot, recipient):
     }
 
 
+def image_inventory(containers):
+    active = {
+        current["Image"]
+        for current in containers
+        if current["State"]["Status"] not in {"exited", "dead"}
+    }
+    images = {}
+    for current in containers:
+        identifier = current["Image"]
+        if identifier not in images:
+            try:
+                details = inspect(identifier, "image")
+            except RuntimeError:
+                if identifier in active:
+                    raise
+                images[identifier] = {
+                    "tags": None,
+                    "digests": None,
+                    "revision": None,
+                    "metadata_available": False,
+                }
+            else:
+                images[identifier] = {
+                    "tags": details.get("RepoTags"),
+                    "digests": details.get("RepoDigests"),
+                    "revision": (details["Config"].get("Labels") or {}).get(
+                        "org.opencontainers.image.revision"
+                    ),
+                    "metadata_available": True,
+                }
+            images[identifier]["configured_references"] = []
+        reference = current["Config"]["Image"]
+        if reference not in images[identifier]["configured_references"]:
+            images[identifier]["configured_references"].append(reference)
+    return images
+
+
 def create_local_bundle(output, image, age, recipient):
     names = checked(
         [
@@ -146,18 +183,7 @@ def create_local_bundle(output, image, age, recipient):
     ).split()
     containers = json.loads(checked(["docker", "inspect", *names]))
     plan = recovery_plan(live_snapshot(containers), recipient)
-    images = {}
-    for current in containers:
-        identifier = current["Image"]
-        if identifier not in images:
-            details = inspect(identifier, "image")
-            images[identifier] = {
-                "tags": details.get("RepoTags"),
-                "digests": details.get("RepoDigests"),
-                "revision": (details["Config"].get("Labels") or {}).get(
-                    "org.opencontainers.image.revision"
-                ),
-            }
+    images = image_inventory(containers)
     plan["memory"]["configuration/images.json"] = json.dumps(images, indent=2)
     command = [
         "docker",
