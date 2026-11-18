@@ -88,7 +88,9 @@ def test_publisher_and_admin_shortcuts_live_in_network_and_manager_cabinets(
     ).to_be_hidden()
     page.locator("#screen-manager-orders [data-campaign-settings-open]").click()
     expect(page.locator("#campaign-publisher")).to_contain_text(
-        "Выдано" if role == "publisher" else "Не выдано"
+        "Создание рассылок доступно"
+        if role == "publisher"
+        else "Создание рассылок недоступно"
     )
     expect(page.locator("#campaign-consent")).to_be_hidden()
     assert not errors
