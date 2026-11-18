@@ -30,4 +30,6 @@ The bundle is uploaded through the existing backup container's verified S3 clien
 
 Install the reviewed host scripts and the checksum-verified age binary under /opt/myapp/ugc-ops with owner-only permissions. Keep the producer image ID in its private recovery-image-id file. A regular run takes the deployment lock in shared mode and an exclusive recovery lock, captures the archive, verifies its S3 upload and retains local ciphertext for seven days. The chosen production schedule is every six hours. Existing alert configuration is managed separately.
 
+Install the entry in config/recovery.cron in the deploy user's crontab after the first verified round trip. Preserve existing entries and avoid duplicating the recovery entry on retries. The verified host timezone is UTC, so runs occur at 03:20, 09:20, 15:20 and 21:20 Moscow time. Create the recovery-backup.log file with mode 0600 before enabling the entry.
+
 After the first upload, download the encrypted object and compare its SHA-256 with the uploaded ciphertext. Decrypt it on the owner's machine using the age identity. Verify every archived file against the manifest inside the encrypted archive and check that configuration, source, certificates and order images are represented. The identity file must be available independently of the production server for future recovery.
