@@ -1,0 +1,12 @@
+[Unit]
+Description=Isolated UMC PITR archive budget
+
+[Slice]
+MemoryAccounting=yes
+MemoryHigh=224M
+MemoryMax=256M
+MemorySwapMax=0
+CPUQuota=25%
+CPUWeight=10
+IOWeight=10
+TasksMax=64

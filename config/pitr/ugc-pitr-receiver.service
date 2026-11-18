@@ -1,0 +1,41 @@
+[Unit]
+Description=UMC encrypted WAL archive receiver
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=ugc-pitr
+Group=ugc-pitr
+Slice=ugc-pitr.slice
+UMask=0077
+WorkingDirectory=/var/lib/ugc-pitr
+LoadCredential=pgpass:/etc/ugc-pitr/pgpass
+LoadCredential=tunnel_key:/etc/ugc-pitr/tunnel_key
+ExecStart=/usr/bin/python3 -Es /opt/ugc-pitr/current/pitr_receiver.py receive --config /etc/ugc-pitr/config.json
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+OOMPolicy=stop
+OOMScoreAdjust=900
+Nice=15
+IOSchedulingClass=idle
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ReadWritePaths=/var/lib/ugc-pitr
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+CapabilityBoundingSet=
+LogRateLimitIntervalSec=60
+LogRateLimitBurst=10
+
+[Install]
+WantedBy=multi-user.target

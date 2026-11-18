@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily UMC base backup, enabled only after initial verification
+
+[Timer]
+OnCalendar=*-*-* 00:50:00 UTC
+RandomizedDelaySec=10min
+Persistent=yes
+Unit=ugc-pitr-base.service
+
+[Install]
+WantedBy=timers.target

@@ -213,7 +213,7 @@ jobs:
   admin-image-import:
     name: Admin image import and alert isolation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -228,6 +228,19 @@ jobs:
 
       - name: Verify Docker log rotation on an isolated container
         run: bash tests/monitoring/check_log_rotation.sh ugc-admin-import:ci
+
+      - name: Install pinned age for the synthetic PITR test
+        run: |
+          curl --fail --location --retry 3 --output age.tar.gz \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz
+          echo 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  age.tar.gz' | sha256sum -c -
+          tar -xzf age.tar.gz
+
+      - name: Build a dedicated PostgreSQL verification client
+        run: docker build -f tests/monitoring/Dockerfile.pitr-client -t ugc-pitr-client:ci .
+
+      - name: Recover a deleted synthetic row to a paused isolated PITR target
+        run: bash tests/monitoring/check_pitr.sh ugc-pitr-client:ci "$PWD/age"
 
   recovery-encryption:
     name: Recovery bundle encryption
@@ -258,8 +271,8 @@ jobs:
         env:
           AGE_BINARY: ${{ github.workspace }}/age/age
         run: |
-          uv run ruff check scripts/production_release.py scripts/apply_resource_policy.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py
-          uv run pytest -q tests/unit/test_recovery_bundle.py
+          uv run ruff check scripts/production_release.py scripts/apply_resource_policy.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py scripts/pitr_{store,receiver,primary,operator,restore_isolated,tunnel}.py tests/monitoring/pitr_roundtrip.py
+          uv run pytest -q tests/unit/test_recovery_bundle.py tests/unit/test_pitr_store.py tests/unit/test_pitr_safety.py
 
   lint-and-test:
     name: lint-and-test (3.13)
