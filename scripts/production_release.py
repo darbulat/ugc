@@ -122,6 +122,11 @@ def pin_runtime(settings, current):
     settings.pop("env_file", None)
     settings["image"] = current["Image"]
     settings["environment"] = environment_of(current)
+    logging = current.get("HostConfig", {}).get("LogConfig")
+    if logging and logging["Type"]:
+        settings["logging"] = {"driver": logging["Type"]}
+        if logging.get("Config"):
+            settings["logging"]["options"] = logging["Config"]
     healthcheck = current["Config"].get("Healthcheck")
     if healthcheck:
         settings.setdefault("healthcheck", {})["test"] = healthcheck["Test"]
