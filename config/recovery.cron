@@ -1,0 +1,2 @@
+# UGC encrypted operational recovery
+20 */6 * * * /bin/sh /opt/myapp/ugc-ops/run_recovery_backup.sh >>/opt/myapp/ugc-ops/recovery-backup.log 2>&1

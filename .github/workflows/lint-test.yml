@@ -206,10 +206,42 @@ jobs:
       - name: Verify durable release configuration on isolated containers
         run: bash tests/monitoring/check_release_snapshot.sh ugc-admin-import:ci
 
+  recovery-encryption:
+    name: Recovery bundle encryption
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - run: uv sync --all-extras --locked
+
+      - name: Install pinned age binary with checksum verification
+        run: |
+          curl --fail --location --retry 3 --output age.tar.gz \
+            https://github.com/FiloSottile/age/releases/download/v1.3.2/age-v1.3.2-linux-amd64.tar.gz
+          echo 'cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10  age.tar.gz' | sha256sum -c -
+          tar -xzf age.tar.gz
+
+      - name: Verify encryption and restoration on synthetic data
+        env:
+          AGE_BINARY: ${{ github.workspace }}/age/age
+        run: |
+          uv run ruff check scripts/production_release.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py
+          uv run pytest -q tests/unit/test_recovery_bundle.py
+
   lint-and-test:
     name: lint-and-test (3.13)
     if: always()
-    needs: [lint, migrations, test-shards, admin-browser, admin-image-import]
+    needs: [lint, migrations, test-shards, admin-browser, admin-image-import, recovery-encryption]
     runs-on: ubuntu-latest
     steps:
       - name: Require all checks and test shards to pass
@@ -220,17 +252,20 @@ jobs:
           TEST_RESULT: ${{ needs.test-shards.result }}
           BROWSER_RESULT: ${{ needs.admin-browser.result }}
           IMPORT_RESULT: ${{ needs.admin-image-import.result }}
+          RECOVERY_RESULT: ${{ needs.recovery-encryption.result }}
         run: |
           if [[ "$LINT_RESULT" != "success" || \
                 "$MIGRATION_RESULT" != "success" || \
                 "$TEST_RESULT" != "success" || \
                 "$BROWSER_RESULT" != "success" || \
-                "$IMPORT_RESULT" != "success" ]]; then
+                "$IMPORT_RESULT" != "success" || \
+                "$RECOVERY_RESULT" != "success" ]]; then
             echo "Lint: $LINT_RESULT"
             echo "Migrations: $MIGRATION_RESULT"
             echo "Test shards: $TEST_RESULT"
             echo "Admin browser: $BROWSER_RESULT"
             echo "Admin image import: $IMPORT_RESULT"
+            echo "Recovery encryption: $RECOVERY_RESULT"
             exit 1
           fi
 

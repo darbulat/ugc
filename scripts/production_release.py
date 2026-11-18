@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -46,6 +47,17 @@ def environment_of(container):
     return dict(item.split("=", 1) for item in container["Config"]["Env"])
 
 
+def open_lock(path):
+    """Use the existing lock inode even when it belongs to another operator."""
+    try:
+        descriptor = os.open(
+            path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+        )
+    except FileExistsError:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    return os.fdopen(descriptor, "r")
+
+
 def escape_interpolation(value):
     """Preserve literal dollars when a resolved config is read by Compose."""
     if isinstance(value, str):
@@ -62,6 +74,17 @@ def private_json(path, value):
     with os.fdopen(descriptor, "w") as out:
         json.dump(value, out, indent=2)
         out.write("\n")
+        out.flush()
+        os.fsync(out.fileno())
+    sync_directory(path.parent)
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def compose_base():
@@ -110,6 +133,11 @@ def pin_runtime(settings, current):
     settings.pop("env_file", None)
     settings["image"] = current["Image"]
     settings["environment"] = environment_of(current)
+    logging = current.get("HostConfig", {}).get("LogConfig")
+    if logging and logging["Type"]:
+        settings["logging"] = {"driver": logging["Type"]}
+        if logging.get("Config"):
+            settings["logging"]["options"] = logging["Config"]
     healthcheck = current["Config"].get("Healthcheck")
     if healthcheck:
         settings.setdefault("healthcheck", {})["test"] = healthcheck["Test"]
@@ -174,6 +202,11 @@ def verify_archive(directory):
         digest = hashlib.file_digest(archive, "sha256").hexdigest()
     if digest != manifest["archive_sha256"]:
         raise ValueError("Release archive checksum mismatch")
+    if "source_archive_sha256" in manifest:
+        with (directory / "source.tar.gz").open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        if digest != manifest["source_archive_sha256"]:
+            raise ValueError("Release source checksum mismatch")
     return manifest
 
 
@@ -411,6 +444,19 @@ def release(directory, services):
     destination = Path(
         tempfile.mkdtemp(prefix="attempt-", dir=revision_directory)
     )
+    if "source_archive_sha256" in manifest:
+        descriptor = os.open(
+            destination / "source.tar.gz",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with (
+            (directory / "source.tar.gz").open("rb") as source,
+            os.fdopen(descriptor, "wb") as target,
+        ):
+            shutil.copyfileobj(source, target)
+            target.flush()
+            os.fsync(target.fileno())
     with (directory / "image.tar.gz").open("rb") as archive:
         result = subprocess.run(
             ["docker", "image", "load"],
@@ -484,6 +530,7 @@ def release(directory, services):
     pending = RELEASE_ROOT / (".current-" + destination.name)
     pending.symlink_to(destination)
     os.replace(pending, RELEASE_ROOT / "current")
+    sync_directory(RELEASE_ROOT)
     print(f"Release {revision} verified", flush=True)
 
 
@@ -496,7 +543,7 @@ def main():
         parser.error("Services must be unique")
     ordered = [service for service in PORTS if service in args.services]
     os.umask(0o077)
-    with open("/tmp/ugc-production-deploy.lock", "a") as lock:
+    with open_lock("/tmp/ugc-production-deploy.lock") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         release(args.directory.resolve(strict=True), ordered)
 

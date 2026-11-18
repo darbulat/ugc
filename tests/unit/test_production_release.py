@@ -1,6 +1,7 @@
 """Protect operational settings and peers during a CI image rollout."""
 
 import copy
+import fcntl
 import hashlib
 import json
 import os
@@ -86,6 +87,24 @@ def test_private_configuration_is_exclusive_and_owner_only(
         release_module["private_json"](target, {})
 
 
+def test_existing_read_only_lock_preserves_inode_and_coordinates_users(
+    release_module, tmp_path
+):
+    path = tmp_path / "deployment.lock"
+    path.write_text("")
+    path.chmod(0o444)
+    original = path.stat().st_ino
+    with release_module["open_lock"](path) as first:
+        fcntl.flock(first, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with (
+            release_module["open_lock"](path) as second,
+            pytest.raises(BlockingIOError),
+        ):
+            fcntl.flock(second, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert path.stat().st_ino == original
+    assert path.stat().st_mode & 0o777 == 0o444
+
+
 def test_archive_verification_detects_tampering(release_module, tmp_path):
     archive = tmp_path / "image.tar.gz"
     archive.write_bytes(b"verified CI artifact")
@@ -112,6 +131,26 @@ def test_archive_requires_immutable_identifiers(
     manifest[field] = value
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="Invalid"):
+        release_module["verify_archive"](tmp_path)
+
+
+def test_source_archive_checksum_is_verified(release_module, tmp_path):
+    image = tmp_path / "image.tar.gz"
+    source = tmp_path / "source.tar.gz"
+    image.write_bytes(b"image")
+    source.write_bytes(b"source")
+    manifest = {
+        "revision": "a" * 40,
+        "image_id": "sha256:" + "b" * 64,
+        "archive_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+        "source_archive_sha256": hashlib.sha256(
+            source.read_bytes()
+        ).hexdigest(),
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    assert release_module["verify_archive"](tmp_path) == manifest
+    source.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="source checksum"):
         release_module["verify_archive"](tmp_path)
 
 

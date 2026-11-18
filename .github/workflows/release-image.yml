@@ -62,6 +62,8 @@ jobs:
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_ACTOR" --password-stdin
           docker push "$image"
           docker image save "$image" | gzip -1 > release/image.tar.gz
+          test -z "$(git ls-tree --name-only HEAD -- .env)"
+          git archive --format=tar.gz --output=release/source.tar.gz HEAD
           python3 - <<'PY'
           import hashlib
           import json
@@ -78,6 +80,9 @@ jobs:
               'registry_reference': reference,
               'registry_digests': image['RepoDigests'],
               'archive_sha256': digest,
+              'source_archive_sha256': hashlib.file_digest(
+                  pathlib.Path('release/source.tar.gz').open('rb'), 'sha256'
+              ).hexdigest(),
           }
           pathlib.Path('release/manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
           PY
