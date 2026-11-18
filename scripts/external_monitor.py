@@ -25,6 +25,7 @@ from typing import Any
 
 MAX_BODY = 131072
 MAX_BACKUP_AGE = 26 * 3600
+MAX_PEER_AGE = 90
 
 
 @dataclass(frozen=True)
@@ -73,6 +74,33 @@ def check_page(probe: dict[str, str]) -> Observation:
     except Exception:
         # Exception strings can contain URLs, credentials or response bodies.
         return Observation(probe["name"], False, "HTTPS-проверка не прошла")
+
+
+def check_peer_heartbeat(probe: dict[str, str]) -> Observation:
+    try:
+        path = Path.home() / ".cache/umc-monitor/last-peer-query.json"
+        with path.open("rb") as stream:
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            raise ValueError("oversized_peer_query")
+        data = json.loads(raw)
+        generated = data.get("generated_at")
+        if (
+            data.get("version") == 1
+            and data.get("source_ip") == probe["host"]
+            and isinstance(generated, (int, float))
+            and -30 <= time.time() - generated <= MAX_PEER_AGE
+        ):
+            return Observation(
+                probe["name"], True, "Получен свежий запрос от монитора"
+            )
+    except Exception:
+        pass
+    return Observation(
+        probe["name"],
+        False,
+        "Нет подтверждённого запроса от Timeweb за последние 90 секунд",
+    )
 
 
 def snapshot_observations(
@@ -258,13 +286,11 @@ def load_state(path: Path) -> dict[str, Any]:
     return state
 
 
-def load_config(path: Path) -> dict[str, Any]:
-    config = json.loads(path.read_text())
-    probes = config.get("probes", [])
-    if not 1 <= len(probes) <= 5:
-        raise ValueError("one_to_five_probes_required")
-    names = []
-    for probe in probes:
+def validate_probe(probe: dict[str, str]) -> None:
+    kind = probe.get("type", "https")
+    if kind == "peer_heartbeat":
+        ipaddress.ip_address(probe["host"])
+    elif kind == "https":
         url = urllib.parse.urlsplit(probe["url"])
         if (
             url.scheme != "https"
@@ -275,8 +301,22 @@ def load_config(path: Path) -> dict[str, Any]:
             or url.fragment
         ):
             raise ValueError("public_https_url_required")
-        if not probe.get("contains") or not 1 <= len(probe["name"]) <= 80:
-            raise ValueError("invalid_probe")
+        if not probe.get("contains"):
+            raise ValueError("expected_page_content_required")
+    else:
+        raise ValueError("unknown_probe_type")
+    if not 1 <= len(probe["name"]) <= 80:
+        raise ValueError("invalid_probe")
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    config = json.loads(path.read_text())
+    probes = config.get("probes", [])
+    if not 1 <= len(probes) <= 5:
+        raise ValueError("one_to_five_probes_required")
+    names = []
+    for probe in probes:
+        validate_probe(probe)
         names.append(probe["name"])
     if len(set(names)) != len(names):
         raise ValueError("duplicate_probe_names")
@@ -349,7 +389,15 @@ def ping_watchdog(credentials: Path) -> None:
 
 def collect(config: dict[str, Any], credentials: Path) -> list[Observation]:
     with ThreadPoolExecutor(max_workers=6) as pool:
-        pages = [pool.submit(check_page, probe) for probe in config["probes"]]
+        pages = [
+            pool.submit(
+                check_peer_heartbeat
+                if probe.get("type") == "peer_heartbeat"
+                else check_page,
+                probe,
+            )
+            for probe in config["probes"]
+        ]
         snapshot = (
             pool.submit(check_snapshot, config["snapshot"], credentials)
             if config.get("snapshot")
@@ -382,6 +430,9 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
                 print("recipient_validation_failed", flush=True)
             checked_at = now
         events = evaluate(state, observations, now)
+        # A recovered incident no longer needs its failed initial delivery.
+        if not events:
+            state["retry_at"] = 0
         if events and now >= state.get("retry_at", 0):
             try:
                 telegram(

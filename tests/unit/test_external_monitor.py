@@ -87,6 +87,117 @@ def test_transport_error_never_exposes_urls_or_credentials(monkeypatch):
     assert "secret" not in result.detail and "token" not in result.detail
 
 
+def _peer_environment(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "umc-monitor-snapshot")
+    monkeypatch.setenv(
+        "SSH_CONNECTION", "194.87.131.138 41234 31.59.106.143 22"
+    )
+    monkeypatch.setattr(monitor, "time", SimpleNamespace(time=lambda: 1000))
+    return {"name": "peer", "type": "peer_heartbeat", "host": "194.87.131.138"}
+
+
+@pytest.mark.parametrize(
+    "age,expected",
+    [(0, True), (90, True), (90.001, False), (-30, True), (-31, False)],
+)
+def test_peer_query_roundtrip_and_freshness_boundary(
+    monkeypatch, tmp_path, age, expected
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    reporter.record_peer_query(
+        {"version": 1, "generated_at": 1000 - age, "docker": True}
+    )
+    assert monitor.check_peer_heartbeat(probe).ok is expected
+
+
+@pytest.mark.parametrize("command", [None, "id", "python3 monitor_snapshot.py"])
+def test_local_and_unrelated_commands_do_not_create_peer_heartbeat(
+    monkeypatch, tmp_path, command
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    if command is None:
+        monkeypatch.delenv("SSH_ORIGINAL_COMMAND")
+    else:
+        monkeypatch.setenv("SSH_ORIGINAL_COMMAND", command)
+    reporter.record_peer_query({"version": 1, "generated_at": 1000})
+    assert not monitor.check_peer_heartbeat(probe).ok
+    assert not (tmp_path / ".cache/umc-monitor/last-peer-query.json").exists()
+
+
+def test_peer_query_proves_liveness_even_when_docker_is_down(
+    monkeypatch, tmp_path
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    reporter.record_peer_query(
+        {"version": 1, "generated_at": 1000, "docker": False}
+    )
+    assert monitor.check_peer_heartbeat(probe).ok
+
+
+def test_peer_metadata_contains_no_snapshot_secrets(monkeypatch, tmp_path):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    data = {"version": 1, "generated_at": 1000, "token": "must-not-record"}
+    reporter.record_peer_query(data)
+    path = tmp_path / ".cache/umc-monitor/last-peer-query.json"
+    assert json.loads(path.read_text()) == {
+        "version": 1,
+        "generated_at": 1000,
+        "source_ip": probe["host"],
+    }
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert data["token"] == "must-not-record"
+
+
+@pytest.mark.parametrize(
+    "connection",
+    [
+        "",
+        "bad",
+        "not-an-IP 123 31.59.106.143 22",
+        "192.0.2.1 123 31.59.106.143 22",
+    ],
+)
+def test_peer_requires_provenance_from_expected_host(
+    monkeypatch, tmp_path, connection
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("SSH_CONNECTION", connection)
+    reporter.record_peer_query({"version": 1, "generated_at": 1000})
+    assert not monitor.check_peer_heartbeat(probe).ok
+
+
+@pytest.mark.parametrize("body", [b"bad-secret-json", b"{}", b"x" * 4097])
+def test_bad_peer_metadata_is_unhealthy_without_data_leak(
+    monkeypatch, tmp_path, body
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    path = tmp_path / ".cache/umc-monitor/last-peer-query.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(body)
+    result = monitor.check_peer_heartbeat(probe)
+    assert not result.ok and "secret" not in result.detail
+
+
+def test_collect_preserves_https_and_dispatches_peer_probe(
+    monkeypatch, tmp_path
+):
+    https = Mock(return_value=observation(True, "web"))
+    peer = Mock(return_value=observation(True, "peer"))
+    monkeypatch.setattr(monitor, "check_page", https)
+    monkeypatch.setattr(monitor, "check_peer_heartbeat", peer)
+    probes = [
+        {"name": "web", "url": "https://example.test", "contains": "ok"},
+        {"name": "peer", "type": "peer_heartbeat", "host": "192.0.2.1"},
+    ]
+    result = monitor.collect({"probes": probes, "snapshot": None}, tmp_path)
+    assert [x.name for x in result] == ["web", "peer"] and all(
+        x.ok for x in result
+    )
+    https.assert_called_once_with(probes[0])
+    peer.assert_called_once_with(probes[1])
+
+
 def healthy_snapshot(now):
     return {
         "version": 1,
@@ -255,6 +366,43 @@ def test_example_config_and_state_validation(tmp_path):
         monitor.load_state(path)
 
 
+def test_peer_config_needs_no_ssh_credential_or_web_endpoint():
+    sample = (
+        Path(__file__).parents[2]
+        / "config/monitoring/peer-monitor.example.json"
+    )
+    config = monitor.load_config(sample)
+    assert config["probes"] == [
+        {
+            "name": "Связь с монитором Timeweb (проверка с UMC)",
+            "type": "peer_heartbeat",
+            "host": "194.87.131.138",
+        }
+    ]
+    assert config["snapshot"] is None
+
+
+@pytest.mark.parametrize(
+    "host", ["example.org", "192.0.2.1:22", "192.0.2.1; id"]
+)
+def test_peer_config_requires_a_literal_ip_address(tmp_path, host):
+    path = config_file(
+        tmp_path,
+        probes=[{"name": "peer", "type": "peer_heartbeat", "host": host}],
+    )
+    with pytest.raises(ValueError):
+        monitor.load_config(path)
+
+
+def test_unknown_probe_type_is_rejected_before_transport(tmp_path):
+    path = config_file(
+        tmp_path,
+        probes=[{"name": "peer", "type": "shell", "host": "192.0.2.1"}],
+    )
+    with pytest.raises(ValueError, match="unknown_probe_type"):
+        monitor.load_config(path)
+
+
 @pytest.mark.parametrize(
     "username", ["usemycontent_ai", "umc_alerts_app", "umc_alerts_bot"]
 )
@@ -319,20 +467,28 @@ def test_personal_chat_is_never_used_instead_of_the_channel(monkeypatch):
         monitor.validate_recipient("123:fake", "123456789")
 
 
-def test_run_retries_failed_delivery_then_reports_recovery(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("recovered_before_retry", [False, True])
+def test_run_retries_failed_delivery_or_clears_recovered_incident(
+    monkeypatch, tmp_path, recovered_before_retry
 ):
     credentials = tmp_path / "creds"
     credentials.mkdir()
     (credentials / "telegram_token").write_text("123:fake")
     monkeypatch.setattr(monitor, "validate_recipient", Mock())
     samples = iter(
-        [[observation()], [observation()], [observation()], [observation(True)]]
+        [
+            [observation()],
+            [observation()],
+            [observation(recovered_before_retry)],
+            [observation(True)],
+        ]
     )
     monkeypatch.setattr(
         monitor, "collect", lambda config, credentials: next(samples)
     )
-    clock = iter([100, 130, 500, 530])
+    clock = iter(
+        [100, 130, 160, 190] if recovered_before_retry else [100, 130, 500, 530]
+    )
     ticks = []
 
     class StopLoop(Exception):
@@ -362,8 +518,10 @@ def test_run_retries_failed_delivery_then_reports_recovery(
             credentials,
             path,
         )
-    assert api.call_count == 3
-    assert "ВОССТАНОВЛЕНО" in api.call_args.args[2]["text"]
+    assert api.call_count == (1 if recovered_before_retry else 3)
+    if not recovered_before_retry:
+        assert "ВОССТАНОВЛЕНО" in api.call_args.args[2]["text"]
+    assert monitor.load_state(path)["retry_at"] == 0
     assert monitor.load_state(path)["checks"]["Mini App"]["notified"] is False
 
 

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Read-only production health snapshot for a forced-command SSH key.
 
-No input is interpreted and no app/worker code is imported. S3 credentials
+Caller commands are never executed and no app/worker code is imported. S3 credentials
 stay in the backup container. Only allowlisted status fields leave the host.
 """
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import subprocess
@@ -267,9 +268,38 @@ def snapshot(cache_path: Path) -> dict[str, Any]:
     return result
 
 
+def record_peer_query(data: dict[str, Any]) -> None:
+    if os.environ.get("SSH_ORIGINAL_COMMAND") != "umc-monitor-snapshot":
+        return
+    connection = os.environ.get("SSH_CONNECTION", "").split()
+    if len(connection) != 4:
+        return
+    try:
+        source_ip = str(ipaddress.ip_address(connection[0]))
+    except ValueError:
+        return
+    generated = data.get("generated_at")
+    if data.get("version") != 1 or not isinstance(generated, (int, float)):
+        return
+    path = Path.home() / ".cache/umc-monitor/last-peer-query.json"
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    temporary = path.with_suffix(f".{os.getpid()}.tmp")
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as stream:
+        json.dump(
+            {"version": 1, "generated_at": generated, "source_ip": source_ip},
+            stream,
+        )
+    os.replace(temporary, path)
+
+
 if __name__ == "__main__":
     try:
-        print(json.dumps(snapshot(Path.home() / ".cache/umc-monitor/s3.json")))
+        data = snapshot(Path.home() / ".cache/umc-monitor/s3.json")
+        # A peer metadata write failure must not break the existing report.
+        with suppress(OSError):
+            record_peer_query(data)
+        print(json.dumps(data))
     except Exception:
         # No stderr/tracebacks: errors must not expose credentials or app data.
         print(

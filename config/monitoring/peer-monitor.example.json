@@ -1,0 +1,12 @@
+{
+  "chat_id": "-1000000000000",
+  "bot_username": "replace_me_bot",
+  "probes": [
+    {
+      "name": "Связь с монитором Timeweb (проверка с UMC)",
+      "type": "peer_heartbeat",
+      "host": "194.87.131.138"
+    }
+  ],
+  "snapshot": null
+}
