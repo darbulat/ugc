@@ -23,6 +23,7 @@ settings = {
         'environment': {'SYNTHETIC_TOKEN': 'literal$$value$${HOME}$$$$'},
         'command': ['python', '-c', 'import time; time.sleep(300)'],
         'volumes': ['data:/data'],
+        'deploy': {'placement': {}},
     }},
     'volumes': {'data': {}},
 }
