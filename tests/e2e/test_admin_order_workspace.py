@@ -257,6 +257,9 @@ def test_one_creator_table_preserves_filters_and_contacts_during_refresh(
         )
     )
     transfers["count"] = 16
+    for item in activity["refused"] + transfers["candidates"]:
+        if item["creator_id"] == UUID(int=11):
+            item["price"] = 4500
     with page.expect_response(
         lambda response: urlsplit(response.url).path.endswith("/offer-activity")
     ):
@@ -275,6 +278,16 @@ def test_one_creator_table_preserves_filters_and_contacts_during_refresh(
     search.fill("")
     page.locator('[data-creator-filter="delivered"]').click()
     expect(page.locator("[data-creator-row]:visible")).to_have_count(16)
+    reserve = page.locator(
+        '[data-creator-row="00000000-0000-0000-0000-000000000011"]'
+    )
+    expect(reserve).to_contain_text("По офферу")
+    expect(reserve).not_to_contain_text("Предложена автором")
+    quote = page.locator(
+        '[data-creator-row="00000000-0000-0000-0000-00000000000b"]'
+    )
+    expect(quote.locator(".order-creators__price")).to_have_text("4 500 ₽")
+    expect(quote).to_contain_text("При передаче: 3 500 ₽")
     row = page.locator(
         '[data-creator-row="00000000-0000-0000-0000-000000000001"]'
     )

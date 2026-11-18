@@ -15,6 +15,8 @@ awaiting their normal contact delivery. Search and filter changes are local.
 Delivered contact snapshots stay authoritative in the row. Phone, response
 date and changed current profile details open in that row. Old names, profiles,
 phones, replacement sources, feedback and video links remain accessible.
+Offer prices stay distinct from creator proposals. If a proposal changes after
+handoff, the current quote and the price at handoff both remain visible.
 No second contact list or duplicate refusal/price table is rendered.
 
 The existing 20-second activity refresh updates the workspace and count. It

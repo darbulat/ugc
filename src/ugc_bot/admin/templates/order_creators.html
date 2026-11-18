@@ -52,9 +52,10 @@
             {% if row.group == 'reserve' %}<small>В резерве</small>{% endif %}
           </td>
           <td data-label="Цена">
-            {% if row.price is not none %}<span class="order-creators__price">{{ amount(row.price) }}</span><small>Предложена автором</small>
+            {% if row.price is not none %}<span class="order-creators__price">{{ amount(row.price) }}</span><small>{{ 'Предложена автором' if row.price_proposed else 'По офферу' }}</small>
             {% elif workspace.offer_price is not none and row.response in ('Согласен', 'Назначен') %}<span class="order-creators__price">{{ amount(workspace.offer_price) }}</span><small>По офферу</small>
             {% else %}—{% endif %}
+            {% if row.delivered_price is not none and row.price != row.delivered_price %}<small>При передаче: {{ amount(row.delivered_price) }}</small>{% endif %}
           </td>
           <td data-label="Передача">
             {% if row.delivered %}

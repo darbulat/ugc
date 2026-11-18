@@ -191,3 +191,38 @@ def test_paid_assignment_waits_for_normal_delivery_not_manual_handoff():
     )["rows"]
     assert row["in_offer"] and row["group"] == "selected"
     assert not row["can_send"]
+
+
+@pytest.mark.parametrize("source", ["reserve", "counteroffer"])
+@pytest.mark.parametrize("current_price", [None, 5000])
+def test_workspace_distinguishes_offer_price_and_preserves_changed_quote(
+    source, current_price
+):
+    creator = uuid4()
+    transfers = dict(
+        count=1,
+        needed=10,
+        can_send=True,
+        candidates=[],
+        history=[
+            dict(
+                creator_id=creator,
+                contact={"name": "Автор"},
+                source=source,
+                requested_price=3000,
+            )
+        ],
+    )
+    activity = dict(
+        refused=[
+            dict(creator_id=creator, price=current_price, reason="Низкая цена")
+        ]
+        if current_price is not None
+        else []
+    )
+    (row,) = creator_workspace([], activity, transfers)["rows"]
+    assert row["price"] == (current_price or 3000)
+    assert row["delivered_price"] == 3000
+    assert row["price_proposed"] is (
+        current_price is not None or source == "counteroffer"
+    )

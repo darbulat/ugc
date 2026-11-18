@@ -108,6 +108,8 @@ def creator_workspace(
                 response="—",
                 reason=None,
                 price=None,
+                price_proposed=False,
+                delivered_price=None,
                 responded_at=None,
                 in_offer=False,
                 work=None,
@@ -147,6 +149,7 @@ def creator_workspace(
             else "Отказ",
             reason=refusal.get("reason"),
             price=refusal.get("price"),
+            price_proposed=refusal.get("price") is not None,
             group="price" if refusal.get("price") is not None else "declined",
         )
     for candidate in (transfers or {}).get("candidates", []):
@@ -163,6 +166,7 @@ def creator_workspace(
             row.update(
                 response="Новая цена",
                 price=candidate.get("price"),
+                price_proposed=True,
                 group="price",
             )
         elif not row["in_offer"]:
@@ -221,13 +225,15 @@ def _apply_history(row, item):
         source=item.get("source"),
         sent_at=item.get("sent_at"),
         feedback=item.get("feedback"),
+        delivered_price=item.get("requested_price"),
     )
-    if item.get("requested_price") is not None:
+    if row["price"] is None and item.get("requested_price") is not None:
         row["price"] = item["requested_price"]
-    if item.get("source") == "counteroffer":
-        row["response"] = "Новая цена"
-    elif row["response"] == "—":
-        row["response"] = "Согласен"
+        row["price_proposed"] = item.get("source") == "counteroffer"
+    if row["response"] == "—":
+        row["response"] = (
+            "Новая цена" if item.get("source") == "counteroffer" else "Согласен"
+        )
 
 
 async def load_creator_workspace(session, order_id, activity, transfers):
