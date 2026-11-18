@@ -407,7 +407,8 @@ async def send_instagram_challenge(message, service, row, config):
         f"2. Откройте Direct <b>@{escape(target)}</b> и отправьте код "
         "с аккаунта, указанного в анкете.\n"
         "3. Бот сам сообщит в Telegram, когда Instagram будет подтверждён.\n\n"
-        "<i>Код действует 15 минут с момента выдачи.</i>",
+        "<i>Код действует 24 часа. При повторном открытии проверки "
+        "код остаётся прежним.</i>",
         reply_markup=keyboard(
             [
                 [

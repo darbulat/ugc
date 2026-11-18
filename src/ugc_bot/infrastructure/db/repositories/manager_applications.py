@@ -1,5 +1,6 @@
 """Write one durable application per Telegram account."""
 
+import logging
 import re
 import secrets
 from collections.abc import Awaitable, Callable
@@ -30,7 +31,17 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
-INSTAGRAM_CHALLENGE_TTL = timedelta(minutes=15)
+logger = logging.getLogger(__name__)
+
+INSTAGRAM_CHALLENGE_TTL = timedelta(hours=24)
+
+
+def _reject_verification(reason: str, user_id: UUID | None = None) -> bool:
+    logger.info(
+        "Manager Instagram verification rejected",
+        extra={"reason": reason, "user_id": str(user_id) if user_id else None},
+    )
+    return False
 
 
 def _enqueue_notice(db, user_id, event_type, at, payload) -> UUID:
@@ -307,9 +318,15 @@ class ManagerApplications:
             row = await self._row(db, user_id, lock=True)
             if not row["instagram"] or row["instagram_verified_at"]:
                 return None
-            if row["challenge_until"] and row["challenge_until"] > now:
+            if (
+                row["challenge"]
+                and row["challenge_until"]
+                and row["challenge_until"] > now
+            ):
                 return row["challenge"]
-            code = "UMCM-" + secrets.token_hex(6).upper()
+            # The candidate may have copied the code from an earlier message.
+            # Renew it for this Instagram; answer() clears it on handle changes.
+            code = row["challenge"] or "UMCM-" + secrets.token_hex(6).upper()
             await db.execute(
                 update(APPLICATIONS)
                 .where(APPLICATIONS.c.user_id == user_id)
@@ -325,20 +342,18 @@ class ManagerApplications:
     ) -> bool:
         inbox = inbox_username.strip().lstrip("@").casefold()
         if not message_id or not inbox:
-            return False
+            return _reject_verification("direct_context_missing")
         return await self.verify_instagram(
             code, sender, direct_message=(message_id, inbox)
         )
 
-    async def verify_instagram(
-        self, code, sender, *, direct_message: tuple[str, str] | None = None
-    ) -> bool:
-        """Verify a signed event or a matching Direct message."""
-        if (
-            not re.fullmatch(r"UMCM-[0-9A-F]{12}", code)
-            or self.instagram_api is None
-        ):
-            return False
+    async def _verification_candidate(self, code):
+        if not re.fullmatch(r"UMCM-[0-9A-F]{12}", code):
+            _reject_verification("invalid_code_format")
+            return None
+        if self.instagram_api is None:
+            _reject_verification("instagram_api_unavailable")
+            return None
         now = datetime.now(timezone.utc)
         async with self.transactions.transaction() as session:
             db = _session(session)
@@ -348,12 +363,22 @@ class ManagerApplications:
                         APPLICATIONS.c.user_id,
                         APPLICATIONS.c.instagram,
                         APPLICATIONS.c.challenge_until,
-                    ).where(
-                        APPLICATIONS.c.challenge == code,
-                        APPLICATIONS.c.challenge_until > now,
-                    )
+                    ).where(APPLICATIONS.c.challenge == code)
                 )
             ).one_or_none()
+        if row is None:
+            _reject_verification("challenge_not_found")
+            return None
+        if row.challenge_until is None or row.challenge_until <= now:
+            _reject_verification("challenge_expired", row.user_id)
+            return None
+        return row
+
+    async def verify_instagram(
+        self, code, sender, *, direct_message: tuple[str, str] | None = None
+    ) -> bool:
+        """Verify a signed event or a matching Direct message."""
+        row = await self._verification_candidate(code)
         if row is None:
             return False
         if not await self._instagram_matches(sender, code, row, direct_message):
@@ -374,14 +399,17 @@ class ManagerApplications:
                     APPLICATIONS.c.user_id != row.user_id,
                 )
             ):
-                return False
+                return _reject_verification(
+                    "instagram_account_already_used", row.user_id
+                )
             current = await self._row(db, row.user_id, lock=True)
             verified_at = datetime.now(timezone.utc)
             if (
                 current["challenge"] != code
+                or current["challenge_until"] is None
                 or current["challenge_until"] <= verified_at
             ):
-                return False
+                return _reject_verification("challenge_changed", row.user_id)
             await db.execute(
                 update(APPLICATIONS)
                 .where(APPLICATIONS.c.user_id == row.user_id)
@@ -425,23 +453,41 @@ class ManagerApplications:
     async def _instagram_matches(self, sender, code, row, direct_message):
         if direct_message is None:
             profile = await self.instagram_api.get_profile_by_id(sender)
-            return bool(
-                profile
-                and profile.username
-                and profile.username.casefold() == row.instagram
-            )
+            if not profile or not profile.username:
+                return _reject_verification("profile_unavailable", row.user_id)
+            if profile.username.casefold() != row.instagram:
+                return _reject_verification(
+                    "instagram_handle_mismatch", row.user_id
+                )
+            return True
         message_id, inbox = direct_message
         message = await self.instagram_api.get_direct_message(message_id)
+        if message is None:
+            return _reject_verification(
+                "direct_message_unavailable", row.user_id
+            )
         # Graph returns message creation times at second precision.
         issued_at = (row.challenge_until - INSTAGRAM_CHALLENGE_TTL).replace(
             microsecond=0
         )
-        return bool(
-            message
-            and message.sender_id == sender
-            and message.sender_username.casefold() == row.instagram
-            and inbox
-            in {name.casefold() for name in message.recipient_usernames}
-            and message.text.strip() == code
-            and issued_at <= message.created_at < row.challenge_until
+        checks = (
+            (message.sender_id == sender, "sender_mismatch"),
+            (
+                message.sender_username.casefold() == row.instagram,
+                "instagram_handle_mismatch",
+            ),
+            (
+                inbox
+                in {name.casefold() for name in message.recipient_usernames},
+                "inbox_mismatch",
+            ),
+            (message.text.strip() == code, "message_code_mismatch"),
+            (
+                issued_at <= message.created_at < row.challenge_until,
+                "message_outside_challenge_window",
+            ),
         )
+        for matches, reason in checks:
+            if not matches:
+                return _reject_verification(reason, row.user_id)
+        return True

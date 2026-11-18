@@ -371,7 +371,8 @@ async def test_manager_edits_submits_and_verifies_application(config):
     assert code_keyboard.inline_keyboard[0][0].copy_text.text == code
     instruction, instruction_keyboard = message.answers[-1]
     assert "<b>Заявка получена.</b>" in instruction
-    assert "<i>Код действует 15 минут с момента выдачи.</i>" in instruction
+    assert "<i>Код действует 24 часа." in instruction
+    assert "код остаётся прежним.</i>" in instruction
     assert "Бот сам сообщит в Telegram" in instruction
     assert code not in instruction
     direct, status = (row[0] for row in instruction_keyboard.inline_keyboard)

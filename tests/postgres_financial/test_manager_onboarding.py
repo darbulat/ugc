@@ -61,6 +61,7 @@ from ugc_bot.infrastructure.db.models import (
     OutboxEventModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.repositories import manager_applications
 from ugc_bot.infrastructure.db.repositories.creator_invites import create_invite
 from ugc_bot.infrastructure.db.repositories.manager_applications import (
     ManagerApplications,
@@ -71,6 +72,119 @@ from ugc_bot.miniapp.api import router as miniapp_router
 from ugc_bot.miniapp.manager_invites import InviteRequest, manager_invite_data
 
 __all__ = ["financial_pg_engine", "intake_env"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("elapsed", [timedelta(minutes=22), timedelta(days=2)])
+async def test_reopening_verification_keeps_the_code_already_copied_to_direct(
+    intake_env, monkeypatch, caplog, elapsed
+):
+    env = intake_env
+    user_id = env["user"].user_id
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+
+    class VerificationClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    monkeypatch.setattr(manager_applications, "datetime", VerificationClock)
+    graph = SimpleNamespace(get_direct_message=AsyncMock())
+    service = ManagerApplications(env["container"].transaction_manager, graph)
+    await service.open(user_id)
+    await service.answer(user_id, "instagram", "synthetic_manager")
+    original_code = await service.instagram_challenge(user_id)
+    # A challenge issued by the previous release has a fifteen-minute expiry.
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(APPLICATIONS)
+            .where(APPLICATIONS.c.user_id == user_id)
+            .values(challenge_until=now + timedelta(minutes=15))
+        )
+    now += elapsed
+    with caplog.at_level("INFO", logger=manager_applications.__name__):
+        assert not await service.verify_instagram_from_direct(
+            original_code, "synthetic_sender", "synthetic_mid", "inbox"
+        )
+    graph.get_direct_message.assert_not_awaited()
+    assert [r.reason for r in caplog.records if hasattr(r, "reason")] == [
+        "challenge_expired"
+    ]
+    # Reopening must renew the same code, including codes from old messages.
+    assert await service.instagram_challenge(user_id) == original_code
+    renewed = await service.open(user_id)
+    assert renewed["challenge_until"] == now + timedelta(hours=24)
+    graph.get_direct_message.return_value = InstagramDirectMessage(
+        sender_id="synthetic_sender",
+        sender_username="synthetic_manager",
+        recipient_usernames=("inbox",),
+        text=original_code,
+        created_at=now,
+    )
+    assert await service.verify_instagram_from_direct(
+        original_code, "synthetic_sender", "synthetic_mid", "inbox"
+    )
+    confirmed = await service.open(user_id)
+    assert confirmed["instagram_verified_at"] == now
+    assert confirmed["instagram_user_id"] == "synthetic_sender"
+    assert confirmed["challenge"] is None
+    assert not await service.verify_instagram_from_direct(
+        original_code, "synthetic_sender", "synthetic_mid", "inbox"
+    )
+    assert original_code not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_manager_challenge_stays_valid_after_fifteen_minutes(
+    intake_env, monkeypatch
+):
+    env = intake_env
+    user_id = env["user"].user_id
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+
+    class VerificationClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz)
+
+    monkeypatch.setattr(manager_applications, "datetime", VerificationClock)
+    graph = SimpleNamespace(get_direct_message=AsyncMock())
+    service = ManagerApplications(env["container"].transaction_manager, graph)
+    await service.open(user_id)
+    await service.answer(user_id, "instagram", "synthetic_manager")
+    code = await service.instagram_challenge(user_id)
+    now += timedelta(minutes=22)
+    assert await service.instagram_challenge(user_id) == code
+    graph.get_direct_message.return_value = InstagramDirectMessage(
+        sender_id="synthetic_sender",
+        sender_username="synthetic_manager",
+        recipient_usernames=("inbox",),
+        text=code,
+        created_at=now,
+    )
+    assert await service.verify_instagram_from_direct(
+        code, "synthetic_sender", "synthetic_mid", "inbox"
+    )
+
+
+@pytest.mark.asyncio
+async def test_changing_instagram_invalidates_the_reusable_manager_code(
+    intake_env,
+):
+    env = intake_env
+    user_id = env["user"].user_id
+    graph = SimpleNamespace(get_direct_message=AsyncMock())
+    service = ManagerApplications(env["container"].transaction_manager, graph)
+    await service.open(user_id)
+    await service.answer(user_id, "instagram", "synthetic_manager")
+    previous = await service.instagram_challenge(user_id)
+    await service.answer(user_id, "instagram", "different_manager")
+    current = await service.instagram_challenge(user_id)
+    assert previous != current
+    assert not await service.verify_instagram_from_direct(
+        previous, "synthetic_sender", "synthetic_mid", "inbox"
+    )
+    graph.get_direct_message.assert_not_awaited()
 
 
 @pytest.mark.asyncio
