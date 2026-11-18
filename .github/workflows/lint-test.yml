@@ -242,6 +242,9 @@ jobs:
       - name: Build a dedicated PostgreSQL verification client
         run: docker build -f tests/monitoring/Dockerfile.pitr-client -t ugc-pitr-client:ci .
 
+      - name: Verify the private reserve runtime as an unprivileged user
+        run: bash tests/monitoring/check_pitr_runtime.sh ugc-pitr-client:ci
+
       - name: Recover a deleted synthetic row to a paused isolated PITR target
         run: bash tests/monitoring/check_pitr.sh ugc-pitr-client:ci "$PWD/age"
 
@@ -274,7 +277,7 @@ jobs:
         env:
           AGE_BINARY: ${{ github.workspace }}/age/age
         run: |
-          uv run ruff check scripts/production_release.py scripts/apply_resource_policy.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py scripts/pitr_{store,receiver,primary,operator,restore_isolated,tunnel}.py tests/monitoring/pitr_roundtrip.py
+          uv run ruff check scripts/production_release.py scripts/apply_resource_policy.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py scripts/pitr_{store,receiver,primary,operator,restore_isolated,tunnel}.py tests/monitoring/pitr_roundtrip.py tests/monitoring/pitr_runtime_check.py
           uv run pytest -q tests/unit/test_recovery_bundle.py tests/unit/test_pitr_store.py tests/unit/test_pitr_safety.py
 
   lint-and-test:

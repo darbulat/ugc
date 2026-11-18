@@ -249,3 +249,22 @@ def test_failed_base_cleans_only_owned_plaintext_staging(monkeypatch, tmp_path):
         pitr_receiver.take_base(pg, SimpleNamespace(root=tmp_path))
     assert not list(work.glob("base-work-*"))
     assert (foreign / "preserve").read_text() == "keep"
+
+
+def test_runtime_permissions_do_not_follow_links_into_other_projects(tmp_path):
+    runtime = tmp_path / "runtime"
+    runtime.mkdir(mode=0o700)
+    library = runtime / "usr/lib"
+    library.mkdir(mode=0o700, parents=True)
+    outside = tmp_path / "other-project"
+    outside.mkdir(mode=0o700)
+    (runtime / "external-link").symlink_to(outside)
+    previous = operator.os.umask(0o077)
+    try:
+        operator.prepare_runtime_paths(runtime)
+    finally:
+        operator.os.umask(previous)
+    assert runtime.stat().st_mode & 0o777 == 0o755
+    assert library.stat().st_mode & 0o777 == 0o755
+    assert (runtime / "tmp").stat().st_mode & 0o7777 == 0o1777
+    assert outside.stat().st_mode & 0o777 == 0o700

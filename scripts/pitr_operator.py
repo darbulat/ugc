@@ -193,6 +193,7 @@ def install(payload):  # noqa: C901
     (ROOT / "current").symlink_to(release)
     binaries = ROOT / "bin"
     binaries.mkdir(mode=0o755)
+    binaries.chmod(0o755)
     archive = download(AGE_URL, 16 * 1024**2)
     if hashlib.sha256(archive).hexdigest() != AGE_SHA:
         raise ValueError("Pinned age archive checksum mismatch")
@@ -374,6 +375,27 @@ def verify_restore():
     return result
 
 
+def prepare_runtime_paths(target):
+    for path in (
+        "restore",
+        "archive",
+        "tools",
+        "dev",
+        "proc",
+        "sys",
+        "run",
+        "tmp",
+    ):
+        (target / path).mkdir(mode=0o755, exist_ok=True)
+    # tarfile's data filter deliberately clears directory modes. With the
+    # operator's 0077 umask that would make this public runtime root-only.
+    target.chmod(0o755)
+    for directory in target.rglob("*"):
+        if directory.is_dir() and not directory.is_symlink():
+            directory.chmod(0o755)
+    (target / "tmp").chmod(0o1777)
+
+
 def runtime(payload):  # noqa: C901
     """Read one trusted public image export from stdin into an owned rootfs."""
     if payload["image"] != PG_IMAGE:
@@ -415,8 +437,7 @@ def runtime(payload):  # noqa: C901
             if total > maximum:
                 raise ValueError("Private runtime exceeds reviewed budget")
             tar.extract(member, target, filter="data")
-    for path in ("restore", "archive", "tools"):
-        (target / path).mkdir(mode=0o755, exist_ok=True)
+    prepare_runtime_paths(target)
     account = pwd.getpwnam("ugc-pitr")
     with (target / "etc/passwd").open("a") as out:
         out.write(
