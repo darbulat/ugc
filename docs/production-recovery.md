@@ -2,11 +2,34 @@ Production images are built from a merged main commit after Lint and Test succee
 
 Download the artifact for the intended main commit through authenticated GitHub Actions access. Verify the artifact digest returned by GitHub before extracting it. Transfer its image.tar.gz and manifest.json into a private staging directory on the production host. Validate the manifest revision against the merged commit and the successful workflow run before running the release command.
 
-Run the checked-in release script from that same commit on the host. Choose only the services affected by the change. The application readiness release affects app, app_2, admin, max_bot and instagram_webhook.
+Use the reviewed release script installed under `/opt/myapp/ugc-ops`. Its
+revision and checksum are recorded in `installed.json`; a separately reviewed
+tool hotfix can be newer than the application artifact. Choose only the services
+affected by the application change. The application readiness release affects
+app, app_2, admin, max_bot and instagram_webhook.
 
 ```sh
-python3 production_release.py /path/to/verified-artifact app app_2 admin max_bot instagram_webhook
+python3 /opt/myapp/ugc-ops/production_release.py /path/to/verified-artifact app app_2 admin max_bot instagram_webhook
 ```
+
+Add `--check-only` to verify the archive, live network identities, readiness and
+Compose snapshot round-trip before replacing containers. This uses the same
+snapshot path as a release and removes its temporary owner-only configuration
+after validation.
+
+Snapshots reference each service's existing Docker networks by name with
+`external: true`, after checking the actual network ID. Equivalent bridge and
+external declarations therefore combine safely. Network aliases and other
+service settings remain part of the snapshot; conflicting physical bindings,
+missing memberships and genuine shared-resource conflicts block the release.
+Cold recovery must restore these networks before starting their containers.
+
+The release command automatically reads the optional owner-only file
+`/opt/myapp/ugc-ops/snapshot-environment.json`. Only the five documented
+`META_TOKEN_MONITOR_*` host reconstruction parameters are accepted. Use
+`--snapshot-environment /private/path.json` to require another file. These
+parameters are supplied to the release process, without changing service
+environments or requiring manual exports.
 
 The script takes the existing production deployment lock. It checks the archive SHA-256 and the loaded image's revision label, then resolves each container's current Compose configuration using its live environment. Previous rollout placeholders are reconstructed from their associated environment keys.
 
