@@ -1,6 +1,7 @@
 """Protect operational settings and peers during a CI image rollout."""
 
 import copy
+import fcntl
 import hashlib
 import json
 import os
@@ -84,6 +85,24 @@ def test_private_configuration_is_exclusive_and_owner_only(
     assert target.stat().st_mode & 0o777 == 0o600
     with pytest.raises(FileExistsError):
         release_module["private_json"](target, {})
+
+
+def test_existing_read_only_lock_preserves_inode_and_coordinates_users(
+    release_module, tmp_path
+):
+    path = tmp_path / "deployment.lock"
+    path.write_text("")
+    path.chmod(0o444)
+    original = path.stat().st_ino
+    with release_module["open_lock"](path) as first:
+        fcntl.flock(first, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with (
+            release_module["open_lock"](path) as second,
+            pytest.raises(BlockingIOError),
+        ):
+            fcntl.flock(second, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert path.stat().st_ino == original
+    assert path.stat().st_mode & 0o777 == 0o444
 
 
 def test_archive_verification_detects_tampering(release_module, tmp_path):

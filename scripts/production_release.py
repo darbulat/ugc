@@ -47,6 +47,17 @@ def environment_of(container):
     return dict(item.split("=", 1) for item in container["Config"]["Env"])
 
 
+def open_lock(path):
+    """Use the existing lock inode even when it belongs to another operator."""
+    try:
+        descriptor = os.open(
+            path, os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+        )
+    except FileExistsError:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    return os.fdopen(descriptor, "r")
+
+
 def escape_interpolation(value):
     """Preserve literal dollars when a resolved config is read by Compose."""
     if isinstance(value, str):
@@ -532,7 +543,7 @@ def main():
         parser.error("Services must be unique")
     ordered = [service for service in PORTS if service in args.services]
     os.umask(0o077)
-    with open("/tmp/ugc-production-deploy.lock", "a") as lock:
+    with open_lock("/tmp/ugc-production-deploy.lock") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         release(args.directory.resolve(strict=True), ordered)
 
