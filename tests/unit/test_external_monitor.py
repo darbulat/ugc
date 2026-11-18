@@ -624,23 +624,6 @@ def test_wrong_bot_token_is_rejected_before_saving_or_sending(monkeypatch):
     assert api.call_count == 1
 
 
-def test_external_watchdog_is_optional_and_host_restricted(
-    monkeypatch, tmp_path
-):
-    request = Mock()
-    monkeypatch.setattr(monitor, "request_bytes", request)
-    monitor.ping_watchdog(tmp_path)
-    request.assert_not_called()
-    path = tmp_path / "watchdog_url"
-    path.write_text("https://attacker.example/private-token")
-    with pytest.raises(ValueError):
-        monitor.ping_watchdog(tmp_path)
-    request.assert_not_called()
-    path.write_text("https://hc-ping.com/fake-monitor-id")
-    monitor.ping_watchdog(tmp_path)
-    assert request.call_count == 1
-
-
 @pytest.mark.parametrize(
     "etag_valid,sha_valid,expected",
     [(True, True, True), (False, True, False), (True, False, False)],

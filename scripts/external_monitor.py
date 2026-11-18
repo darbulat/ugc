@@ -376,17 +376,6 @@ def validate_recipient(
         raise ValueError("bot_cannot_post_to_channel")
 
 
-def ping_watchdog(credentials: Path) -> None:
-    path = credentials / "watchdog_url"
-    if not path.exists():
-        return
-    url = path.read_text().strip()
-    parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "hc-ping.com":
-        raise ValueError("invalid_external_watchdog_url")
-    request_bytes(url)
-
-
 def collect(config: dict[str, Any], credentials: Path) -> list[Observation]:
     with ThreadPoolExecutor(max_workers=6) as pool:
         pages = [
@@ -414,7 +403,6 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
     validate_recipient(token, str(config["chat_id"]), config["bot_username"])
     state = load_state(state_path)
     checked_at = 0.0
-    recipient_ok = True
     while True:
         start = time.monotonic()
         observations = collect(config, credentials)
@@ -424,9 +412,7 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
                 validate_recipient(
                     token, str(config["chat_id"]), config["bot_username"]
                 )
-                recipient_ok = True
             except Exception:
-                recipient_ok = False
                 print("recipient_validation_failed", flush=True)
             checked_at = now
         events = evaluate(state, observations, now)
@@ -451,16 +437,6 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
                 print("notification_failed:" + type(error).__name__, flush=True)
         state["last_cycle"] = now
         atomic_json(state_path, state)
-        if (
-            recipient_ok
-            and not state.get("retry_at")
-            and now - state.get("watchdog_at", 0) >= 240
-        ):
-            try:
-                ping_watchdog(credentials)
-                state["watchdog_at"] = now
-            except Exception as error:
-                print("watchdog_failed:" + type(error).__name__, flush=True)
         print(
             json.dumps(
                 {
