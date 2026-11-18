@@ -2,10 +2,14 @@ Production images are built from a merged main commit after Lint and Test succee
 
 Download the artifact for the intended main commit through authenticated GitHub Actions access. Verify the artifact digest returned by GitHub before extracting it. Transfer its image.tar.gz and manifest.json into a private staging directory on the production host. Validate the manifest revision against the merged commit and the successful workflow run before running the release command.
 
-Run the checked-in release script from that same commit on the host. Choose only the services affected by the change. The application readiness release affects app, app_2, admin, max_bot and instagram_webhook.
+Use the reviewed release script installed under `/opt/myapp/ugc-ops`. Its
+revision and checksum are recorded in `installed.json`; a separately reviewed
+tool hotfix can be newer than the application artifact. Choose only the services
+affected by the application change. The application readiness release affects
+app, app_2, admin, max_bot and instagram_webhook.
 
 ```sh
-python3 production_release.py /path/to/verified-artifact app app_2 admin max_bot instagram_webhook
+python3 /opt/myapp/ugc-ops/production_release.py /path/to/verified-artifact app app_2 admin max_bot instagram_webhook
 ```
 
 Add `--check-only` to verify the archive, live network identities, readiness and
