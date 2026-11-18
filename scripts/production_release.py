@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 from pathlib import Path
@@ -223,6 +224,51 @@ def wait_ready(service, image_id, timeout=150):
             return
         time.sleep(2)
     raise RuntimeError(f"Readiness deadline exceeded for {service}")
+
+
+def loaded_ci_image(directory, manifest):
+    """Bind containerd manifest IDs to the checked CI configuration digest."""
+    reference = manifest["registry_reference"]
+    if reference != "ghcr.io/darbulat/ugc/app:" + manifest["revision"]:
+        raise ValueError("Unexpected CI image reference")
+    image = inspect(reference, "image")
+    accepted = {manifest["image_id"]}
+    if image["Id"] not in accepted:
+        with tarfile.open(directory / "image.tar.gz", "r:gz") as archive:
+            index = json.load(archive.extractfile("index.json"))
+            for descriptor in index["manifests"]:
+                digest = descriptor["digest"]
+                if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                    raise ValueError("Invalid exported image digest")
+                payload = archive.extractfile(
+                    "blobs/sha256/" + digest.split(":")[1]
+                ).read()
+                if "sha256:" + hashlib.sha256(payload).hexdigest() != digest:
+                    raise ValueError(
+                        "Exported image manifest checksum mismatch"
+                    )
+                details = json.loads(payload)
+                if (
+                    details.get("config", {}).get("digest")
+                    != manifest["image_id"]
+                ):
+                    continue
+                config = archive.extractfile(
+                    "blobs/sha256/" + manifest["image_id"].split(":")[1]
+                ).read()
+                if (
+                    "sha256:" + hashlib.sha256(config).hexdigest()
+                    != manifest["image_id"]
+                ):
+                    raise ValueError("Exported image config checksum mismatch")
+                accepted.add(digest)
+    if image["Id"] not in accepted:
+        raise RuntimeError("Loaded image identity mismatch")
+    if (image["Config"].get("Labels") or {}).get(
+        "org.opencontainers.image.revision"
+    ) != manifest["revision"]:
+        raise RuntimeError("CI image revision mismatch")
+    return image
 
 
 def webhook_on_peer(service):
@@ -467,12 +513,7 @@ def release(directory, services):
         )
     if result.returncode:
         raise RuntimeError("CI image could not be loaded")
-    image = inspect(manifest["image_id"], "image")
-    if (
-        image["Config"]["Labels"].get("org.opencontainers.image.revision")
-        != revision
-    ):
-        raise RuntimeError("CI image revision mismatch")
+    image = loaded_ci_image(directory, manifest)
     names = checked(
         [
             "docker",
