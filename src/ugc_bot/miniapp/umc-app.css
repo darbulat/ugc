@@ -461,6 +461,7 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 }
 .umc-partner-level-rate p { margin: 0; font-size: 12px; color: var(--on-pastel-muted); }
 .umc-partner-invite { display: grid; gap: var(--space-8); }
+.umc-partner-level .umc-partner-note,
 .umc-partner-level .umc-partner-copy-status,
 .umc-partner-level-loading { margin: 0; color: var(--on-pastel-muted); font-size: 13px; }
 .umc-partner-level .umc-btn--ghost {
