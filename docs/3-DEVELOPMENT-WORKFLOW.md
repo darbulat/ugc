@@ -82,8 +82,12 @@ uvicorn ugc_bot.telegram_webhook_app:app --reload --port 9999
 
 ### Admin Panel
 ```bash
-make admin  # Open http://localhost:8001
+make admin  # Open http://127.0.0.1:18001
+make admin UMC_ADMIN_PORT=18002  # Use another local port
 ```
+
+`make admin` listens on `127.0.0.1`. `UMC_ADMIN_PORT` can also be set in the
+environment. E2E tests use their own automatically selected free loopback port.
 
 ## Git Workflow (REQUIRED)
 
