@@ -91,6 +91,24 @@ def test_manager_level_opens_same_achievements_and_native_back(page, platform):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_manager_level_refreshes_on_normal_cabinet_entry(page, platform):
+    network = PartnerNetwork("manager")
+    set_verified_count(network, 137)
+    errors = open_app(page, network, platform)
+    page.locator("#btn-manager-role").click()
+    level = page.locator("#screen-manager-orders .umc-partner-level-name")
+    expect(level).to_have_text("Бронза")
+    page.locator("#mgr-orders-back").click()
+    set_verified_count(network, 200)
+    page.locator("#btn-manager-role").click()
+    expect(level).to_have_text("Серебро")
+    expect(
+        page.locator("#screen-manager-orders").get_by_role("progressbar")
+    ).to_have_attribute("aria-valuenow", "0")
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 def test_invite_uses_own_link_and_falls_back_to_selection(page, platform):
     network = PartnerNetwork()
     page.add_init_script("""

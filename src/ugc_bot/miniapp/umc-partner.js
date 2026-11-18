@@ -681,5 +681,8 @@
     });
   }
   document.addEventListener('visibilitychange',function(){if(state.bound)current();}); window.addEventListener('focus',function(){if(state.bound)current();});
+  document.addEventListener('umc:screen-change',function (event) {
+    if (event.detail.screen === 'screen-manager-orders' && window.__umcAppReady) ready();
+  });
   document.addEventListener('umc:app-ready',ready); if (window.__umcAppReady) ready();
 })();
