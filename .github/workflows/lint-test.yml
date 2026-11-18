@@ -203,6 +203,9 @@ jobs:
       - name: Check offline import and alert routing
         run: bash tests/monitoring/check_admin_image_import.sh ugc-admin-import:ci
 
+      - name: Verify durable release configuration on isolated containers
+        run: bash tests/monitoring/check_release_snapshot.sh ugc-admin-import:ci
+
   lint-and-test:
     name: lint-and-test (3.13)
     if: always()

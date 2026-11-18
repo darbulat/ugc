@@ -1,0 +1,91 @@
+name: Publish production image
+
+on:
+  workflow_run:
+    workflows: [Lint and Test]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: production-image-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Verify successful checks for this main commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          revision=$(git rev-parse HEAD)
+          main=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          test "$revision" = "$main"
+          gh api "repos/$GH_REPO/actions/workflows/lint-test.yml/runs?head_sha=$revision&event=push" \
+            --jq '.workflow_runs | any(.conclusion == "success")' | grep -qx true
+
+      - name: Build and verify the merged image
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir release
+          revision=$(git rev-parse HEAD)
+          image="ghcr.io/$GH_REPO/app:$revision"
+          docker build --label "org.opencontainers.image.revision=$revision" \
+            --label "org.opencontainers.image.source=https://github.com/$GH_REPO" \
+            --tag "$image" .
+          bash tests/monitoring/check_admin_image_import.sh "$image"
+          printf '%s\n' "$image" > release/image-reference.txt
+
+      - name: Publish the verified image and deployment archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: |
+          image=$(cat release/image-reference.txt)
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GH_ACTOR" --password-stdin
+          docker push "$image"
+          docker image save "$image" | gzip -1 > release/image.tar.gz
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import subprocess
+
+          archive = pathlib.Path('release/image.tar.gz')
+          reference = pathlib.Path('release/image-reference.txt').read_text().strip()
+          image = json.loads(subprocess.check_output(['docker', 'image', 'inspect', reference]))[0]
+          digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
+          manifest = {
+              'revision': image['Config']['Labels']['org.opencontainers.image.revision'],
+              'image_id': image['Id'],
+              'registry_reference': reference,
+              'registry_digests': image['RepoDigests'],
+              'archive_sha256': digest,
+          }
+          pathlib.Path('release/manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          PY
+          docker logout ghcr.io
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-image-${{ github.event.workflow_run.head_sha || github.sha }}
+          path: release/
+          retention-days: 30
+          if-no-files-found: error
