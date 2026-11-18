@@ -29,8 +29,10 @@
   <details><summary>Все переданные авторы и контакты · {{ transfers.count }}</summary>
     <ol>{% for item in transfers.history %}
       <li><a href="{{ request.url_for('admin_user_card', user_id=item.creator_id).include_query_params(from_order=order_id) }}">{{ item.contact.get('name') or item.contact.get('username') or 'Креатор' }}</a> · {{ item.sent_at|admin_date }}
+        <span> · {{ {'selection':'Основной подбор','replacement':'Ранее переданная замена','reserve':'Дополнительно из резерва','counteroffer':'Предложил другую цену'}.get(item.source, '') }}</span>
         {% if item.contact.get('instagram') %}<span> · {{ item.contact.instagram }}</span>{% endif %}
         {% if item.contact.get('telegram') %}<span> · Telegram: {{ item.contact.telegram }}</span>{% endif %}
+        {% if item.contact.get('phone') %}<span> · Телефон: {{ item.contact.phone }}</span>{% endif %}
         {% if item.requested_price is not none %}<span> · {{ item.requested_price }} ₽</span>{% endif %}
         {% if item.feedback %}<span> · {{ {'worked':'Работали','not_worked':'Не работали','not_agreed':'Не договорились'}.get(item.feedback, item.feedback) }}</span>{% endif %}
       </li>

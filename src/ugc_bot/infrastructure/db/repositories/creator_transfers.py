@@ -3,7 +3,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
-from sqlalchemy import exists, func, inspect, select, text, union, update
+from sqlalchemy import exists, func, inspect, select, union, update
 
 from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.enums import OrderStatus, UserStatus
@@ -25,16 +25,16 @@ from ugc_bot.infrastructure.db.selection_delivery_models import (
 )
 
 
-async def transfers_installed(db):
+async def _table_available(db, name):
     if db.get_bind().dialect.name != "postgresql":
         return await db.run_sync(
-            lambda sync: inspect(sync.get_bind()).has_table(TRANSFERS.name)
+            lambda sync: inspect(sync.get_bind()).has_table(name)
         )
-    return bool(
-        await db.scalar(
-            text("SELECT to_regclass('order_creator_transfers') IS NOT NULL")
-        )
-    )
+    return bool(await db.scalar(select(func.to_regclass(name).is_not(None))))
+
+
+async def transfers_installed(db):
+    return await _table_available(db, TRANSFERS.name)
 
 
 def delivered_authors(order_id):
@@ -90,6 +90,9 @@ async def delivered_count(db, order_id):
 async def delivery_history(db, order_id):
     """Retain original contacts after profile and assignment changes."""
     result = {}
+    installed = await transfers_installed(db)
+    if not installed and not await _table_available(db, ACCEPTED.name):
+        return []
     client = (
         select(OrderModel.advertiser_id)
         .where(OrderModel.order_id == order_id)
@@ -122,34 +125,38 @@ async def delivery_history(db, order_id):
         REPLACEMENTS["allocations"],
         REPLACEMENTS["contacts"],
     )
-    replaced = (
-        await db.execute(
-            select(
-                ItemAssignmentModel.creator_id,
-                contacts.c.recorded_at,
-                contacts.c.contact,
+    replaced = []
+    if installed or await _table_available(db, allocations.name):
+        replaced = (
+            await db.execute(
+                select(
+                    ItemAssignmentModel.creator_id,
+                    contacts.c.recorded_at,
+                    contacts.c.contact,
+                )
+                .join(
+                    allocations,
+                    allocations.c.assignment_id
+                    == ItemAssignmentModel.assignment_id,
+                )
+                .join(
+                    contacts,
+                    contacts.c.replacement_id == allocations.c.replacement_id,
+                )
+                .join(
+                    OrderItemModel,
+                    OrderItemModel.paid_item_id == allocations.c.paid_item_id,
+                )
+                .join(
+                    OrderModel, OrderModel.order_id == OrderItemModel.order_id
+                )
+                .where(
+                    OrderModel.order_id == order_id,
+                    contacts.c.actor_id == OrderModel.advertiser_id,
+                )
+                .order_by(contacts.c.recorded_at)
             )
-            .join(
-                allocations,
-                allocations.c.assignment_id
-                == ItemAssignmentModel.assignment_id,
-            )
-            .join(
-                contacts,
-                contacts.c.replacement_id == allocations.c.replacement_id,
-            )
-            .join(
-                OrderItemModel,
-                OrderItemModel.paid_item_id == allocations.c.paid_item_id,
-            )
-            .join(OrderModel, OrderModel.order_id == OrderItemModel.order_id)
-            .where(
-                OrderModel.order_id == order_id,
-                contacts.c.actor_id == OrderModel.advertiser_id,
-            )
-            .order_by(contacts.c.recorded_at)
-        )
-    ).all()
+        ).all()
     for creator, at, contact in replaced:
         contact = dict(
             name=contact.get("display_name"),
@@ -294,6 +301,7 @@ class SqlCreatorTransfers:
             or not profile
             or not profile.confirmed
             or not profile.instagram_user_id
+            or not profile.instagram_user_id.strip()
         ):
             raise ValueError("transfer_creator_unavailable")
         if (

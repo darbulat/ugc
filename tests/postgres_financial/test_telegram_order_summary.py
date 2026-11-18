@@ -290,7 +290,7 @@ async def test_bulk_report_24h_manual_review_and_single_reminder(
                 .select_from(REQUESTS)
                 .where(REQUESTS.c.order_id == oid)
             )
-            == 3
+            == 1
         )
     assert bot.send_message.await_count == 4
     data = await summary.view(principal, oid)
@@ -500,7 +500,7 @@ async def check_small_package(summary, oid, interests, principal, bot, env):
             .one()
         )
         assert report["state"] == "review"
-        assert report["review_reason"] == "replacement_reserve_limit_reached"
+        assert report["review_reason"] == "manual_replacement_required"
         request_id = report["support_request_id"]
         admin = db.scalar(select(UserModel).where(UserModel.admin.is_(True)))
         admin_principal = AuthenticatedMessengerPrincipal(

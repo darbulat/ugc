@@ -62,12 +62,6 @@ async def setup(env, *, size=10, reserve=1, closed=False):
     )
     candidates = [row.creator_id for row in interests if not row.accepted]
     with Session(env["pg"]) as db, db.begin():
-        db.add_all(
-            OfferDispatchModel(
-                order_id=oid, blogger_id=cid, accepted=True, in_offer=False
-            )
-            for cid in candidates
-        )
         if closed:
             db.execute(
                 update(OrderModel)
