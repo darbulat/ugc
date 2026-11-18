@@ -125,6 +125,31 @@ def download(url, maximum):
     return data
 
 
+def install_sources(release, revision):
+    for name in SCRIPTS:
+        target = release / name
+        data = download(
+            f"https://raw.githubusercontent.com/darbulat/ugc/"
+            f"{revision}/scripts/{name}",
+            256 * 1024,
+        )
+        if target.exists():
+            if target.is_symlink() or target.read_bytes() != data:
+                raise ValueError("Existing bootstrap source checksum mismatch")
+        else:
+            private_file(target, data)
+        target.chmod(0o755 if name.endswith(".sh") else 0o644)
+    for name in UNITS:
+        data = download(
+            f"https://raw.githubusercontent.com/darbulat/ugc/"
+            f"{revision}/config/pitr/{name}",
+            16 * 1024,
+        )
+        private_file(release / name, data)
+        shutil.copyfile(release / name, Path("/etc/systemd/system", name))
+        Path("/etc/systemd/system", name).chmod(0o644)
+
+
 def install(payload):  # noqa: C901
     revision = payload["revision"]
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -134,6 +159,9 @@ def install(payload):  # noqa: C901
     if any(Path("/etc/systemd/system", u).exists() for u in UNITS):
         raise ValueError("Existing PITR units must not be overwritten")
     baseline = neighbors()
+    release = ROOT / "releases" / revision
+    if Path(__file__).resolve().parent != release:
+        raise ValueError("Install must run from its pinned release directory")
     try:
         pwd.getpwnam("ugc-pitr")
     except KeyError:
@@ -157,31 +185,11 @@ def install(payload):  # noqa: C901
     ETC.chmod(0o750)
     os.chown(ETC, 0, account.pw_gid)
     os.chown(STATE, account.pw_uid, account.pw_gid)
-    release = ROOT / "releases" / revision
     release.mkdir(mode=0o755, parents=True, exist_ok=True)
     ROOT.chmod(0o755)
     (ROOT / "releases").chmod(0o755)
     release.chmod(0o755)
-    for name in SCRIPTS:
-        target = release / name
-        if name == "pitr_operator.py" and target.exists():
-            continue
-        data = download(
-            f"https://raw.githubusercontent.com/darbulat/ugc/"
-            f"{revision}/scripts/{name}",
-            256 * 1024,
-        )
-        private_file(target, data)
-        target.chmod(0o755 if name.endswith(".sh") else 0o644)
-    for name in UNITS:
-        data = download(
-            f"https://raw.githubusercontent.com/darbulat/ugc/"
-            f"{revision}/config/pitr/{name}",
-            16 * 1024,
-        )
-        private_file(release / name, data)
-        shutil.copyfile(release / name, Path("/etc/systemd/system", name))
-        Path("/etc/systemd/system", name).chmod(0o644)
+    install_sources(release, revision)
     (ROOT / "current").symlink_to(release)
     binaries = ROOT / "bin"
     binaries.mkdir(mode=0o755)
