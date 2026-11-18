@@ -8,6 +8,25 @@ Run the checked-in release script from that same commit on the host. Choose only
 python3 production_release.py /path/to/verified-artifact app app_2 admin max_bot instagram_webhook
 ```
 
+Add `--check-only` to verify the archive, live network identities, readiness and
+Compose snapshot round-trip before replacing containers. This uses the same
+snapshot path as a release and removes its temporary owner-only configuration
+after validation.
+
+Snapshots reference each service's existing Docker networks by name with
+`external: true`, after checking the actual network ID. Equivalent bridge and
+external declarations therefore combine safely. Network aliases and other
+service settings remain part of the snapshot; conflicting physical bindings,
+missing memberships and genuine shared-resource conflicts block the release.
+Cold recovery must restore these networks before starting their containers.
+
+The release command automatically reads the optional owner-only file
+`/opt/myapp/ugc-ops/snapshot-environment.json`. Only the five documented
+`META_TOKEN_MONITOR_*` host reconstruction parameters are accepted. Use
+`--snapshot-environment /private/path.json` to require another file. These
+parameters are supplied to the release process, without changing service
+environments or requiring manual exports.
+
 The script takes the existing production deployment lock. It checks the archive SHA-256 and the loaded image's revision label, then resolves each container's current Compose configuration using its live environment. Previous rollout placeholders are reconstructed from their associated environment keys.
 
 Release settings are saved under /opt/myapp/ugc-releases/<full-commit>/attempt-<unique-id>/ with directory mode 0700 and file mode 0600. compose.json contains the new image IDs. previous-compose.json retains the previous image IDs and health checks for rollback. Both files contain runtime secrets and belong in the encrypted recovery backup. Keep this directory outside public document roots and Git. The operational checkout, Compose files and environment file remain the sources inspected during preparation.
