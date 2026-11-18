@@ -54,3 +54,13 @@ class InMemoryRatingEligibilityRepository:
         else:
             raise ValueError("rating_access_denied")
         return RatingEligibility(role, self.participants.get(order_id, ()))
+
+    async def feedback(self, actor_id, order_id, creator_id, value, *, session):
+        from dataclasses import replace
+
+        self.participants[order_id] = tuple(
+            replace(item, feedback=value, completed=value == "worked")
+            if item.blogger_id == creator_id
+            else item
+            for item in self.participants[order_id]
+        )

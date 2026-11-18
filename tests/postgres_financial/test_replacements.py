@@ -314,6 +314,23 @@ async def test_real_reserve_cancels_before_assignment_without_new_paid_position(
             contact_command, principal=client, session=db
         )
         assert contact["contact"]["creator_id"] == str(interests[2].creator_id)
+        from ugc_bot.infrastructure.db.repositories.creator_transfers import (
+            delivery_history,
+        )
+
+        history = await delivery_history(db, env["order"])
+        previous_contact = next(
+            row
+            for row in history
+            if row["creator_id"] == interests[2].creator_id
+        )
+        assert previous_contact["source"] == "replacement"
+        assert previous_contact["contact"] == dict(
+            name=contact["contact"]["display_name"],
+            instagram=contact["contact"]["instagram_url"],
+            telegram=contact["contact"]["telegram"],
+            phone=contact["contact"]["phone"],
+        )
         assert (
             await app.contact(contact_command, principal=client, session=db)
             == contact

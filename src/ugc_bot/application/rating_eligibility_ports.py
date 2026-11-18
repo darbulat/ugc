@@ -15,6 +15,8 @@ class RatingParticipant:
     blogger_id: UUID
     display_name: str
     completed: bool
+    supplemental: bool = False
+    feedback: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +28,16 @@ class RatingEligibility:
 
 
 class RatingEligibilityRepository(Protocol):
+    async def feedback(
+        self,
+        actor_id: UUID,
+        order_id: UUID,
+        creator_id: UUID,
+        value: str,
+        *,
+        session: object | None,
+    ) -> None: ...
+
     async def load(
         self,
         actor_id: UUID,

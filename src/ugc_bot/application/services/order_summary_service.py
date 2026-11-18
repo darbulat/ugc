@@ -5,7 +5,6 @@ from hashlib import sha256
 from uuid import uuid4
 
 from sqlalchemy import select
-from sqlalchemy.exc import DBAPIError
 
 from ugc_bot.application.collaboration_ports import (
     CollaborationCommand,
@@ -13,7 +12,6 @@ from ugc_bot.application.collaboration_ports import (
 )
 from ugc_bot.application.replacement_ports import (
     ReplacementContact,
-    ReplacementRequest,
 )
 from ugc_bot.application.services.customer_workflow_common import (
     CustomerWorkflowService,
@@ -194,6 +192,10 @@ class OrderSummaryService(CustomerWorkflowService):
             order_id=order.order_id,
             client_id=order.advertiser_id,
             positions=positions,
+            transferred=await self.summaries.transferred(
+                order.order_id, session=session
+            ),
+            requested=order.bloggers_needed,
             used=used,
             limit=len(positions) // 5,
             closed=closed
@@ -545,62 +547,15 @@ class OrderSummaryService(CustomerWorkflowService):
                 return True
             return report["state"] == "answered"
 
-    async def replace_report(self, report):  # noqa: C901
-        if report["state"] != "waiting":
-            await self.mark_review(report, "delivery_unconfirmed")
-            return
-        try:
-            async with self.transactions.transaction() as session:
-                scope = await self.replacement.repository.load_scope(
-                    report["paid_item_id"], session=session
-                )
-                if scope.assignment_id != report["assignment_id"]:
-                    raise ValueError("replacement_assignment_obsolete")
-                if scope.replacement_count >= scope.original_paid_pool // 5:
-                    raise ValueError("replacement_reserve_limit_reached")
-                candidates = (
-                    await self.replacement.repository.automatic_candidates(
-                        scope.order_id, session=session
-                    )
-                )
-            for candidate in candidates:
-                try:
-                    async with self.transactions.transaction() as session:
-                        await self.replacement.replace_unresponsive(
-                            ReplacementRequest(
-                                actor_id=scope.client_id,
-                                paid_item_id=scope.paid_item_id,
-                                expected_assignment_version=scope.assignment_version,
-                                candidate_interest_id=candidate,
-                                reason_code="lost_contact",
-                                reason=(
-                                    "Нет ответа в течение 24 часов "
-                                    "после уведомления в Telegram."
-                                ),
-                                evidence_reference=f"telegram-order-exception:{report['report_id']}",
-                                operation_key=f"telegram-auto-replace:{report['report_id']}",
-                            ),
-                            report["report_id"],
-                            session=session,
-                        )
-                    return
-                except ValueError as exc:
-                    if str(exc) == "replacement_confirmed_reserve_required":
-                        continue
-                    if str(exc) == "financial_scope_changed_retry_required":
-                        return
-                    raise
-            raise ValueError("replacement_reserve_empty")
-        except (PermissionError, ValueError) as exc:
-            await self.mark_review(report, str(exc))
-        except DBAPIError as exc:
-            # A competing assignment or an authority check may have won.
-            if getattr(exc.orig, "sqlstate", "") in {"23505", "23514"}:
-                await self.mark_review(
-                    report, "replacement_requires_financial_review"
-                )
-            else:
-                raise
+    async def replace_report(self, report):
+        # The operator chooses and sends supplemental authors. Expiry only
+        # escalates the exception; it must never consume the reserve itself.
+        await self.mark_review(
+            report,
+            "manual_replacement_required"
+            if report["state"] == "waiting"
+            else "delivery_unconfirmed",
+        )
 
     async def mark_review(self, report, reason):
         async with self.transactions.transaction() as session:

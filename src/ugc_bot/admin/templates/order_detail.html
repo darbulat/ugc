@@ -15,6 +15,9 @@
   {% set title = order.offer_text or order.description or 'Заказ' %}
   {% set customer_url = (request.url_for('admin_user_card', user_id=order.advertiser_id).include_query_params(from_order=order.order_id, return_to=back_url)) if order.advertiser_id else none %}
   <div class="order-detail">
+    {% if creator_transfer_result and creator_transfer_result.order_id == order.order_id %}
+    <p role="status">{{ creator_transfer_result.message }}</p>
+    {% endif %}
     <nav class="admin-actions" aria-label="Навигация по заказу">
       <a class="admin-button" href="{{ back_url }}">← {{ 'К дашборду' if back_url.split('?')[0] == '/admin/dashboard' else 'Назад к списку' }}</a>
       {% if customer_url %}<a class="admin-button" href="{{ customer_url }}">{{ order.advertiser or 'Профиль заказчика' }}</a>{% endif %}
@@ -42,8 +45,9 @@
       </div>
       <div class="order-detail__stats">
         <article>
-          <h2>Подбор</h2>
+          <h2>{{ 'Оплаченные места' if order.get('financial_selection') else 'Подбор' }}</h2>
           <strong>{{ picked }} из {{ needed }}</strong>
+          <p id="order-transferred-counter" class="creator-transfer-count" aria-live="polite"></p>
           <div class="order-detail__progress" role="progressbar" aria-label="Подобрано креаторов" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
             <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>
           </div>

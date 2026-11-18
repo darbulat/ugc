@@ -80,6 +80,18 @@ jobs:
           FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports['5432'] }}/ugc_test
         run: uv run python -m tests.helpers.financial_environment
 
+      - name: Verify manual handoffs on migrated PostgreSQL
+        env:
+          FINANCIAL_TEST_DATABASE_URL: postgresql+psycopg://ugc:ugc@127.0.0.1:${{ job.services.db_test.ports['5432'] }}/ugc_test
+        run: >-
+          uv run pytest -q -x --require-financial-postgres
+          tests/postgres_financial/test_manual_creator_transfers.py
+          tests/postgres_financial/test_telegram_order_summary.py
+          tests/postgres_financial/test_financial_completion.py
+          tests/postgres_financial/test_replacements.py
+          tests/unit/test_creator_transfer_feedback_api.py
+          tests/unit/test_blogger_rating_service.py
+
   test-shards:
     name: Test shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
@@ -189,6 +201,7 @@ jobs:
           tests/e2e/test_browser_payment_ui.py
           tests/e2e/test_checkout_review_ui.py
           tests/e2e/test_creator_offer_card_ui.py
+          tests/e2e/test_creator_transfer_ui.py
 
   admin-image-import:
     name: Admin image import and alert isolation
