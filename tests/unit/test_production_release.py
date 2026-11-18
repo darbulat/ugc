@@ -7,6 +7,7 @@ import io
 import json
 import os
 import runpy
+import subprocess
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -234,6 +235,27 @@ def test_release_cannot_lookup_an_unrelated_tag(exported_ci_image):
     manifest["registry_reference"] = "untrusted:latest"
     with pytest.raises(ValueError, match="reference"):
         load(directory, manifest)
+
+
+@pytest.mark.parametrize("service", ["app", "app_2"])
+def test_webhook_check_allows_cold_import_and_bounds_its_child(
+    release_module, monkeypatch, service
+):
+    probe = release_module["webhook_on_peer"]
+
+    def cold_exec(command, **kwargs):
+        # Production needs 25 seconds to import, before the 12-second API
+        # deadline starts. Model that work without slowing every CI run.
+        if kwargs["timeout"] < 40:
+            raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+        assert command[3] == f"ugc-{service}-1"
+        assert kwargs["timeout"] <= 120
+        program = kwargs["input"]
+        assert program.index("signal.alarm(75)") < program.index("from aiogram")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", cold_exec)
+    probe(service)
 
 
 def test_snapshot_validation_precedes_writing_secrets(

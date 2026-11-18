@@ -274,6 +274,8 @@ def loaded_ci_image(directory, manifest):
 def webhook_on_peer(service):
     """Keep the shared Telegram webhook registered during replacement."""
     program = """
+import signal
+signal.alarm(75)
 import asyncio
 from aiogram import Bot
 from ugc_bot.config import load_config
@@ -295,7 +297,9 @@ asyncio.run(asyncio.wait_for(main(), timeout=12))
     checked(
         ["docker", "exec", "-i", f"ugc-{service}-1", "python", "-"],
         stdin=program,
-        timeout=18,
+        # Cold application imports take about 25 seconds under the live CPU
+        # quota. The alarm bounds imports and avoids orphaned exec processes.
+        timeout=90,
     )
 
 
