@@ -98,6 +98,9 @@ from ugc_bot.miniapp.correction_api import create_correction_router
 from ugc_bot.miniapp.debt_recovery_api import create_debt_recovery_router
 from ugc_bot.miniapp.financial_principal import resolve_financial_principal
 from ugc_bot.miniapp.financial_review_api import create_financial_review_router
+from ugc_bot.miniapp.instagram_verification_api import (
+    create_instagram_verification_router,
+)
 from ugc_bot.miniapp.invite_handoff_api import create_invite_handoff_router
 from ugc_bot.miniapp.manager_directory_api import (
     create_manager_directory_router,
@@ -667,6 +670,9 @@ router.include_router(
     create_client_followup_router(resolve_financial_principal)
 )
 router.include_router(create_social_router(resolve_financial_principal))
+router.include_router(
+    create_instagram_verification_router(resolve_financial_principal)
+)
 router.include_router(create_collaboration_router(resolve_financial_principal))
 router.include_router(create_override_router(resolve_financial_principal))
 router.include_router(create_partner_router(resolve_financial_principal))
@@ -1362,6 +1368,7 @@ async def start_instagram_verification(
     instagram_url = f"{base_url}{username}"
     return {
         "code": verification.code,
+        "expires_at": verification.expires_at.isoformat(),
         "instruction": instruction,
         "instagram_url": instagram_url,
     }

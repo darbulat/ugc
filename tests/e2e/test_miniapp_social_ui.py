@@ -71,6 +71,7 @@ class SocialNetwork(MiniAppNetwork):
             "/social/accounts/remove",
             "/social/prompt/dismiss",
             "/blogger/instagram-verification/start",
+            "/blogger/instagram-verification/status",
         }:
             super().route(route)
             return
@@ -78,6 +79,7 @@ class SocialNetwork(MiniAppNetwork):
         if path == "/me":
             route.fulfill(
                 json={
+                    "user_id": "00000000-0000-0000-0000-000000000101",
                     "locale": self.locale,
                     "country": "ru",
                     "currency_symbol": self.symbol,
@@ -91,9 +93,19 @@ class SocialNetwork(MiniAppNetwork):
                     "is_manager": False,
                 }
             )
-        elif path == "/blogger/instagram-verification/start":
+        elif path in {
+            "/blogger/instagram-verification/status",
+            "/blogger/instagram-verification/start",
+        }:
             route.fulfill(
                 json={
+                    "user_id": "00000000-0000-0000-0000-000000000101",
+                    "instagram_url": self.instagram()["url"],
+                    "confirmed": self.confirmed,
+                    "agreement_confirmed": self.blogger_agreement_confirmed,
+                }
+                if path.endswith("/status")
+                else {
                     "code": "synthetic-verification",
                     "instagram_url": self.instagram()["url"],
                 }

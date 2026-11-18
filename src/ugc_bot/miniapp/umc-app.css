@@ -181,6 +181,8 @@ form .btn-secondary { background: var(--bg); }
 .instagram-code { font-family: ui-monospace, SFMono-Regular, monospace; -webkit-user-select: text; user-select: text; }
 #instagram-copy-status:empty { display: none; }
 .instagram-unconfirmed-warning { margin: var(--space-20) 0; padding: var(--space-24); border-radius: var(--radius-22); background: var(--peach); color: var(--on-pastel); line-height: 1.55; }
+.instagram-verification-feedback { margin: var(--space-20) 0; padding: var(--space-20); border: 1px solid var(--success); border-radius: var(--radius-22); overflow-wrap: anywhere; }
+.instagram-verification-feedback strong { color: var(--success); font-size: 20px; }
 .country-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-12); }
 .country-grid .btn { margin-top: 0; background: var(--card); color: var(--ink); min-height: 64px; }
 .role-btns { display: grid; gap: var(--space-12); }

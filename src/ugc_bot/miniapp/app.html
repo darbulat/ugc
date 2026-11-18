@@ -23,6 +23,7 @@
   <script src="/miniapp/umc-payout-money.js" defer></script>
   <script src="/miniapp/umc-payout-state.js" defer></script>
   <script src="/miniapp/umc-shell.js" defer></script>
+  <script src="/miniapp/umc-instagram-verification.js" defer></script>
   <script src="/miniapp/umc-payout-admin.js" defer></script>
   <script src="/miniapp/umc-payouts.js" defer></script>
   <script src="/miniapp/umc-collaborations.js" defer></script>
@@ -684,7 +685,7 @@
         return fallback || 'Ошибка запроса';
       }
 
-      function api(path, body, checkedAuth) {
+      function api(path, body, checkedAuth, options) {
         var initData = checkedAuth ? checkedAuth.initData : getInitData();
         if (!initData) return Promise.reject(new Error('No initData'));
         var basePayload = { init_data: initData, platform: checkedAuth ? checkedAuth.platform : window.__miniapp_platform || 'telegram' };
@@ -696,6 +697,7 @@
         return fetch(base + '/miniapp/api' + path, {
           method: 'POST',
           headers: headers,
+          signal: options && options.signal,
           body: JSON.stringify(payload)
         }).then(function(r) {
           if (!r.ok) {
@@ -2217,7 +2219,7 @@
       document.getElementById('btn-blogger-confirm-instagram').addEventListener('click', function() {
         setVerificationCode('');
         verifiedProfileRequest('/blogger/instagram-verification/start', {}).then(function(res) {
-          if (res.already_confirmed) {
+          if (res.already_confirmed && !window.UMCInstagramVerification) {
             return loadMe().then(function() {
               showScreen('screen-blogger-dashboard');
             });
@@ -2247,6 +2249,7 @@
           }
           setVerificationCode(res.code);
           showScreen('screen-instagram-verification');
+          if (window.UMCInstagramVerification) window.UMCInstagramVerification.begin(res);
         }).catch(function(err) {
           if (err.status === 403 && err.message === 'registration_agreement_required' && resumeAgreement('blogger', true)) return;
           var hint = document.querySelector('#screen-blogger-dashboard .hint');
@@ -3416,18 +3419,18 @@
         return Object.freeze({
           isCurrent: current,
           dispose: function () { invalid = true; initial = ''; },
-          request: function (path, body) {
+          request: function (path, body, options) {
             if (!current()) return Promise.reject(changed());
             // Dispatch uses this exact checked value; body cannot override auth.
             var checked = {initData: initial, platform: platform};
-            return api(path, body, checked).then(function (result) {
+            return api(path, body, checked, options).then(function (result) {
               if (!current()) throw changed();
               return result;
             }, function (error) { if (!current()) throw changed(); throw error; });
           }
         });
       }
-      window.__umcAppBridge = { request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
+      window.__umcAppBridge = { setInstagramCode: setVerificationCode, request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       // Deferred modules subscribe to app-ready and selection events.
