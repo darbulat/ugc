@@ -159,6 +159,76 @@ def test_bundle_plan_includes_configuration_assets_and_certificates(
     assert all("recovery-archives" not in item for item in sources)
 
 
+def test_removed_historical_image_is_recorded_without_inventing_a_digest(
+    backup_module, monkeypatch
+):
+    inventory = backup_module["image_inventory"]
+
+    def missing(*args):
+        raise RuntimeError("Image no longer available")
+
+    monkeypatch.setitem(inventory.__globals__, "inspect", missing)
+    old = {
+        "Image": "sha256:historical",
+        "State": {"Status": "exited"},
+        "Config": {"Image": "ugc-migrate"},
+    }
+    assert inventory([old]) == {
+        "sha256:historical": {
+            "tags": None,
+            "digests": None,
+            "revision": None,
+            "metadata_available": False,
+            "configured_references": ["ugc-migrate"],
+        }
+    }
+
+
+def test_active_image_lookup_failure_still_blocks_backup(
+    backup_module, monkeypatch
+):
+    inventory = backup_module["image_inventory"]
+
+    def missing(*args):
+        raise RuntimeError("Active image unavailable")
+
+    monkeypatch.setitem(inventory.__globals__, "inspect", missing)
+    stopped = {
+        "Image": "sha256:shared",
+        "State": {"Status": "exited"},
+        "Config": {"Image": "old-job"},
+    }
+    running = stopped | {
+        "State": {"Status": "running"},
+        "Config": {"Image": "active-service"},
+    }
+    with pytest.raises(RuntimeError, match="Active image"):
+        inventory([stopped, running])
+
+
+def test_available_images_keep_verified_metadata_and_each_reference(
+    backup_module, monkeypatch
+):
+    inventory = backup_module["image_inventory"]
+    details = {
+        "RepoTags": ["repo:release"],
+        "RepoDigests": ["repo@sha256:verified"],
+        "Config": {"Labels": {"org.opencontainers.image.revision": "abc"}},
+    }
+    monkeypatch.setitem(inventory.__globals__, "inspect", lambda *a: details)
+    first = {
+        "Image": "sha256:current",
+        "State": {"Status": "running"},
+        "Config": {"Image": "repo:release"},
+    }
+    second = first | {"Config": {"Image": "sha256:current"}}
+    result = inventory([first, second, first])["sha256:current"]
+    assert result["metadata_available"] is True
+    assert result["digests"] == details["RepoDigests"]
+    assert result["revision"] == "abc"
+    assert result["configured_references"] == ["repo:release", "sha256:current"]
+
+
 @pytest.fixture
 def upload_environment(backup_module, monkeypatch, tmp_path):
     path = tmp_path / "ugc-recovery-test.tar.gz.age"
