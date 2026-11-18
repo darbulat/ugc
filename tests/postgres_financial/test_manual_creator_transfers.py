@@ -34,12 +34,14 @@ from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderItemModel,
     OrderModel,
+    UserModel,
 )
 from ugc_bot.infrastructure.db.repositories.creator_transfers import (
     SqlCreatorTransfers,
     delivered_count,
     delivery_history,
 )
+from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 
 __all__ = ["intake_env"]
 
@@ -303,3 +305,55 @@ async def test_feedback_for_extra_author_is_owner_scoped_and_not_billing(
         )
     with pytest.raises(IntegrityError), env["pg"].begin() as db:
         db.execute(TRANSFERS.delete().where(TRANSFERS.c.order_id == oid))
+
+
+@pytest.mark.asyncio
+async def test_rejected_sources_never_start_a_transfer(intake_env):
+    env = intake_env
+    service, transport, oid, candidates, _, _, _ = await setup(env)
+    cid = candidates[0]
+    with pytest.raises(ValueError, match="transfer_order_unavailable"):
+        await service.send(uuid4(), cid, operator="admin:synthetic")
+    with env["pg"].begin() as db:
+        unrelated = contact_profile(db, stable_id=uuid4().hex)
+        original = db.scalar(
+            select(ACCEPTED.c.creator_id)
+            .where(ACCEPTED.c.order_id == oid)
+            .limit(1)
+        )
+    assert (
+        await service.send(oid, original, operator="admin:synthetic") == "sent"
+    )
+    with pytest.raises(ValueError, match="transfer_candidate_required"):
+        await service.send(oid, unrelated, operator="admin:synthetic")
+    with env["pg"].begin() as db:
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == cid)
+            .values(status="pause")
+        )
+    with pytest.raises(ValueError, match="transfer_creator_unavailable"):
+        await service.send(oid, cid, operator="admin:synthetic")
+    with env["pg"].begin() as db:
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == cid)
+            .values(status="active")
+        )
+        db.execute(
+            update(UserModel)
+            .where(UserModel.user_id == env["user"].user_id)
+            .values(telegram_id=None)
+        )
+    with pytest.raises(ValueError, match="transfer_customer_unavailable"):
+        await service.send(oid, cid, operator="admin:synthetic")
+    transport.send.assert_not_awaited()
+    with Session(env["pg"]) as db:
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(TRANSFERS)
+                .where(TRANSFERS.c.order_id == oid)
+            )
+            == 0
+        )

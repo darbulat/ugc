@@ -101,6 +101,11 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
         html = client.get(f"/preview/{oid}").text
         assert "15 из 10" in html and "&lt;Автор&gt;" in html
         assert html.count("data-creator-transfer-form") == 2
+        config.financial.core_enabled = False
+        disabled = client.post(path, data={"csrf_token": token})
+        assert disabled.status_code == 503
+        send.assert_not_awaited()
+        config.financial.core_enabled = True
         result = client.post(
             path, data={"csrf_token": token}, follow_redirects=False
         )
@@ -113,3 +118,10 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
             "order_id": str(oid),
             "message": module.STATES["sent"],
         }
+        send.side_effect = ValueError("transfer_creator_unavailable")
+        rejected = client.post(path, data={"csrf_token": token})
+        assert rejected.status_code == 200
+        assert (
+            rejected.json()["result"]["message"]
+            == module.ERRORS["transfer_creator_unavailable"]
+        )

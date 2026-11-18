@@ -88,6 +88,9 @@ jobs:
           tests/postgres_financial/test_manual_creator_transfers.py
           tests/postgres_financial/test_telegram_order_summary.py
           tests/postgres_financial/test_financial_completion.py
+          tests/postgres_financial/test_replacements.py
+          tests/unit/test_creator_transfer_feedback_api.py
+          tests/unit/test_blogger_rating_service.py
 
   test-shards:
     name: Test shard ${{ matrix.shard }}/4

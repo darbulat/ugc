@@ -59,6 +59,43 @@ async def rate(flow, actor=None, score=5, **kwargs):
 
 
 @pytest.mark.asyncio
+async def test_supplemental_feedback_unlocks_only_the_worked_creator(flow):
+    service, _, eligibility, owner, _, _, creator, order = flow
+    other = uuid4()
+    eligibility.participants[order] = (
+        RatingParticipant(creator, "Extra", False, True),
+        RatingParticipant(other, "Other", False, True),
+    )
+    await service.record_supplemental_feedback(
+        owner, order, creator, "not_agreed"
+    )
+    with pytest.raises(ValueError, match="rating_work_incomplete"):
+        await rate(flow)
+    await service.record_supplemental_feedback(owner, order, creator, "worked")
+    assert (await rate(flow)).score == 5
+    participants = eligibility.participants[order]
+    assert participants[0].completed and participants[0].feedback == "worked"
+    assert not participants[1].completed and participants[1].feedback is None
+
+
+@pytest.mark.asyncio
+async def test_supplemental_feedback_cannot_confirm_a_paid_position(flow):
+    service, _, eligibility, owner, _, _, creator, order = flow
+    eligibility.participants[order] = (
+        RatingParticipant(creator, "Paid", False),
+    )
+    with pytest.raises(ValueError, match="rating_participant_required"):
+        await service.record_supplemental_feedback(
+            owner, order, creator, "worked"
+        )
+    with pytest.raises(ValueError, match="rating_feedback_invalid"):
+        await service.record_supplemental_feedback(
+            owner, order, creator, "success_final"
+        )
+    assert not eligibility.participants[order][0].completed
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("score", [1, 5])
 async def test_owner_can_rate_and_update_own_score(flow, score):
     service, repo, _, owner, manager, _, creator, order = flow
