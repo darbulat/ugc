@@ -13,7 +13,6 @@ import ipaddress
 import json
 import os
 import re
-import socket
 import subprocess
 import time
 import urllib.error
@@ -26,6 +25,7 @@ from typing import Any
 
 MAX_BODY = 131072
 MAX_BACKUP_AGE = 26 * 3600
+MAX_PEER_AGE = 90
 
 
 @dataclass(frozen=True)
@@ -76,28 +76,30 @@ def check_page(probe: dict[str, str]) -> Observation:
         return Observation(probe["name"], False, "HTTPS-проверка не прошла")
 
 
-def check_ssh_banner(probe: dict[str, str]) -> Observation:
+def check_peer_heartbeat(probe: dict[str, str]) -> Observation:
     try:
-        with socket.create_connection(
-            (probe["host"], 22), timeout=5
-        ) as connection:
-            deadline = time.monotonic() + 5
-            banner = b""
-            while b"\n" not in banner and len(banner) < 255:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError("ssh_banner_deadline")
-                connection.settimeout(remaining)
-                chunk = connection.recv(255 - len(banner))
-                if not chunk:
-                    break
-                banner += chunk
-            if b"\n" in banner and banner.startswith(b"SSH-2.0-"):
-                return Observation(probe["name"], True, "SSH-баннер доступен")
+        path = Path.home() / ".cache/umc-monitor/last-peer-query.json"
+        with path.open("rb") as stream:
+            raw = stream.read(4097)
+        if len(raw) > 4096:
+            raise ValueError("oversized_peer_query")
+        data = json.loads(raw)
+        generated = data.get("generated_at")
+        if (
+            data.get("version") == 1
+            and data.get("source_ip") == probe["host"]
+            and isinstance(generated, (int, float))
+            and -30 <= time.time() - generated <= MAX_PEER_AGE
+        ):
+            return Observation(
+                probe["name"], True, "Получен свежий запрос от монитора"
+            )
     except Exception:
         pass
     return Observation(
-        probe["name"], False, "Нет SSH-ответа с VPS; проверьте сеть, хост и SSH"
+        probe["name"],
+        False,
+        "Нет подтверждённого запроса от Timeweb за последние 90 секунд",
     )
 
 
@@ -286,7 +288,7 @@ def load_state(path: Path) -> dict[str, Any]:
 
 def validate_probe(probe: dict[str, str]) -> None:
     kind = probe.get("type", "https")
-    if kind == "ssh":
+    if kind == "peer_heartbeat":
         ipaddress.ip_address(probe["host"])
     elif kind == "https":
         url = urllib.parse.urlsplit(probe["url"])
@@ -389,7 +391,9 @@ def collect(config: dict[str, Any], credentials: Path) -> list[Observation]:
     with ThreadPoolExecutor(max_workers=6) as pool:
         pages = [
             pool.submit(
-                check_ssh_banner if probe.get("type") == "ssh" else check_page,
+                check_peer_heartbeat
+                if probe.get("type") == "peer_heartbeat"
+                else check_page,
                 probe,
             )
             for probe in config["probes"]

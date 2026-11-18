@@ -127,8 +127,9 @@ and Docker do not require a restart or configuration replacement.
 
 `umc-peer-monitor.service` runs as a user service for `deploy` on the UMC
 host, outside Docker. Enable user lingering so the user manager starts at
-boot and survives SSH logout. It checks the Timeweb SSH banner on port 22
-every 30 seconds without authentication or any SSH key. Validate the
+boot and survives SSH logout. Every 30 seconds it checks for recent real
+queries from the existing Timeweb monitor, without any new SSH connection
+or key. Validate the
 resource limits on the actual delegated user cgroup: 128 MiB and 0.25 CPU.
 Do not restart the existing application or Docker services.
 
@@ -142,11 +143,29 @@ customer bot credentials. Put the unit in `~/.config/systemd/user/` and
 enable only `umc-peer-monitor.service` with `systemctl --user`.
 
 The peer configuration is `config/monitoring/peer-monitor.example.json`.
-Two consecutive failures cause an alert from UMC to Server Alerts; a healthy
-SSH banner causes recovery. This checks host/network/SSH reachability, not
-whether the Timeweb monitor process is healthy. Alerts must describe that
-distinction. Mutual monitoring detects one unavailable host while the other
-is operational; simultaneous loss of both hosts needs a third independent
+Deploy the merged reporter under a new immutable release directory and
+update only its existing dedicated forced-command key entry to that path,
+keeping `restrict`, the source IP and every unrelated key unchanged. The
+reporter's response schema and operations stay backward compatible; the
+Timeweb service keeps running during this update.
+
+The reporter records only source IP and generation time when SSH provides
+the expected original command `umc-monitor-snapshot`. Local deployment
+checks and unrelated commands do not advance the heartbeat. The owner-only
+metadata file is `~/.cache/umc-monitor/last-peer-query.json`; no token or
+application data goes into it. A failed metadata write must not break the
+existing health response. Queries still count when Docker is unavailable,
+so the reverse monitor remains independent of Docker.
+
+A query older than 90 seconds is unhealthy. Two consecutive failed
+30-second polls cause an alert from UMC to Server Alerts. Expected detection
+of a missing Timeweb monitor is roughly 2–3 minutes, plus Telegram delivery;
+recovery follows the next confirmed query. This is a timing estimate, not a
+guaranteed SLA. A missing heartbeat can mean a host, process or connectivity
+problem; it does not prove that the VPS powered off.
+
+Mutual monitoring detects one unavailable host while the other is
+operational; simultaneous loss of both hosts needs a third independent
 observer. A failed initial delivery whose incident has already recovered
 must not leave obsolete retry state blocking subsequent notifications.
 

@@ -3,8 +3,8 @@
   "bot_username": "replace_me_bot",
   "probes": [
     {
-      "name": "Timeweb недоступен с сервера UMC",
-      "type": "ssh",
+      "name": "Связь с монитором Timeweb (проверка с UMC)",
+      "type": "peer_heartbeat",
       "host": "194.87.131.138"
     }
   ],

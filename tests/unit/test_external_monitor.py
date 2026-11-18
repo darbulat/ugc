@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, Mock
+from unittest.mock import Mock
 
 import boto3
 import pytest
@@ -87,65 +87,95 @@ def test_transport_error_never_exposes_urls_or_credentials(monkeypatch):
     assert "secret" not in result.detail and "token" not in result.detail
 
 
-def _ssh_connection(monkeypatch, chunks):
-    connection = MagicMock()
-    connection.__enter__.return_value = connection
-    connection.recv.side_effect = chunks
-    transport = Mock(return_value=connection)
-    monkeypatch.setattr(monitor.socket, "create_connection", transport)
-    return connection, transport
-
-
-def test_ssh_banner_probe_reassembles_fragments_without_authentication(
-    monkeypatch,
-):
-    connection, transport = _ssh_connection(
-        monkeypatch, [b"SSH-", b"2.0-OpenSSH_9.6\r\n"]
+def _peer_environment(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setenv("SSH_ORIGINAL_COMMAND", "umc-monitor-snapshot")
+    monkeypatch.setenv(
+        "SSH_CONNECTION", "194.87.131.138 41234 31.59.106.143 22"
     )
-    result = monitor.check_ssh_banner({"name": "Timeweb", "host": "192.0.2.1"})
-    assert result.ok
-    transport.assert_called_once_with(("192.0.2.1", 22), timeout=5)
-    connection.send.assert_not_called()
-    connection.sendall.assert_not_called()
+    monkeypatch.setattr(monitor, "time", SimpleNamespace(time=lambda: 1000))
+    return {"name": "peer", "type": "peer_heartbeat", "host": "194.87.131.138"}
 
 
 @pytest.mark.parametrize(
-    "chunks",
+    "age,expected",
+    [(0, True), (90, True), (90.001, False), (-30, True), (-31, False)],
+)
+def test_peer_query_roundtrip_and_freshness_boundary(
+    monkeypatch, tmp_path, age, expected
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    reporter.record_peer_query(
+        {"version": 1, "generated_at": 1000 - age, "docker": True}
+    )
+    assert monitor.check_peer_heartbeat(probe).ok is expected
+
+
+@pytest.mark.parametrize("command", [None, "id", "python3 monitor_snapshot.py"])
+def test_local_and_unrelated_commands_do_not_create_peer_heartbeat(
+    monkeypatch, tmp_path, command
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    if command is None:
+        monkeypatch.delenv("SSH_ORIGINAL_COMMAND")
+    else:
+        monkeypatch.setenv("SSH_ORIGINAL_COMMAND", command)
+    reporter.record_peer_query({"version": 1, "generated_at": 1000})
+    assert not monitor.check_peer_heartbeat(probe).ok
+    assert not (tmp_path / ".cache/umc-monitor/last-peer-query.json").exists()
+
+
+def test_peer_query_proves_liveness_even_when_docker_is_down(
+    monkeypatch, tmp_path
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    reporter.record_peer_query(
+        {"version": 1, "generated_at": 1000, "docker": False}
+    )
+    assert monitor.check_peer_heartbeat(probe).ok
+
+
+def test_peer_metadata_contains_no_snapshot_secrets(monkeypatch, tmp_path):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    data = {"version": 1, "generated_at": 1000, "token": "must-not-record"}
+    reporter.record_peer_query(data)
+    path = tmp_path / ".cache/umc-monitor/last-peer-query.json"
+    assert json.loads(path.read_text()) == {
+        "version": 1,
+        "generated_at": 1000,
+        "source_ip": probe["host"],
+    }
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert data["token"] == "must-not-record"
+
+
+@pytest.mark.parametrize(
+    "connection",
     [
-        [b"HTTP/1.1 200 OK\r\n"],
-        [b""],
-        [b"SSH-2.0-incomplete", b""],
-        [b"x" * 255],
+        "",
+        "bad",
+        "not-an-IP 123 31.59.106.143 22",
+        "192.0.2.1 123 31.59.106.143 22",
     ],
 )
-def test_ssh_probe_rejects_closed_wrong_or_unterminated_service(
-    monkeypatch, chunks
+def test_peer_requires_provenance_from_expected_host(
+    monkeypatch, tmp_path, connection
 ):
-    _ssh_connection(monkeypatch, chunks)
-    assert not monitor.check_ssh_banner(
-        {"name": "Timeweb", "host": "192.0.2.1"}
-    ).ok
+    probe = _peer_environment(monkeypatch, tmp_path)
+    monkeypatch.setenv("SSH_CONNECTION", connection)
+    reporter.record_peer_query({"version": 1, "generated_at": 1000})
+    assert not monitor.check_peer_heartbeat(probe).ok
 
 
-def test_ssh_probe_bounds_the_entire_banner_read(monkeypatch):
-    connection, _ = _ssh_connection(monkeypatch, [b"SSH-2.0-foo\n"])
-    ticks = iter([100, 106])
-    monkeypatch.setattr(
-        monitor, "time", SimpleNamespace(monotonic=lambda: next(ticks))
-    )
-    assert not monitor.check_ssh_banner(
-        {"name": "Timeweb", "host": "192.0.2.1"}
-    ).ok
-    connection.recv.assert_not_called()
-
-
-def test_ssh_errors_never_expose_transport_details(monkeypatch):
-    monkeypatch.setattr(
-        monitor.socket,
-        "create_connection",
-        Mock(side_effect=OSError("secret-private-network-details")),
-    )
-    result = monitor.check_ssh_banner({"name": "Timeweb", "host": "192.0.2.1"})
+@pytest.mark.parametrize("body", [b"bad-secret-json", b"{}", b"x" * 4097])
+def test_bad_peer_metadata_is_unhealthy_without_data_leak(
+    monkeypatch, tmp_path, body
+):
+    probe = _peer_environment(monkeypatch, tmp_path)
+    path = tmp_path / ".cache/umc-monitor/last-peer-query.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(body)
+    result = monitor.check_peer_heartbeat(probe)
     assert not result.ok and "secret" not in result.detail
 
 
@@ -153,19 +183,19 @@ def test_collect_preserves_https_and_dispatches_peer_probe(
     monkeypatch, tmp_path
 ):
     https = Mock(return_value=observation(True, "web"))
-    ssh = Mock(return_value=observation(True, "peer"))
+    peer = Mock(return_value=observation(True, "peer"))
     monkeypatch.setattr(monitor, "check_page", https)
-    monkeypatch.setattr(monitor, "check_ssh_banner", ssh)
+    monkeypatch.setattr(monitor, "check_peer_heartbeat", peer)
     probes = [
         {"name": "web", "url": "https://example.test", "contains": "ok"},
-        {"name": "peer", "type": "ssh", "host": "192.0.2.1"},
+        {"name": "peer", "type": "peer_heartbeat", "host": "192.0.2.1"},
     ]
     result = monitor.collect({"probes": probes, "snapshot": None}, tmp_path)
     assert [x.name for x in result] == ["web", "peer"] and all(
         x.ok for x in result
     )
     https.assert_called_once_with(probes[0])
-    ssh.assert_called_once_with(probes[1])
+    peer.assert_called_once_with(probes[1])
 
 
 def healthy_snapshot(now):
@@ -344,8 +374,8 @@ def test_peer_config_needs_no_ssh_credential_or_web_endpoint():
     config = monitor.load_config(sample)
     assert config["probes"] == [
         {
-            "name": "Timeweb недоступен с сервера UMC",
-            "type": "ssh",
+            "name": "Связь с монитором Timeweb (проверка с UMC)",
+            "type": "peer_heartbeat",
             "host": "194.87.131.138",
         }
     ]
@@ -357,7 +387,8 @@ def test_peer_config_needs_no_ssh_credential_or_web_endpoint():
 )
 def test_peer_config_requires_a_literal_ip_address(tmp_path, host):
     path = config_file(
-        tmp_path, probes=[{"name": "peer", "type": "ssh", "host": host}]
+        tmp_path,
+        probes=[{"name": "peer", "type": "peer_heartbeat", "host": host}],
     )
     with pytest.raises(ValueError):
         monitor.load_config(path)
