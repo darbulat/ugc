@@ -115,6 +115,26 @@ def test_archive_requires_immutable_identifiers(
         release_module["verify_archive"](tmp_path)
 
 
+def test_source_archive_checksum_is_verified(release_module, tmp_path):
+    image = tmp_path / "image.tar.gz"
+    source = tmp_path / "source.tar.gz"
+    image.write_bytes(b"image")
+    source.write_bytes(b"source")
+    manifest = {
+        "revision": "a" * 40,
+        "image_id": "sha256:" + "b" * 64,
+        "archive_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+        "source_archive_sha256": hashlib.sha256(
+            source.read_bytes()
+        ).hexdigest(),
+    }
+    (tmp_path / "manifest.json").write_text(json.dumps(manifest))
+    assert release_module["verify_archive"](tmp_path) == manifest
+    source.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="source checksum"):
+        release_module["verify_archive"](tmp_path)
+
+
 def test_snapshot_validation_precedes_writing_secrets(
     release_module, tmp_path, monkeypatch
 ):
@@ -155,7 +175,9 @@ def test_live_restore_preserves_existing_settings_and_reloads(
     assert json.loads(path.read_text()) == validated[0]
     assert len(signals) == 1 and signals[0][0] == 1234
     assert path.stat().st_mode & 0o777 == 0o600
-    assert list(tmp_path.iterdir()) == [path]
+    backup = path.with_name("daemon.json.before-live-restore")
+    assert json.loads(backup.read_text()) == settings
+    assert set(tmp_path.iterdir()) == {path, backup}
 
 
 def test_live_restore_validation_failure_preserves_file(
@@ -219,12 +241,22 @@ def test_live_restore_refuses_concurrent_changes(
     assert json.loads(path.read_text()) == {"log-driver": "local"}
 
 
-def test_live_restore_is_idempotent(live_restore_module, tmp_path):
+def test_live_restore_reloads_existing_configuration(
+    live_restore_module, tmp_path, monkeypatch
+):
     path = tmp_path / "daemon.json"
     path.write_text('{"live-restore":true}')
-    assert (
-        live_restore_module["configure"](path, Path("missing"), 1234) is False
+    configure = live_restore_module["configure"]
+    signals = []
+    monkeypatch.setattr(
+        configure.__globals__["subprocess"],
+        "run",
+        lambda *a, **kw: SimpleNamespace(returncode=0),
     )
+    monkeypatch.setattr(os, "kill", lambda *args: signals.append(args))
+    assert configure(path, Path("dockerd"), 1234) is False
+    assert len(signals) == 1
+    assert path.read_text() == '{"live-restore":true}'
 
 
 @pytest.mark.parametrize("as_list", [False, True])

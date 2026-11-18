@@ -9,10 +9,22 @@ import tempfile
 from pathlib import Path
 
 
+def validate(config_path, docker_binary):
+    result = subprocess.run(
+        [str(docker_binary), "--validate", "--config-file", str(config_path)],
+        capture_output=True,
+        timeout=15,
+    )
+    if result.returncode:
+        raise RuntimeError("Merged Docker configuration failed validation")
+
+
 def configure(config_path, docker_binary, daemon_pid):
     previous = config_path.read_bytes() if config_path.exists() else None
     settings = json.loads(previous or b"{}")
     if settings.get("live-restore") is True:
+        validate(config_path, docker_binary)
+        os.kill(daemon_pid, signal.SIGHUP)
         return False
     settings["live-restore"] = True
     descriptor, filename = tempfile.mkstemp(
@@ -27,16 +39,21 @@ def configure(config_path, docker_binary, daemon_pid):
             target.write("\n")
             target.flush()
             os.fsync(target.fileno())
-        result = subprocess.run(
-            [str(docker_binary), "--validate", "--config-file", str(pending)],
-            capture_output=True,
-            timeout=15,
-        )
-        if result.returncode:
-            raise RuntimeError("Merged Docker configuration failed validation")
+        validate(pending, docker_binary)
         current = config_path.read_bytes() if config_path.exists() else None
         if current != previous:
             raise RuntimeError("Docker configuration changed during validation")
+        backup = config_path.with_name(
+            config_path.name + ".before-live-restore"
+        )
+        if not backup.exists():
+            descriptor = os.open(
+                backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600
+            )
+            with os.fdopen(descriptor, "wb") as original:
+                original.write(previous or b"{}\n")
+                original.flush()
+                os.fsync(original.fileno())
         os.replace(pending, config_path)
         try:
             os.kill(daemon_pid, signal.SIGHUP)

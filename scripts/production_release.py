@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -62,6 +63,17 @@ def private_json(path, value):
     with os.fdopen(descriptor, "w") as out:
         json.dump(value, out, indent=2)
         out.write("\n")
+        out.flush()
+        os.fsync(out.fileno())
+    sync_directory(path.parent)
+
+
+def sync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def compose_base():
@@ -88,7 +100,7 @@ def compose_environment(settings):
 
 def rollout_environment(model, service, files, live):
     """Resolve the placeholder scheme used by previous production rollouts."""
-    placeholders = re.compile(r"\$\{(UGC_ROLLOUT_[A-Z0-9_]+)[^}]*\}")
+    placeholders = re.compile(r"(?<!\$)\$\{(UGC_ROLLOUT_[A-Z0-9_]+)[^}]*\}")
     references = {
         name
         for path in files
@@ -174,6 +186,11 @@ def verify_archive(directory):
         digest = hashlib.file_digest(archive, "sha256").hexdigest()
     if digest != manifest["archive_sha256"]:
         raise ValueError("Release archive checksum mismatch")
+    if "source_archive_sha256" in manifest:
+        with (directory / "source.tar.gz").open("rb") as source:
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+        if digest != manifest["source_archive_sha256"]:
+            raise ValueError("Release source checksum mismatch")
     return manifest
 
 
@@ -411,6 +428,19 @@ def release(directory, services):
     destination = Path(
         tempfile.mkdtemp(prefix="attempt-", dir=revision_directory)
     )
+    if "source_archive_sha256" in manifest:
+        descriptor = os.open(
+            destination / "source.tar.gz",
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+            0o600,
+        )
+        with (
+            (directory / "source.tar.gz").open("rb") as source,
+            os.fdopen(descriptor, "wb") as target,
+        ):
+            shutil.copyfileobj(source, target)
+            target.flush()
+            os.fsync(target.fileno())
     with (directory / "image.tar.gz").open("rb") as archive:
         result = subprocess.run(
             ["docker", "image", "load"],
@@ -484,6 +514,7 @@ def release(directory, services):
     pending = RELEASE_ROOT / (".current-" + destination.name)
     pending.symlink_to(destination)
     os.replace(pending, RELEASE_ROOT / "current")
+    sync_directory(RELEASE_ROOT)
     print(f"Release {revision} verified", flush=True)
 
 
