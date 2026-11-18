@@ -69,7 +69,7 @@ Do not use the dirty production checkout as a build/source context.
    channel/supergroup numeric ID and the dedicated bot's `bot_username`.
    Initially leave `snapshot` null. Keep credentials out of this JSON file.
 2. Run the script with `--config ... --check`. This performs read-only page
-   checks and sends neither Telegram messages nor watchdog pings.
+   checks and sends no Telegram messages.
 3. The owner enters the dedicated token directly into the VPS console:
 
    ```sh
@@ -169,23 +169,17 @@ operational; simultaneous loss of both hosts needs a third independent
 observer. A failed initial delivery whose incident has already recovered
 must not leave obsolete retry state blocking subsequent notifications.
 
-### Optional independent provider
+### Third independent observer
 
-The Timeweb monitor survives a production host/Docker failure. It cannot
-notify anyone if the Timeweb VPS itself loses connectivity. For that case,
-configure an independent hosted dead-man check (for example Healthchecks.io),
-with its own Telegram integration and email recipients Kamil/Bulat.
+A third observer is not configured. A future always-on Mac mini on a separate
+internet connection can check both public UMC pages and Timeweb availability,
+then post directly to Server Alerts. It must run automatically after reboot
+and login/logout, stay awake, and hold only a dedicated notification token.
+It needs no production database, backup credentials, or general SSH access.
 
-The optional `external-monitor-watchdog.conf` loads a private `watchdog_url`
-credential. Only HTTPS `hc-ping.com` URLs are accepted. The monitor pings it
-approximately every four minutes after successful recipient validation and
-with no pending delivery failure. Set the external check to e.g. five minutes
-plus two minutes grace. Missing pings cause alerts from the external service,
-independently of both hosts and the dedicated monitor bot.
-
-Do not claim this final layer is active until the external account/check,
-recipients and delivery have actually been configured and verified. No UMC
-data or secrets are included in those empty heartbeat requests.
+This is a future option, not part of the current installation. Losing power
+or internet at the Mac mini would also remove that observer. The existing
+server-to-server checks remain necessary.
 
 ## Rollback
 
