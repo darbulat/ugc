@@ -123,8 +123,13 @@ def test_unknown_and_unavailable_are_not_expired(health, failures, expected):
     assert alert_kind(Observation(health, None), NOW, failures) == expected
 
 
-def test_settings_limit_delivery_to_exactly_three_private_admins():
-    for recipients in (["1", "2"], ["1", "1", "2"], ["1", "2", "-100"]):
+def test_settings_limit_delivery_to_explicit_private_admins():
+    for recipients in (
+        [],
+        ["1", "2", "3", "4"],
+        ["1", "1", "2"],
+        ["1", "2", "-100"],
+    ):
         with pytest.raises(ValidationError):
             MonitorSettings(
                 bot_token="secret",
@@ -284,6 +289,33 @@ def test_failed_recipient_retries_without_resending_to_others(tmp_path):
         assert second["tokens"][0]["sent"] == 1
     assert [r["chat_id"] for r in endpoint.telegram_requests] == ADMINS + [
         "202"
+    ]
+    state.close()
+
+
+def test_removed_recipient_is_excluded_from_retries_and_new_alerts(tmp_path):
+    endpoint = Endpoints()
+    endpoint.failed_recipient = "303"
+    config = settings(verification=token_spec(expiry=NOW + timedelta(days=7)))
+    state = MonitorState(tmp_path / "state.sqlite3")
+    with httpx.Client(transport=httpx.MockTransport(endpoint)) as client:
+        first = run_once(config, state, client, NOW)
+        assert first["tokens"][0]["delivery_errors"] == 1
+        config = MonitorSettings(
+            bot_token=config.bot_token,
+            recipients=["101", "202"],
+            tokens=config.tokens,
+        )
+        endpoint.failed_recipient = None
+        endpoint.telegram_requests.clear()
+        run_once(config, state, client, NOW + timedelta(hours=1))
+        assert not endpoint.telegram_requests
+        config.tokens[0].expires_at = NOW + timedelta(days=13)
+        result = run_once(config, state, client, NOW + timedelta(days=6))
+    assert result["tokens"][0]["sent"] == 2
+    assert [item["chat_id"] for item in endpoint.telegram_requests] == [
+        "101",
+        "202",
     ]
     state.close()
 
