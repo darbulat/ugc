@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Аналитика заказов{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ admin_asset(request, 'order-progress.css') }}">{% endblock %}
+{% from 'order_progress.html' import order_progress %}
 
 {% macro orders_url(p=period, s=status_filter, pg=page, pp=per_page, st=sort, od=order, q=search_query) -%}
 /admin/orders?period={{ p }}&per_page={{ pp }}&sort={{ st }}&order={{ od }}{% if s %}&status={{ s }}{% endif %}{% if q %}&search={{ q|urlencode }}{% endif %}{% if pg > 1 %}&page={{ pg }}{% endif %}
@@ -120,7 +122,7 @@
             <th scope="col">Заказ</th>
             <th><a href="{{ sort_url('advertiser') }}">Заказчик{% if sort == 'advertiser' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('status') }}">Статус{% if sort == 'status' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
-            <th><a href="{{ sort_url('picked_count') }}">Подобрано{% if sort == 'picked_count' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
+            <th><a href="{{ sort_url('picked_count') }}" title="Сортировать по заполненным местам плана">Подбор{% if sort == 'picked_count' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('dispatched_count') }}">Отправлено{% if sort == 'dispatched_count' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('responses') }}">Откликов{% if sort == 'responses' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
             <th><a href="{{ sort_url('created_at') }}">Дата создания{% if sort == 'created_at' %} {{ '&#9650;' | safe if order == 'asc' else '&#9660;' | safe }}{% endif %}</a></th>
@@ -140,7 +142,7 @@
                 {% if tg %}<small class="table-note"><a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a></small>{% endif %}
               </td>
               <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
-              <td>{{ order.picked_count }} / {{ order.needed_count }}</td>
+              <td>{{ order_progress(order.picked_count, order.needed_count, order.get('transferred_count')) }}</td>
               <td>{{ order.dispatched_count }}</td>
               <td>{{ order.accepted_count }}</td>
               <td>{{ order.created_at|admin_date }}</td>

@@ -1,6 +1,8 @@
 """One row per creator; delivery history stays distinct from paid work."""
 
 from collections import Counter
+from contextlib import suppress
+from unicodedata import normalize
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -9,6 +11,8 @@ from ugc_bot.admin.order_summary import (
     financial_positions,
     order_creator_contacts,
 )
+from ugc_bot.domain.creator_invites import instagram_handle
+from ugc_bot.domain.social import SocialPlatform, normalize_social_url
 from ugc_bot.infrastructure.db.models import OfferDispatchModel, OrderModel
 
 WORK_LABELS = {
@@ -122,6 +126,7 @@ def creator_workspace(
                 feedback=None,
                 group="selected",
                 current_contact=None,
+                search_contact=None,
             )
         return rows[key]
 
@@ -210,11 +215,15 @@ def _apply_history(row, item):
     saved_name = snapshot.get("name") or snapshot.get("username")
     if row["name"] != "Профиль креатора":
         current["name"] = row["name"]
-    if any(
-        current.get(key) and current[key] != snapshot.get(key)
-        for key in ("instagram", "telegram")
-    ) or (saved_name and current.get("name") and current["name"] != saved_name):
-        row["current_contact"] = current
+    row["search_contact"] = current
+    saved = dict(snapshot, name=saved_name or row["name"])
+    row["current_contact"] = {
+        key: current[key]
+        for key in ("name", "instagram", "telegram")
+        if current.get(key)
+        and _contact_identity(key, current[key])
+        != _contact_identity(key, saved.get(key))
+    } or None
     row.update(
         name=saved_name or row["name"],
         contact=snapshot,
@@ -234,6 +243,28 @@ def _apply_history(row, item):
         row["response"] = (
             "Новая цена" if item.get("source") == "counteroffer" else "Согласен"
         )
+
+
+def _contact_identity(key, value):
+    cleaned = normalize("NFC", " ".join((value or "").split()))
+    if key == "instagram":
+        with suppress(ValueError):
+            return instagram_handle(cleaned)
+    elif key == "telegram":
+        url = (
+            cleaned
+            if "://" in cleaned
+            else (
+                "https://" + cleaned
+                if cleaned.startswith(("t.me/", "telegram.me/"))
+                else "https://t.me/" + cleaned.lstrip("@")
+            )
+        )
+        with suppress(ValueError):
+            return normalize_social_url(SocialPlatform.TELEGRAM, url)[
+                1
+            ].casefold()
+    return cleaned.casefold()
 
 
 async def load_creator_workspace(session, order_id, activity, transfers):

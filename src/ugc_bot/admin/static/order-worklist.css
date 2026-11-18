@@ -99,8 +99,8 @@
 .order-worklist-table .order-price { width: 8%; }
 .order-worklist-table .order-status { width: 11%; }
 .order-worklist-table .order-customer { width: 14%; }
-.order-worklist-table .order-needed { width: 8%; }
-.order-worklist-table .order-offer { width: 19%; }
+.order-worklist-table .order-needed { width: 11%; }
+.order-worklist-table .order-offer { width: 16%; }
 .order-worklist-table .order-date { width: 12%; }
 .order-worklist-table .order-actions { width: 18%; }
 

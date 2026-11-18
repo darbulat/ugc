@@ -19,7 +19,10 @@ from ugc_bot.admin.creator_transfers import transfer_activity
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
+    PeriodWindow,
 )
+from ugc_bot.admin.order_progress import OrderProgress, load_order_progress
+from ugc_bot.admin.order_worklist import worklist_row_details
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
@@ -146,6 +149,12 @@ async def test_manual_delivery_keeps_history_and_can_reach_twenty_of_ten(
     assert workspace["workspace"]["transfer_count"] == 20
     assert transport.send.await_count == 10  # Rendering never resends contacts.
     with Session(env["pg"]) as db:
+        assert load_order_progress(db, [oid]) == {oid: OrderProgress(10, 20)}
+        details = worklist_row_details(
+            db, [oid], DelayThresholds(7, 24, 48, 30)
+        )[oid]
+        assert details["picked"] == 10 and details["transferred_count"] == 20
+        created = db.get(OrderModel, oid).created_at
         assert (
             db.scalar(
                 select(func.count())
@@ -169,6 +178,21 @@ async def test_manual_delivery_keeps_history_and_can_reach_twenty_of_ten(
         assert db.get(OrderModel, oid).status == (
             OrderStatus.CLOSED if closed else OrderStatus.ACTIVE
         )
+    async with env["container"].transaction_manager.transaction() as db:
+        window = PeriodWindow(
+            created - timedelta(days=1),
+            created + timedelta(days=1),
+            created - timedelta(days=2),
+            created - timedelta(days=1),
+        )
+        items = await AdminDashboardService(
+            env["container"].session_factory,
+            "Europe/Moscow",
+            DelayThresholds(7, 24, 48, 30),
+        )._list_orders(db, window, None)
+        item = next(row for row in items if row["order_id"] == str(oid))
+        assert item["picked_count"] == 10 and item["transferred_count"] == 20
+    assert transport.send.await_count == 10
     data = await summary.view(principal, oid)
     assert data["transferred"] == 20 and data["requested"] == 10
     view = (

@@ -1,3 +1,4 @@
+{% from 'order_progress.html' import order_progress %}
 {% set details = model_view.worklist_details(order_rows) %}
 {% set closure_reasons = model_view.closure_reasons(order_rows) %}
 {% set reminders = model_view.unpaid_reminder_statuses(order_rows) if group == 'unpaid' else {} %}
@@ -79,8 +80,7 @@
           {% endif %}
         </td>
         <td class="order-number">
-          <strong>{{ info.picked }} / {{ row.bloggers_needed }}</strong>
-          {% if info.picked < row.bloggers_needed %}<small class="order-row-note">Осталось {{ row.bloggers_needed - info.picked }}</small>{% endif %}
+          {{ order_progress(info.picked, row.bloggers_needed, info.get('transferred_count'), compact=true) }}
         </td>
         <td>
           {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Служебный</small>{% endif %}

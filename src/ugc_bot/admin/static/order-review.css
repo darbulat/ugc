@@ -1,0 +1,3 @@
+.order-review__description { max-width: 62rem; color: #52617a; line-height: 1.5; }
+.order-review__filters { align-items: center; }
+.order-review__scope { display: inline-flex; align-items: center; align-self: center; padding: .4rem .65rem; border-radius: .4rem; background: #e8eef8; color: #35435c; font-size: .85rem; line-height: 1.35; }

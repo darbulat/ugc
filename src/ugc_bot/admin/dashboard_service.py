@@ -50,6 +50,10 @@ from ugc_bot.admin.dashboard_periods import (
     dashboard_period_window as dashboard_period_window,
 )
 from ugc_bot.admin.order_offer_activity import load_order_offer_activity
+from ugc_bot.admin.order_progress import (
+    OrderProgress,
+    load_async_order_progress,
+)
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
     active_pick_reasons,
@@ -1600,6 +1604,21 @@ class AdminDashboardService:
                     **timing,
                 }
             )
+        visible = {
+            item["order_id"]
+            for queue in ("delayed", "unpaid", "moderation")
+            for item in attention[queue]
+        }
+        progress = await load_async_order_progress(
+            session,
+            (row[0] for row in rows if str(row[0].order_id) in visible),
+        )
+        for queue in ("delayed", "unpaid", "moderation"):
+            for item in attention[queue]:
+                order_progress = progress.get(UUID(item["order_id"]))
+                item["transferred_count"] = (
+                    order_progress.transferred_count if order_progress else None
+                )
         return attention
 
     def _attention_reasons(
@@ -2084,7 +2103,7 @@ class AdminDashboardService:
                 AdvertiserProfileModel.brand, UserModel.username
             ),
             "status": OrderModel.status,
-            "picked_count": func.coalesce(responses.c.responses, 0),
+            "picked_count": picked_order_count(),
             "responses": func.coalesce(responses.c.responses, 0),
             "dispatched_count": func.coalesce(
                 dispatched_subq.c.dispatched_count, 0
@@ -2104,6 +2123,9 @@ class AdminDashboardService:
         query = query.limit(limit).offset(offset)
         result = await session.execute(query)
         rows = result.all()
+        progress = await load_async_order_progress(
+            session, (row[0] for row in rows)
+        )
         now = datetime.now(self._timezone)
         return [
             self._build_order_row(
@@ -2115,6 +2137,7 @@ class AdminDashboardService:
                 advertiser_telegram=advertiser_telegram,
                 dispatched_count=dispatched_count,
                 accepted_count=accepted_count,
+                progress=progress.get(order.order_id),
             )
             for (
                 order,
@@ -2555,6 +2578,7 @@ class AdminDashboardService:
         advertiser_telegram: str | None = None,
         dispatched_count: int = 0,
         accepted_count: int = 0,
+        progress: OrderProgress | None = None,
     ) -> dict:
         """Build order list row for UI/API."""
         status_label = self._order_status_label(
@@ -2567,7 +2591,12 @@ class AdminDashboardService:
             "offer_text": order.offer_text,
             "advertiser_telegram": advertiser_telegram,
             "status_label": status_label,
-            "picked_count": int(responses),
+            "picked_count": progress.picked_count
+            if progress
+            else int(responses),
+            "transferred_count": progress.transferred_count
+            if progress
+            else None,
             "needed_count": int(order.bloggers_needed),
             "dispatched_count": int(dispatched_count),
             "accepted_count": int(accepted_count),

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Дашборд{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ admin_asset(request, 'order-progress.css') }}">{% endblock %}
 {% block content_class %} dashboard-content{% endblock %}
 {% block content %}
   <div class="section page-heading">
