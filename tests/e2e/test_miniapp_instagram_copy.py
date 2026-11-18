@@ -24,6 +24,16 @@ class VerificationNetwork(MiniAppNetwork):
         self.code = "UMC-test-012345"
 
     def route(self, route):
+        if route.request.url.endswith("/blogger/instagram-verification/status"):
+            route.fulfill(
+                json={
+                    "user_id": route.request.post_data_json["init_data"],
+                    "instagram_url": "https://instagram.com/synthetic_creator",
+                    "confirmed": False,
+                    "agreement_confirmed": True,
+                }
+            )
+            return
         if route.request.url.endswith("/blogger/instagram-verification/start"):
             route.fulfill(
                 json={
