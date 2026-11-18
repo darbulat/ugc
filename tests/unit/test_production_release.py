@@ -54,10 +54,24 @@ def test_compose_serialized_settings_preserve_literal_dollars(
             "healthcheck": {"test": ["CMD-SHELL", "test $$READY"]},
         }
     )
-    assert "entrypoint" not in decoded
+    assert decoded["entrypoint"] is None
     assert decoded["command"] == ["sh", "-c", "echo $READY $$"]
     assert decoded["healthcheck"]["test"] == ["CMD-SHELL", "test $READY"]
     assert decoded["environment"]["TOKEN"] == "literal$$value"
+
+
+def test_only_service_defaults_are_removed_during_normalization(release_module):
+    model = {
+        "services": {
+            "app": {
+                "entrypoint": None,
+                "environment": {"command": None},
+            }
+        }
+    }
+    result = release_module["normalized_services"](model)
+    assert "entrypoint" not in result["app"]
+    assert result["app"]["environment"] == {"command": None}
 
 
 def test_private_configuration_is_exclusive_and_owner_only(

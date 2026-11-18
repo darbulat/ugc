@@ -256,7 +256,7 @@ def write_snapshot(path, snapshot):
             stdin=content,
         )
     )
-    normalized = unescape_interpolation(resolved["services"])
+    normalized = normalized_services(resolved)
     if normalized != snapshot["services"]:
         differences = {
             service: sorted(
@@ -281,11 +281,18 @@ def unescape_interpolation(value):
         return [unescape_interpolation(item) for item in value]
     if isinstance(value, dict):
         return {
-            key: unescape_interpolation(item)
-            for key, item in value.items()
-            if value[key] is not None or key not in ("command", "entrypoint")
+            key: unescape_interpolation(item) for key, item in value.items()
         }
     return value
+
+
+def normalized_services(model):
+    services = unescape_interpolation(model["services"])
+    for settings in services.values():
+        for key in ("command", "entrypoint"):
+            if settings.get(key) is None:
+                settings.pop(key, None)
+    return services
 
 
 def runtime_signature(container):
