@@ -79,6 +79,10 @@ class ScrapeCreatorsAPIError(RuntimeError):
         self.response_text = response_text
 
 
+class InstagramProfileUnavailableError(RuntimeError):
+    """Meta 100/33 can mean missing object, scope or unavailable account."""
+
+
 class InstagramUserNotFoundError(RuntimeError):
     """Instagram API error 9010: account deleted or changed."""
 

@@ -18,6 +18,9 @@ from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_SNAPSHOT_LOCK_SQL,
 )
+from ugc_bot.infrastructure.db.instagram_maintenance_models import (
+    instagram_available,
+)
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
@@ -299,6 +302,15 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             at,
             manual=manual,
         )
+        if invalid is None:
+            available = await db.scalar(
+                select(BloggerProfileModel.user_id).where(
+                    BloggerProfileModel.user_id == interest["creator_id"],
+                    instagram_available(BloggerProfileModel.__table__),
+                )
+            )
+            if available is None:
+                invalid = "selection_instagram_review_required"
         delivered = await db.scalar(
             select(ACCEPTED.c.delivery_id).where(
                 or_(
@@ -347,7 +359,7 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             capture.policy.version,
             "RUB",
             interest["instagram_user_id"],
-            interest["instagram_url"],
+            profile["instagram_url"] if profile else interest["instagram_url"],
             interest["confirmed_at"],
             None if manual else item["selection_due_at"],
             contact,
@@ -397,7 +409,6 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             or not profile["instagram_user_id"]
             or profile["instagram_user_id"].strip()
             != interest["instagram_user_id"]
-            or profile["instagram_url"] != interest["instagram_url"]
         ):
             return "selection_creator_verification_changed"
         if (

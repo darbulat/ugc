@@ -52,6 +52,9 @@ from ugc_bot.infrastructure.db import (
 from ugc_bot.infrastructure.db import (
     checkout_models as _checkout_models,  # noqa: F401
 )
+from ugc_bot.infrastructure.db import (
+    instagram_maintenance_models as _instagram_maintenance_models,  # noqa: F401
+)
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.financial_schema import TRIGGER_SQL
 from ugc_bot.infrastructure.db.journal_order_schema import add_journal_order

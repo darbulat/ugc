@@ -38,10 +38,17 @@ class ReceiptLink:
 
 
 @dataclass(frozen=True, slots=True)
+class ReceiptCallback:
+    label: str
+    data: str
+
+
+@dataclass(frozen=True, slots=True)
 class ReceiptCard:
     """Optional styling and link buttons for a plain-text message."""
 
     links: tuple[ReceiptLink, ...] = ()
+    callbacks: tuple[ReceiptCallback, ...] = ()
 
 
 class DeliveryFailure(Exception):

@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING, Optional, overload
 from uuid import UUID, uuid4
 
 if TYPE_CHECKING:
+    from ugc_bot.application.services.instagram_profile_maintenance import (
+        InstagramProfileMaintenance,
+    )
     from ugc_bot.application.services.user_role_service import UserRoleService
 
 from ugc_bot.application.errors import (
@@ -159,6 +162,7 @@ class InstagramVerificationService:
     transaction_manager: TransactionManager | None = None
     user_role_service: "UserRoleService | None" = None
     social_repo: SocialAccountRepository | None = None
+    profile_maintenance: "InstagramProfileMaintenance | None" = None
 
     async def _save_social(
         self,
@@ -461,6 +465,9 @@ class InstagramVerificationService:
             else "legacy_profile",
             session=session,
         )
+        await self._observe_profile_verification(
+            sender, confirmed, profile, now, session
+        )
         await self.verification_repo.mark_used(current.code_id, session=session)
         linked = await self._try_link_max_account(
             current, preparation, confirmed, session=session
@@ -471,6 +478,21 @@ class InstagramVerificationService:
             first_verification,
             now if profile.agreement_confirmed_at is not None else None,
             session=session,
+        )
+
+    async def _observe_profile_verification(
+        self,
+        sender: str | None,
+        profile: BloggerProfile,
+        previous_profile: BloggerProfile,
+        at: datetime,
+        session: object | None,
+    ) -> None:
+        if sender is None or self.profile_maintenance is None:
+            return
+        assert session is not None
+        await self.profile_maintenance.verified(
+            profile, at, previous_profile=previous_profile, session=session
         )
 
     async def _finish_confirmation(

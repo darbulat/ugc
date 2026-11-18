@@ -102,6 +102,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
     WorkFormat,
 )
+from ugc_bot.domain.instagram_maintenance import REFRESH_CALLBACK
 
 router = Router()
 
@@ -597,7 +598,7 @@ async def _blog_update_instagram(
         await message.answer(em.get("err_instagram_taken", ""))
         return None
     result = await blogger_registration_service.update_blogger_profile(
-        user_id, instagram_url=text
+        user_id, instagram_url=text, force_instagram_reverification=True
     )
     return result.profile
 
@@ -1379,6 +1380,48 @@ async def handle_profile_agree_callback(
         chat_id=incoming.chat_id,
         text=text,
         keyboard=reply_markup,
+    )
+
+
+@router.callback_query(lambda c: c.data == REFRESH_CALLBACK)
+async def handle_instagram_refresh_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    profile_service: ProfileService,
+    bot_texts_service: BotTextsService,
+    user_locale: str = "ru",
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger_client, event_adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = event_adapter.from_callback(callback)
+    await messenger_client.answer_callback(callback_id=incoming.callback_id)
+    if incoming.user is None or not incoming.user.external_id:
+        return
+    user = await profile_service.get_user_by_external(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    if (
+        user is None
+        or await profile_service.get_blogger_profile(user.user_id) is None
+    ):
+        return
+    await state.clear()
+    await state.update_data(
+        edit_user_id=str(user.user_id),
+        edit_external_id=str(incoming.user.external_id),
+        edit_profile_type="blogger",
+        editing_field="instagram_url",
+    )
+    await state.set_state(EditProfileStates.entering_value)
+    await messenger_client.send_text(
+        chat_id=incoming.chat_id,
+        text=await bot_texts_service.get(
+            "prompt_edit_instagram_url", user_locale
+        ),
     )
 
 

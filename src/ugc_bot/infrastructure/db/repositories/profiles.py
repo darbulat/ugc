@@ -8,7 +8,7 @@ from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -28,6 +28,10 @@ from ugc_bot.infrastructure.db.identity_history_models import (
 )
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_WRITER_LOCK_SQL,
+)
+from ugc_bot.infrastructure.db.instagram_maintenance_models import (
+    HEALTH,
+    instagram_available,
 )
 from ugc_bot.infrastructure.db.messenger_attribution import (
     REGISTRATION_CHANNELS,
@@ -303,7 +307,8 @@ class SqlAlchemyBloggerProfileRepository(
             session if isinstance(session, AsyncSession) else None
         )
         stmt = select(BloggerProfileModel.user_id).where(
-            BloggerProfileModel.confirmed.is_(True)
+            BloggerProfileModel.confirmed.is_(True),
+            instagram_available(BloggerProfileModel.__table__),
         )
         if location_geometry_wkt and location_geometry_wkt.strip():
             try:
@@ -353,11 +358,26 @@ class SqlAlchemyBloggerProfileRepository(
                 BloggerProfileModel.instagram_user_id != "",
             )
             if stats_older_than is None:
+                fetched_at = BloggerProfileModel.instagram_stats_fetched_at
                 stmt = (
                     select(BloggerProfileModel)
+                    .outerjoin(
+                        HEALTH, HEALTH.c.user_id == BloggerProfileModel.user_id
+                    )
                     .where(*base_conditions)
                     .order_by(
-                        BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
+                        case(
+                            (
+                                HEALTH.c.checked_at > fetched_at,
+                                HEALTH.c.checked_at,
+                            ),
+                            else_=func.coalesce(
+                                fetched_at,
+                                HEALTH.c.checked_at,
+                            ),
+                        )
+                        .asc()
+                        .nulls_first(),
                         BloggerProfileModel.user_id,
                     )
                     .limit(limit)

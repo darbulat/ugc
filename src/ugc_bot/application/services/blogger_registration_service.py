@@ -587,6 +587,7 @@ class BloggerRegistrationService:
         user_id: UUID,
         *,
         instagram_url: Optional[str] = None,
+        force_instagram_reverification: bool = False,
         city: Optional[str] = None,
         region: Optional[str] = None,
         location_geometry: Optional[str] = None,
@@ -621,9 +622,9 @@ class BloggerRegistrationService:
                 if instagram_url is not None
                 else profile.instagram_url
             )
-            instagram_changed = (
-                instagram_url is not None
-                and new_instagram_url != profile.instagram_url
+            instagram_changed = instagram_url is not None and (
+                new_instagram_url != profile.instagram_url
+                or force_instagram_reverification
             )
             new_city = city.strip() if city is not None else profile.city
             new_region = region if region is not None else profile.region

@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from ugc_bot.application.errors import InstagramUserNotFoundError
+from ugc_bot.application.errors import (
+    InstagramProfileUnavailableError,
+    InstagramUserNotFoundError,
+)
 from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.infrastructure.instagram.graph_api_client import (
     HttpInstagramGraphApiClient,
@@ -782,10 +785,10 @@ async def test_get_profile_by_id_raises_on_code_100_subcode_2534014() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_profile_by_id_does_not_raise_on_code_100_other_subcode() -> (
+async def test_get_profile_by_id_marks_100_33_as_ambiguous_unavailable() -> (
     None
 ):
-    """Code 100 without subcode 2534014 must NOT trigger unconfirm flow."""
+    """100/33 is a typed ambiguity, separate from the unconfirm exception."""
     client = HttpInstagramGraphApiClient(
         access_token="test_token", retry_attempts=1
     )
@@ -814,9 +817,9 @@ async def test_get_profile_by_id_does_not_raise_on_code_100_other_subcode() -> (
         mock_client.get.return_value = mock_response
         mock_client_class.return_value = mock_client
 
-        # Should return None, not raise InstagramUserNotFoundError.
-        result = await client.get_profile_by_id("123")
-        assert result is None
+        with pytest.raises(InstagramProfileUnavailableError):
+            await client.get_profile_by_id("123")
+        mock_client.get.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -102,6 +102,11 @@ def _retry_after_seconds(value: str | None) -> int | None:
 
 def _card(message: ReceiptMessage) -> ReceiptCard | None:
     card = getattr(message, "card", None)
+    if isinstance(card, ReceiptCard) and any(
+        button.data != "instagram:refresh" or not button.label.strip()
+        for button in card.callbacks
+    ):
+        raise DeliveryFailure("receipt_callback_invalid", uncertain=False)
     return card if isinstance(card, ReceiptCard) else None
 
 
@@ -124,7 +129,7 @@ def _telegram_card(text: str, card: ReceiptCard) -> _TelegramOptions:
                 length=len(heading.encode("utf-16-le")) // 2,
             )
         ]
-    if card.links:
+    if card.links or card.callbacks:
         options["reply_markup"] = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
@@ -133,6 +138,14 @@ def _telegram_card(text: str, card: ReceiptCard) -> _TelegramOptions:
                     )
                 ]
                 for link in card.links
+            ]
+            + [
+                [
+                    InlineKeyboardButton(
+                        text=button.label, callback_data=button.data
+                    )
+                ]
+                for button in card.callbacks
             ]
         )
     return options
@@ -212,6 +225,10 @@ def _max_message_body(attempt: ReceiptMessage) -> dict[str, object]:
             [{"type": "link", "text": link.label, "url": link.url}]
             for link in card.links
             if link.url.startswith("https://")
+        )
+        buttons.extend(
+            [{"type": "callback", "text": button.label, "payload": button.data}]
+            for button in card.callbacks
         )
     if buttons:
         body["attachments"] = [
