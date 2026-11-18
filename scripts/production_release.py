@@ -259,7 +259,18 @@ def write_snapshot(path, snapshot):
         for service, settings in resolved["services"].items()
     }
     if normalized != snapshot["services"]:
-        raise RuntimeError("Durable configuration did not round-trip")
+        differences = {
+            service: sorted(
+                key
+                for key in settings.keys() | normalized.get(service, {}).keys()
+                if settings.get(key) != normalized.get(service, {}).get(key)
+            )
+            for service, settings in snapshot["services"].items()
+            if settings != normalized.get(service)
+        }
+        raise RuntimeError(
+            "Durable configuration did not round-trip for " + str(differences)
+        )
     private_json(path, escape_interpolation(snapshot))
 
 

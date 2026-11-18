@@ -48,7 +48,16 @@ containers = json.loads(subprocess.check_output(['docker', 'inspect', *names]))
 config = snapshot(containers)
 assert config['services']['app']['environment']['SYNTHETIC_TOKEN'] == 'literal$value${HOME}$$'
 destination = Path(os.environ['RELEASE_FIXTURE']) / 'durable.json'
-namespace['write_snapshot'](destination, config)
+try:
+    namespace['write_snapshot'](destination, config)
+except RuntimeError:
+    command = namespace['compose_base']() + ['-f', '-', 'config', '--format', 'json']
+    resolved = json.loads(namespace['checked'](
+        command, stdin=json.dumps(namespace['escape_interpolation'](config)),
+    ))
+    print('Synthetic token expected', repr(config['services']['app']['environment']['SYNTHETIC_TOKEN']))
+    print('Synthetic token resolved', repr(resolved['services']['app']['environment']['SYNTHETIC_TOKEN']))
+    raise
 assert destination.stat().st_mode & 0o777 == 0o600
 before = namespace['runtime_signature'](containers[0])
 subprocess.run([
