@@ -130,10 +130,25 @@ with its own Telegram integration and email recipients Kamil/Bulat.
 
 The optional `external-monitor-watchdog.conf` loads a private `watchdog_url`
 credential. Only HTTPS `hc-ping.com` URLs are accepted. The monitor pings it
-approximately every four minutes after successful recipient validation and
-with no pending delivery failure. Set the external check to e.g. five minutes
-plus two minutes grace. Missing pings cause alerts from the external service,
+approximately every minute after successful recipient validation and
+with no pending delivery failure. Only a canonical check UUID URL and an
+explicit `OK` response count as an accepted ping. A recovered, unconfirmed
+incident clears its obsolete delivery retry instead of silencing the
+heartbeat permanently. Set the external check to one minute plus one minute
+grace. Missing pings cause alerts from the external service,
 independently of both hosts and the dedicated monitor bot.
+
+With that schedule, a VPS or monitor outage is expected to be detected
+roughly 60–120 seconds after it starts, plus Healthchecks.io processing and
+Telegram delivery time. This is a timing estimate, not a guaranteed SLA.
+The alert means the heartbeat is absent: the host, monitor, network or alert
+delivery chain may need attention. It does not prove that the VPS powered off.
+
+Validate external down/recovery delivery using a separate clearly labelled
+test check: seed a heartbeat, let it expire, then send another heartbeat.
+Pause the test check afterward. Keep the real heartbeat and all existing
+projects running during this test. Use Healthchecks.io's own Telegram bot
+for external delivery; never share the UMC alert bot token with the provider.
 
 Do not claim this final layer is active until the external account/check,
 recipients and delivery have actually been configured and verified. No UMC

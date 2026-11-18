@@ -22,9 +22,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 MAX_BODY = 131072
 MAX_BACKUP_AGE = 26 * 3600
+WATCHDOG_INTERVAL = 60
 
 
 @dataclass(frozen=True)
@@ -342,9 +344,19 @@ def ping_watchdog(credentials: Path) -> None:
         return
     url = path.read_text().strip()
     parsed = urllib.parse.urlsplit(url)
-    if parsed.scheme != "https" or parsed.hostname != "hc-ping.com":
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "hc-ping.com"
+        or parsed.username
+        or parsed.password
+        or parsed.port not in (None, 443)
+        or parsed.query
+        or parsed.fragment
+        or parsed.path != "/" + str(UUID(parsed.path.removeprefix("/")))
+    ):
         raise ValueError("invalid_external_watchdog_url")
-    request_bytes(url)
+    if request_bytes(url).strip() != b"OK":
+        raise ValueError("watchdog_ping_not_accepted")
 
 
 def collect(config: dict[str, Any], credentials: Path) -> list[Observation]:
@@ -382,6 +394,10 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
                 print("recipient_validation_failed", flush=True)
             checked_at = now
         events = evaluate(state, observations, now)
+        # An unconfirmed incident can recover before its delivery retry. It
+        # no longer needs delivery and must not suppress heartbeats forever.
+        if not events:
+            state["retry_at"] = 0
         if events and now >= state.get("retry_at", 0):
             try:
                 telegram(
@@ -403,7 +419,7 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
         if (
             recipient_ok
             and not state.get("retry_at")
-            and now - state.get("watchdog_at", 0) >= 240
+            and now - state.get("watchdog_at", 0) >= WATCHDOG_INTERVAL
         ):
             try:
                 ping_watchdog(credentials)
