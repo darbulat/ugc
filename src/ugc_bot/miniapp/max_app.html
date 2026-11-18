@@ -906,6 +906,7 @@
           btn_blogger: 'Креатор',
           adv_reg_h1: 'Регистрация рекламодателя',
           blg_reg_h1: 'Регистрация креатора',
+          blg_edit_h1: 'Редактирование профиля',
           btn_register: 'Зарегистрироваться',
           btn_update: 'Обновить',
           btn_back: 'Назад',
@@ -1056,6 +1057,7 @@
           btn_blogger: 'Creator',
           adv_reg_h1: 'Advertiser registration',
           blg_reg_h1: 'Creator registration',
+          blg_edit_h1: 'Edit profile',
           btn_register: 'Register',
           btn_update: 'Update',
           btn_back: 'Back',
@@ -1206,6 +1208,7 @@
           btn_blogger: 'Креатор',
           adv_reg_h1: 'Жарнама берушінің тіркелуі',
           blg_reg_h1: 'Креатордың тіркелуі',
+          blg_edit_h1: 'Профильді өңдеу',
           btn_register: 'Тіркелу',
           btn_update: 'Жаңарту',
           btn_back: 'Артқа',
@@ -1352,6 +1355,7 @@
           btn_blogger: 'Крэатар',
           adv_reg_h1: 'Рэгістрацыя рэкламадаўцы',
           blg_reg_h1: 'Рэгістрацыя крэатара',
+          blg_edit_h1: 'Рэдагаванне профілю',
           btn_register: 'Зарэгістравацца',
           btn_update: 'Абнавіць',
           btn_back: 'Назад',
@@ -1495,6 +1499,7 @@
           btn_blogger: 'Kreator',
           adv_reg_h1: 'Reklamachi ro\'yxatdan o\'tishi',
           blg_reg_h1: 'Kreator ro\'yxatdan o\'tishi',
+          blg_edit_h1: 'Profilni tahrirlash',
           btn_register: 'Ro\'yxatdan o\'tish',
           btn_update: 'Yangilash',
           btn_back: 'Orqaga',
@@ -1655,7 +1660,7 @@
         document.querySelectorAll('[data-role="advertiser"]').forEach(function(b) { b.textContent = L.btn_advertiser; });
         document.querySelectorAll('[data-role="blogger"]').forEach(function(b) { b.textContent = L.btn_blogger; });
         setQ('#screen-register-advertiser h1', L.adv_reg_h1);
-        setQ('#screen-register-blogger h1', L.blg_reg_h1);
+        updateRegisterButtonLabels();
         // Agreement screens
         setText('agreements-adv-intro', L.agreements_intro);
         setText('agreements-adv-fallback', L.agreements_fallback);
@@ -1842,6 +1847,8 @@
         var me = window._me;
         var advBtn = document.getElementById('btn-submit-advertiser');
         var blgBtn = document.getElementById('btn-submit-blogger');
+        var blgHeading = document.querySelector('#screen-register-blogger h1');
+        if (blgHeading) blgHeading.textContent = tx((me && me.has_blogger_profile) ? 'blg_edit_h1' : 'blg_reg_h1');
         if (advBtn) advBtn.textContent = (me && me.has_advertiser_profile) ? tx('btn_update') : tx('btn_register');
         if (blgBtn) blgBtn.textContent = (me && me.has_blogger_profile) ? tx('btn_update') : tx('btn_register');
       }
