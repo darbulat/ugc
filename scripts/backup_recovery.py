@@ -85,6 +85,20 @@ def recovery_plan(snapshot, recipient):
         )
     ]
     sources += [
+        {"path": "/sources/operations/" + name, "name": "operations/" + name}
+        for name in (
+            "production_release.py",
+            "backup_recovery.py",
+            "recovery_bundle.py",
+            "run_recovery_backup.sh",
+            "recipient.txt",
+            "recovery-image-id",
+            "snapshot-environment.json",
+            "installed.json",
+            "bin/age",
+        )
+    ]
+    sources += [
         {"path": "/sources/backup/" + name, "name": "backup/" + name}
         for name in (
             "timeweb.json",
@@ -101,6 +115,10 @@ def recovery_plan(snapshot, recipient):
         {
             "path": "/sources/current-release/source.tar.gz",
             "name": "source.tar.gz",
+        },
+        {
+            "path": "/sources/current-release/manifest.json",
+            "name": "release-manifest.json",
         },
     ]
     return {
@@ -161,6 +179,7 @@ def create_local_bundle(output, image, age, recipient):
     mounts = (
         ("bind", "/opt/myapp/ugc", "/sources/project"),
         ("bind", "/home/deploy/.config/ugc-backup", "/sources/backup"),
+        ("bind", "/opt/myapp/ugc-ops", "/sources/operations"),
         ("bind", str(age.resolve()), "/tools/age"),
         ("bind", "/opt/myapp/ugc-releases/current", "/sources/current-release"),
         ("bind", "/etc/docker", "/sources/docker"),

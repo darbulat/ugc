@@ -145,10 +145,18 @@ def test_bundle_plan_includes_configuration_assets_and_certificates(
         "backup/timeweb.json",
         "order-images",
         "certificates",
+        "operations/production_release.py",
+        "operations/backup_recovery.py",
+        "operations/snapshot-environment.json",
+        "operations/installed.json",
+        "operations/bin/age",
+        "release-manifest.json",
     } <= sources
     config = json.loads(plan["memory"]["configuration/compose.json"])
     assert config["services"]["app"]["environment"]["TOKEN"] == "a$$b"
     assert all("downloaded" not in item for item in sources)
+    assert all("identity.txt" not in item for item in sources)
+    assert all("recovery-archives" not in item for item in sources)
 
 
 @pytest.fixture
