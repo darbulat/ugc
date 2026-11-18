@@ -52,9 +52,9 @@ async def test_test_card_opens_and_refreshes_only_for_its_owner(monkeypatch):
     ]
     service = SimpleNamespace(preview_card=AsyncMock(return_value=rows))
     await open_preview_card(message, command, roles)
-    assert send.call_args.args == ("Тестовый заказ недоступен.",)
+    assert send.call_args.args == ("Предпросмотр заказа недоступен.",)
     await open_preview_card(message, command, roles, service)
-    assert send.call_args.args == ("Тестовый заказ недоступен.",)
+    assert send.call_args.args == ("Предпросмотр заказа недоступен.",)
     service.preview_card.assert_not_awaited()
 
     roles.get_user.return_value = SimpleNamespace(user_id=owner)
