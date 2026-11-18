@@ -44,6 +44,8 @@ separately from a confirmed missing/stale backup. Freshness limit: 26 hours.
 - `MemoryMax=512M`, `MemoryHigh=384M`, `CPUQuota=25%` (0.25 CPU), `TasksMax=32`;
 - a dynamic unprivileged user, private temporary directory and read-only
   system/home protection;
+- retry startup every 30 seconds without a finite restart budget, so a long
+  Telegram/network outage cannot leave the monitor permanently stopped;
 - credentials in systemd's private credential directory, with source files
   readable only by root; incident state in the monitor's private StateDirectory;
 - lower CPU priority and a higher OOM kill score than normal projects, to

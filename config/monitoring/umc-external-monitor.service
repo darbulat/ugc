@@ -2,8 +2,8 @@
 Description=UMC independent external monitoring
 After=network-online.target
 Wants=network-online.target
-StartLimitIntervalSec=300
-StartLimitBurst=5
+# A prolonged Telegram/network outage must not exhaust the restart budget.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -15,7 +15,7 @@ StateDirectoryMode=0700
 UMask=0077
 Environment=PYTHONDONTWRITEBYTECODE=1
 Restart=on-failure
-RestartSec=10
+RestartSec=30
 MemoryMax=512M
 MemoryHigh=384M
 CPUQuota=25%
