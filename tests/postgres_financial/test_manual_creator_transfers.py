@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from tests.postgres_financial.test_creator_social import seed_profile
 from tests.postgres_financial.test_order_intake import intake_env
 from tests.postgres_financial.test_telegram_order_summary import paid_order
+from ugc_bot.admin.creator_transfers import transfer_activity
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
@@ -122,6 +123,11 @@ async def test_manual_delivery_keeps_history_and_can_reach_twenty_of_ten(
             "attempt_token" not in row and "operator" not in row
             for row in history
         )
+        activity = await transfer_activity(db, oid)
+        assert activity["count"] == 20 and activity["needed"] == 10
+        assert len(activity["candidates"]) == 10
+        assert all(row["state"] == "sent" for row in activity["candidates"])
+        assert activity["can_send"] is True
     with Session(env["pg"]) as db:
         assert (
             db.scalar(
@@ -190,6 +196,13 @@ async def test_counteroffer_is_sent_only_manually_and_counts_once(intake_env):
     assert "Цена требует согласования" in transport.send.call_args.args[0].text
     async with service.transactions.transaction() as db:
         assert await delivered_count(db, oid) == 11
+        activity = await transfer_activity(db, oid)
+        forwarded = next(
+            row for row in activity["candidates"] if row["creator_id"] == cid
+        )
+        assert forwarded["source"] == "Новая цена"
+        assert forwarded["price"] == Decimal("3500")
+        assert forwarded["state"] == "sent"
     with Session(env["pg"]) as db:
         assert (
             db.scalar(select(func.count()).select_from(FinancialMovementModel))
@@ -208,6 +221,9 @@ async def test_failure_unknown_and_expired_attempt_do_not_duplicate(intake_env):
     assert await service.send(oid, cid, operator="admin:synthetic") == "failed"
     async with service.transactions.transaction() as db:
         assert await delivered_count(db, oid) == 10
+        activity = await transfer_activity(db, oid)
+        assert activity["count"] == 10
+        assert activity["candidates"][0]["state"] == "failed"
     transport.send.side_effect = TimeoutError()
     assert await service.send(oid, cid, operator="admin:synthetic") == "unknown"
     assert await service.send(oid, cid, operator="admin:synthetic") == "unknown"
