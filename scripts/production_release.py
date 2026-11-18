@@ -163,6 +163,10 @@ def pin_resources(settings, current):
         settings.get("deploy", {}).pop("resources", None)
     if not settings.get("deploy"):
         settings.pop("deploy", None)
+    else:
+        # Compose emits an empty resources map whenever deploy is retained,
+        # including services carrying only placement or restart metadata.
+        settings["deploy"].setdefault("resources", {})
 
 
 def pin_runtime(settings, current):

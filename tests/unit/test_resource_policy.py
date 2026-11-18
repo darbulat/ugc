@@ -270,3 +270,14 @@ def test_no_swap_rollback_avoids_runc_unlimited_swap_rejection(policy_module):
     current["HostConfig"].update(Memory=128 * 1024**2, MemorySwap=-1)
     result = policy_module.rollback_limits(current, 16 * 1024**3, 4)
     assert result["MemorySwap"] == result["Memory"] == 128 * 1024**2
+
+
+def test_snapshot_retains_compose_empty_resources_with_placement(policy_module):
+    settings = {
+        "deploy": {
+            "placement": {},
+            "resources": {"limits": {"memory": "100m", "cpus": "0.25"}},
+        }
+    }
+    policy_module.release.pin_resources(settings, container())
+    assert settings == {"deploy": {"placement": {}, "resources": {}}}
