@@ -297,8 +297,8 @@ asyncio.run(asyncio.wait_for(main(), timeout=12))
     checked(
         ["docker", "exec", "-i", f"ugc-{service}-1", "python", "-"],
         stdin=program,
-        # Cold application imports take about 25 seconds under the live CPU
-        # quota. The alarm bounds imports and avoids orphaned exec processes.
+        # Cold application imports take about 25 seconds on the live host.
+        # The alarm bounds imports and avoids orphaned exec processes.
         timeout=90,
     )
 
