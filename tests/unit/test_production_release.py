@@ -3,9 +3,11 @@
 import copy
 import fcntl
 import hashlib
+import io
 import json
 import os
 import runpy
+import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -152,6 +154,86 @@ def test_source_archive_checksum_is_verified(release_module, tmp_path):
     source.write_bytes(b"tampered")
     with pytest.raises(ValueError, match="source checksum"):
         release_module["verify_archive"](tmp_path)
+
+
+@pytest.fixture
+def exported_ci_image(tmp_path, release_module, monkeypatch):
+    config = b'{"architecture":"amd64","os":"linux"}'
+    config_id = "sha256:" + hashlib.sha256(config).hexdigest()
+    descriptor = json.dumps({"config": {"digest": config_id}}).encode()
+    manifest_id = "sha256:" + hashlib.sha256(descriptor).hexdigest()
+    entries = {
+        "index.json": json.dumps(
+            {"manifests": [{"digest": manifest_id}]}
+        ).encode(),
+        "blobs/sha256/" + manifest_id.split(":")[1]: descriptor,
+        "blobs/sha256/" + config_id.split(":")[1]: config,
+    }
+
+    def write_archive():
+        with tarfile.open(tmp_path / "image.tar.gz", "w:gz") as archive:
+            for name, payload in entries.items():
+                item = tarfile.TarInfo(name)
+                item.size = len(payload)
+                archive.addfile(item, io.BytesIO(payload))
+
+    write_archive()
+    manifest = {
+        "revision": "a" * 40,
+        "image_id": config_id,
+        "registry_reference": "ghcr.io/darbulat/ugc/app:" + "a" * 40,
+    }
+    image = {
+        "Id": manifest_id,
+        "Config": {"Labels": {"org.opencontainers.image.revision": "a" * 40}},
+    }
+    load = release_module["loaded_ci_image"]
+    monkeypatch.setitem(load.__globals__, "inspect", lambda *a: image)
+    return load, tmp_path, manifest, image, entries, write_archive
+
+
+def test_containerd_manifest_id_is_bound_to_ci_config_digest(exported_ci_image):
+    load, directory, manifest, image, _, _ = exported_ci_image
+    assert image["Id"] != manifest["image_id"]
+    assert load(directory, manifest) == image
+
+
+def test_classic_image_store_keeps_config_id(exported_ci_image):
+    load, directory, manifest, image, _, _ = exported_ci_image
+    image["Id"] = manifest["image_id"]
+    (directory / "image.tar.gz").unlink()
+    assert load(directory, manifest) == image
+
+
+def test_exported_image_with_different_ci_config_is_rejected(exported_ci_image):
+    load, directory, manifest, _, _, _ = exported_ci_image
+    manifest["image_id"] = "sha256:" + "f" * 64
+    with pytest.raises(RuntimeError, match="identity mismatch"):
+        load(directory, manifest)
+
+
+@pytest.mark.parametrize("part", ["manifest", "config"])
+def test_exported_image_rejects_corrupt_blobs(exported_ci_image, part):
+    load, directory, manifest, image, entries, write = exported_ci_image
+    digest = image["Id"] if part == "manifest" else manifest["image_id"]
+    entries["blobs/sha256/" + digest.split(":")[1]] += b" "
+    write()
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        load(directory, manifest)
+
+
+def test_matching_export_still_requires_expected_revision(exported_ci_image):
+    load, directory, manifest, image, _, _ = exported_ci_image
+    image["Config"]["Labels"] = {}
+    with pytest.raises(RuntimeError, match="revision mismatch"):
+        load(directory, manifest)
+
+
+def test_release_cannot_lookup_an_unrelated_tag(exported_ci_image):
+    load, directory, manifest, _, _, _ = exported_ci_image
+    manifest["registry_reference"] = "untrusted:latest"
+    with pytest.raises(ValueError, match="reference"):
+        load(directory, manifest)
 
 
 def test_snapshot_validation_precedes_writing_secrets(
