@@ -71,6 +71,66 @@ async def test_notice_loop_only_drains_queue(monkeypatch, failing):
 
 
 @pytest.mark.asyncio
+async def test_max_delivery_recovers_next_minute_and_closes_session(
+    monkeypatch,
+):
+    session, response = AsyncMock(), AsyncMock()
+    session.__aenter__.return_value = session
+    response.__aenter__.return_value = response
+    response.status = 200
+    response.json.return_value = {"message": {"body": {"mid": "max:42"}}}
+    session.post = Mock(return_value=response)
+    monkeypatch.setattr(scheduler.aiohttp, "ClientSession", lambda: session)
+    sleep = AsyncMock()
+    monkeypatch.setattr(scheduler.asyncio, "sleep", sleep)
+    attempts, receipts = [], []
+
+    def build(repo, transactions, transport, clock):
+        async def run_once():
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise RuntimeError("temporary_database_outage")
+            receipts.append(
+                await transport.send(
+                    ProfileNotice(
+                        uuid4(),
+                        uuid4(),
+                        "max",
+                        "101",
+                        "user_id",
+                        "Repair",
+                        ReceiptCard(
+                            callbacks=(
+                                ReceiptCallback(
+                                    "Обновить Instagram", "instagram:refresh"
+                                ),
+                            )
+                        ),
+                    )
+                )
+            )
+
+        return NS(run_once=run_once)
+
+    monkeypatch.setattr(scheduler, "InstagramProfileNoticeDelivery", build)
+    settings = config(True)
+    settings.max_bot = NS(token="synthetic-max-token")
+    container = NS(
+        build_repos=lambda: {"blogger_repo": object()},
+        transaction_manager=object(),
+    )
+    await scheduler.run_enabled(settings, container, object(), max_iterations=2)
+    assert len(attempts) == 2 and receipts[0].reference == "max:42"
+    sleep.assert_awaited_once_with(60)
+    session.__aexit__.assert_awaited_once()
+    assert session.post.call_args.kwargs["params"] == {"user_id": 101}
+    buttons = session.post.call_args.kwargs["json"]["attachments"][0][
+        "payload"
+    ]["buttons"]
+    assert buttons[0][0]["payload"] == "instagram:refresh"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("valid", [True, False])
 async def test_repair_button_is_native_callback_in_both_messengers(valid):
     bot = NS(

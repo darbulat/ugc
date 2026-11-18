@@ -163,3 +163,39 @@ async def test_all_profile_failures_do_not_start_mass_owner_requests(
         assert maintenance.observe.call_args.kwargs["error"] == "100/33"
     else:
         maintenance.observe.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_failed_observation_rolls_back_without_aborting_other_profiles(
+    caplog,
+):
+    profiles = [
+        SimpleNamespace(instagram_user_id=str(i), user_id=uuid4())
+        for i in range(2)
+    ]
+    repo = SimpleNamespace(
+        list_confirmed_with_instagram_id=AsyncMock(return_value=profiles),
+        save=AsyncMock(),
+    )
+    api = SimpleNamespace(
+        get_profile_by_id=AsyncMock(
+            return_value=SimpleNamespace(username="available")
+        )
+    )
+    maintenance = SimpleNamespace(
+        observe=AsyncMock(
+            side_effect=[
+                RuntimeError("sensitive_internal_details"),
+                True,
+            ]
+        )
+    )
+    worker = InstagramStatsUpdateService(
+        repo, api, delay_seconds=0, profile_maintenance=maintenance
+    )
+    assert await worker.run_once() == (1, 1)
+    assert api.get_profile_by_id.await_count == 2
+    assert maintenance.observe.await_count == 2
+    repo.save.assert_not_called()  # Do not fall back to a stale snapshot write.
+    assert "Instagram observation rolled back" in caplog.text
+    assert "sensitive_internal_details" not in caplog.text
