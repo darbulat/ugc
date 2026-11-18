@@ -195,7 +195,8 @@ def backup_status(cache_path: Path, now: float) -> dict[str, Any]:
     if not isinstance(cached.get("checked_at", 0), (int, float)):
         cached = {}
     age = now - cached.get("checked_at", 0)
-    if 0 <= age < 600:
+    ttl = 600 if cached.get("ok") else 60
+    if 0 <= age < ttl:
         return cached
     try:
         result = json.loads(
@@ -212,11 +213,15 @@ def backup_status(cache_path: Path, now: float) -> dict[str, Any]:
             )
         )
         result = {key: result.get(key) for key in ("ok", "logical", "physical")}
+        result["failures"] = 0
     except Exception:
+        previous = cached.get("failures", 0)
+        previous = previous if isinstance(previous, int) else 0
         result = {
             "ok": False,
             "logical": cached.get("logical"),
             "physical": cached.get("physical"),
+            "failures": min(previous + 1, 3),
         }
     result["checked_at"] = now
     cache_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)

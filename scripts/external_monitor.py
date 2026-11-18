@@ -107,13 +107,16 @@ def snapshot_observations(
         ]
     )
     backup = data.get("backup", {})
-    observations.append(
-        Observation(
-            "Проверка S3",
-            backup.get("ok") is True,
-            "Не удалось проверить копии в S3",
+    # Unknown/transient reads neither open nor resolve an S3 incident. Count
+    # distinct source attempts, not repeatedly polling one cached failure.
+    if backup.get("ok") is True or backup.get("failures", 0) >= 3:
+        observations.append(
+            Observation(
+                "Проверка S3",
+                backup.get("ok") is True,
+                "Не удалось проверить копии в S3",
+            )
         )
-    )
     for kind, label in (
         ("logical", "Логическая копия"),
         ("physical", "Физическая копия"),

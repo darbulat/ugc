@@ -25,7 +25,10 @@ healthy app replicas, and the existing internal admin `/health` response,
 including the result of `SELECT 1`. That endpoint is accessed inside the
 existing admin container; no public readiness endpoint is introduced.
 
-The reporter checks logical and physical S3 backups every ten minutes. It
+The reporter checks logical and physical S3 backups every ten minutes. Failed
+queries are retried after one minute; only three distinct failed attempts
+make the S3 check unhealthy. Repeated reads of the same cached failure do not
+increase that attempt count or prematurely resolve an existing incident. It
 parses the creation timestamp from the filename, rather than trusting the
 upload date: migrating an old archive does not make it fresh. It compares
 the remote size, SHA metadata and payload ETag with the local archive. Hashes

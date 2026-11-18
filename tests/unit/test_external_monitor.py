@@ -111,10 +111,37 @@ def test_backup_age_uses_creation_time_not_upload_time(age, good):
 
 def test_failed_s3_query_is_unknown_not_fabricated_missing_backup():
     data = healthy_snapshot(1000)
-    data["backup"] = {"ok": False, "logical": None, "physical": None}
+    data["backup"] = {
+        "ok": False,
+        "logical": None,
+        "physical": None,
+        "failures": 3,
+    }
     results = {o.name: o for o in monitor.snapshot_observations(data, 1000)}
     assert not results["Проверка S3"].ok
     assert "Логическая копия" not in results
+
+
+def test_one_cached_s3_failure_is_not_counted_as_multiple_attempts():
+    data = healthy_snapshot(1000)
+    data["backup"].update(ok=False, failures=1)
+    results = {o.name: o for o in monitor.snapshot_observations(data, 1000)}
+    assert "Проверка S3" not in results
+    assert results["Логическая копия"].ok
+
+
+def test_s3_error_streak_counts_distinct_queries_not_cached_reads(
+    monkeypatch, tmp_path
+):
+    execute = Mock(side_effect=RuntimeError("transport"))
+    monkeypatch.setattr(reporter, "command", execute)
+    cache = tmp_path / "cache.json"
+    assert reporter.backup_status(cache, 1000)["failures"] == 1
+    assert reporter.backup_status(cache, 1030)["failures"] == 1
+    assert execute.call_count == 1
+    assert reporter.backup_status(cache, 1060)["failures"] == 2
+    assert reporter.backup_status(cache, 1120)["failures"] == 3
+    assert execute.call_count == 3
 
 
 def test_docker_down_does_not_emit_cascading_database_failures():
