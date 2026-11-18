@@ -12,6 +12,9 @@ from ugc_bot.infrastructure.db.models import (
     OrderModel,
     PaymentModel,
 )
+from ugc_bot.infrastructure.db.repositories.creator_transfers import (
+    delivered_count,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
@@ -64,6 +67,11 @@ class SqlAlchemyClientOrderViewRepository:
             )
         return {
             "assigned": assigned or 0,
+            **(
+                {"delivered": await delivered_count(db, order.order_id)}
+                if order.financial_version and not order.complimentary
+                else {}
+            ),
             "completed": completed or 0,
             "total": order.bloggers_needed,
         }

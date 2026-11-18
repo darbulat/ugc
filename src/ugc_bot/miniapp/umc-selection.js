@@ -274,10 +274,38 @@
   function positionOptions(){var parent=id('intake-position-options'),selected=Array.from(parent.querySelectorAll('input:checked')).map(function(n){return n.value;});parent.replaceChildren();var count=positionCount();if(!Number.isInteger(count)||count<10||count>200)return;for(var ordinal=1;ordinal<=count;ordinal++){var label=node('label'),checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id='intake-position-'+ordinal;checkbox.value=String(ordinal);checkbox.checked=selected.includes(checkbox.value);label.append(checkbox,node('span',ordinal));parent.appendChild(label);}}
   id('intake-count').addEventListener('input',function(){positionOptions();preview();});
   positionOptions();
+  var handoffCopy={
+    ru:['Передано авторов','из','Все переданные авторы и контакты','Цена требует согласования','Оценить авторов'],
+    en:['Creators provided','of','All creator contacts','Price requires agreement','Rate creators'],
+    kk:['Берілген авторлар','ішінен','Барлық авторлардың байланыстары','Бағаны келісу қажет','Авторларды бағалау'],
+    be:['Перададзена аўтараў','з','Усе перададзеныя кантакты','Цану трэба ўзгадніць','Ацаніць аўтараў'],
+    uz:['Berilgan mualliflar','dan','Barcha mualliflar kontaktlari','Narx kelishilishi kerak','Mualliflarni baholash']
+  };
+  function renderHandoffs(data,parent){
+    if(!Array.isArray(data.delivered_authors))return;
+    var copy=handoffCopy[(window._me||{}).locale]||handoffCopy.ru, authors=data.delivered_authors;
+    var section=node('section');section.dataset.creatorHandoffs='';
+    section.appendChild(node('h2',copy[0]+': '+authors.length+' '+copy[1]+' '+data.requested_authors));
+    var list=node('details');list.appendChild(node('summary',copy[2]));
+    authors.forEach(function(author,index){
+      var contact=author.contact||{},row=node('article','','umc-selection-position');row.dataset.deliveredCreator=author.creator_id;
+      row.appendChild(node('h3',(index+1)+'. '+(contact.name||contact.username||'Instagram')));
+      if(contact.instagram){link(row,contact.instagram,'Instagram');row.lastElementChild.className='btn btn-secondary';}
+      if(contact.telegram){var handle=/^(?:@)?([A-Za-z0-9_]{5,32})$/.exec(contact.telegram);if(handle){link(row,'https://t.me/'+handle[1],'Telegram · @'+handle[1]);row.lastElementChild.className='btn btn-secondary';}else row.appendChild(node('p',contact.telegram));}
+      if(contact.phone)row.appendChild(node('p',contact.phone));
+      row.appendChild(node('p',date(author.sent_at)));
+      if(author.requested_price!==null&&author.requested_price!==undefined)row.appendChild(node('p',money(Number(author.requested_price)*100,author.currency||'RUB')));
+      if(author.source==='counteroffer')row.appendChild(node('p',copy[3]));
+      list.appendChild(row);
+    });
+    section.appendChild(list);
+    if(authors.length){var rate=node('button',copy[4],'btn btn-secondary');rate.type='button';rate.addEventListener('click',function(){if(window.UMCCustomer)window.UMCCustomer.ratings(data.order_id);});section.appendChild(rate);}
+    parent.appendChild(section);
+  }
   function renderSelection(data) {
     document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:data.order_id,target:'screen-selection'}}));
     var c=words(); text('selection-order-id',data.public_number || ''); id('selection-paused').hidden=!data.writes_paused; text('selection-paused',c.readPaused); text('selection-waitlist',c.waitlist+': '+data.waitlist_count);
-    var parent=id('selection-positions'); parent.replaceChildren(); if(!data.positions.length) parent.appendChild(node('p',c.noPositions,'hint'));
+    var parent=id('selection-positions'); parent.replaceChildren(); renderHandoffs(data,parent); if(!data.positions.length) parent.appendChild(node('p',c.noPositions,'hint'));
     data.positions.forEach(function(position) {
       var article=node('article','','umc-selection-position'); article.dataset.position=String(position.ordinal); article.appendChild(node('h2',c.position+' '+position.ordinal));
       article.appendChild(node('p',money(position.selection_minor,position.currency)+' + '+money(position.accompaniment_minor,position.currency),'hint'));

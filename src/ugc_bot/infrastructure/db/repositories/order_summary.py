@@ -28,6 +28,9 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     invitations_available,
     staff_consent_available,
 )
+from ugc_bot.infrastructure.db.repositories.creator_transfers import (
+    delivered_count,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.repositories.invite_handoff import (
     first_staff_open,
@@ -66,6 +69,9 @@ def report_state():
 
 
 class SqlOrderSummary:
+    async def transferred(self, order_id, *, session):
+        return await delivered_count(_session(session), order_id)
+
     async def card(self, order_id, client_id, at, *, session, lock=False):
         db = _session(session)
         order = await db.scalar(

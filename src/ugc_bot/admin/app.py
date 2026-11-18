@@ -67,6 +67,7 @@ from ugc_bot.admin.creator_base import (
     normalize_creator_period,
 )
 from ugc_bot.admin.creator_invites import register_creator_invites
+from ugc_bot.admin.creator_transfers import register_creator_transfers
 from ugc_bot.admin.dashboard_service import (
     AdminDashboardService,
     DelayThresholds,
@@ -1297,6 +1298,9 @@ async def _render_order_detail_page(
             "status_labels": ORDER_STATUS_LABELS,
             "closure_reason_limit": ORDER_CLOSURE_REASON_LIMIT,
             "closure_result": closure_result,
+            "creator_transfer_result": request.session.pop(
+                "creator_transfer_result", None
+            ),
             "delay_reason_labels": _DELAY_REASON_LABELS,
             "browser_payment": browser_payment,
             "checkout_review_url": (
@@ -2024,10 +2028,21 @@ def _register_order_offer_activity_route(
         activity = await dashboard_service.get_order_offer_activity(order_id)
         if activity is None:
             raise HTTPException(status_code=404, detail="Заказ не найден")
+        transfers = await dashboard_service.get_order_transfer_activity(
+            order_id
+        )
+        if transfers:
+            transfers["can_send"] &= getattr(
+                request.app.state, "creator_transfers_enabled", False
+            )
         return templates.TemplateResponse(
             request,
             "order_offer_activity.html",
-            {"activity": activity, "order_id": order_id},
+            {
+                "activity": activity,
+                "order_id": order_id,
+                "transfers": transfers,
+            },
             headers={"Cache-Control": "private, no-store"},
         )
 
@@ -4410,6 +4425,9 @@ def create_admin_app() -> FastAPI:
             request, auth, container, order_id
         )
 
+    register_creator_transfers(
+        app, auth, _require_action_token, config, container.transaction_manager
+    )
     register_managers(app, auth, engine, templates, _require_action_token)
     register_order_review(app, auth, engine, templates, _require_action_token)
     register_creator_invites(

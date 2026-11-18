@@ -2764,6 +2764,36 @@ async def customer_order_completion(
         raise HTTPException(403, str(exc)) from exc
 
 
+class CustomerCreatorFeedbackRequest(SignedMiniAppRequest):
+    model_config = {"extra": "forbid"}
+    order_id: UUID
+    creator_id: UUID
+    feedback: Literal["worked", "not_worked", "not_agreed"]
+
+
+@router.post("/customer/orders/creator-feedback")
+async def customer_creator_feedback(
+    request: Request, body: CustomerCreatorFeedbackRequest
+):
+    principal = await resolve_financial_principal(
+        request, body.init_data, platform=body.platform
+    )
+    service = request.app.state.dispatcher.get("blogger_rating_service")
+    if service is None:
+        raise HTTPException(503, "rating_unavailable")
+    try:
+        await service.record_supplemental_feedback(
+            principal.user_id,
+            body.order_id,
+            body.creator_id,
+            body.feedback,
+            principal=principal,
+        )
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(403, str(exc)) from exc
+    return {"ok": True}
+
+
 @router.post("/customer/orders/ratings")
 async def customer_order_ratings(
     request: Request, body: CustomerOrderRatingsRequest

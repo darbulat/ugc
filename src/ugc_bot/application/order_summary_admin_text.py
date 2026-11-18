@@ -8,6 +8,7 @@ from ugc_bot.domain.order_display import public_order_number
 _REVIEW_REASONS = {
     "delivery_unconfirmed": "Доставка сообщения креатору не подтверждена",
     "replacement_reserve_empty": "В резерве нет подтверждённого креатора",
+    "manual_replacement_required": "Нужна ручная отправка автора из резерва",
     "replacement_reserve_limit_reached": "Лимит автоматических замен исчерпан",
     "replacement_requires_financial_review": "Нужно проверить условия замены",
 }

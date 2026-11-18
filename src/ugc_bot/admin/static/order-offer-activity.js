@@ -37,6 +37,9 @@
         const focusedId = panel.contains(active) ? active.id : null;
         panel.innerHTML = html;
         previousHtml = html;
+        const sent = panel.querySelector('[data-transferred-count]');
+        const counter = document.getElementById('order-transferred-counter');
+        if (sent && counter) counter.textContent = 'Передано заказчице: ' + sent.querySelector('.creator-transfer-count').textContent;
         const declines = panel.querySelector('[data-order-declines]');
         if (declines && wasOpen !== undefined) declines.open = wasOpen;
         if (focusedId) document.getElementById(focusedId)?.focus({preventScroll: true});
@@ -49,5 +52,12 @@
     window.setTimeout(refresh, interval);
   }
 
+  panel.addEventListener('submit', (event) => {
+    if (!event.target.matches('[data-creator-transfer-form]')) return;
+    const button = event.target.querySelector('button');
+    if (button.disabled) { event.preventDefault(); return; }
+    button.disabled = true;
+    button.textContent = 'Отправляем…';
+  });
   refresh();
 })();

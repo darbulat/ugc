@@ -15,6 +15,9 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
+from ugc_bot.infrastructure.db.repositories.creator_transfers import (
+    delivery_history,
+)
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 from ugc_bot.infrastructure.db.repositories.financial_policy import (
     decode_policy_version,
@@ -201,6 +204,8 @@ class SqlAlchemySelectionViewRepository:
                 else {}
             ),
             positions=positions,
+            delivered_authors=await delivery_history(db, order_id),
+            requested_authors=order["bloggers_needed"],
             waitlist_count=sum(not row["accepted"] for row in interests),
         )
 

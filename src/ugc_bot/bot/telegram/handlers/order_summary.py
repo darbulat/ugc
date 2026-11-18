@@ -84,6 +84,10 @@ def render_card(service, data, mode="open", page=0, reason_index=0):  # noqa: C9
         f"Замены: {data['used']} из {data['limit']}",
         f"Позиции · {page + 1}/{pages}",
     ]
+    if "transferred" in data:
+        lines.insert(
+            2, f"Передано авторов: {data['transferred']} из {data['requested']}"
+        )
     if data["message"]:
         lines.append(data["message"])
     rows = []

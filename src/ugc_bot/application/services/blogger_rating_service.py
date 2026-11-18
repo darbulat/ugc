@@ -119,6 +119,28 @@ class BloggerRatingService:
             return await _run(session)
         return await with_optional_tx(self.transaction_manager, _run)
 
+    async def record_supplemental_feedback(
+        self, actor_id, order_id, creator_id, value, *, principal=None
+    ):
+        if value not in {"worked", "not_worked", "not_agreed"}:
+            raise ValueError("rating_feedback_invalid")
+
+        async def _run(sess):
+            scope = await self._scope(
+                actor_id, order_id, principal, sess, owner_only=True
+            )
+            if not any(
+                p.blogger_id == creator_id and p.supplemental
+                for p in scope.participants
+            ):
+                raise ValueError("rating_participant_required")
+            assert self.eligibility_repo is not None
+            await self.eligibility_repo.feedback(
+                actor_id, order_id, creator_id, value, session=sess
+            )
+
+        await with_optional_tx(self.transaction_manager, _run)
+
     async def has_completed_work(
         self,
         actor_id: UUID,
@@ -170,6 +192,8 @@ class BloggerRatingService:
                         blogger_id=str(participant.blogger_id),
                         display_name=participant.display_name,
                         rating_eligible=participant.completed,
+                        supplemental=participant.supplemental,
+                        feedback=participant.feedback,
                         score=own.score if own else None,
                         comment=own.comment if own else None,
                         effective_score=effective.score if effective else None,

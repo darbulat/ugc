@@ -80,7 +80,12 @@ def fake_telegram():
 
 
 async def paid_order(
-    env, *, size=10, interested_creators=None, deliver_contacts=True
+    env,
+    *,
+    size=10,
+    interested_creators=None,
+    deliver_contacts=True,
+    creator_factory=None,
 ):
     oid = (
         await service(env).create(command(env, position_count=size))
@@ -128,7 +133,7 @@ async def paid_order(
         for _ in range(
             interested_creators if interested_creators is not None else size + 3
         ):
-            cid = seed_profile(db, stable_id=uuid4().hex)
+            cid = (creator_factory or seed_profile)(db, stable_id=uuid4().hex)
             db.execute(
                 update(UserModel)
                 .where(UserModel.user_id == cid)
@@ -207,7 +212,9 @@ async def seed_pending_referrals(summary, env, oid, interests):
 
 
 @pytest.mark.asyncio
-async def test_bulk_report_24h_reserve_limit_and_single_reminder(intake_env):
+async def test_bulk_report_24h_manual_review_and_single_reminder(
+    intake_env,
+):
     env = intake_env
     summary, oid, interests, principal, bot = await paid_order(env)
     with pytest.raises(ValueError, match="financial_principal_changed"):
@@ -251,7 +258,7 @@ async def test_bulk_report_24h_reserve_limit_and_single_reminder(intake_env):
         report_states = list(
             db.scalars(select(REPORTS.c.state).where(REPORTS.c.order_id == oid))
         )
-        assert sorted(report_states) == ["replaced", "replaced", "review"]
+        assert sorted(report_states) == ["review", "review", "review"]
         reversals = list(
             db.scalars(
                 select(FinancialMovementModel).where(
@@ -260,16 +267,10 @@ async def test_bulk_report_24h_reserve_limit_and_single_reminder(intake_env):
                 )
             )
         )
-        assert len(reversals) == 2
-        assert all(
-            row.actor_kind == "system"
-            and row.system_actor == "telegram_order_summary"
-            and row.bucket_to == "cancelled"
-            for row in reversals
-        )
+        assert not reversals
         assert (
             db.scalar(select(func.count()).select_from(TABLES["allocations"]))
-            == 2
+            == 0
         )
         assert (
             db.scalar(
@@ -289,17 +290,11 @@ async def test_bulk_report_24h_reserve_limit_and_single_reminder(intake_env):
                 .select_from(REQUESTS)
                 .where(REQUESTS.c.order_id == oid)
             )
-            == 1
+            == 3
         )
     assert bot.send_message.await_count == 4
     data = await summary.view(principal, oid)
-    replacement = next(
-        row for row in data["positions"] if row["replacement_id"]
-    )
-    contact_order, contact = await summary.contact(
-        principal, replacement["replacement_id"]
-    )
-    assert contact_order == oid and "instagram.com" in contact
+    assert all(row["replacement_id"] is None for row in data["positions"])
 
 
 @pytest.mark.asyncio

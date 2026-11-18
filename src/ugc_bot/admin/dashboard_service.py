@@ -791,6 +791,12 @@ class AdminDashboardService:
             )
         return _paginated(total, page, per_page, items)
 
+    async def get_order_transfer_activity(self, order_id: UUID):
+        from ugc_bot.admin.creator_transfers import transfer_activity
+
+        async with self._session_factory() as session:
+            return await transfer_activity(session, order_id)
+
     async def get_order_card(self, order_id: UUID) -> dict | None:
         """Return detailed order card data for a single order."""
         async with self._session_factory() as session:
