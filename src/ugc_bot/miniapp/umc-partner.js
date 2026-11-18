@@ -23,7 +23,7 @@
     be:{assigned:'Прызначана',in_progress:'У працы',success_claimed:'Заяўлены поспех',disputed:'Ёсць пярэчанне',success_final:'Поспех пацверджаны',unconfirmed_expired:'Тэрмін пацверджання мінуў',available:'Утрыманне скончылася'},
     uz:{assigned:'Tayinlangan',in_progress:'Jarayonda',success_claimed:'Muvaffaqiyat bildirildi',disputed:'E’tiroz bor',success_final:'Muvaffaqiyat tasdiqlandi',unconfirmed_expired:'Tasdiqlash muddati o‘tdi',available:'Ushlab turish tugadi'}
   };
-  var state = { busy:false, opened:false, returnScreen:'screen-role-choice', network_page:0, history_page:0, assignment_page:0, bound:null, actor:null, data:null, requestId:0 };
+  var state = { busy:false, opened:false, returnScreen:'screen-role-choice', network_page:0, history_page:0, assignment_page:0, bound:null, actor:null, data:null, requestId:0, focusAchievements:false };
   function id(value) { return document.getElementById(value); }
   function words() { return Object.assign({}, copy.ru, copy[(window._me || {}).locale] || {}); }
   function text(key, value) { id(key).textContent = value == null ? '' : String(value); }
@@ -37,7 +37,15 @@
   Object.assign(copy.be,{manual_adjustment:'Ручное даналічэнне',manualRate:'Стаўка не ўжываецца'});
   Object.assign(copy.uz,{manual_adjustment:'Qo‘lda qo‘shimcha hisoblash',manualRate:'Stavka qo‘llanilmaydi'});
   function percentage(value) { return typeof value === 'number' ? String(value / 100) + '%' : words().unknown; }
-  function localize() { var c = words(); ['grade','network','finance','history','assignments','overrides'].forEach(function (key) { text('partner-' + key + '-title', c[key]); }); text('partner-title',c.title); text('partner-rules',c.rules); text('btn-partner-reload',c.reload); text('btn-partner-back',c.back); }
+  function localize() {
+    var c = words();
+    ['network','finance','history','assignments','overrides'].forEach(function (key) {
+      text('partner-' + key + '-title',c[key]);
+    });
+    text('partner-title',c.title);
+    text('btn-partner-reload',c.reload);
+    text('btn-partner-back',c.back);
+  }
   function busy(value) { state.busy = value; screen.setAttribute('aria-busy',String(value)); text('partner-loading',value ? words().loading : ''); screen.querySelectorAll('button:not([data-payouts-open])').forEach(function (button) { button.disabled = value; }); }
   function definition(parent, key, value) { var row = node('div','', 'umc-partner-pair'); row.appendChild(node('dt',key)); row.appendChild(node('dd',value)); parent.appendChild(row); }
   function listEmpty(parent, message) { parent.appendChild(node('p',message,'hint')); }
@@ -47,7 +55,18 @@
   function finance(data) { var c=words(), parent=id('partner-balances'), history=id('partner-history'); parent.replaceChildren(); history.replaceChildren(); id('partner-financial-status').dataset.state=data.state; text('partner-financial-status',c[data.state] || c.unavailable); if (data.balances) { balances(parent,data.balances,data.currency); data.groups.forEach(function (group) { var section=node('details','','umc-partner-kind'); section.appendChild(node('summary',c[group.kind] || group.kind)); balances(section,group.balances,data.currency); parent.appendChild(section); }); } if (!data.history.entries.length) listEmpty(history,c.emptyHistory); data.history.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.kind] || entry.kind) + ' · ' + money(entry.amount_minor,data.currency))); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); var details=node('dl'); definition(details,c.snapshot,date(entry.snapshot_at)); definition(details,c.base,money(entry.base_minor,data.currency)); definition(details,c.rate,entry.kind === 'manual_adjustment' ? c.manualRate : entry.kind === 'management' ? c.fixed : percentage(entry.rate_bps) + ' · ' + (c[entry.rate_source] || entry.rate_source)); definition(details,c.policy,entry.policy_version); definition(details,c[entry.movement_type] || entry.movement_type,(entry.bucket_from ? c[entry.bucket_from] + ' → ' : '') + (c[entry.bucket_to] || '') + ' · ' + date(entry.effective_at)); row.appendChild(details); history.appendChild(row); }); pages(history,'history_page',data.history.page,data.history.has_more); }
   function overrides(data) { var c=words(), parent=id('partner-overrides'); parent.replaceChildren(); if (data.state !== 'available') { listEmpty(parent,c.unavailable); return; } if (!data.entries.length) listEmpty(parent,c.noOverrides); data.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('h3',(c[entry.side] || entry.side) + ' ' + percentage(entry.rate_bps))); row.appendChild(node('p',c.policy + ': ' + entry.policy_version)); row.appendChild(node('p',date(entry.effective_from) + ' — ' + date(entry.effective_until),'hint')); parent.appendChild(row); }); }
   function assignments(data) { var c=words(), parent=id('partner-assignments'); parent.replaceChildren(); if (data.state !== 'available') { listEmpty(parent,c.unavailable); return; } if (!data.entries.length) listEmpty(parent,c.emptyAssignments); data.entries.forEach(function (entry) { var row=node('article','','umc-partner-row'); row.appendChild(node('p',entry.order_id,'umc-partner-reference')); row.appendChild(node('p',((workStates[(window._me || {}).locale] || workStates.ru)[entry.state] || c.unknown) + ' · ' + c.due + ': ' + date(entry.due_at),'hint')); if (window.UMCCollaboration) { var button=node('button',c.openWork,'btn btn-secondary'); button.type='button'; button.addEventListener('click',function () { window.UMCCollaboration.open(entry.assignment_id); }); row.appendChild(button); } parent.appendChild(row); }); pages(parent,'assignment_page',data.page,data.has_more); }
-  function render(data) { var c=words(); renderOverview(id('partner-overview'),data,c); text('partner-paused',data.writes_paused ? c.paused : ''); text('partner-grade-value',percentage(data.grade.tier_rate_bps)); text('partner-grade-count',c.verified + ': ' + data.grade.verified_creators); text('partner-grade-next',data.grade.next_threshold == null ? c.top : c.next + ': ' + data.grade.remaining + ' (' + data.grade.next_threshold + ')'); network(data.network); finance(data.financial); overrides(data.overrides); assignments(data.assignments); id('partner-content').hidden=false; }
+  function render(data) {
+    var c = words();
+    renderOverview(id('partner-overview'),data,c);
+    renderLevel(id('partner-grade'),data,false);
+    renderAchievements(id('partner-achievements'),data);
+    text('partner-paused',data.writes_paused ? c.paused : '');
+    network(data.network);
+    finance(data.financial);
+    overrides(data.overrides);
+    assignments(data.assignments);
+    id('partner-content').hidden = false;
+  }
 
   Object.assign(copy.ru, {activeOrders:'Активные заказы', completedWorks:'Завершённые работы', waiting:'Что ожидается', successful:'Успешно завершено', beforeAdjustments:'До корректировок; выплата зависит от состояния журнала', awaiting_confirmation:'Успех не подтверждён', awaiting_counterparty:'Ожидается ответ второй стороны', confirmation_notice_pending:'Ожидается доставка запроса подтверждения', expiry_processing:'Срок подтверждения истёк; отмена обрабатывается', dispute_review:'Требуется рассмотрение спора', financial_processing:'Подтверждено; финансовая обработка', selection_completion:'Ожидается закрытие подбора и окончание периода возврата', assessment_pending:'Уточняется основание начисления'});
   Object.assign(copy.en, {activeOrders:'Active orders', completedWorks:'Completed works', waiting:'Pending requirements', successful:'Successfully completed', beforeAdjustments:'Before adjustments; payout depends on journal status', awaiting_confirmation:'Success has not been confirmed', awaiting_counterparty:'Awaiting the other party', confirmation_notice_pending:'Awaiting confirmation notice delivery', expiry_processing:'Confirmation expired; cancellation is being processed', dispute_review:'Dispute requires review', financial_processing:'Confirmed; financial processing', selection_completion:'Awaiting selection closure and refund period', assessment_pending:'Earning basis is being assessed'});
@@ -55,8 +74,11 @@
   function clearPrivate() {
     if(state.bound) state.bound.dispose();
     state.bound=null; state.actor=null; state.data=null; adminState={pending:null,review:null,busy:false};
+    state.focusAchievements=false;
     id('partner-content').hidden=true;
     id('partner-overview').replaceChildren();
+    id('partner-grade').replaceChildren();
+    id('partner-achievements').replaceChildren();
     showHomes(null, words().session);
     var admin=id('partner-override-admin'); if(admin) admin.remove();
   }
@@ -112,6 +134,211 @@
   };
   Object.keys(overviewCopy).forEach(function (lang) { Object.assign(copy[lang], overviewCopy[lang]); });
 
+  var levelCopy = {
+    ru: {
+      levelNames: {0:'Старт',100:'Бронза',200:'Серебро',400:'Золото'},
+      partnerLevel:'Ваш партнёрский уровень', confirmedAuthors:'Подтверждённые авторы',
+      towardLevel:'До уровня «{level}»', remainingAuthors:'Осталось подтвердить {count}',
+      standardCreatorRate:'Стандартная ставка за автора в первый год после его регистрации',
+      inviteAuthor:'Пригласить автора', achievements:'Достижения', firstAuthor:'Первый автор',
+      authorMilestone:'{count} авторов', achievementCount:'{count} из {total}',
+      achieved:'Достигнуто', allAchievements:'Все достижения',
+      levelRules:'Как считаются уровень и ставка',
+      levelHelp:'Для уровня учитываются уникальные подтверждённые Instagram-профили лично приглашённых авторов.'
+    },
+    en: {
+      levelNames: {0:'Start',100:'Bronze',200:'Silver',400:'Gold'},
+      partnerLevel:'Your partner level', confirmedAuthors:'Verified creators',
+      towardLevel:'Next level: {level}', remainingAuthors:'Creators to verify: {count}',
+      standardCreatorRate:'Standard creator rate in the first year after their registration',
+      inviteAuthor:'Invite a creator', achievements:'Achievements', firstAuthor:'First creator',
+      authorMilestone:'{count} creators', achievementCount:'{count} of {total}',
+      achieved:'Achieved', allAchievements:'All achievements',
+      levelRules:'How levels and rates work',
+      levelHelp:'Levels count unique verified Instagram profiles of creators you invited directly.'
+    },
+    kk: {
+      levelNames: {0:'Бастау',100:'Қола',200:'Күміс',400:'Алтын'},
+      partnerLevel:'Серіктестік деңгейіңіз', confirmedAuthors:'Расталған авторлар',
+      towardLevel:'Келесі деңгей: {level}', remainingAuthors:'Тағы {count} авторды растау керек',
+      standardCreatorRate:'Автор тіркелгеннен кейінгі алғашқы жылдағы стандартты мөлшерлеме',
+      inviteAuthor:'Авторды шақыру', achievements:'Жетістіктер', firstAuthor:'Алғашқы автор',
+      authorMilestone:'{count} автор', achievementCount:'{total} ішінен {count}',
+      achieved:'Орындалды', allAchievements:'Барлық жетістіктер',
+      levelRules:'Деңгей мен мөлшерлеме қалай есептеледі',
+      levelHelp:'Деңгейге тікелей шақырған авторлардың бірегей расталған Instagram профильдері есептеледі.'
+    },
+    be: {
+      levelNames: {0:'Старт',100:'Бронза',200:'Срэбра',400:'Золата'},
+      partnerLevel:'Ваш партнёрскі ўзровень', confirmedAuthors:'Пацверджаныя аўтары',
+      towardLevel:'Да ўзроўню «{level}»', remainingAuthors:'Засталося пацвердзіць {count}',
+      standardCreatorRate:'Стандартная стаўка за аўтара ў першы год пасля яго рэгістрацыі',
+      inviteAuthor:'Запрасіць аўтара', achievements:'Дасягненні', firstAuthor:'Першы аўтар',
+      authorMilestone:'{count} аўтараў', achievementCount:'{count} з {total}',
+      achieved:'Дасягнута', allAchievements:'Усе дасягненні',
+      levelRules:'Як лічацца ўзровень і стаўка',
+      levelHelp:'Для ўзроўню ўлічваюцца ўнікальныя пацверджаныя Instagram-профілі асабіста запрошаных аўтараў.'
+    },
+    uz: {
+      levelNames: {0:'Boshlanish',100:'Bronza',200:'Kumush',400:'Oltin'},
+      partnerLevel:'Hamkorlik darajangiz', confirmedAuthors:'Tasdiqlangan mualliflar',
+      towardLevel:'Keyingi daraja: {level}', remainingAuthors:'Yana {count} muallifni tasdiqlash kerak',
+      standardCreatorRate:'Muallif ro‘yxatdan o‘tganidan keyingi birinchi yildagi standart stavka',
+      inviteAuthor:'Muallifni taklif qilish', achievements:'Yutuqlar', firstAuthor:'Birinchi muallif',
+      authorMilestone:'{count} muallif', achievementCount:'{total} dan {count}',
+      achieved:'Erishildi', allAchievements:'Barcha yutuqlar',
+      levelRules:'Daraja va stavka qanday hisoblanadi',
+      levelHelp:'Daraja uchun bevosita taklif qilingan mualliflarning noyob tasdiqlangan Instagram profillari hisoblanadi.'
+    }
+  };
+  Object.keys(levelCopy).forEach(function (lang) { Object.assign(copy[lang],levelCopy[lang]); });
+
+  function levelText(template, values) {
+    return template.replace(/\{(\w+)\}/g,function (_, key) { return String(values[key]); });
+  }
+
+  function levelName(threshold, c) {
+    return c.levelNames[threshold] || levelText(c.authorMilestone,{count:threshold});
+  }
+
+  function levelData(data) {
+    var grade = data.grade;
+    if (!grade || !Number.isSafeInteger(grade.verified_creators) || grade.verified_creators < 0) return null;
+    var next = grade.next_threshold;
+    var progress = next == null ? 100 : (grade.verified_creators - grade.threshold) / (next - grade.threshold) * 100;
+    return {
+      count:grade.verified_creators,
+      threshold:grade.threshold,
+      next:next,
+      remaining:grade.remaining,
+      progress:Math.max(0,Math.min(100,progress)),
+      rate:grade.tier_rate_bps
+    };
+  }
+
+  function achievementMilestones(data) {
+    var thresholds = [1,10,25,50];
+    data.standards.creator_tiers.forEach(function (tier) {
+      if (tier.threshold > 0 && thresholds.indexOf(tier.threshold) < 0) thresholds.push(tier.threshold);
+    });
+    return thresholds.sort(function (a,b) { return a-b; });
+  }
+
+  function achievementName(threshold, c) {
+    return threshold === 1 ? c.firstAuthor : levelName(threshold,c);
+  }
+
+  function renderLevel(parent, data, compact) {
+    var c = words();
+    var level = levelData(data);
+    parent.replaceChildren();
+    if (!level) {
+      parent.appendChild(node('p',c.unavailable,'umc-partner-note'));
+      return;
+    }
+    var heading = node('div','','umc-partner-level-heading');
+    var title = node('h2',c.partnerLevel,'umc-partner-level-label');
+    var name = node('p',levelName(level.threshold,c),'umc-display umc-partner-level-name');
+    var count = node('p',c.confirmedAuthors + ' · ' + level.count,'umc-partner-level-count');
+    if (!compact) {
+      title.id = 'partner-grade-title';
+      count.id = 'partner-grade-count';
+    }
+    var identity = node('div');
+    identity.append(title,name,count);
+    var emblem = node('span','★','umc-partner-level-emblem');
+    emblem.setAttribute('aria-hidden','true');
+    heading.append(identity,emblem);
+    parent.appendChild(heading);
+
+    var progress = node('div','','umc-partner-level-progress');
+    var progressTitle = node('p',level.next == null ? c.top : levelText(c.towardLevel,{level:levelName(level.next,c)}));
+    var remaining = node('p',level.next == null ? '' : levelText(c.remainingAuthors,{count:level.remaining}),'umc-partner-level-remaining');
+    if (!compact) remaining.id = 'partner-grade-next';
+    var track = node('div','','umc-partner-level-track');
+    track.setAttribute('role','progressbar');
+    track.setAttribute('aria-label',c.partnerLevel);
+    track.setAttribute('aria-valuemin','0');
+    track.setAttribute('aria-valuemax','100');
+    track.setAttribute('aria-valuenow',String(level.progress));
+    track.setAttribute('aria-valuetext',progressTitle.textContent + ' · ' + (remaining.textContent || count.textContent));
+    var fill = node('span','','umc-partner-level-fill');
+    fill.style.width = level.progress + '%';
+    track.appendChild(fill);
+    var endpoints = node('div','','umc-partner-level-endpoints');
+    endpoints.append(
+      node('span',level.threshold + ' · ' + levelName(level.threshold,c)),
+      node('span',level.next == null ? '' : level.next + ' · ' + levelName(level.next,c))
+    );
+    progress.append(progressTitle,remaining,track,endpoints);
+    parent.appendChild(progress);
+
+    var rate = node('div','','umc-partner-level-rate');
+    var rateValue = node('span',percentage(level.rate),'umc-partner-rate');
+    if (!compact) rateValue.id = 'partner-grade-value';
+    rate.append(rateValue,node('p',c.standardCreatorRate));
+    parent.appendChild(rate);
+    linkControls(parent,safeUrl(data.referral.link),c,false,true);
+
+    if (compact) {
+      var milestones = achievementMilestones(data);
+      var earned = milestones.filter(function (threshold) { return threshold <= level.count; }).length;
+      var achievements = node('button',c.allAchievements + ' · ' + levelText(c.achievementCount,{count:earned,total:milestones.length}),'umc-btn umc-btn--ghost umc-btn--sm umc-btn--block');
+      achievements.type = 'button';
+      achievements.dataset.partnerOpen = '';
+      achievements.addEventListener('click',function () {
+        if (!current()) return;
+        state.focusAchievements = true;
+        open();
+      });
+      parent.appendChild(achievements);
+    } else {
+      var rules = node('details','','umc-partner-level-rules');
+      rules.append(node('summary',c.levelRules),node('p',c.levelHelp),node('p',c.rules));
+      parent.appendChild(rules);
+    }
+  }
+
+  function renderAchievements(parent, data) {
+    var c = words();
+    var level = levelData(data);
+    parent.replaceChildren();
+    if (!level) return;
+    var milestones = achievementMilestones(data);
+    var earned = milestones.filter(function (threshold) { return threshold <= level.count; }).length;
+    var heading = node('div','','umc-partner-achievements-heading');
+    var title = node('h2',c.achievements);
+    title.id = 'partner-achievements-title';
+    heading.append(title,node('span',levelText(c.achievementCount,{count:earned,total:milestones.length})));
+    var list = node('ul','','umc-partner-achievements');
+    var detail = node('p','','umc-partner-achievement-detail');
+    detail.setAttribute('aria-live','polite');
+    var next = milestones.find(function (threshold) { return threshold > level.count; });
+    milestones.forEach(function (threshold) {
+      var reached = level.count >= threshold;
+      var description = achievementName(threshold,c) + ' · ' + (reached ? c.achieved : levelText(c.remainingAuthors,{count:threshold-level.count}));
+      var item = node('li');
+      var button = node('button','','umc-partner-achievement');
+      button.type = 'button';
+      button.dataset.threshold = threshold;
+      button.dataset.achieved = String(reached);
+      button.setAttribute('aria-pressed',String(threshold === next || (next == null && threshold === milestones[milestones.length-1])));
+      button.setAttribute('aria-label',description);
+      var mark = node('span',reached ? '✓' : '◇','umc-partner-achievement-mark');
+      mark.setAttribute('aria-hidden','true');
+      button.append(mark,node('span',achievementName(threshold,c)));
+      button.addEventListener('click',function () {
+        if (!current()) return;
+        list.querySelectorAll('button').forEach(function (other) { other.setAttribute('aria-pressed',String(other === button)); });
+        detail.textContent = description;
+      });
+      if (button.getAttribute('aria-pressed') === 'true') detail.textContent = description;
+      item.appendChild(button);
+      list.appendChild(item);
+    });
+    parent.append(heading,list,detail);
+  }
+
   function externalLink(url, label) {
     var link = node('a',label);
     link.href = url;
@@ -120,14 +347,15 @@
     return link;
   }
 
-  function linkControls(card, url, c, cabinet) {
+  function linkControls(card, url, c, cabinet, inviteOnly) {
     if (!url) {
       card.appendChild(node('p',c.noLink,'umc-partner-note'));
       return;
     }
 
-    var row = node('div','','umc-partner-link-row');
+    var row = node('div','',inviteOnly ? 'umc-partner-invite' : 'umc-partner-link-row');
     var link = externalLink(url,url);
+    link.hidden = Boolean(inviteOnly);
     link.dataset.partnerLink = '';
     link.title = url;
     var input = node('input');
@@ -135,10 +363,10 @@
     input.readOnly = true;
     input.hidden = true;
     input.setAttribute('aria-label',c.link);
-    var button = node('button',c.copyShort,'btn umc-partner-copy');
+    var button = node('button',inviteOnly ? c.inviteAuthor : c.copyShort,inviteOnly ? 'umc-btn umc-btn--primary umc-btn--block' : 'btn umc-partner-copy');
     button.type = 'button';
     button.dataset.partnerCopy = '';
-    button.setAttribute('aria-label',c.copy);
+    button.setAttribute('aria-label',inviteOnly ? c.inviteAuthor : c.copy);
     var status = node('p','','umc-partner-copy-status');
     status.setAttribute('role','status');
     if (cabinet) {
@@ -176,10 +404,10 @@
       }
       if (copied && !input.hidden) {
         input.hidden = true;
-        link.hidden = false;
+        link.hidden = Boolean(inviteOnly);
         button.focus();
       }
-      button.textContent = copied ? c.copiedShort : c.copyShort;
+      button.textContent = copied ? c.copiedShort : inviteOnly ? c.inviteAuthor : c.copyShort;
       status.textContent = copied ? c.copied : c.manual;
     });
   }
@@ -197,6 +425,12 @@
   }
 
   function renderOverview(card, data, c, message) {
+    if (card.parentElement.id === 'screen-manager-orders') {
+      card.className = 'umc-card umc-card--mint umc-partner-level umc-partner-level--compact';
+      if (data) renderLevel(card,data,true);
+      else card.replaceChildren(node('p',message,'umc-partner-level-loading'));
+      return;
+    }
     var cabinet = card.id === 'partner-overview';
     var header = node('div','','umc-partner-overview-header');
     header.appendChild(node('h2',cabinet ? c.link : c.entry));
@@ -405,6 +639,10 @@
       showHomes(data);
       partnerDetails(data);
       renderAdmin(data);
+      if (state.focusAchievements) {
+        state.focusAchievements = false;
+        id('partner-achievements').focus();
+      }
     }).catch(function (error) {
       if (bound !== state.bound) return;
       if (error.status === 401 || error.status === 403) clearPrivate();
@@ -443,5 +681,8 @@
     });
   }
   document.addEventListener('visibilitychange',function(){if(state.bound)current();}); window.addEventListener('focus',function(){if(state.bound)current();});
+  document.addEventListener('umc:screen-change',function (event) {
+    if (event.detail.screen === 'screen-manager-orders' && window.__umcAppReady) ready();
+  });
   document.addEventListener('umc:app-ready',ready); if (window.__umcAppReady) ready();
 })();
