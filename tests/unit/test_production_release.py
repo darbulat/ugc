@@ -155,7 +155,9 @@ def test_live_restore_preserves_existing_settings_and_reloads(
     assert json.loads(path.read_text()) == validated[0]
     assert len(signals) == 1 and signals[0][0] == 1234
     assert path.stat().st_mode & 0o777 == 0o600
-    assert list(tmp_path.iterdir()) == [path]
+    backup = path.with_name("daemon.json.before-live-restore")
+    assert json.loads(backup.read_text()) == settings
+    assert set(tmp_path.iterdir()) == {path, backup}
 
 
 def test_live_restore_validation_failure_preserves_file(
@@ -219,12 +221,22 @@ def test_live_restore_refuses_concurrent_changes(
     assert json.loads(path.read_text()) == {"log-driver": "local"}
 
 
-def test_live_restore_is_idempotent(live_restore_module, tmp_path):
+def test_live_restore_reloads_existing_configuration(
+    live_restore_module, tmp_path, monkeypatch
+):
     path = tmp_path / "daemon.json"
     path.write_text('{"live-restore":true}')
-    assert (
-        live_restore_module["configure"](path, Path("missing"), 1234) is False
+    configure = live_restore_module["configure"]
+    signals = []
+    monkeypatch.setattr(
+        configure.__globals__["subprocess"],
+        "run",
+        lambda *a, **kw: SimpleNamespace(returncode=0),
     )
+    monkeypatch.setattr(os, "kill", lambda *args: signals.append(args))
+    assert configure(path, Path("dockerd"), 1234) is False
+    assert len(signals) == 1
+    assert path.read_text() == '{"live-restore":true}'
 
 
 @pytest.mark.parametrize("as_list", [False, True])

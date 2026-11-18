@@ -88,7 +88,7 @@ def compose_environment(settings):
 
 def rollout_environment(model, service, files, live):
     """Resolve the placeholder scheme used by previous production rollouts."""
-    placeholders = re.compile(r"\$\{(UGC_ROLLOUT_[A-Z0-9_]+)[^}]*\}")
+    placeholders = re.compile(r"(?<!\$)\$\{(UGC_ROLLOUT_[A-Z0-9_]+)[^}]*\}")
     references = {
         name
         for path in files
