@@ -301,7 +301,11 @@ def test_removed_recipient_is_excluded_from_retries_and_new_alerts(tmp_path):
     with httpx.Client(transport=httpx.MockTransport(endpoint)) as client:
         first = run_once(config, state, client, NOW)
         assert first["tokens"][0]["delivery_errors"] == 1
-        config.recipients = ["101", "202"]
+        config = MonitorSettings(
+            bot_token=config.bot_token,
+            recipients=["101", "202"],
+            tokens=config.tokens,
+        )
         endpoint.failed_recipient = None
         endpoint.telegram_requests.clear()
         run_once(config, state, client, NOW + timedelta(hours=1))
