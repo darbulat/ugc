@@ -188,6 +188,7 @@ from ugc_bot.infrastructure.redis_cache import (
     serialize_admin_payload,
 )
 from ugc_bot.logging_setup import configure_logging
+from ugc_bot.readiness import readiness_response
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -4016,7 +4017,7 @@ class EnumAwareAdmin(Admin):
         return RedirectResponse(url=url, status_code=302)
 
 
-def _add_health_route(app: FastAPI, engine) -> None:
+def _add_health_route(app: FastAPI, engine, session_factory=None) -> None:
     """Register /health endpoint that checks DB connectivity."""
 
     @app.get("/health")
@@ -4028,6 +4029,10 @@ def _add_health_route(app: FastAPI, engine) -> None:
         except Exception:
             db_ok = False
         return {"status": "ok" if db_ok else "degraded", "db": db_ok}
+
+    @app.get("/ready")
+    async def ready() -> JSONResponse:
+        return await readiness_response(session_factory)
 
 
 def _add_admin_views(admin: Admin) -> None:
@@ -4373,7 +4378,7 @@ def create_admin_app() -> FastAPI:
     if config.financial.yookassa_browser_shop_id:
         app.state.browser_checkout = container.build_browser_checkout()
 
-    _add_health_route(app, engine)
+    _add_health_route(app, engine, container.session_factory)
 
     auth = AdminAuth(
         secret_key=config.admin.admin_secret,

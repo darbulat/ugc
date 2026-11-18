@@ -212,13 +212,12 @@ async def test_preview_stages_and_order_scoped_manager_endpoint(
         path = f"/admin/order-review?order_id={oid}"
         page = admin_web.get(path + "&stage=received")
         assert page.status_code == 200
-        assert "В тестовой карточке" in page.text
-        assert "Тестовый заказ" in page.text
+        assert "В предпросмотре" in page.text
+        assert "Предпросмотр заказа" in page.text
         assert "Подбор до" in page.text
         assert 'aria-current="page"' in page.text
         assert (
-            "В тестовой карточке"
-            not in admin_web.get(path + "&stage=waiting").text
+            "В предпросмотре" not in admin_web.get(path + "&stage=waiting").text
         )
 
 

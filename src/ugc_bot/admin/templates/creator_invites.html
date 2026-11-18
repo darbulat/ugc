@@ -15,7 +15,7 @@
   </div>
   <h1>Добавить креатора · {{ title }}</h1>
   {% if preview %}
-    <p>Тестовый заказ без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Открыть итоги в Telegram</a>.</p>
+    <p>Предпросмотр заказа без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Открыть итоги в Telegram</a>.</p>
   {% endif %}
   {% if status %}<p role="status">{{ status }}</p>{% endif %}
   {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
@@ -49,7 +49,7 @@
       <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
       <div class="invite-form-fields">
         <div class="invite-position">
-          <label for="invite-item">{{ "Тестовая позиция" if preview else "Позиция в заказе" }}</label>
+          <label for="invite-item">{{ "Позиция для предпросмотра" if preview else "Позиция в заказе" }}</label>
           <select name="item_id" id="invite-item" class="form-select">
             <option value=""{% if not item_id %} selected{% endif %}>Первая свободная · №{{ items[0].ordinal }}</option>
             {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}</option>{% endfor %}
@@ -111,7 +111,7 @@
     </form>
   </section>
   {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
-  {% else %}<p>{{ "Свободных тестовых позиций нет." if preview else "Свободных оплаченных позиций нет." }}</p>{% endif %}
+  {% else %}<p>{{ "Свободных позиций для предпросмотра нет." if preview else "Свободных оплаченных позиций нет." }}</p>{% endif %}
   {% if invites %}
   <section class="card section">
     <h2>Приглашения</h2>

@@ -30,7 +30,6 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.creator_offer_preview import (
     ACCESS_DENIED,
     NOT_READY,
-    PREVIEW_NOTICE,
     CreatorOfferPreview,
 )
 from ugc_bot.config import AppConfig
@@ -133,7 +132,9 @@ def test_preview_reuses_public_content_and_isolates_all_callbacks(
         preview.order.product_link,
         preview.order.brief_link,
     }
-    assert "Тестовый отклик" in saved.text or "Test response" in saved.text
+    assert (
+        "Предпросмотр отклика" in saved.text or "Response preview" in saved.text
+    )
     with pytest.raises(ValueError, match="Unknown preview action"):
         render_offer_preview(preview.order, locale, "activate")
 
@@ -155,9 +156,8 @@ async def test_send_preview_is_private_and_does_not_register_dispatch(
         preview.incoming, str(preview.order.order_id)
     )
     assert message_id == "77"
-    preview.messenger.send_text.assert_awaited_once_with(
-        chat_id="100", text=PREVIEW_NOTICE
-    )
+    preview.messenger.send_text.assert_not_awaited()
+    preview.messenger.send_offer_card.assert_awaited_once()
     call = preview.messenger.send_offer_card.call_args
     assert call.args[0] == "100"
     assert call.args[2] == ("private-photo" if approved else NEUTRAL_COVER)
@@ -400,7 +400,7 @@ async def test_real_dispatcher_routes_preview_before_state_catchalls(
             await dispatcher.feed_update(bot, callback)
         assert bot.edit_message_caption.await_count == 5
         assert (
-            "Тестовый отклик подтверждён"
+            "Предпросмотр отклика"
             in bot.edit_message_caption.await_args_list[3].kwargs["caption"]
         )
         assert await state.get_state() == "AdminWriteStates:waiting_text"

@@ -684,7 +684,8 @@ def test_order_worklist_search_hide_and_restore(
     audience_requests = []
     audience_path = f"**/admin/api/orders/{order_id}/audience*"
     page.route(audience_path, lambda route: audience_requests.append(route))
-    row.get_by_role("link", name="Редактировать", exact=True).click()
+    with page.expect_request(audience_path):
+        row.get_by_role("link", name="Редактировать", exact=True).click()
     expect(page.get_by_role("heading", name="Бриф заказа")).to_be_visible()
     expect(page.locator("#order-audience-saved-caption")).to_have_text(
         "Считаем выборку…"
@@ -772,11 +773,11 @@ def test_order_worklist_search_hide_and_restore(
     expect(copy_prompt).to_be_visible()
     expect(page.get_by_role("link", name="Нет фото")).to_be_hidden()
     page.get_by_role("button", name="Сохранить и выйти", exact=True).click()
-    marker = row.get_by_role("button", name="Это тест", exact=True)
+    marker = row.get_by_role("button", name="Служебный заказ", exact=True)
     page.once("dialog", confirm)
     marker.click()
     expect(row).to_have_count(0)
-    open_group("Тестовые")
+    open_group("Служебные")
     expect(row).to_be_visible()
     row.get_by_role("link", name="Открыть", exact=True).click()
     delete = page.get_by_role("button", name="Удалить заказ", exact=True)
@@ -785,7 +786,7 @@ def test_order_worklist_search_hide_and_restore(
     expect(delete).to_be_visible()
     page.once("dialog", confirm)
     delete.click()
-    expect(page.get_by_role("status")).to_have_text("Тестовый заказ удалён.")
+    expect(page.get_by_role("status")).to_have_text("Служебный заказ удалён.")
     expect(row).to_have_count(0)
 
     page.goto(f"{admin_server}/admin/order-model/list?search={managed_id}")
@@ -847,8 +848,10 @@ def test_order_worklist_search_hide_and_restore(
     page.set_viewport_size({"width": 1440, "height": 800})
     page.get_by_role("link", name="Назад к списку").click()
     page.once("dialog", confirm)
-    managed_row.get_by_role("button", name="Это тест", exact=True).click()
-    open_group("Тестовые")
+    managed_row.get_by_role(
+        "button", name="Служебный заказ", exact=True
+    ).click()
+    open_group("Служебные")
     expect(managed_row).to_contain_text(
         "Нельзя удалить: есть рассылка или отклики"
     )
@@ -875,7 +878,7 @@ def test_order_worklist_search_hide_and_restore(
         "Заказ возвращён из удалённых."
     )
     expect(managed_row).to_have_count(0)
-    open_group("Тестовые")
+    open_group("Служебные")
     expect(managed_row).to_be_visible()
 
     # A separate unmanaged order keeps the existing deletion scenario intact.

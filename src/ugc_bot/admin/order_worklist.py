@@ -173,7 +173,7 @@ def business_order_conditions():
 def order_deletion_blocker(*, postgresql: bool):
     """Return the first reason the guarded test deletion would refuse."""
     checks = [
-        (~_is_test_order(), "Заказ не отмечен как тестовый"),
+        (~_is_test_order(), "Заказ не отмечен как служебный"),
         *((_order_has(table), label) for table, label in _ORDER_ACTIVITY),
         (_order_has(INBOX), "Есть событие оплаты"),
         (
@@ -571,7 +571,7 @@ def _mark_test_order(
             )
         )
     return (
-        "Заказ отмечен как тестовый." if marked else "Тестовая отметка снята."
+        "Заказ отмечен как служебный." if marked else "Служебная отметка снята."
     )
 
 
@@ -584,7 +584,7 @@ def _delete_test_order(session: Session, order: OrderModel) -> str:
         ).where(OrderModel.order_id == order.order_id)
     )
     if blocker:
-        return f"Удалить можно только тестовый черновик без связей. {blocker}."
+        return f"Удалить можно только служебный черновик без связей. {blocker}."
     previous_status = order.status.value
     order.status = OrderStatus.DELETED
     order.dispatch_stopped = True
@@ -598,7 +598,7 @@ def _delete_test_order(session: Session, order: OrderModel) -> str:
             new_values={"status": OrderStatus.DELETED.value, "test": True},
         )
     )
-    return "Тестовый заказ удалён."
+    return "Служебный заказ удалён."
 
 
 def _record_worklist_flag(

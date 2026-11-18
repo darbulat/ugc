@@ -51,6 +51,7 @@ from ugc_bot.metrics.collector import (
     record_telegram_webhook_received,
 )
 from ugc_bot.miniapp.api import router as miniapp_api_router
+from ugc_bot.readiness import readiness_response
 from ugc_bot.startup_logging import log_startup_info
 
 logger = logging.getLogger(__name__)
@@ -179,8 +180,7 @@ async def _lifespan(app: FastAPI):
             with suppress(Exception):
                 await max_http_session.close()
         if bot is not None:
-            with suppress(Exception):
-                await bot.delete_webhook()
+            # The webhook registration is shared by all replicas of this bot.
             await bot.session.close()
         exchange_svc = (
             dispatcher.get("exchange_rate_service") if dispatcher else None
@@ -258,6 +258,17 @@ async def _unhandled_exception_handler(
 async def health() -> dict[str, str]:
     """Lightweight health check."""
     return {"status": "ok"}
+
+
+@app.get("/ready")
+async def ready(request: Request) -> JSONResponse:
+    dispatcher = getattr(request.app.state, "dispatcher", {})
+    container = dispatcher.get("container")
+    storage = getattr(request.app.state, "storage", None)
+    return await readiness_response(
+        container.session_factory if container is not None else None,
+        getattr(storage, "redis", None),
+    )
 
 
 @app.get("/metrics")

@@ -61,6 +61,7 @@ from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
 from ugc_bot.miniapp.api import router as miniapp_api_router
+from ugc_bot.readiness import readiness_response
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +196,15 @@ if _miniapp_dir.is_dir():
 async def health() -> JSONResponse:
     """Lightweight health check."""
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/ready")
+async def ready(request: Request) -> JSONResponse:
+    container = getattr(request.app.state, "container", None)
+    return await readiness_response(
+        container.session_factory if container is not None else None,
+        getattr(request.app.state, "redis", None),
+    )
 
 
 @app.get("/metrics")

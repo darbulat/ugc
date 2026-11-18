@@ -1,0 +1,35 @@
+Production images are built from a merged main commit after Lint and Test succeeds. The Publish production image workflow publishes the image to the repository's GHCR package and saves an identical deployment archive in a GitHub Actions artifact for 30 days. The archive permits delivery through the existing authenticated GitHub connection while registry access is provisioned for the production host.
+
+Download the artifact for the intended main commit through authenticated GitHub Actions access. Verify the artifact digest returned by GitHub before extracting it. Transfer its image.tar.gz and manifest.json into a private staging directory on the production host. Validate the manifest revision against the merged commit and the successful workflow run before running the release command.
+
+Run the checked-in release script from that same commit on the host. Choose only the services affected by the change. The application readiness release affects app, app_2, admin, max_bot and instagram_webhook.
+
+```sh
+python3 production_release.py /path/to/verified-artifact app app_2 admin max_bot instagram_webhook
+```
+
+The script takes the existing production deployment lock. It checks the archive SHA-256 and the loaded image's revision label, then resolves each container's current Compose configuration using its live environment. Previous rollout placeholders are reconstructed from their associated environment keys.
+
+Release settings are saved under /opt/myapp/ugc-releases/<full-commit>/attempt-<unique-id>/ with directory mode 0700 and file mode 0600. compose.json contains the new image IDs. previous-compose.json retains the previous image IDs and health checks for rollback. Both files contain runtime secrets and belong in the encrypted recovery backup. Keep this directory outside public document roots and Git. The operational checkout, Compose files and environment file remain the sources inspected during preparation.
+
+Each selected service is updated independently with dependency recreation and image builds disabled. Before replacing a Telegram replica the peer must be healthy. The script repairs a missing shared webhook through the surviving replica, waits for dependency readiness, checks that environment, mounts, networks, limits and security settings match the previous container, reloads nginx gracefully, and checks the public Mini App and admin routes. A failure rolls back all attempted services in reverse order. Previous images remain available locally.
+
+After a verified rollout, /opt/myapp/ugc-releases/current points to its durable configuration. Use current/compose.json for subsequent deployments and recovery. Its explicit image IDs pin all captured services. Updating the operational environment requires a deliberate new release snapshot so the change can be reviewed. Each retry keeps its own preparation and rollback files, and the current pointer advances after successful verification.
+
+Enable Docker live restore using configure_live_restore.py from the reviewed release. Provide the existing daemon configuration path, the installed dockerd binary and the current daemon PID. The helper merges the live-restore setting, validates the candidate with dockerd, checks for concurrent edits, replaces the configuration atomically and requests a SIGHUP reload. Verify LiveRestoreEnabled through docker info afterwards and verify that the daemon PID and running container IDs remain unchanged. A Docker restart requires a separately agreed maintenance window.
+
+The readiness endpoints are available on the service network at app:9999/ready, app_2:9999/ready, admin:8001/ready, max_bot:8003/ready and instagram_webhook:8002/ready. HTTP 503 indicates unavailable required dependencies or incomplete initialization. The two-second probe deadline includes database connection acquisition and the Redis check for services using Redis storage.
+
+Cold host startup, daemon crashes, database failure and restoration on another host require an isolated rehearsal followed by an agreed production maintenance window. Record recovery time, delivered alerts and any manual steps. PostgreSQL archive_mode changes require checking restart requirements and S3 capacity before activation.
+
+The November 18 audit observed archive_mode off, 16 MB WAL segments and archive_timeout of one minute. A quiet 42-minute sample generated approximately 0.5 MB of WAL records. Forced segment switches can still produce approximately 23 GB of uncompressed archive per day with activity every minute. The existing uploader sends full segments. Validate compressed segment uploads, retention and compatible PITR restoration before enabling continuous archiving within the 10 GB storage budget.
+
+The operational recovery bundle is created by scripts/backup_recovery.py. It captures a fresh Compose snapshot and image inventory, the operational environment and configuration, backup credentials and restore dependencies, order images, TLS certificates, Docker configuration, and the checked CI source archive from the current release. A read-only container streams tar and gzip directly into age encryption. The host receives ciphertext. The age identity belongs in the owner's private storage, and the production host receives the public recipient.
+
+The bundle is uploaded through the existing backup container's verified S3 client under recovery/ugc-recovery-<UTC timestamp>.tar.gz.age. Retention is seven days. Capacity is checked against the existing 10 GB bucket limit before upload. Only expired objects belonging to this recovery prefix are removed after a verified upload. Keep the existing database backup schedule alongside the recovery bundle. Their capture times are recorded separately, and restoration must reconcile database references, files and queued deliveries before resuming business processing.
+
+Install the reviewed host scripts and the checksum-verified age binary under /opt/myapp/ugc-ops with owner-only permissions. Keep the producer image ID in its private recovery-image-id file. A regular run takes the deployment lock in shared mode and an exclusive recovery lock, captures the archive, verifies its S3 upload and retains local ciphertext for seven days. The chosen production schedule is every six hours. Existing alert configuration is managed separately.
+
+Install the entry in config/recovery.cron in the deploy user's crontab after the first verified round trip. Preserve existing entries and avoid duplicating the recovery entry on retries. The verified host timezone is UTC, so runs occur at 03:20, 09:20, 15:20 and 21:20 Moscow time. Create the recovery-backup.log file with mode 0600 before enabling the entry.
+
+After the first upload, download the encrypted object and compare its SHA-256 with the uploaded ciphertext. Decrypt it on the owner's machine using the age identity. Verify every archived file against the manifest inside the encrypted archive and check that configuration, source, certificates and order images are represented. The identity file must be available independently of the production server for future recovery.

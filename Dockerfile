@@ -32,6 +32,10 @@ COPY pyproject.toml alembic.ini /app/
 COPY src /app/src
 COPY config /app/config
 COPY scripts /app/scripts
+RUN rm -f /app/scripts/clean_e2e_users.py \
+    /app/scripts/telegram_e2e_auth.py \
+    /app/scripts/run_local_tests.sh \
+    /app/scripts/run_umc_synthetic_e2e.sh
 
 # Named volume shared by both Telegram replicas, MAX and cleanup/delivery.
 ENV ORDER_IMAGE_DIRECTORY=/app/var/order-images

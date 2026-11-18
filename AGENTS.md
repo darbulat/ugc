@@ -37,6 +37,15 @@ Respect GitHub's actual branch protections and required checks.
 
 ## Production deployment
 
+For routine releases, use the CI image and durable deployment procedure in
+`docs/production-recovery.md` and `scripts/production_release.py`. Confirm the
+successful main-commit CI run, artifact digest and image revision before
+delivery. Current application labels may point to
+`/opt/myapp/ugc-releases/<commit>/attempt-<id>/compose.json`. Inspect the actual
+labels for every affected service. The verified release is available through
+`/opt/myapp/ugc-releases/current`. These private snapshots contain runtime
+secrets and require owner-only permissions and encrypted recovery backups.
+
 The repository README documents `make deploy-apps` and `scripts/deploy_apps_zero_downtime.sh` for rolling `app` then `app_2`; the script builds once and waits for each instance to become healthy. That procedure assumes its Compose files and build context match the live server. The current server checkout is dirty, so do not run the script from `/opt/myapp/ugc` against its default `.` build context.
 
 For a release, use a clean source tree/archive from the intended merged commit and keep the server's Compose files and `.env` in place. One safe way to transfer source from a local checkout is:

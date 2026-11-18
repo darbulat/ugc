@@ -859,14 +859,14 @@ def test_test_order_requires_marker_and_keeps_audit(worklist):
     assert "Paid example" in test_list.text
     assert "Paid example" not in client.get(LIST).text
     assert "Удалить можно только" in post(paid, "delete-test").text
-    assert "Тестовая отметка снята" in post(paid, "unmark-test").text
+    assert "Служебная отметка снята" in post(paid, "unmark-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
     assert "Удалить заказ" in client.get(LIST, params={"group": "test"}).text
-    assert "Тестовая отметка снята" in post(draft_id, "unmark-test").text
+    assert "Служебная отметка снята" in post(draft_id, "unmark-test").text
     assert "Удалить можно только" in post(draft_id, "delete-test").text
     assert "Заказ отмечен" in post(draft_id, "mark-test").text
-    assert "Тестовый заказ удалён" in post(draft_id, "delete-test").text
+    assert "Служебный заказ удалён" in post(draft_id, "delete-test").text
     assert "Draft example" not in client.get(LIST, params={"group": "all"}).text
     with Session(engine) as session:
         order = session.get(OrderModel, draft_id)

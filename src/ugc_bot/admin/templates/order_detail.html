@@ -31,8 +31,8 @@
         <div>
           <div class="order-detail__badges">
             <span class="badge order-detail__status">{{ status_labels.get(status, status) }}</span>
-            {% if order.get('is_test') %}<span class="badge">Тестовый</span>{% endif %}
-            {% if order.get('test_candidate') %}<span class="badge badge--alert">Проверить на тест</span>{% endif %}
+            {% if order.get('is_test') %}<span class="badge">Служебный</span>{% endif %}
+            {% if order.get('test_candidate') %}<span class="badge badge--alert">Проверить назначение</span>{% endif %}
             {% if order.get('archived') %}<span class="badge">Удалён из списка</span>{% endif %}
           </div>
           <h1>{{ title|truncate(120) }}</h1>
