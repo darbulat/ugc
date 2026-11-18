@@ -200,3 +200,18 @@ def upgrade_financial_schema(engine, *, target_revision: str):
             "Isolated schema upgrade failed:\n"
             + result.stderr.replace(scoped_url, "<isolated database>")
         )
+
+
+def add_current_instagram_reads(engine):
+    """Current profile reads alongside an intentionally historical ledger.
+
+    Do not advance financial migrations just to supply an empty availability
+    table. These fixtures keep their old refund/ledger guards under test.
+    """
+    from ugc_bot.infrastructure.db.instagram_maintenance_models import HEALTH
+
+    with engine.begin() as connection:
+        schema = connection.scalar(text("SELECT current_schema()"))
+        if not re.fullmatch(r"financial_test_[a-f0-9]{32}", schema or ""):
+            raise ValueError("An isolated financial schema is required")
+        HEALTH.create(connection, checkfirst=True)
