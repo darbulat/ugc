@@ -255,10 +255,47 @@ def test_example_config_and_state_validation(tmp_path):
         monitor.load_state(path)
 
 
+@pytest.mark.parametrize(
+    "username", ["usemycontent_ai", "umc_alerts_app", "umc_alerts_bot"]
+)
+def test_bot_username_suffix_does_not_replace_api_identity_check(
+    tmp_path, monkeypatch, username
+):
+    config = monitor.load_config(config_file(tmp_path, bot_username=username))
+    api = Mock(
+        side_effect=[
+            {"id": 123, "is_bot": True, "username": username},
+            {"type": "channel"},
+            {"status": "administrator", "can_post_messages": True},
+        ]
+    )
+    monkeypatch.setattr(monitor, "telegram", api)
+    monitor.validate_recipient(
+        "123:fake", str(config["chat_id"]), config["bot_username"]
+    )
+    assert [call.args[1] for call in api.call_args_list] == [
+        "getMe",
+        "getChat",
+        "getChatMember",
+    ]
+
+
+def test_non_bot_identity_is_rejected_before_channel_access(monkeypatch):
+    api = Mock(
+        return_value={"id": 123, "is_bot": False, "username": "usemycontent_ai"}
+    )
+    monkeypatch.setattr(monitor, "telegram", api)
+    with pytest.raises(ValueError, match="bot_identity_required"):
+        monitor.validate_recipient(
+            "123:fake", "-1001234567890", "usemycontent_ai"
+        )
+    assert api.call_count == 1
+
+
 def test_channel_permission_is_checked_without_sending(monkeypatch):
     api = Mock(
         side_effect=[
-            {"id": 123},
+            {"id": 123, "is_bot": True},
             {"type": "channel"},
             {"status": "administrator", "can_post_messages": True},
         ]
@@ -276,7 +313,7 @@ def test_personal_chat_is_never_used_instead_of_the_channel(monkeypatch):
     monkeypatch.setattr(
         monitor,
         "telegram",
-        Mock(side_effect=[{"id": 123}, {"type": "private"}]),
+        Mock(side_effect=[{"id": 123, "is_bot": True}, {"type": "private"}]),
     )
     with pytest.raises(ValueError, match="channel"):
         monitor.validate_recipient("123:fake", "123456789")
@@ -418,7 +455,9 @@ def test_scripts_parse_on_vps_python_312():
 
 
 def test_wrong_bot_token_is_rejected_before_saving_or_sending(monkeypatch):
-    api = Mock(return_value={"id": 1, "username": "working_ugc_bot"})
+    api = Mock(
+        return_value={"id": 1, "is_bot": True, "username": "working_ugc_bot"}
+    )
     monkeypatch.setattr(monitor, "telegram", api)
     with pytest.raises(ValueError, match="unexpected_bot_identity"):
         monitor.validate_recipient(

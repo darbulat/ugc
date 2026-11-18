@@ -19,6 +19,8 @@ existing project. Python 3.12+ and the existing SSH client are sufficient.
   channel subscribed to by Kamil and Bulat. Existing alerts to Bulat are
   unchanged. The application's Telegram/MAX bots and their webhooks are not
   touched. There are no `getUpdates`, webhook changes or user broadcasts.
+  Bot identity is confirmed by `getMe.is_bot` and an exact configured username
+  match, rather than inferred from a username suffix.
 
 The optional production reporter additionally checks Docker on the host,
 healthy app replicas, and the existing internal admin `/health` response,
