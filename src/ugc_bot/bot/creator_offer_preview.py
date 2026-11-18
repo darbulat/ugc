@@ -26,10 +26,6 @@ from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
 
 ACCESS_DENIED = "Предпросмотр доступен только администратору в личном чате."
 NOT_READY = "Карточка недоступна. Проверьте ID и заполнение заказа в админке."
-PREVIEW_NOTICE = (
-    "🧪 Предпросмотр карточки. Кнопки работают в тестовом режиме. "
-    "Реальные отклики, рассылка и уведомления не создаются."
-)
 
 
 @dataclass
@@ -90,9 +86,6 @@ class CreatorOfferPreview:
         cover = (
             order.product_photo_file_id if approved else None
         ) or NEUTRAL_COVER
-        await self.messenger.send_text(
-            chat_id=incoming.chat_id, text=PREVIEW_NOTICE
-        )
         return await cast(OfferCardTransport, self.messenger).send_offer_card(
             incoming.chat_id, card, cover
         )

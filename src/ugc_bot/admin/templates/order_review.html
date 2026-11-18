@@ -25,7 +25,7 @@
       <a href="{{ request.url_for('admin_order_detail', order_id=order.id) }}">{{ order.number }} · {{ order.title|truncate(85) }}</a>
     </h2>
     {% if order.positions[0].preview %}
-    <p>Тестовый заказ. «Контакт получен» означает, что он появился в тестовой карточке. Оплата и начисления отключены.</p>
+    <p>Предпросмотр заказа. «Контакт получен» означает, что он доступен в карточке. Оплата и начисления отключены.</p>
     {% else %}
     <p>Кандидатов в резерве {{ order.reserve }} · использовано замен {{ order.used }} · осталось {{ order.left }} из {{ order.cap }}</p>
     {% endif %}
@@ -45,7 +45,7 @@
           {% if position.work_due_at %}<br><small>Работа до {{ position.work_due_at|admin_date }}</small>{% endif %}
         </td>
         <td>
-          {% if position.preview and position.stage == 'received' %}В тестовой карточке
+          {% if position.preview and position.stage == 'received' %}В предпросмотре
           {% elif position.contact_at %}Подтверждён<br><small>{{ position.contact_at|admin_date }}</small>
           {% elif position.delivery_state == 'unknown' %}Результат доставки неизвестен
           {% elif position.delivery_state == 'failed' %}Доставка отклонена

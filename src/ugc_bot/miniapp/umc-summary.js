@@ -12,11 +12,11 @@
     uz:['Buyurtma xulosasi','Orqaga','Yangilash','Xulosa yuklanmoqda…','Xulosa yuklanmadi. Yangilab ko‘ring.','Bu hisob uchun xulosa mavjud emas.','Buyurtma yoki topshiriq topilmadi.','Ilovani qayta oching.','Xulosa havolasi noto‘g‘ri.','Jami pozitsiyalar','Kontakt yetkazilishi tasdiqlangan','Hamkorlik holatlari','Avval yig‘ilgan fikrlar','Butun buyurtma','Sizning topshiriqlaringiz','Xulosa uchun pozitsiyalar hali yo‘q.','Ma’lumot vaqti','Tayinlangan','Tayinlanmagan','Ish shartlari hali saqlanmagan','Jarayonda','Muvaffaqiyat bildirildi','E’tiroz bor','Muvaffaqiyat tasdiqlandi','Tasdiqlash muddati o‘tdi','Ushlab turish muddati tugadi','Noma’lum','Fikr kutilmoqda','“Hammasi yaxshi o‘tdi” deb belgilangan','Kelishilmagan','Muammo bildirilgan','Fikr holati noma’lum']
   };
   var contactLabels = {
-    ru: ['Тестовый заказ', 'Контакты креаторов', 'Контакты появятся после подтверждения.', 'Ожидает контакта'],
-    en: ['Test order', 'Creator contacts', 'Contacts will appear after confirmation.', 'Awaiting contact'],
-    kk: ['Сынақ тапсырысы', 'Креаторлардың байланыстары', 'Байланыстар растаудан кейін көрсетіледі.', 'Байланыс күтілуде'],
-    be: ['Тэставы заказ', 'Кантакты крэатараў', 'Кантакты з’явяцца пасля пацвярджэння.', 'Чакаем кантакт'],
-    uz: ['Sinov buyurtmasi', 'Kreatorlar kontaktlari', 'Kontaktlar tasdiqlangandan keyin ko‘rinadi.', 'Kontakt kutilmoqda']
+    ru: ['Предпросмотр заказа', 'Контакты креаторов', 'Контакты появятся после подтверждения.', 'Ожидает контакта'],
+    en: ['Order preview', 'Creator contacts', 'Contacts will appear after confirmation.', 'Awaiting contact'],
+    kk: ['Тапсырысты алдын ала қарау', 'Креаторлардың байланыстары', 'Байланыстар растаудан кейін көрсетіледі.', 'Байланыс күтілуде'],
+    be: ['Папярэдні прагляд заказу', 'Кантакты крэатараў', 'Кантакты з’явяцца пасля пацвярджэння.', 'Чакаем кантакт'],
+    uz: ['Buyurtmani oldindan ko‘rish', 'Kreatorlar kontaktlari', 'Kontaktlar tasdiqlangandan keyin ko‘rinadi.', 'Kontakt kutilmoqda']
   };
   var state={order:null,request:0,busy:false,opened:false,back:'screen-role-choice'};
   function id(value){return document.getElementById(value);}
