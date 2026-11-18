@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+image="$1"
+project="ugc-release-check-${RANDOM}-$$"
+fixture=$(mktemp -d)
+cleanup() {
+    docker compose -p "$project" --project-directory "$fixture" -f "$fixture/compose.json" down --volumes --remove-orphans >/dev/null 2>&1 || true
+    rm -rf "$fixture"
+}
+trap cleanup EXIT
+
+export RELEASE_FIXTURE="$fixture" RELEASE_PROJECT="$project" RELEASE_IMAGE="$image"
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+directory = Path(os.environ['RELEASE_FIXTURE'])
+settings = {
+    'services': {'app': {
+        'image': os.environ['RELEASE_IMAGE'],
+        'environment': {'SYNTHETIC_TOKEN': 'literal$$value$${HOME}$$$$'},
+        'command': ['python', '-c', 'import time; time.sleep(300)'],
+        'volumes': ['data:/data'],
+    }},
+    'volumes': {'data': {}},
+}
+(directory / 'compose.json').write_text(json.dumps(settings))
+PY
+docker compose -p "$project" --project-directory "$fixture" -f "$fixture/compose.json" up -d --no-build --pull never >/dev/null
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import runpy
+import subprocess
+
+namespace = runpy.run_path('scripts/production_release.py')
+snapshot = namespace['live_snapshot']
+snapshot.__globals__['PROJECT'] = os.environ['RELEASE_PROJECT']
+snapshot.__globals__['PROJECT_DIRECTORY'] = os.environ['RELEASE_FIXTURE']
+names = subprocess.check_output([
+    'docker', 'ps', '-aq', '--filter',
+    'label=com.docker.compose.project=' + os.environ['RELEASE_PROJECT'],
+], text=True).split()
+containers = json.loads(subprocess.check_output(['docker', 'inspect', *names]))
+config = snapshot(containers)
+assert config['services']['app']['environment']['SYNTHETIC_TOKEN'] == 'literal$value${HOME}$$'
+destination = Path(os.environ['RELEASE_FIXTURE']) / 'durable.json'
+try:
+    namespace['write_snapshot'](destination, config)
+except RuntimeError:
+    command = namespace['compose_base']() + ['-f', '-', 'config', '--format', 'json']
+    resolved = json.loads(namespace['checked'](
+        command, stdin=json.dumps(namespace['escape_interpolation'](config)),
+    ))
+    print('Synthetic token expected', repr(config['services']['app']['environment']['SYNTHETIC_TOKEN']))
+    print('Synthetic token resolved', repr(resolved['services']['app']['environment']['SYNTHETIC_TOKEN']))
+    raise
+assert destination.stat().st_mode & 0o777 == 0o600
+before = namespace['runtime_signature'](containers[0])
+subprocess.run([
+    'docker', 'compose', '-p', os.environ['RELEASE_PROJECT'],
+    '--project-directory', os.environ['RELEASE_FIXTURE'], '-f', str(destination),
+    'up', '-d', '--force-recreate', '--no-build', '--pull', 'never', 'app',
+], check=True, capture_output=True)
+current_name = os.environ['RELEASE_PROJECT'] + '-app-1'
+current = json.loads(subprocess.check_output(['docker', 'inspect', current_name]))[0]
+assert namespace['runtime_signature'](current) == before
+print('Durable Compose snapshot preserved runtime settings and literal secrets')
+PY
