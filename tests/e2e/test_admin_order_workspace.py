@@ -408,7 +408,7 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     expect(progress.get_by_role("progressbar")).to_have_attribute(
         "aria-valuenow", "90"
     )
-    expect(progress).to_contain_text("Осталось подобрать 1")
+    expect(progress).to_contain_text("Осталось 1")
     page.goto(base + f"/admin/order-review?order_id={oid}&stage=all")
     scope = page.get_by_text("Выбран один заказ", exact=True)
     button = page.get_by_role("link", name="Все ответственные", exact=True)

@@ -12,7 +12,7 @@
   </div>
   <div class="order-progress__bar" role="progressbar" aria-label="Подбор мест по плану" aria-valuenow="{{ percent|round|int }}" aria-valuemin="0" aria-valuemax="100" title="Подобрано по плану {{ picked }} из {{ needed }}"><span style="width: {{ percent|round|int }}%"></span></div>
   {% if transferred is not none and transferred != picked %}<small class="order-progress__note">По плану {{ picked }} / {{ needed }}</small>{% endif %}
-  {% if picked < needed %}<small class="order-progress__note">Осталось подобрать {{ needed - picked }}</small>{% endif %}
+  {% if picked < needed %}<small class="order-progress__note">Осталось{{ ' подобрать' if not compact else '' }} {{ needed - picked }}</small>{% endif %}
 </div>
 {% endif %}
 {%- endmacro %}
