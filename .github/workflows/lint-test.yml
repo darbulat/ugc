@@ -179,7 +179,7 @@ jobs:
       - name: Install Chromium
         run: uv run playwright install --with-deps chromium
 
-      - name: Exercise orders on synthetic data
+      - name: Exercise orders and campaigns on synthetic data
         run: >-
           uv run pytest -q
           tests/e2e/test_admin_ui.py::test_dashboard_opens_while_metrics_load_and_retries
@@ -189,6 +189,11 @@ jobs:
           tests/e2e/test_browser_payment_ui.py
           tests/e2e/test_checkout_review_ui.py
           tests/e2e/test_creator_offer_card_ui.py
+          tests/e2e/test_miniapp_campaign_settings.py
+          tests/e2e/test_campaign_navigation.py
+          tests/e2e/test_miniapp_campaign_workbench.py
+          tests/e2e/test_miniapp_campaign_runtime.py
+          tests/e2e/test_campaign_recipient_recovery.py
 
   admin-image-import:
     name: Admin image import and alert isolation
