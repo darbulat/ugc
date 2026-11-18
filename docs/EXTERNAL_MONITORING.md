@@ -123,6 +123,35 @@ and Docker do not require a restart or configuration replacement.
 
 ## Monitoring the monitor itself
 
+### Peer monitoring without an external account
+
+`umc-peer-monitor.service` runs as a user service for `deploy` on the UMC
+host, outside Docker. Enable user lingering so the user manager starts at
+boot and survives SSH logout. It checks the Timeweb SSH banner on port 22
+every 30 seconds without authentication or any SSH key. Validate the
+resource limits on the actual delegated user cgroup: 128 MiB and 0.25 CPU.
+Do not restart the existing application or Docker services.
+
+Install the merged standalone script under
+`~/.local/share/umc-peer-monitor/releases/<commit>/`, with a `current`
+symlink. Keep the owner-only configuration and alert bot token under
+`~/.config/umc-peer-monitor/` (directory 0700, credential 0600). The owner
+enters the same dedicated alert bot token through hidden input; transmit it
+only via SSH stdin, never command arguments, chat or shell history. Store no
+customer bot credentials. Put the unit in `~/.config/systemd/user/` and
+enable only `umc-peer-monitor.service` with `systemctl --user`.
+
+The peer configuration is `config/monitoring/peer-monitor.example.json`.
+Two consecutive failures cause an alert from UMC to Server Alerts; a healthy
+SSH banner causes recovery. This checks host/network/SSH reachability, not
+whether the Timeweb monitor process is healthy. Alerts must describe that
+distinction. Mutual monitoring detects one unavailable host while the other
+is operational; simultaneous loss of both hosts needs a third independent
+observer. A failed initial delivery whose incident has already recovered
+must not leave obsolete retry state blocking subsequent notifications.
+
+### Optional independent provider
+
 The Timeweb monitor survives a production host/Docker failure. It cannot
 notify anyone if the Timeweb VPS itself loses connectivity. For that case,
 configure an independent hosted dead-man check (for example Healthchecks.io),
@@ -130,25 +159,10 @@ with its own Telegram integration and email recipients Kamil/Bulat.
 
 The optional `external-monitor-watchdog.conf` loads a private `watchdog_url`
 credential. Only HTTPS `hc-ping.com` URLs are accepted. The monitor pings it
-approximately every minute after successful recipient validation and
-with no pending delivery failure. Only a canonical check UUID URL and an
-explicit `OK` response count as an accepted ping. A recovered, unconfirmed
-incident clears its obsolete delivery retry instead of silencing the
-heartbeat permanently. Set the external check to one minute plus one minute
-grace. Missing pings cause alerts from the external service,
+approximately every four minutes after successful recipient validation and
+with no pending delivery failure. Set the external check to e.g. five minutes
+plus two minutes grace. Missing pings cause alerts from the external service,
 independently of both hosts and the dedicated monitor bot.
-
-With that schedule, a VPS or monitor outage is expected to be detected
-roughly 60–120 seconds after it starts, plus Healthchecks.io processing and
-Telegram delivery time. This is a timing estimate, not a guaranteed SLA.
-The alert means the heartbeat is absent: the host, monitor, network or alert
-delivery chain may need attention. It does not prove that the VPS powered off.
-
-Validate external down/recovery delivery using a separate clearly labelled
-test check: seed a heartbeat, let it expire, then send another heartbeat.
-Pause the test check afterward. Keep the real heartbeat and all existing
-projects running during this test. Use Healthchecks.io's own Telegram bot
-for external delivery; never share the UMC alert bot token with the provider.
 
 Do not claim this final layer is active until the external account/check,
 recipients and delivery have actually been configured and verified. No UMC

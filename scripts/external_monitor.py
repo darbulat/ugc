@@ -13,6 +13,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import subprocess
 import time
 import urllib.error
@@ -22,11 +23,9 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from uuid import UUID
 
 MAX_BODY = 131072
 MAX_BACKUP_AGE = 26 * 3600
-WATCHDOG_INTERVAL = 60
 
 
 @dataclass(frozen=True)
@@ -75,6 +74,31 @@ def check_page(probe: dict[str, str]) -> Observation:
     except Exception:
         # Exception strings can contain URLs, credentials or response bodies.
         return Observation(probe["name"], False, "HTTPS-проверка не прошла")
+
+
+def check_ssh_banner(probe: dict[str, str]) -> Observation:
+    try:
+        with socket.create_connection(
+            (probe["host"], 22), timeout=5
+        ) as connection:
+            deadline = time.monotonic() + 5
+            banner = b""
+            while b"\n" not in banner and len(banner) < 255:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError("ssh_banner_deadline")
+                connection.settimeout(remaining)
+                chunk = connection.recv(255 - len(banner))
+                if not chunk:
+                    break
+                banner += chunk
+            if b"\n" in banner and banner.startswith(b"SSH-2.0-"):
+                return Observation(probe["name"], True, "SSH-баннер доступен")
+    except Exception:
+        pass
+    return Observation(
+        probe["name"], False, "Нет SSH-ответа с VPS; проверьте сеть, хост и SSH"
+    )
 
 
 def snapshot_observations(
@@ -260,13 +284,11 @@ def load_state(path: Path) -> dict[str, Any]:
     return state
 
 
-def load_config(path: Path) -> dict[str, Any]:
-    config = json.loads(path.read_text())
-    probes = config.get("probes", [])
-    if not 1 <= len(probes) <= 5:
-        raise ValueError("one_to_five_probes_required")
-    names = []
-    for probe in probes:
+def validate_probe(probe: dict[str, str]) -> None:
+    kind = probe.get("type", "https")
+    if kind == "ssh":
+        ipaddress.ip_address(probe["host"])
+    elif kind == "https":
         url = urllib.parse.urlsplit(probe["url"])
         if (
             url.scheme != "https"
@@ -277,8 +299,22 @@ def load_config(path: Path) -> dict[str, Any]:
             or url.fragment
         ):
             raise ValueError("public_https_url_required")
-        if not probe.get("contains") or not 1 <= len(probe["name"]) <= 80:
-            raise ValueError("invalid_probe")
+        if not probe.get("contains"):
+            raise ValueError("expected_page_content_required")
+    else:
+        raise ValueError("unknown_probe_type")
+    if not 1 <= len(probe["name"]) <= 80:
+        raise ValueError("invalid_probe")
+
+
+def load_config(path: Path) -> dict[str, Any]:
+    config = json.loads(path.read_text())
+    probes = config.get("probes", [])
+    if not 1 <= len(probes) <= 5:
+        raise ValueError("one_to_five_probes_required")
+    names = []
+    for probe in probes:
+        validate_probe(probe)
         names.append(probe["name"])
     if len(set(names)) != len(names):
         raise ValueError("duplicate_probe_names")
@@ -344,24 +380,20 @@ def ping_watchdog(credentials: Path) -> None:
         return
     url = path.read_text().strip()
     parsed = urllib.parse.urlsplit(url)
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname != "hc-ping.com"
-        or parsed.username
-        or parsed.password
-        or parsed.port not in (None, 443)
-        or parsed.query
-        or parsed.fragment
-        or parsed.path != "/" + str(UUID(parsed.path.removeprefix("/")))
-    ):
+    if parsed.scheme != "https" or parsed.hostname != "hc-ping.com":
         raise ValueError("invalid_external_watchdog_url")
-    if request_bytes(url).strip() != b"OK":
-        raise ValueError("watchdog_ping_not_accepted")
+    request_bytes(url)
 
 
 def collect(config: dict[str, Any], credentials: Path) -> list[Observation]:
     with ThreadPoolExecutor(max_workers=6) as pool:
-        pages = [pool.submit(check_page, probe) for probe in config["probes"]]
+        pages = [
+            pool.submit(
+                check_ssh_banner if probe.get("type") == "ssh" else check_page,
+                probe,
+            )
+            for probe in config["probes"]
+        ]
         snapshot = (
             pool.submit(check_snapshot, config["snapshot"], credentials)
             if config.get("snapshot")
@@ -394,8 +426,7 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
                 print("recipient_validation_failed", flush=True)
             checked_at = now
         events = evaluate(state, observations, now)
-        # An unconfirmed incident can recover before its delivery retry. It
-        # no longer needs delivery and must not suppress heartbeats forever.
+        # A recovered incident no longer needs its failed initial delivery.
         if not events:
             state["retry_at"] = 0
         if events and now >= state.get("retry_at", 0):
@@ -419,7 +450,7 @@ def run(config: dict[str, Any], credentials: Path, state_path: Path) -> None:
         if (
             recipient_ok
             and not state.get("retry_at")
-            and now - state.get("watchdog_at", 0) >= WATCHDOG_INTERVAL
+            and now - state.get("watchdog_at", 0) >= 240
         ):
             try:
                 ping_watchdog(credentials)

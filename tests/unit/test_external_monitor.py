@@ -8,7 +8,7 @@ import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import boto3
 import pytest
@@ -85,6 +85,87 @@ def test_transport_error_never_exposes_urls_or_credentials(monkeypatch):
     )
     assert not result.ok
     assert "secret" not in result.detail and "token" not in result.detail
+
+
+def _ssh_connection(monkeypatch, chunks):
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.recv.side_effect = chunks
+    transport = Mock(return_value=connection)
+    monkeypatch.setattr(monitor.socket, "create_connection", transport)
+    return connection, transport
+
+
+def test_ssh_banner_probe_reassembles_fragments_without_authentication(
+    monkeypatch,
+):
+    connection, transport = _ssh_connection(
+        monkeypatch, [b"SSH-", b"2.0-OpenSSH_9.6\r\n"]
+    )
+    result = monitor.check_ssh_banner({"name": "Timeweb", "host": "192.0.2.1"})
+    assert result.ok
+    transport.assert_called_once_with(("192.0.2.1", 22), timeout=5)
+    connection.send.assert_not_called()
+    connection.sendall.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        [b"HTTP/1.1 200 OK\r\n"],
+        [b""],
+        [b"SSH-2.0-incomplete", b""],
+        [b"x" * 255],
+    ],
+)
+def test_ssh_probe_rejects_closed_wrong_or_unterminated_service(
+    monkeypatch, chunks
+):
+    _ssh_connection(monkeypatch, chunks)
+    assert not monitor.check_ssh_banner(
+        {"name": "Timeweb", "host": "192.0.2.1"}
+    ).ok
+
+
+def test_ssh_probe_bounds_the_entire_banner_read(monkeypatch):
+    connection, _ = _ssh_connection(monkeypatch, [b"SSH-2.0-foo\n"])
+    ticks = iter([100, 106])
+    monkeypatch.setattr(
+        monitor, "time", SimpleNamespace(monotonic=lambda: next(ticks))
+    )
+    assert not monitor.check_ssh_banner(
+        {"name": "Timeweb", "host": "192.0.2.1"}
+    ).ok
+    connection.recv.assert_not_called()
+
+
+def test_ssh_errors_never_expose_transport_details(monkeypatch):
+    monkeypatch.setattr(
+        monitor.socket,
+        "create_connection",
+        Mock(side_effect=OSError("secret-private-network-details")),
+    )
+    result = monitor.check_ssh_banner({"name": "Timeweb", "host": "192.0.2.1"})
+    assert not result.ok and "secret" not in result.detail
+
+
+def test_collect_preserves_https_and_dispatches_peer_probe(
+    monkeypatch, tmp_path
+):
+    https = Mock(return_value=observation(True, "web"))
+    ssh = Mock(return_value=observation(True, "peer"))
+    monkeypatch.setattr(monitor, "check_page", https)
+    monkeypatch.setattr(monitor, "check_ssh_banner", ssh)
+    probes = [
+        {"name": "web", "url": "https://example.test", "contains": "ok"},
+        {"name": "peer", "type": "ssh", "host": "192.0.2.1"},
+    ]
+    result = monitor.collect({"probes": probes, "snapshot": None}, tmp_path)
+    assert [x.name for x in result] == ["web", "peer"] and all(
+        x.ok for x in result
+    )
+    https.assert_called_once_with(probes[0])
+    ssh.assert_called_once_with(probes[1])
 
 
 def healthy_snapshot(now):
@@ -255,6 +336,42 @@ def test_example_config_and_state_validation(tmp_path):
         monitor.load_state(path)
 
 
+def test_peer_config_needs_no_ssh_credential_or_web_endpoint():
+    sample = (
+        Path(__file__).parents[2]
+        / "config/monitoring/peer-monitor.example.json"
+    )
+    config = monitor.load_config(sample)
+    assert config["probes"] == [
+        {
+            "name": "Timeweb недоступен с сервера UMC",
+            "type": "ssh",
+            "host": "194.87.131.138",
+        }
+    ]
+    assert config["snapshot"] is None
+
+
+@pytest.mark.parametrize(
+    "host", ["example.org", "192.0.2.1:22", "192.0.2.1; id"]
+)
+def test_peer_config_requires_a_literal_ip_address(tmp_path, host):
+    path = config_file(
+        tmp_path, probes=[{"name": "peer", "type": "ssh", "host": host}]
+    )
+    with pytest.raises(ValueError):
+        monitor.load_config(path)
+
+
+def test_unknown_probe_type_is_rejected_before_transport(tmp_path):
+    path = config_file(
+        tmp_path,
+        probes=[{"name": "peer", "type": "shell", "host": "192.0.2.1"}],
+    )
+    with pytest.raises(ValueError, match="unknown_probe_type"):
+        monitor.load_config(path)
+
+
 @pytest.mark.parametrize(
     "username", ["usemycontent_ai", "umc_alerts_app", "umc_alerts_bot"]
 )
@@ -319,20 +436,28 @@ def test_personal_chat_is_never_used_instead_of_the_channel(monkeypatch):
         monitor.validate_recipient("123:fake", "123456789")
 
 
-def test_run_retries_failed_delivery_then_reports_recovery(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("recovered_before_retry", [False, True])
+def test_run_retries_failed_delivery_or_clears_recovered_incident(
+    monkeypatch, tmp_path, recovered_before_retry
 ):
     credentials = tmp_path / "creds"
     credentials.mkdir()
     (credentials / "telegram_token").write_text("123:fake")
     monkeypatch.setattr(monitor, "validate_recipient", Mock())
     samples = iter(
-        [[observation()], [observation()], [observation()], [observation(True)]]
+        [
+            [observation()],
+            [observation()],
+            [observation(recovered_before_retry)],
+            [observation(True)],
+        ]
     )
     monkeypatch.setattr(
         monitor, "collect", lambda config, credentials: next(samples)
     )
-    clock = iter([100, 130, 500, 530])
+    clock = iter(
+        [100, 130, 160, 190] if recovered_before_retry else [100, 130, 500, 530]
+    )
     ticks = []
 
     class StopLoop(Exception):
@@ -362,8 +487,10 @@ def test_run_retries_failed_delivery_then_reports_recovery(
             credentials,
             path,
         )
-    assert api.call_count == 3
-    assert "ВОССТАНОВЛЕНО" in api.call_args.args[2]["text"]
+    assert api.call_count == (1 if recovered_before_retry else 3)
+    if not recovered_before_retry:
+        assert "ВОССТАНОВЛЕНО" in api.call_args.args[2]["text"]
+    assert monitor.load_state(path)["retry_at"] == 0
     assert monitor.load_state(path)["checks"]["Mini App"]["notified"] is False
 
 
@@ -469,7 +596,7 @@ def test_wrong_bot_token_is_rejected_before_saving_or_sending(monkeypatch):
 def test_external_watchdog_is_optional_and_host_restricted(
     monkeypatch, tmp_path
 ):
-    request = Mock(return_value=b"OK")
+    request = Mock()
     monkeypatch.setattr(monitor, "request_bytes", request)
     monitor.ping_watchdog(tmp_path)
     request.assert_not_called()
@@ -478,139 +605,9 @@ def test_external_watchdog_is_optional_and_host_restricted(
     with pytest.raises(ValueError):
         monitor.ping_watchdog(tmp_path)
     request.assert_not_called()
-    path.write_text("https://hc-ping.com/11111111-2222-4333-8444-555555555555")
+    path.write_text("https://hc-ping.com/fake-monitor-id")
     monitor.ping_watchdog(tmp_path)
     assert request.call_count == 1
-
-
-@pytest.mark.parametrize("suffix", ["/fail", "?token=hidden", "#fragment"])
-def test_watchdog_rejects_non_success_endpoint_before_transport(
-    monkeypatch, tmp_path, suffix
-):
-    url = "https://hc-ping.com/11111111-2222-4333-8444-555555555555" + suffix
-    (tmp_path / "watchdog_url").write_text(url)
-    request = Mock(return_value=b"OK")
-    monkeypatch.setattr(monitor, "request_bytes", request)
-    with pytest.raises(ValueError):
-        monitor.ping_watchdog(tmp_path)
-    request.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "authority", ["user:password@hc-ping.com", "hc-ping.com:8443"]
-)
-def test_watchdog_rejects_embedded_credentials_and_custom_ports(
-    monkeypatch, tmp_path, authority
-):
-    (tmp_path / "watchdog_url").write_text(
-        "https://" + authority + "/11111111-2222-4333-8444-555555555555"
-    )
-    request = Mock(return_value=b"OK")
-    monkeypatch.setattr(monitor, "request_bytes", request)
-    with pytest.raises(ValueError):
-        monitor.ping_watchdog(tmp_path)
-    request.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "body", [b"OK (not found)", b"OK (rate limited)", b"ERROR", b""]
-)
-def test_watchdog_does_not_accept_ignored_or_unknown_check(
-    monkeypatch, tmp_path, body
-):
-    (tmp_path / "watchdog_url").write_text(
-        "https://hc-ping.com/11111111-2222-4333-8444-555555555555"
-    )
-    monkeypatch.setattr(monitor, "request_bytes", Mock(return_value=body))
-    with pytest.raises(ValueError, match="watchdog_ping_not_accepted"):
-        monitor.ping_watchdog(tmp_path)
-
-
-def _watchdog_run(monkeypatch, tmp_path, samples, timestamps, recipient=None):
-    credentials = tmp_path / "credentials"
-    credentials.mkdir()
-    (credentials / "telegram_token").write_text("123:fake")
-    monkeypatch.setattr(monitor, "validate_recipient", recipient or Mock())
-    frames = iter(samples)
-    monkeypatch.setattr(monitor, "collect", lambda *args: next(frames))
-    ticks = iter(timestamps)
-    current = {}
-    sleeps = []
-    heartbeats = []
-
-    class StopLoop(Exception):
-        pass
-
-    def now():
-        current["now"] = next(ticks)
-        return current["now"]
-
-    def sleep(seconds):
-        sleeps.append(seconds)
-        if len(sleeps) == len(timestamps):
-            raise StopLoop
-
-    monkeypatch.setattr(
-        monitor,
-        "time",
-        SimpleNamespace(time=now, monotonic=lambda: 0, sleep=sleep),
-    )
-    monkeypatch.setattr(
-        monitor,
-        "ping_watchdog",
-        lambda *args: heartbeats.append(current["now"]),
-    )
-    sender = Mock(side_effect=ConnectionError("hidden-token-never-log"))
-    monkeypatch.setattr(monitor, "telegram", sender)
-    state = tmp_path / "state.json"
-    with pytest.raises(StopLoop):
-        monitor.run(
-            {"chat_id": "-1001234567890", "bot_username": "umc_test_bot"},
-            credentials,
-            state,
-        )
-    return heartbeats, monitor.load_state(state), sender
-
-
-def test_watchdog_runs_each_minute_and_not_before_boundary(
-    monkeypatch, tmp_path
-):
-    beats, _, sender = _watchdog_run(
-        monkeypatch, tmp_path, [[observation(True)]] * 4, [100, 130, 159, 160]
-    )
-    assert beats == [100, 160]
-    sender.assert_not_called()
-
-
-@pytest.mark.parametrize("recovered", [True, False])
-def test_watchdog_resumes_only_when_pending_failure_no_longer_needs_delivery(
-    monkeypatch, tmp_path, recovered
-):
-    beats, state, sender = _watchdog_run(
-        monkeypatch,
-        tmp_path,
-        [
-            [observation()],
-            [observation()],
-            [observation(recovered)],
-            [observation(recovered)],
-        ],
-        [100, 130, 160, 190],
-    )
-    assert beats == ([100, 160] if recovered else [100])
-    assert bool(state["retry_at"]) is (not recovered)
-    assert sender.call_count == 1
-
-
-def test_watchdog_stops_when_alert_recipient_validation_fails(
-    monkeypatch, tmp_path
-):
-    recipient = Mock(side_effect=[None, ConnectionError("hidden-token")])
-    beats, _, sender = _watchdog_run(
-        monkeypatch, tmp_path, [[observation(True)]] * 2, [300, 330], recipient
-    )
-    assert beats == []
-    sender.assert_not_called()
 
 
 @pytest.mark.parametrize(

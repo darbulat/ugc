@@ -1,0 +1,25 @@
+[Unit]
+Description=Timeweb peer availability monitoring from UMC
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 %h/.local/share/umc-peer-monitor/current/external_monitor.py --config %h/.config/umc-peer-monitor/config.json
+LoadCredential=telegram_token:%h/.config/umc-peer-monitor/telegram-token
+Environment=STATE_DIRECTORY=%h/.local/state/umc-peer-monitor
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+Restart=on-failure
+RestartSec=30
+MemoryMax=128M
+MemoryHigh=96M
+CPUQuota=25%
+TasksMax=16
+Nice=10
+OOMScoreAdjust=500
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target

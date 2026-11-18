@@ -1,0 +1,12 @@
+{
+  "chat_id": "-1000000000000",
+  "bot_username": "replace_me_bot",
+  "probes": [
+    {
+      "name": "Timeweb недоступен с сервера UMC",
+      "type": "ssh",
+      "host": "194.87.131.138"
+    }
+  ],
+  "snapshot": null
+}
