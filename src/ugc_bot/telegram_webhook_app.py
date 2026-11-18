@@ -180,8 +180,7 @@ async def _lifespan(app: FastAPI):
             with suppress(Exception):
                 await max_http_session.close()
         if bot is not None:
-            with suppress(Exception):
-                await bot.delete_webhook()
+            # The webhook registration is shared by all replicas of this bot.
             await bot.session.close()
         exchange_svc = (
             dispatcher.get("exchange_rate_service") if dispatcher else None
