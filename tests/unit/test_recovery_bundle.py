@@ -346,3 +346,92 @@ def test_failed_producer_cleans_partial_ciphertext_and_container(
     assert not output.exists()
     assert operations[-1][:3] == ["docker", "rm", "-f"]
     assert operations[-1][-1].startswith("ugc-recovery-")
+
+
+@pytest.fixture
+def backup_cli(backup_module, tmp_path, monkeypatch):
+    main = backup_module["main"]
+    parameters = {
+        "META_TOKEN_MONITOR_IMAGE": "synthetic-monitor:checked",
+        "META_TOKEN_MONITOR_SETTINGS_DIR": "/private/synthetic/settings",
+        "META_TOKEN_MONITOR_STATE_DIR": "/private/synthetic/state",
+        "META_TOKEN_MONITOR_UID": "1000",
+        "META_TOKEN_MONITOR_GID": "1000",
+    }
+    source = tmp_path / "snapshot-environment.json"
+    source.write_text(json.dumps(parameters))
+    source.chmod(0o600)
+    loader = main.__globals__["load_snapshot_environment"]
+    monkeypatch.setitem(loader.__globals__, "SNAPSHOT_ENVIRONMENT", source)
+    for name in parameters:
+        monkeypatch.setenv(name, "not-loaded")
+    recipient = tmp_path / "recipient.txt"
+    recipient.write_text("age1synthetic")
+    output = tmp_path / "archives"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "backup_recovery.py",
+            "--recipient",
+            str(recipient),
+            "--age",
+            str(tmp_path / "age"),
+            "--image",
+            "checked-image",
+            "--output-directory",
+            str(output),
+        ],
+    )
+    monkeypatch.setitem(
+        main.__globals__,
+        "open_lock",
+        lambda path: (tmp_path / Path(path).name).open("a+"),
+    )
+    return main, source, parameters, output
+
+
+def test_backup_cli_loads_private_parameters_for_snapshot_and_upload(
+    backup_cli, monkeypatch, capsys
+):
+    main, _, parameters, output = backup_cli
+    created = []
+    monkeypatch.setitem(
+        main.__globals__, "inspect", lambda *args: {"Id": "checked-image"}
+    )
+
+    def create(path, *args):
+        assert {key: os.environ[key] for key in parameters} == parameters
+        path.write_bytes(b"synthetic ciphertext")
+        created.append(path)
+
+    monkeypatch.setitem(main.__globals__, "create_local_bundle", create)
+    monkeypatch.setitem(
+        main.__globals__,
+        "upload_bundle",
+        lambda path: {
+            "key": "recovery/" + path.name,
+            "bytes": path.stat().st_size,
+        },
+    )
+    main()
+    assert len(created) == 1 and created[0].parent == output
+    assert json.loads(capsys.readouterr().out)["bytes"] == len(
+        b"synthetic ciphertext"
+    )
+
+
+def test_backup_rejects_public_parameter_file_before_any_backup_work(
+    backup_cli, monkeypatch
+):
+    main, source, _, output = backup_cli
+    source.chmod(0o644)
+
+    def unexpected(*args):
+        pytest.fail("Unsafe settings must fail before Docker or archive work")
+
+    monkeypatch.setitem(main.__globals__, "inspect", unexpected)
+    monkeypatch.setitem(main.__globals__, "create_local_bundle", unexpected)
+    with pytest.raises(ValueError, match="owner-only"):
+        main()
+    assert not output.exists()

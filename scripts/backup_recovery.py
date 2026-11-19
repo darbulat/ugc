@@ -14,6 +14,7 @@ from production_release import (
     escape_interpolation,
     inspect,
     live_snapshot,
+    load_snapshot_environment,
     open_lock,
 )
 
@@ -271,6 +272,7 @@ def main():
     parser.add_argument("--image", required=True)
     parser.add_argument("--output-directory", type=Path, required=True)
     args = parser.parse_args()
+    load_snapshot_environment()
     image = inspect(args.image, "image")
     recipient = args.recipient.read_text().strip()
     if not recipient.startswith("age1"):
