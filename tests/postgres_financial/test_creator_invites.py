@@ -267,6 +267,10 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         )
     send = AsyncMock(return_value="sent")
     monkeypatch.setattr("ugc_bot.admin.creator_invites.dispatch_invite", send)
+    send_customer = AsyncMock(return_value="sent")
+    monkeypatch.setattr(
+        "ugc_bot.admin.creator_invites.dispatch_customer_contact", send_customer
+    )
     path = f"/admin/orders/{order_id}/creator-invites"
     with TestClient(create_admin_app()) as client:
         assert client.get(path, follow_redirects=False).is_redirect
@@ -278,6 +282,11 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         page = client.get(path)
         assert page.status_code == 200
         token = search(r'name="csrf_token" value="([^"]+)"', page.text)
+        assert "Без менеджера · общается заказчик" in page.text
+        assert 'id="invite-consent"' in page.text
+        assert "<summary>Креатор уже согласился" not in page.text
+        assert 'value="send_customer"' in page.text
+        assert 'value="create">Создать ссылку' in page.text
         position = search(
             r'<option value="([a-f0-9-]{36})">№1</option>', page.text
         )
@@ -301,6 +310,20 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         checked = client.post(path, data={**known, "operation": "preview"})
         assert "бот доступен" in checked.text
         send.assert_not_awaited()
+        invalid = client.post(
+            path,
+            data={**known, "operation": "send_customer", "record_consent": "1"},
+        )
+        assert invalid.status_code == 422
+        assert "Укажите, где получено согласие креатора." in invalid.text
+        assert 'value="@known_contact"' in invalid.text
+        assert "Проверьте выбранную позицию" not in invalid.text
+        send_customer.assert_not_awaited()
+        missing = client.post(
+            path, data={**known, "operation": "send_customer"}
+        )
+        assert missing.status_code == 422
+        assert "Подтвердите согласие креатора" in missing.text
         sent = client.post(path, data={**known, "operation": "send"})
         assert "Приглашение отправлено в Telegram." in sent.text
         assert "Персональная ссылка готова" not in sent.text
@@ -315,4 +338,17 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
             },
         )
         assert "Персональная ссылка готова" in manual.text
+        send.assert_awaited_once()
+        sent_customer = client.post(
+            path,
+            data={
+                **known,
+                "operation": "send_customer",
+                "record_consent": "1",
+                "consent_source": "telegram",
+            },
+        )
+        assert sent_customer.status_code == 200
+        assert "Контакт отправлен заказчику в Telegram." in sent_customer.text
+        send_customer.assert_awaited_once()
         send.assert_awaited_once()

@@ -26,7 +26,7 @@
       <input id="invite-link" class="form-control" value="{{ link }}" readonly>
       <button class="admin-button" type="button" id="copy-invite-link">Скопировать ссылку</button>
       <span id="invite-copy-status" role="status"></span>
-      <p>Перешлите ссылку креатору. Она действует до 30 дней.</p>
+      <p>Передайте ссылку менеджеру или креатору. Креатор откроет бота, зарегистрируется и подтвердит участие в этом заказе. Ссылка действует до 30 дней.</p>
       <script>
         document.getElementById('copy-invite-link').addEventListener('click', async function () {
           const link = document.getElementById('invite-link');
@@ -62,24 +62,24 @@
           <input id="invite-telegram" class="form-control" name="telegram" value="{{ telegram }}" maxlength="100" placeholder="@username">
         </label>
         <div class="invite-profile-result">
-          <button type="submit" class="admin-button" name="operation" value="preview">Проверить в базе</button>
+          <button type="submit" class="admin-button" name="operation" value="preview" formnovalidate>Проверить в базе</button>
           {% if known %}<strong role="status">{{ known }}</strong>{% endif %}
         </div>
         <label>Имя креатора для карточки
           <input class="form-control" name="creator_name" value="{{ creator_name }}" maxlength="80">
         </label>
-        <label>Кто ведёт креатора
+        <label>Менеджер команды заказа
           <select class="form-select" name="manager_id">
-            <option value="">Администратор</option>
+            <option value="">Без менеджера · общается заказчик</option>
             {% for manager in managers %}<option value="{{ manager.user_id }}"{% if manager.user_id == manager_id %} selected{% endif %}>{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
           </select>
         </label>
       </div>
       {% if availability == "ready" %}<p>При отправке в бот креатор подтвердит участие, затем заказчик получит сообщение о контакте.</p>{% endif %}
-      <details class="mb-3"{% if consent_source %} open{% endif %}>
-        <summary>Креатор уже согласился в личной переписке</summary>
-        <label><input type="checkbox" name="record_consent" value="1"{% if consent_source %} checked{% endif %}>
-          Креатор согласился участвовать в этом заказе и разрешил показать указанные контакты заказчику.
+      <p>Контакт отправляется заказчику. Менеджер, если выбран, получит уведомление после подтверждения участия креатором.</p>
+      <div class="mb-3">
+        <label><input id="invite-consent" type="checkbox" name="record_consent" value="1"{% if record_consent or consent_source %} checked{% endif %}>
+          Креатор уже согласился в личной переписке и разрешил передать контакты заказчику.
         </label>
         <label for="invite-source">Где получено согласие</label>
         <select id="invite-source" name="consent_source" class="form-select">
@@ -88,26 +88,26 @@
           <option value="telegram"{% if consent_source == "telegram" %} selected{% endif %}>Telegram</option>
           <option value="other"{% if consent_source == "other" %} selected{% endif %}>Другая переписка</option>
         </select>
-        <p>Контакт появится в итогах заказа. Ссылка позволит креатору вернуться позже. Бот не отправит сообщений при сохранении.</p>
-      </details>
-      {% if availability %}
-      <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-action" value="{{ 'send' if availability == 'ready' and not consent_source else 'create' }}">{{ 'Сохранить контакт и получить ссылку' if consent_source else ('Отправить приглашение в бот' if availability == 'ready' else 'Создать ссылку') }}</button>
+        <p>Для отправки заказчику отметьте согласие и укажите его источник. Заказчик получит имя и ссылки на Instagram и Telegram, даже если креатора ещё нет в боте или бот заблокирован.</p>
+      </div>
+      <div class="admin-actions">
+        <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-customer-action" value="send_customer">Отправить заказчику</button>
+        <button class="admin-button" type="submit" name="operation" value="create">Создать ссылку</button>
+        {% if availability == 'ready' %}<button class="admin-button" type="submit" name="operation" value="send">Отправить приглашение креатору в бот</button>{% endif %}
+      </div>
       <script>
         const consent = document.querySelector('[name=record_consent]');
-        const action = document.getElementById('invite-action');
-        consent.addEventListener('change', function () {
-          const canSend = {{ (availability == 'ready') | tojson }};
-          action.value = canSend && !consent.checked ? 'send' : 'create';
-          action.textContent = consent.checked ? 'Сохранить контакт и получить ссылку' :
-            action.value === 'send' ? 'Отправить приглашение в бот' : 'Создать ссылку';
-        });
-        for (const field of ['invite-instagram', 'invite-telegram']) {
-          document.getElementById(field).addEventListener('input', function () {
-            document.getElementById('invite-action').disabled = true;
-          });
+        const source = document.getElementById('invite-source');
+        const customer = document.getElementById('invite-customer-action');
+        function updateConsent() {
+          customer.disabled = !consent.checked;
+          source.required = consent.checked;
         }
+        updateConsent();
+        consent.addEventListener('change', function () {
+          updateConsent();
+        });
       </script>
-      {% endif %}
     </form>
   </section>
   {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
@@ -119,6 +119,10 @@
       {% for invite in invites %}
       <li>
         <strong>№{{ invite.ordinal }} · @{{ invite.instagram }}</strong>
+        {% if invite.customer_state == 'sent' or invite.id == sent_identity %}<span role="status"> · Контакт отправлен заказчику</span>
+        {% elif invite.customer_state == 'sending' %} · Отправка заказчику началась
+        {% elif invite.customer_state == 'unknown' %} · Проверьте доставку в Telegram заказчика
+        {% elif invite.customer_state == 'failed' %} · Контакт не доставлен заказчику{% endif %}
         {% if invite.reported_at %} · Согласие в переписке{% endif %}
         {% if invite.consented_at or invite.consent_source == preview_consent %} · Участие подтверждено
         {% elif invite.expires_at <= now %} · Срок истёк
@@ -126,6 +130,13 @@
           · {{ 'Открыто в боте' if invite.opened else 'Ждём подтверждения' }}
           {% if invite.notice_state == "sent" %} · Отправлено в Telegram
           {% else %}<input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}
+        {% endif %}
+        {% if invite.reported_at and not invite.consented_at and invite.expires_at > now and not invite.customer_state and invite.id != sent_identity %}
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+          <input type="hidden" name="invite_id" value="{{ invite.id }}">
+          <button class="admin-button admin-button--primary" type="submit" name="operation" value="send_customer">Отправить заказчику</button>
+        </form>
         {% endif %}
       </li>
       {% endfor %}
