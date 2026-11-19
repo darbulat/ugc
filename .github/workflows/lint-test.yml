@@ -44,6 +44,9 @@ jobs:
       - name: Run linters (format check, lint, typecheck)
         run: make format-check lint typecheck
 
+      - name: Check Telegram webhook alert behaviour
+        run: bash tests/monitoring/check_telegram_alerts.sh
+
   migrations:
     name: Verify PostgreSQL migrations
     runs-on: ubuntu-latest
