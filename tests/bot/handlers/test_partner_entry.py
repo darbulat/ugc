@@ -6,8 +6,10 @@ from types import SimpleNamespace
 import pytest
 
 from tests.helpers.fakes import FakeMessengerClient
+from ugc_bot.application.messenger.dto import IncomingUser
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.max.client import _build_inline_keyboard
 from ugc_bot.infrastructure.messenger.telegram.client import (
     build_keyboard_markup,
@@ -99,7 +101,9 @@ async def test_partner_command_uses_real_platform_shell_and_native_markup(
     assert handler is not None, "Partner entry handler is missing"
     messenger = FakeMessengerClient()
     if platform == "telegram":
-        incoming = SimpleNamespace(chat_id="101")
+        incoming = SimpleNamespace(
+            chat_id="101", user=IncomingUser("101", MessengerType.TELEGRAM)
+        )
         adapter = SimpleNamespace(from_message=lambda _: incoming)
         await handler(
             object(),
@@ -110,7 +114,9 @@ async def test_partner_command_uses_real_platform_shell_and_native_markup(
         )
     else:
         await handler(
-            SimpleNamespace(chat_id="101"),
+            SimpleNamespace(
+                chat_id="101", user=IncomingUser("101", MessengerType.TELEGRAM)
+            ),
             {
                 "config": config(),
                 "messenger_client": messenger,
@@ -125,7 +131,12 @@ async def test_partner_command_uses_real_platform_shell_and_native_markup(
         if platform == "telegram"
         else "https://max.example.test/miniapp/max_app.html"
     ) + "?view=partner"
-    assert button.text == label and button.web_app_url == expected
+    assert button.text == (
+        DEFAULT_TEXTS[locale]["btn_partner_cabinet"]
+        if platform == "telegram"
+        else label
+    )
+    assert button.web_app_url == expected
     if platform == "telegram":
         assert (
             build_keyboard_markup(request["keyboard"])
@@ -170,7 +181,11 @@ async def test_partner_menu_callback_is_answered_and_opens_own_native_screen(
 ):
     module = importlib.import_module(f"ugc_bot.bot.{platform}.handlers.start")
     messenger = FakeMessengerClient()
-    incoming = SimpleNamespace(chat_id="101", callback_id="callback-1")
+    incoming = SimpleNamespace(
+        chat_id="101",
+        callback_id="callback-1",
+        user=IncomingUser("101", MessengerType.TELEGRAM),
+    )
     if platform == "telegram":
         await module.partner_callback(
             object(),

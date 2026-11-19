@@ -15,6 +15,7 @@ from ugc_bot.bot.texts.defaults.be import BE
 from ugc_bot.bot.texts.defaults.customer import CUSTOMER_TEXTS
 from ugc_bot.bot.texts.defaults.en import EN
 from ugc_bot.bot.texts.defaults.kk import KK
+from ugc_bot.bot.texts.defaults.navigation import NAVIGATION_TEXTS
 from ugc_bot.bot.texts.defaults.rating import RATING_TEXTS
 from ugc_bot.bot.texts.defaults.ru import RU
 from ugc_bot.bot.texts.defaults.uz import UZ
@@ -56,4 +57,7 @@ for _locale, _message in _RATING_WORK_REQUIRED.items():
     DEFAULT_TEXTS[_locale]["msg_rating_work_required"] = _message
 
 for _locale, _texts in RATING_TEXTS.items():
+    DEFAULT_TEXTS[_locale].update(_texts)
+
+for _locale, _texts in NAVIGATION_TEXTS.items():
     DEFAULT_TEXTS[_locale].update(_texts)

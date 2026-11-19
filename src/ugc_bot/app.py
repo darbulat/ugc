@@ -40,6 +40,7 @@ from ugc_bot.bot.telegram.handlers.messenger_linking import (
     router as messenger_linking_router,
 )
 from ugc_bot.bot.telegram.handlers.my_orders import router as my_orders_router
+from ugc_bot.bot.telegram.handlers.navigation import router as navigation_router
 from ugc_bot.bot.telegram.handlers.offer_preview import (
     router as offer_preview_router,
 )
@@ -175,6 +176,7 @@ def build_dispatcher(
         dispatcher.include_router(messenger_linking_router)
         dispatcher.include_router(support_chat_router)
         dispatcher.include_router(creator_invites_router)
+        dispatcher.include_router(navigation_router)
         dispatcher.include_router(manager_application_router)
         dispatcher.include_router(start_router)
         dispatcher.include_router(referral_router)

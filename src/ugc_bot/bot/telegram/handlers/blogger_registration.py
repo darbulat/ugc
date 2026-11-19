@@ -71,6 +71,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.telegram.navigation import NavigationMiddleware
 from ugc_bot.bot.telegram.validators import (
     INSTAGRAM_URL_REGEX,
     VALIDATOR_ERR_KEYS,
@@ -93,6 +94,9 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
+_navigation = NavigationMiddleware("blogger")
+router.message.middleware(_navigation)
+router.callback_query.middleware(_navigation)
 logger = logging.getLogger(__name__)
 
 _BLOGGER_GENDER_CALLBACK_TO_BTN = {

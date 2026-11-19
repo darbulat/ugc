@@ -30,11 +30,15 @@ from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.telegram.navigation import NavigationMiddleware
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
+_navigation = NavigationMiddleware("blogger")
+router.message.middleware(_navigation)
+router.callback_query.middleware(_navigation)
 logger = logging.getLogger(__name__)
 
 

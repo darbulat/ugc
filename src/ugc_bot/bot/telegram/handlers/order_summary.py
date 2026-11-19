@@ -15,8 +15,12 @@ from ugc_bot.bot.telegram.handlers.creator_invites import (
     sharing_buttons,
 )
 from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.navigation import NavigationMiddleware
 
 router = Router()
+_navigation = NavigationMiddleware("advertiser")
+router.message.middleware(_navigation)
+router.callback_query.middleware(_navigation)
 PREFIX = "os:"
 PAGE_SIZE = 5
 REASONS = (
