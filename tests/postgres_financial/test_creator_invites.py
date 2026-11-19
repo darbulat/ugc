@@ -267,7 +267,21 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         )
     send = AsyncMock(return_value="sent")
     monkeypatch.setattr("ugc_bot.admin.creator_invites.dispatch_invite", send)
-    send_customer = AsyncMock(return_value="sent")
+
+    async def customer_receipt(config, service, identity):
+        from ugc_bot.infrastructure.db.invite_handoff_models import NOTICES
+
+        with Session(env["pg"]) as db, db.begin():
+            db.execute(
+                NOTICES.insert().values(
+                    invite_id=identity,
+                    kind="customer",
+                    state="sent",
+                )
+            )
+        return "sent"
+
+    send_customer = AsyncMock(side_effect=customer_receipt)
     monkeypatch.setattr(
         "ugc_bot.admin.creator_invites.dispatch_customer_contact", send_customer
     )
@@ -349,6 +363,23 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
             },
         )
         assert sent_customer.status_code == 200
-        assert "Контакт отправлен заказчику в Telegram." in sent_customer.text
+        assert [response.status_code for response in sent_customer.history] == [
+            303
+        ]
+        assert "Контакт отправлен заказчице в Telegram" in sent_customer.text
+        assert "Позиция №2 из 10" in sent_customer.text
+        assert "Добавить следующего креатора · №3" in sent_customer.text
+        assert 'id="invite-creator-form"' not in sent_customer.text
+        refreshed = client.get(str(sent_customer.url))
+        assert "Контакт отправлен заказчице в Telegram" in refreshed.text
+        next_page = client.get(path)
+        assert 'value="@known_contact"' not in next_page.text
+        assert (
+            'id="invite-consent" type="checkbox" '
+            'name="record_consent" value="1">' in next_page.text
+        )
+        assert "Первая свободная · №3" in next_page.text
+        forged = client.get(path, params={"sent": str(uuid4())})
+        assert 'id="invite-result"' not in forged.text
         send_customer.assert_awaited_once()
         send.assert_awaited_once()

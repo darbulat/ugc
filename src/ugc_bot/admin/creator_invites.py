@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 from starlette.requests import Request
@@ -25,7 +25,17 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     create_invite,
     creator_availability,
     order_for_invite,
-    team,
+)
+from ugc_bot.infrastructure.db.repositories.invite_partners import (
+    admin_managers,
+    ensure_work_manager,
+    lock_invite_people,
+    profile_referrer,
+    referrer_choices,
+    save_partner,
+)
+from ugc_bot.infrastructure.db.repositories.invite_partners import (
+    installed as partners_installed,
 )
 from ugc_bot.infrastructure.db.repositories.invite_preview import (
     PREVIEW_CONSENT,
@@ -54,7 +64,14 @@ ERRORS = {
         "Позиция уже недоступна. Выберите другую."
     ),
     "creator_invite_manager_unavailable": (
-        "Выберите активного менеджера из команды заказа."
+        "Выберите активного менеджера из базы."
+    ),
+    "creator_invite_referrer_invalid": (
+        "Выберите активного партнёра. "
+        "Креатор не может быть собственным реферером."
+    ),
+    "creator_invite_partner_unavailable": (
+        "Привязка партнёра пока недоступна. Обновите страницу."
     ),
 }
 
@@ -74,6 +91,33 @@ def _consent(form, operation):
     if operation == "send_customer" and not (recorded or form.get("invite_id")):
         error = "Подтвердите согласие креатора в переписке."
     return source, error, operation
+
+
+def _sent_contact(db, order_id, receipt_id):
+    if receipt_id is None:
+        return None
+    return (
+        db.execute(
+            select(
+                INVITES.c.creator_name,
+                INVITES.c.instagram,
+                OrderItemModel.ordinal,
+            )
+            .join(
+                OrderItemModel, OrderItemModel.paid_item_id == INVITES.c.item_id
+            )
+            .join(NOTICES, NOTICES.c.invite_id == INVITES.c.id)
+            .where(
+                INVITES.c.order_id == order_id,
+                INVITES.c.id == receipt_id,
+                NOTICES.c.kind == "customer",
+                NOTICES.c.state == "sent",
+                INVITES.c.reported_at.is_not(None),
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
 
 
 def register_creator_invites(  # noqa: C901
@@ -99,6 +143,8 @@ def register_creator_invites(  # noqa: C901
         consent_source,
         creator_name,
         invite_id=None,
+        receipt_id=None,
+        referrer_id=None,
     ):
         with Session(engine) as db, db.begin():
             if db.get_bind().dialect.name != "postgresql":
@@ -120,20 +166,34 @@ def register_creator_invites(  # noqa: C901
                     error = "Контакт недоступен. Обновите страницу заказа."
             elif operation in {"create", "send", "send_customer"}:
                 try:
-                    identity = create_invite(
-                        db,
-                        order_id,
-                        item_id,
-                        manager_id,
-                        instagram,
-                        datetime.now(timezone.utc),
-                        telegram=telegram,
-                        consent_source=consent_source,
-                        creator_name=creator_name,
-                        direct=operation == "send",
-                    )
+                    with db.begin_nested():
+                        at = datetime.now(timezone.utc)
+                        lock_invite_people(
+                            db, instagram, telegram, manager_id, referrer_id
+                        )
+                        ensure_work_manager(db, order, manager_id, at)
+                        identity = create_invite(
+                            db,
+                            order_id,
+                            item_id,
+                            manager_id,
+                            instagram,
+                            at,
+                            telegram=telegram,
+                            consent_source=consent_source,
+                            creator_name=creator_name,
+                            direct=operation == "send",
+                        )
+                        save_partner(
+                            db,
+                            identity,
+                            referrer_id,
+                            at,
+                            f"admin:{config.admin.admin_username}",
+                        )
                     link = f"https://t.me/{bot}?start=oi_{identity.hex}"
                 except ValueError as exc:
+                    identity = None
                     error = ERRORS.get(
                         str(exc), "Не удалось создать приглашение."
                     )
@@ -197,11 +257,22 @@ def register_creator_invites(  # noqa: C901
                 .mappings()
                 .all()
             )
+            referrer = (
+                profile_referrer(db, order_id, instagram, telegram)
+                if instagram
+                else None
+            )
             return dict(
                 order_id=order_id,
                 title=public_order_number(order_id),
+                needed=order.bloggers_needed,
+                handoff=_sent_contact(db, order_id, receipt_id),
                 items=items,
-                managers=db.execute(team(order)).all(),
+                managers=db.execute(admin_managers(order)).all(),
+                partners_enabled=partners_installed(db),
+                referrers=db.execute(referrer_choices()).all(),
+                referrer=referrer,
+                referrer_id=referrer.user_id if referrer else referrer_id,
                 link=link,
                 error=error,
                 preview=order.complimentary,
@@ -225,14 +296,23 @@ def register_creator_invites(  # noqa: C901
         methods=["GET", "POST"],
         response_class=HTMLResponse,
     )
-    async def admin_creator_invites(request: Request, order_id: UUID):  # noqa: C901
+    async def admin_creator_invites(  # noqa: C901, PLR0912
+        request: Request, order_id: UUID
+    ):
         if not await auth.authenticate(request):
             return admin_login_redirect(request)
         item_id, manager_id, instagram = None, None, ""
         telegram = consent_source = creator_name = ""
+        receipt_id = None
+        referrer_id = None
         if request.method == "GET":
             instagram = request.query_params.get("instagram", "")[:250]
             telegram = request.query_params.get("telegram", "")[:100]
+            try:
+                if request.query_params.get("sent"):
+                    receipt_id = UUID(request.query_params["sent"])
+            except ValueError:
+                pass
         posted = request.method == "POST"
         operation, form_error, invite_id = "", None, None
         record_consent = False
@@ -270,9 +350,15 @@ def register_creator_invites(  # noqa: C901
                     if form.get("invite_id")
                     else None
                 )
+                referrer_id = (
+                    UUID(str(form["referrer_id"]))
+                    if form.get("referrer_id")
+                    else None
+                )
             except ValueError:
                 form_error = (
-                    "Позиция или менеджер недоступны. Обновите страницу."
+                    "Позиция, менеджер или партнёр недоступны. "
+                    "Обновите страницу."
                 )
         data = await asyncio.to_thread(
             load,
@@ -285,6 +371,8 @@ def register_creator_invites(  # noqa: C901
             consent_source,
             creator_name,
             invite_id,
+            receipt_id,
+            referrer_id,
         )
         if data is None:
             raise HTTPException(404, "Нужен активный оплаченный заказ.")
@@ -303,8 +391,17 @@ def register_creator_invites(  # noqa: C901
                 )
             except ValueError:
                 status = None
+            if status == "sent":
+                destination = request.url_for(
+                    "admin_creator_invites", order_id=order_id
+                ).include_query_params(sent=str(data["identity"]))
+                return RedirectResponse(
+                    destination.replace(fragment="invite-result"),
+                    status_code=303,
+                    headers={"Cache-Control": "no-store"},
+                )
+            data["status_kind"] = "danger" if status == "failed" else "warning"
             data["status"] = {
-                "sent": "Контакт отправлен заказчику в Telegram.",
                 "sending": "Отправка заказчику уже началась.",
                 "unknown": (
                     "Telegram не подтвердил отправку. Проверьте чат заказчика."
@@ -313,9 +410,16 @@ def register_creator_invites(  # noqa: C901
                     "Контакт не доставлен. Проверьте Telegram заказчика."
                 ),
             }.get(status, "Отправка недоступна. Проверьте заказ.")
-            data["sent_identity"] = (
-                data["identity"] if status == "sent" else None
+            data["retained_item"] = next(
+                (
+                    row
+                    for row in data["invites"]
+                    if row["id"] == data["identity"]
+                ),
+                None,
             )
+            if data["retained_item"]:
+                data["item_id"] = data["retained_item"]["item_id"]
         if operation == "send" and data["identity"]:
             from ugc_bot.container.creator_invite_factory import (
                 build_creator_invites,

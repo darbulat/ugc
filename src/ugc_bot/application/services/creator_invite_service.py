@@ -40,6 +40,9 @@ from ugc_bot.infrastructure.db.repositories.invite_handoff import (
     sharing_state,
     track_visit,
 )
+from ugc_bot.infrastructure.db.repositories.invite_partners import (
+    attach_opened_partner,
+)
 from ugc_bot.infrastructure.db.repositories.invite_preview import (
     PREVIEW_CONSENT,
     confirm_preview,
@@ -70,6 +73,7 @@ class CreatorInviteService:
                 and row["status"] == "active"
                 and await handoff_installed(db)
             ):
+                await db.run_sync(attach_opened_partner, identity, user_id, now)
                 await track_visit(db, identity, user_id, now)
             return row
 
@@ -210,13 +214,23 @@ class CreatorInviteService:
         row = await self.preview(identity, user_id)
         if row["complimentary"]:
             await self._accept_preview(identity, user_id, row["order_id"])
+            await self._attach_confirmed_partner(identity, user_id)
             return None
         result = await self.selection.respond(
             row["order_id"], user_id, invite_id=identity
         )
         if result is None:
             raise ValueError("creator_invite_unavailable")
+        await self._attach_confirmed_partner(identity, user_id)
         return result
+
+    async def _attach_confirmed_partner(self, identity, user_id):
+        async with self.transactions.transaction() as session:
+            await _session(session).run_sync(
+                lambda db: attach_opened_partner(
+                    db, identity, user_id, self.clock.now(), confirmed=True
+                )
+            )
 
     async def _accept_preview(self, identity, user_id, order_id):
         async with self.transactions.transaction() as session:
