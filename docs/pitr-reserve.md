@@ -21,7 +21,8 @@ Restoring PostgreSQL does not reverse external side effects.
   are installed there.
 - Only `/opt/ugc-pitr`, `/etc/ugc-pitr`, `/var/lib/ugc-pitr` and
   `/var/lib/ugc-pitr-restore`, a new `ugc-pitr` account, and the five new
-  `ugc-pitr*` units are created. The operator never runs mutating commands
+  `ugc-pitr*` units are created, plus their private temporary runtime directories
+  under `/run`. The operator never runs mutating commands
   against other units. It compares their PIDs, start times and resource caps
   before and after each activation.
 - The archive has an 8 GiB budget and requires 16 GiB free on the host.
@@ -147,7 +148,10 @@ to a paused target without promotion. The client has a 256 MiB cgroup limit.
 The dedicated client image adds server verification tools only to the CI
 fixture. Unit tests cover timing/base selection, checksum authentication,
 retention dependencies, path isolation, resource/configuration guards and
-rejection of commands against neighboring services.
+rejection of commands against neighboring services. A real systemd harness
+uses synthetic credentials under an unprivileged account and confirms both
+private libpq file permissions and runtime cleanup after normal and hard-kill
+termination. Its temporary units are isolated, bounded and collected afterward.
 
 References: [PostgreSQL 16 pg_receivewal](https://www.postgresql.org/docs/16/app-pgreceivewal.html),
 [pg_basebackup](https://www.postgresql.org/docs/16/app-pgbasebackup.html),

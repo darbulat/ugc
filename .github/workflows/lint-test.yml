@@ -244,6 +244,9 @@ jobs:
       - name: Verify the reserve installer with the actual pinned age bundle
         run: bash tests/monitoring/check_pitr_installer.sh ugc-admin-import:ci "$PWD/age.tar.gz"
 
+      - name: Verify real systemd credential isolation and cleanup
+        run: sudo -n python3 tests/monitoring/pitr_systemd_check.py --user "$(id -un)"
+
       - name: Build a dedicated PostgreSQL verification client
         run: docker build -f tests/monitoring/Dockerfile.pitr-client -t ugc-pitr-client:ci .
 
