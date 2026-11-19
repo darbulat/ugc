@@ -49,7 +49,7 @@
       if (!raw || raw.length > 32768) continue;
       try { data = JSON.parse(raw); } catch (_) { continue; }
       if (!data || data.schema !== 1 || data.identity !== c.identity || data.role !== c.role || data.mode !== c.mode || data.epoch !== c.epoch || data.id !== key.slice(c.prefix.length) || !Number.isFinite(data.time) || !data.values || Array.isArray(data.values)) continue;
-      if (!fields[c.role].every(function (id) { return typeof data.values[id] === 'string' && data.values[id].length <= 4000; })) continue;
+      if (!fields[c.role].some(function (id) { return typeof data.values[id] === 'string'; }) || !fields[c.role].every(function (id) { return data.values[id] === undefined || (typeof data.values[id] === 'string' && data.values[id].length <= 4000); })) continue;
       if (!best || data.time > best.data.time || (data.time === best.data.time && data.id > best.data.id)) best = {key: key, data: data};
     }
     return best;
@@ -120,6 +120,7 @@
       bridge.profileForms.prepare(c.role);
       var saved = entry.data.values;
       fields[c.role].forEach(function (id) {
+        if (typeof saved[id] !== 'string') return;
         var el = document.getElementById(id);
         if (el.tagName !== 'SELECT' || Array.from(el.options).some(function (option) { return option.value === saved[id]; })) el.value = saved[id];
       });
@@ -194,7 +195,14 @@
     Object.keys(controllers).forEach(function (role) { var c = controllers[role]; if (event.detail.screen === c.screen.id) enter(c); });
     if (event.detail.screen === 'screen-role-choice') updateShortcuts();
   });
-  window.addEventListener('focus', function () { Object.keys(controllers).forEach(function (role) { var c = controllers[role]; if (visible(c) && c.context && !current(c)) invalidate(c); }); });
+  function verifyVisible() {
+    if (document.hidden) return;
+    Object.keys(controllers).forEach(function (role) { var c = controllers[role]; if (visible(c) && c.context && !current(c)) invalidate(c); });
+    updateShortcuts();
+  }
+  window.addEventListener('focus', verifyVisible);
+  window.addEventListener('pageshow', verifyVisible);
+  document.addEventListener('visibilitychange', verifyVisible);
   window.addEventListener('storage', function (event) {
     Object.keys(controllers).forEach(function (role) { var c = controllers[role]; if (c.context && event.key === c.prefix + 'epoch') epochCurrent(c); });
     updateShortcuts();

@@ -547,3 +547,51 @@ def test_further_typing_after_accepted_registration_and_failed_refresh_survives(
         "New edits after accepted registration"
     )
     assert not errors
+
+
+@pytest.mark.parametrize("event", ["focus", "visibilitychange", "pageshow"])
+def test_returning_in_another_sdk_session_clears_visible_private_fields(
+    page, platform, event
+):
+    network = DraftNetwork()
+    errors = open_app(page, network, platform)
+    enter(page, "advertiser")
+    page.locator("#adv-brand").fill("Private profile before backgrounding")
+    page.evaluate(
+        """event => {
+      window.__host.wa.initData = 'different-session';
+      (event === 'visibilitychange' ? document : window)
+        .dispatchEvent(new Event(event));
+    }""",
+        event,
+    )
+    expect(page.locator("#adv-brand")).to_have_value("")
+    expect(panel(page, "advertiser")).to_contain_text(
+        "Откройте Mini App заново"
+    )
+    assert len(draft_records(page)) == 1
+    assert not errors
+
+
+def test_draft_missing_an_optional_field_restores_the_remaining_values(
+    page, platform
+):
+    network = DraftNetwork()
+    errors = open_app(page, network, platform)
+    enter(page, "advertiser")
+    page.locator("#adv-brand").fill("Compatible draft")
+    page.evaluate("""() => {
+      const key = Object.keys(localStorage).find(k =>
+        k.startsWith('umc:profile-draft:') && !k.endsWith(':epoch'));
+      const data = JSON.parse(localStorage.getItem(key));
+      delete data.values['adv-name'];
+      localStorage.setItem(key, JSON.stringify(data));
+    }""")
+    page.reload()
+    enter(page, "advertiser")
+    panel(page, "advertiser").get_by_role(
+        "button", name="Продолжить заполнение"
+    ).click()
+    expect(page.locator("#adv-brand")).to_have_value("Compatible draft")
+    expect(page.locator("#adv-name")).to_have_value("")
+    assert not errors
