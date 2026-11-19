@@ -29,6 +29,7 @@
   <script src="/miniapp/umc-collaborations.js" defer></script>
   <script src="/miniapp/umc-partner.js" defer></script>
   <script src="/miniapp/umc-manager-directory.js" defer></script>
+  <script src="/miniapp/umc-manager-application.js" defer></script>
   <script src="/miniapp/umc-leads.js" defer></script>
   <script src="/miniapp/umc-replacements.js" defer></script>
   <script src="/miniapp/umc-intake-store.js" defer></script>
@@ -90,7 +91,7 @@
       <button type="button" class="btn" data-role="advertiser">Рекламодатель</button>
       <button type="button" class="btn" data-role="blogger">Креатор</button>
       <button type="button" class="btn" id="btn-manager-role" data-role="manager" style="display:none;">Менеджер</button>
-      <a id="link-manager-application" class="btn" style="display:none;">Подать заявку менеджера</a>
+      <button type="button" id="link-manager-application" class="btn" style="display:none;">Подать заявку менеджера</button>
     </div>
   </div>
 
@@ -945,7 +946,6 @@
           select_country_h1: 'Выберите вашу страну',
           select_role_h1: 'Выберите роль',
           role_hint_new: 'Зарегистрируйтесь как рекламодатель или креатор.',
-          role_hint_manager_application: 'Анкета менеджера откроется в чате с ботом.',
           role_hint_has_profile: 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.',
           btn_advertiser: 'Рекламодатель',
           btn_blogger: 'Креатор',
@@ -1099,7 +1099,6 @@
           select_country_h1: 'Select your country',
           select_role_h1: 'Select your role',
           role_hint_new: 'Register as an advertiser or creator.',
-          role_hint_manager_application: 'The manager application opens in the bot chat.',
           role_hint_has_profile: 'You can register as a second role or return to your dashboard.',
           btn_advertiser: 'Advertiser',
           btn_blogger: 'Creator',
@@ -1253,7 +1252,6 @@
           select_country_h1: 'Еліңізді таңдаңыз',
           select_role_h1: 'Рөліңізді таңдаңыз',
           role_hint_new: 'Жарнама беруші немесе креатор ретінде тіркеліңіз.',
-          role_hint_manager_application: 'Менеджер сауалнамасы бот чатында ашылады.',
           role_hint_has_profile: 'Екінші рөл ретінде тіркеле аласыз немесе кабинетке орала аласыз.',
           btn_advertiser: 'Жарнама беруші',
           btn_blogger: 'Креатор',
@@ -1403,7 +1401,6 @@
           select_country_h1: 'Выберыце вашу краіну',
           select_role_h1: 'Выберыце ролю',
           role_hint_new: 'Зарэгіструйцеся як рэкламадаўца або крэатар.',
-          role_hint_manager_application: 'Анкета менеджара адкрыецца ў чаце з ботам.',
           role_hint_has_profile: 'Можна зарэгістравацца другой роляй або вярнуцца ў кабінет.',
           btn_advertiser: 'Рэкламадаўца',
           btn_blogger: 'Крэатар',
@@ -1550,7 +1547,6 @@
           select_country_h1: 'Mamlakatni tanlang',
           select_role_h1: 'Rolni tanlang',
           role_hint_new: 'Reklamachi yoki kreator sifatida ro\'yxatdan o\'ting.',
-          role_hint_manager_application: 'Menejer anketasi bot chatida ochiladi.',
           role_hint_has_profile: 'Ikkinchi rol sifatida ro\'yxatdan o\'tishingiz yoki kabinetga qaytishingiz mumkin.',
           btn_advertiser: 'Reklamachi',
           btn_blogger: 'Kreator',
@@ -1955,8 +1951,6 @@
         if (hint) {
           if (me && (me.has_advertiser_profile || me.has_blogger_profile)) {
             hint.textContent = tx('role_hint_has_profile');
-          } else if (document.getElementById('link-manager-application').hasAttribute('href')) {
-            hint.textContent = tx('role_hint_manager_application');
           } else {
             hint.textContent = tx('role_hint_new');
           }
@@ -3350,10 +3344,7 @@
         if (managerBtn) managerBtn.style.display = (me && me.is_manager) ? '' : 'none';
         var managerLink = document.getElementById('link-manager-application');
         var config = window._config || {};
-        var canApply = !me.is_manager && config.manager_application_enabled === true
-          && /^[A-Za-z0-9_]{5,32}$/.test(config.bot_username || '');
-        if (canApply) managerLink.href = 'https://t.me/' + config.bot_username + '?start=manager';
-        else managerLink.removeAttribute('href');
+        var canApply = !me.is_manager && config.manager_application_enabled === true;
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
         var view = new URLSearchParams(location.search).get('view');

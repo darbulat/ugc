@@ -26,6 +26,7 @@ async def test_real_webhook_apps_serve_packaged_frontend(module: str) -> None:
             "umc-shell.js",
             "umc-collaborations.js",
             "umc-partner.js",
+            "umc-manager-application.js",
             "design-system/fonts/fonts.css",
             "design-system/tokens.css",
             "design-system/umc-ui.css",

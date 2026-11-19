@@ -102,6 +102,9 @@ from ugc_bot.miniapp.instagram_verification_api import (
     create_instagram_verification_router,
 )
 from ugc_bot.miniapp.invite_handoff_api import create_invite_handoff_router
+from ugc_bot.miniapp.manager_application_api import (
+    create_manager_application_router,
+)
 from ugc_bot.miniapp.manager_directory_api import (
     create_manager_directory_router,
 )
@@ -676,6 +679,9 @@ router.include_router(
 router.include_router(create_collaboration_router(resolve_financial_principal))
 router.include_router(create_override_router(resolve_financial_principal))
 router.include_router(create_partner_router(resolve_financial_principal))
+router.include_router(
+    create_manager_application_router(resolve_financial_principal)
+)
 router.include_router(
     create_manager_directory_router(resolve_financial_principal)
 )
