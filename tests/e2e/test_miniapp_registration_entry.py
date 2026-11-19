@@ -39,6 +39,29 @@ def test_registration_link_survives_country_selection(page, role):
 
 
 @pytest.mark.parametrize("role", ROLES)
+def test_registration_link_keeps_first_input_and_resumes_draft(page, role):
+    network = MiniAppNetwork()
+    errors = open_app(page, network, query=f"?view=register-{role}")
+    field = page.locator("#adv-brand" if role == "advertiser" else "#blg-name")
+    draft = page.locator(f'[data-profile-draft="{role}"]')
+    field.fill("Unfinished profile")
+    expect(field).to_have_value("Unfinished profile")
+    expect(draft).to_contain_text("Черновик сохранён на этом устройстве")
+
+    page.reload()
+    expect(page.locator(f"#screen-register-{role}")).to_be_visible()
+    expect(page.locator(f"#form-{role}")).to_be_hidden()
+    draft.get_by_role(
+        "button", name="Продолжить заполнение", exact=True
+    ).click()
+    expect(field).to_have_value("Unfinished profile")
+    assert not any(
+        path.startswith("/register/") for path, _ in network.requests
+    )
+    assert not errors
+
+
+@pytest.mark.parametrize("role", ROLES)
 @pytest.mark.parametrize("agreed", [False, True])
 def test_old_registration_link_reuses_existing_profile(page, role, agreed):
     network = MiniAppNetwork(registered=True)

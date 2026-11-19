@@ -3351,27 +3351,31 @@
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
         var view = new URLSearchParams(location.search).get('view');
+        var registrationRole = view === 'register-blogger' ? 'blogger' : view === 'register-advertiser' ? 'advertiser' : null;
         var creator = me.blogger_profile;
         var advertiser = me.advertiser_profile;
         var openCreator = creator && (
           (view === 'socials' && (creator.confirmed || creator.agreement_confirmed === false)) ||
           (!view && creator.agreement_confirmed === false && advertiser && advertiser.agreement_confirmed !== false)
         );
-        if (view === 'register-blogger' || view === 'register-advertiser') {
-          openProfileRole(view === 'register-blogger' ? 'blogger' : 'advertiser', me);
-        } else if (me.is_manager && view === 'manager') {
-          loadManagerOrders(0);
-        } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
-          showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
-          showScreen('screen-blogger-dashboard');
-        } else if (me.has_advertiser_profile && me.has_blogger_profile) {
-          showScreen('screen-advertiser-dashboard');
-        } else {
-          showScreen('screen-role-choice');
+        if (!registrationRole) {
+          if (me.is_manager && view === 'manager') {
+            loadManagerOrders(0);
+          } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
+            showScreen('screen-advertiser-dashboard');
+          } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
+            showScreen('screen-blogger-dashboard');
+          } else if (me.has_advertiser_profile && me.has_blogger_profile) {
+            showScreen('screen-advertiser-dashboard');
+          } else {
+            showScreen('screen-role-choice');
+          }
         }
         window.__umcAppReady = true;
         document.dispatchEvent(new CustomEvent('umc:app-ready'));
+        // Draft controllers initialize their account on app-ready. Enter the
+        // requested form afterwards so that its input context stays valid.
+        if (registrationRole) openProfileRole(registrationRole, me);
       }
 
       function showCountrySelector(countries, onSelected) {
