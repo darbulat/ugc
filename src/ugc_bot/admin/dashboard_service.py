@@ -1619,6 +1619,9 @@ class AdminDashboardService:
                 item["transferred_count"] = (
                     order_progress.transferred_count if order_progress else None
                 )
+                item["manual_transferred_count"] = (
+                    order_progress.manual_count if order_progress else 0
+                )
         return attention
 
     def _attention_reasons(
@@ -2597,6 +2600,9 @@ class AdminDashboardService:
             "transferred_count": progress.transferred_count
             if progress
             else None,
+            "manual_transferred_count": progress.manual_count
+            if progress
+            else 0,
             "needed_count": int(order.bloggers_needed),
             "dispatched_count": int(dispatched_count),
             "accepted_count": int(accepted_count),

@@ -2,8 +2,12 @@
 
 from dataclasses import dataclass
 
-from sqlalchemy import func, inspect, select
+from sqlalchemy import String, cast, func, literal, select, union_all
 
+from ugc_bot.admin.manual_deliveries import (
+    delivery_schema,
+    manual_delivery_rows,
+)
 from ugc_bot.infrastructure.db.creator_transfer_models import TRANSFERS
 from ugc_bot.infrastructure.db.models import OrderModel
 from ugc_bot.infrastructure.db.order_selection import (
@@ -21,6 +25,7 @@ from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 class OrderProgress:
     picked_count: int
     transferred_count: int
+    manual_count: int = 0
 
 
 def financial_order_ids(orders):
@@ -47,31 +52,51 @@ def load_order_progress(session, order_ids):
         REPLACEMENTS["allocations"].name,
         REPLACEMENTS["contacts"].name,
     }
-    if session.get_bind().dialect.name == "postgresql":
-        installed = session.execute(
-            select(
-                *(
-                    func.to_regclass(name).is_not(None)
-                    for name in sorted(tables)
-                )
-            )
-        ).one()
-        if not all(installed):
-            return {}
-    elif not tables <= set(inspect(session.connection()).get_table_names()):
+    installed, manual_available = delivery_schema(session, tables)
+    if not tables <= installed:
         return {}
     authors = delivered_author_rows(order_ids)
+    sources = [
+        select(
+            authors.c.order_id,
+            cast(authors.c.creator_id, String).label("creator_key"),
+            literal(0).label("manual"),
+        )
+    ]
+    if manual_available:
+        manual = manual_delivery_rows(order_ids).subquery()
+        sources.append(
+            select(
+                manual.c.order_id,
+                func.coalesce(
+                    cast(manual.c.user_id, String),
+                    literal("instagram:") + func.lower(manual.c.instagram),
+                ).label("creator_key"),
+                literal(1).label("manual"),
+            )
+        )
+    combined = union_all(*sources).subquery()
+    unique = (
+        select(
+            combined.c.order_id,
+            combined.c.creator_key,
+            func.max(combined.c.manual).label("manual"),
+        )
+        .group_by(combined.c.order_id, combined.c.creator_key)
+        .subquery()
+    )
     rows = session.execute(
         select(
             OrderModel.order_id,
-            func.count(authors.c.creator_id),
+            func.count(unique.c.creator_key),
             picked_order_count(),
+            func.coalesce(func.sum(unique.c.manual), 0),
         )
-        .outerjoin(authors, authors.c.order_id == OrderModel.order_id)
+        .outerjoin(unique, unique.c.order_id == OrderModel.order_id)
         .where(OrderModel.order_id.in_(order_ids), use_financial_positions())
         .group_by(OrderModel.order_id)
     )
     return {
-        order_id: OrderProgress(int(picked), int(transferred))
-        for order_id, transferred, picked in rows
+        order_id: OrderProgress(int(picked), int(transferred), int(manual))
+        for order_id, transferred, picked, manual in rows
     }

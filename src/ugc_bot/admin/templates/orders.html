@@ -142,7 +142,7 @@
                 {% if tg %}<small class="table-note"><a href="https://t.me/{{ tg.replace('@', '') }}" target="_blank" rel="noopener noreferrer">@{{ tg.replace('@', '') }}</a></small>{% endif %}
               </td>
               <td>{{ status_labels.get(order.status_label, order.status_label) }}</td>
-              <td>{{ order_progress(order.picked_count, order.needed_count, order.get('transferred_count')) }}</td>
+              <td>{{ order_progress(order.picked_count, order.needed_count, order.get('transferred_count'), manual=order.get('manual_transferred_count', 0)) }}</td>
               <td>{{ order.dispatched_count }}</td>
               <td>{{ order.accepted_count }}</td>
               <td>{{ order.created_at|admin_date }}</td>

@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from ugc_bot.admin.manual_deliveries import merge_manual_history
 from ugc_bot.admin.order_creators import creator_workspace
 
 
@@ -175,6 +176,65 @@ def test_workspace_has_safe_empty_and_legacy_fallback():
         [dict(blogger_id=str(creator), in_offer=True, assigned_at="saved-time")]
     )["rows"]
     assert row["response"] == "Назначен" and row["responded_at"] == "saved-time"
+
+
+def test_manual_contacts_appear_once_and_external_profiles_have_no_user_link():
+    known = uuid4()
+    manual = [
+        dict(
+            creator_id=known,
+            profile_id=known,
+            manual=True,
+            source="manual",
+            ordinal=3,
+            contact=dict(
+                name="Мурат",
+                instagram="https://instagram.com/murat.investor",
+                telegram="dimitrovmurat",
+            ),
+            sent_at=None,
+        ),
+        dict(
+            creator_id="instagram:external_creator",
+            profile_id=None,
+            manual=True,
+            source="manual",
+            ordinal=4,
+            contact=dict(
+                name="Внешний автор",
+                instagram="https://instagram.com/external_creator",
+                telegram="external_creator",
+            ),
+            sent_at=None,
+        ),
+    ]
+    original = [
+        dict(
+            creator_id=known,
+            contact=manual[0]["contact"],
+            source="selection",
+            sent_at=None,
+        )
+    ]
+    history = merge_manual_history(original, manual)
+    assert len(history) == 2
+    workspace = creator_workspace(
+        [],
+        transfers=dict(
+            count=2,
+            manual_count=2,
+            needed=10,
+            history=history,
+            candidates=[],
+            can_send=True,
+        ),
+    )
+    rows = {row["creator_id"]: row for row in workspace["rows"]}
+    assert workspace["manual_count"] == 2 and len(rows) == 2
+    assert rows[str(known)]["manual"] and rows[str(known)]["ordinal"] == 3
+    assert rows["instagram:external_creator"]["profile_id"] is None
+    assert rows["instagram:external_creator"]["group"] == "delivered"
+    assert all(not row["can_send"] for row in rows.values())
 
 
 @pytest.mark.parametrize(

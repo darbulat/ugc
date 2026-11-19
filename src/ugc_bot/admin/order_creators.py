@@ -107,6 +107,9 @@ def creator_workspace(
         if key not in rows:
             rows[key] = dict(
                 creator_id=key,
+                profile_id=key,
+                manual=False,
+                ordinal=None,
                 name="Профиль креатора",
                 contact={},
                 response="—",
@@ -203,6 +206,7 @@ def creator_workspace(
             for key, label in FILTERS
         ],
         transfer_count=transfers["count"] if transfers else None,
+        manual_count=transfers.get("manual_count", 0) if transfers else 0,
         needed=transfers["needed"] if transfers else None,
         currency=(activity or {}).get("currency", "RUB"),
         offer_price=offer_price,
@@ -235,7 +239,11 @@ def _apply_history(row, item):
         sent_at=item.get("sent_at"),
         feedback=item.get("feedback"),
         delivered_price=item.get("requested_price"),
+        manual=bool(item.get("manual")),
+        ordinal=item.get("ordinal"),
     )
+    if "profile_id" in item:
+        row["profile_id"] = item["profile_id"]
     if row["price"] is None and item.get("requested_price") is not None:
         row["price"] = item["requested_price"]
         row["price_proposed"] = item.get("source") == "counteroffer"
@@ -278,9 +286,11 @@ async def load_creator_workspace(session, order_id, activity, transfers):
         for row in (transfers or {}).get("history", [])
         + (transfers or {}).get("candidates", [])
     }
-    contacts = await order_creator_contacts(
-        session, [UUID(key) for key in extra - known]
-    )
+    user_ids = []
+    for key in extra - known:
+        with suppress(ValueError):
+            user_ids.append(UUID(key))
+    contacts = await order_creator_contacts(session, user_ids)
     return creator_workspace(
         responses, activity, transfers, contacts, offer_price=order.price
     )

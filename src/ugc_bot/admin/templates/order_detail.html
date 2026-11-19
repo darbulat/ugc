@@ -57,7 +57,7 @@
           <strong>{{ picked }} из {{ needed }}</strong>
           <div id="order-transferred-counter" class="order-detail__transfer" aria-live="polite" hidden>
             <span class="order-detail__transfer-label">Передано заказчице</span>
-            <div class="order-detail__transfer-line"><strong><span id="order-transferred-value">—</span> / <span id="order-transferred-plan">{{ needed }}</span></strong><span id="order-transferred-extra" class="order-detail__over-plan" hidden></span></div>
+            <div class="order-detail__transfer-line"><strong><span id="order-transferred-value">—</span> / <span id="order-transferred-plan">{{ needed }}</span></strong><span id="order-transferred-extra" class="order-detail__over-plan" hidden></span><span id="order-transferred-manual" class="order-detail__manual" title="Ручные передачи включены в общее число переданных авторов" hidden></span></div>
           </div>
           <div class="order-detail__progress" role="progressbar" aria-label="Подобрано креаторов" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
             <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>

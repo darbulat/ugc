@@ -356,7 +356,11 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
         order.geography = "Россия"
         order.bloggers_needed = 10
     original = admin_app.worklist_row_details
-    plan = {"picked": 10, "transferred_count": 15}
+    plan = {
+        "picked": 10,
+        "transferred_count": 15,
+        "manual_transferred_count": 1,
+    }
 
     def details(*args):
         result = original(*args)
@@ -394,6 +398,9 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     expect(progress).to_have_count(1)
     expect(progress.locator("strong")).to_have_text("15 / 10")
     expect(progress.locator(".order-progress__extra")).to_have_text("+5")
+    expect(progress.locator(".order-progress__manual")).to_have_text(
+        "1 вручную"
+    )
     expect(progress.get_by_role("progressbar")).to_have_attribute(
         "aria-valuenow", "100"
     )
@@ -418,3 +425,63 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     page.set_viewport_size({"width": 390, "height": 844})
     expect(scope).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+
+
+def test_manual_handoff_badge_updates_and_remains_distinct_from_over_plan(
+    page, monkeypatch
+):
+    page.clock.install()
+    page.set_viewport_size({"width": 1440, "height": 900})
+    _, _, transfers = open_workspace(page, monkeypatch)
+    expect(page.locator("#order-transferred-manual")).to_be_hidden()
+    transfers["manual_count"] = 1
+    transfers["history"].append(
+        dict(
+            creator_id="instagram:external_creator",
+            profile_id=None,
+            manual=True,
+            ordinal=3,
+            source="manual",
+            sent_at=None,
+            contact=dict(
+                name="Мурат вручную",
+                instagram="https://instagram.com/external_creator",
+                telegram="external_creator",
+            ),
+        )
+    )
+    transfers["count"] = 16
+    with page.expect_response(
+        lambda response: urlsplit(response.url).path.endswith("/offer-activity")
+    ):
+        page.clock.fast_forward(20_000)
+    expect(page.locator("#order-transferred-value")).to_have_text("16")
+    manual = page.locator("#order-transferred-manual")
+    expect(manual).to_have_text("1 вручную")
+    expect(page.locator("#order-transferred-extra")).to_have_text(
+        "+6 сверх плана"
+    )
+    assert (
+        manual.evaluate("el => getComputedStyle(el).color")
+        == "rgb(109, 40, 217)"
+    )
+    assert (
+        page.locator("#order-transferred-value").evaluate(
+            "el => getComputedStyle(el).color"
+        )
+        == "rgb(180, 35, 50)"
+    )
+    row = page.locator('[data-creator-row="instagram:external_creator"]')
+    expect(row).to_contain_text("Передан вручную")
+    expect(row).to_contain_text("Позиция №3")
+    expect(
+        row.get_by_role("link", name="Мурат вручную", exact=True)
+    ).to_have_count(0)
+    expect(
+        row.locator('a[href="https://t.me/external_creator"]')
+    ).to_have_count(1)
+    screenshot(page, "manual-delivery-progress-desktop")
+    page.set_viewport_size({"width": 390, "height": 844})
+    expect(manual).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    screenshot(page, "manual-delivery-progress-mobile")

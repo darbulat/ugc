@@ -10,6 +10,10 @@ from sqlalchemy import select
 from starlette.requests import Request
 
 from ugc_bot.admin.auth import admin_login_redirect
+from ugc_bot.admin.manual_deliveries import (
+    load_manual_history,
+    merge_manual_history,
+)
 from ugc_bot.application.services.creator_transfer_service import (
     CreatorTransferService,
 )
@@ -62,6 +66,8 @@ async def transfer_activity(db, order_id):
     if not await transfers_installed(db):
         return None
     history = await delivery_history(db, order_id)
+    manual = await db.run_sync(load_manual_history, [order_id])
+    history = merge_manual_history(history, manual)
     states = {
         row.creator_id: (
             "unknown"
@@ -101,6 +107,7 @@ async def transfer_activity(db, order_id):
     ).all()
     return dict(
         count=len(history),
+        manual_count=sum(bool(row.get("manual")) for row in history),
         needed=order.bloggers_needed,
         history=history,
         candidates=[
