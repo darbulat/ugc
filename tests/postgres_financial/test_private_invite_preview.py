@@ -29,6 +29,7 @@ from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ManagerOrderModel,
+    OrderItemModel,
     UserModel,
 )
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
@@ -48,8 +49,9 @@ __all__ = ["financial_pg_engine", "intake_env"]
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("registered", [False, True])
+@pytest.mark.parametrize("ordinal", [4, 5])
 async def test_explicit_customer_contact_for_external_or_blocked_creator(
-    intake_env, registered
+    intake_env, registered, ordinal
 ):
     from tests.postgres_financial.test_telegram_order_summary import paid_order
 
@@ -70,10 +72,16 @@ async def test_explicit_customer_contact_for_external_or_blocked_creator(
             )
             profile.instagram_url = "https://instagram.com/manual_creator"
             db.flush()
+        selected_item = db.scalar(
+            select(OrderItemModel.paid_item_id).where(
+                OrderItemModel.order_id == order_id,
+                OrderItemModel.ordinal == ordinal,
+            )
+        )
         identity = create_invite(
             db,
             order_id,
-            None,
+            selected_item,
             None,
             "@manual_creator",
             service.clock.now(),
@@ -96,11 +104,20 @@ async def test_explicit_customer_contact_for_external_or_blocked_creator(
             .one()
         )
         assert bool(row["target_id"]) == registered
-        text, markup = customer_contact_notice(dict(row, complimentary=False))
+        text, markup = customer_contact_notice(
+            dict(
+                row,
+                complimentary=False,
+                ordinal=ordinal,
+                bloggers_needed=10,
+            )
+        )
         assert "Мурат" in text
         assert "https://instagram.com/manual_creator" in text
-        assert "https://t.me/manual_creator" in text
-        assert markup.inline_keyboard[0][0].callback_data
+        assert "Telegram: @manual_creator" in text
+        assert f"Позиция №{ordinal} из 10" in text
+        assert markup.inline_keyboard[0][0].url == "https://t.me/manual_creator"
+        assert markup.inline_keyboard[-1][0].callback_data
     bot = SimpleNamespace(send_message=AsyncMock())
     assert (
         await deliver_invite_notice(service, bot, identity, "customer") is None
@@ -121,6 +138,18 @@ async def test_explicit_customer_contact_for_external_or_blocked_creator(
     assert bot.send_message.call_args.kwargs["chat_id"] == int(
         env["user"].telegram_id
     )
+    message = bot.send_message.call_args.kwargs
+    assert f"Позиция №{ordinal} из 10" in message["text"]
+    assert "Позиция №1 " not in message["text"]
+    assert (
+        message["reply_markup"].inline_keyboard[0][0].text
+        == "Написать креатору"
+    )
+    assert (
+        message["reply_markup"].inline_keyboard[1][0].text == "Открыть профиль"
+    )
+    assert message["link_preview_options"].is_disabled
+    assert message["entities"][0].type == "bold"
     assert (
         await deliver_invite_notice(
             service, bot, identity, "customer", manual=True
