@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, "/pitr")
+import pitr_primary  # noqa: E402
 import pitr_tunnel  # noqa: E402
 from pitr_receiver import PostgreSQL, archive_completed, take_base  # noqa: E402
 from pitr_restore_isolated import prepare, verify  # noqa: E402
@@ -41,6 +42,16 @@ def admin(sql, database="fixture"):
 
 
 def setup():
+    native_query = pitr_primary.query
+    pitr_primary.query = admin
+    try:
+        audited = pitr_primary.audit()
+    finally:
+        pitr_primary.query = native_query
+    assert audited["pending_restart"] == 1
+    assert audited["max_replication_slots"] == 4
+    pitr_primary.validate_preflight(audited, audited["system_id"])
+    postmaster_started = admin("SELECT pg_postmaster_start_time();")
     keys = ROOT / "keys"
     keys.mkdir(mode=0o700)
     subprocess.run(
@@ -186,6 +197,7 @@ def setup():
         (directory / "socket").symlink_to("/socket")
         (ROOT / "prepared-name").write_text(directory.name)
         (ROOT / "config.json").write_text(json.dumps(config))
+        assert admin("SELECT pg_postmaster_start_time();") == postmaster_started
         print(
             json.dumps(
                 {
@@ -193,6 +205,8 @@ def setup():
                     "wal_segments": len(chain),
                     "missing_wal_rejected": True,
                     "production_byte_relays_exercised": True,
+                    "command_line_slot_override_accepted": True,
+                    "database_restarted": False,
                     "prepared": directory.name,
                 }
             )

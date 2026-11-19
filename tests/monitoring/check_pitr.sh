@@ -25,6 +25,8 @@ for attempt in $(seq 1 60); do
   sleep 1
 done
 docker exec "${name}-db" sh -c 'printf "\nhost replication ugc_pitr_v1 0.0.0.0/0 scram-sha-256\n" >> "$PGDATA/pg_hba.conf"'
+# Reproduce the audited host: file says 20, live command line remains 4.
+docker exec "${name}-db" sh -c 'printf "\nmax_replication_slots = 20\n" >> "$PGDATA/postgresql.conf"'
 docker exec "${name}-db" psql -U postgres -d fixture -c 'SELECT pg_reload_conf()' >/dev/null
 mkdir "$fixture/tmp"
 docker run -d --name "${name}-client" --network "container:${name}-db" \

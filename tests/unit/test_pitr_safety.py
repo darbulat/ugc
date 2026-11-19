@@ -73,6 +73,55 @@ def test_primary_rejects_unsafe_or_changed_preconditions(key, value):
         primary.validate_preflight(data, "7598122211340197923")
 
 
+def command_line_slot_pending():
+    return preflight() | {
+        "pending_restart": 1,
+        "pending_restart_settings": [
+            {"name": "max_replication_slots", "source": "command line"}
+        ],
+    }
+
+
+def test_existing_command_line_slot_override_needs_no_pitr_restart():
+    data = command_line_slot_pending()
+    primary.validate_preflight(data, data["system_id"])
+    assert not primary.pending_restart_blocks_pitr(data)
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        [],
+        [{"name": "shared_buffers", "source": "command line"}],
+        [{"name": "wal_level", "source": "configuration file"}],
+        [{"name": "max_replication_slots", "source": "configuration file"}],
+        [
+            {"name": "max_replication_slots", "source": "command line"},
+            {"name": "wal_level", "source": "command line"},
+        ],
+    ],
+)
+def test_other_or_unverified_pending_settings_still_block_pitr(settings):
+    data = command_line_slot_pending() | {"pending_restart_settings": settings}
+    with pytest.raises(ValueError, match="pending PostgreSQL"):
+        primary.validate_preflight(data, data["system_id"])
+
+
+@pytest.mark.parametrize(
+    "key,value", [("slots", 3), ("max_replication_slots", 1)]
+)
+def test_pending_override_cannot_bypass_live_slot_capacity(key, value):
+    data = command_line_slot_pending() | {key: value}
+    with pytest.raises(ValueError, match="spare replication capacity"):
+        primary.validate_preflight(data, data["system_id"])
+
+
+def test_inconsistent_pending_count_still_blocks_pitr():
+    data = command_line_slot_pending() | {"pending_restart": 2}
+    with pytest.raises(ValueError, match="pending PostgreSQL"):
+        primary.validate_preflight(data, data["system_id"])
+
+
 def test_tunnel_key_only_gets_one_forward_and_forced_gate():
     grant = primary.authorized_entry("ssh-ed25519 AAAAFIXTURE reserve")
     assert grant.startswith('restrict,from="194.87.131.138",')
