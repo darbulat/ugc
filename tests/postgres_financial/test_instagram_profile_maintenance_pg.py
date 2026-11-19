@@ -489,19 +489,34 @@ async def test_scoped_id_cannot_be_reinterpreted_in_another_meta_app(runtime):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "link_format",
+    [
+        "https://instagram.com/{handle}",
+        "http://instagram.com/{handle}",
+        "instagram.com/{handle}",
+        "@{handle}",
+    ],
+)
+@pytest.mark.parametrize("replace_identity", [False, True])
 async def test_real_verification_transaction_restores_owner_and_clears_queue(
     runtime,
     monkeypatch,
+    link_format,
+    replace_identity,
 ):
     owner, profile, _, maintenance, tx, profiles, sessions = runtime
     await quarantine(runtime)
-    handle, scoped_id = "proof" + owner.hex[:12], "scoped" + owner.hex
+    handle = "proof" + owner.hex[:12]
+    scoped_id = (
+        "scoped" + owner.hex if replace_identity else profile.instagram_user_id
+    )
     async with tx.transaction() as db:
         await profiles.save(
             replace(
                 profile,
                 confirmed=False,
-                instagram_url=f"https://instagram.com/{handle}",
+                instagram_url=link_format.format(handle=handle),
             ),
             session=db,
         )
