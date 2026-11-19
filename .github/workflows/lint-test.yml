@@ -44,6 +44,9 @@ jobs:
       - name: Run linters (format check, lint, typecheck)
         run: make format-check lint typecheck
 
+      - name: Check Telegram webhook alert behaviour
+        run: bash tests/monitoring/check_telegram_alerts.sh
+
   migrations:
     name: Verify PostgreSQL migrations
     runs-on: ubuntu-latest
@@ -204,9 +207,12 @@ jobs:
           tests/e2e/test_miniapp_registration_entry.py
           tests/e2e/test_miniapp_instagram_copy.py
           tests/e2e/test_miniapp_instagram_feedback.py
+          tests/e2e/test_miniapp_profile_drafts.py
+          tests/e2e/test_miniapp_registration_resume.py
           tests/e2e/test_partner_levels_ui.py
           tests/e2e/test_miniapp_partner_ui.py
           tests/e2e/test_partner_completion_ui.py
+          tests/e2e/test_miniapp_manager_application_ui.py
           tests/e2e/test_browser_payment_ui.py
           tests/e2e/test_checkout_review_ui.py
           tests/e2e/test_creator_offer_card_ui.py

@@ -204,6 +204,9 @@ def test_partner_entry_all_roles_and_exact_signed_read(page, platform, role):
     errors = open_app(page, network, platform, init_data=SIGNED)
     page.locator(".screen.active [data-partner-open]").click()
     expect(page.locator("#screen-partner")).to_be_visible()
+    expect(page.locator("#partner-network-title")).to_have_text(
+        "Ваши регистрации"
+    )
     expect(page.locator("#partner-link")).to_have_attribute(
         "href", network.partner["referral"]["link"]
     )

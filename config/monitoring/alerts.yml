@@ -96,13 +96,13 @@ groups:
   - name: telegram
     rules:
       - alert: TelegramWebhookRejectRate
-        expr: '(sum(rate(ugc_http_requests_total{path="/webhook/telegram",status=~"4.."}[15m])) / (sum(rate(ugc_http_requests_total{path="/webhook/telegram"}[15m])) + 1)) > 0.1'
+        expr: '(sum(rate(ugc_http_requests_total{method="POST",path="/webhook/telegram",status=~"4.."}[15m])) / clamp_min(sum(rate(ugc_http_requests_total{method="POST",path="/webhook/telegram"}[15m])), 1e-9)) > 0.1'
         for: 15m
         labels:
           severity: warning
         annotations:
           summary: High Telegram webhook reject rate
-          description: More than 10% of webhook requests returned 4xx in 15 minutes.
+          description: More than 10% of Telegram webhook POST requests returned 4xx in 15 minutes.
 
       - alert: TelegramRateLimitHit
         expr: increase(ugc_telegram_rate_limit_hits_total[5m]) > 0

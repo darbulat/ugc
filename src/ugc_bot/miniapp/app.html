@@ -24,11 +24,13 @@
   <script src="/miniapp/umc-payout-state.js" defer></script>
   <script src="/miniapp/umc-shell.js" defer></script>
   <script src="/miniapp/umc-instagram-verification.js" defer></script>
+  <script src="/miniapp/umc-profile-drafts.js" defer></script>
   <script src="/miniapp/umc-payout-admin.js" defer></script>
   <script src="/miniapp/umc-payouts.js" defer></script>
   <script src="/miniapp/umc-collaborations.js" defer></script>
   <script src="/miniapp/umc-partner.js" defer></script>
   <script src="/miniapp/umc-manager-directory.js" defer></script>
+  <script src="/miniapp/umc-manager-application.js" defer></script>
   <script src="/miniapp/umc-leads.js" defer></script>
   <script src="/miniapp/umc-replacements.js" defer></script>
   <script src="/miniapp/umc-intake-store.js" defer></script>
@@ -90,7 +92,7 @@
       <button type="button" class="btn" data-role="advertiser">Рекламодатель</button>
       <button type="button" class="btn" data-role="blogger">Креатор</button>
       <button type="button" class="btn" id="btn-manager-role" data-role="manager" style="display:none;">Менеджер</button>
-      <a id="link-manager-application" class="btn" style="display:none;">Подать заявку менеджера</a>
+      <button type="button" id="link-manager-application" class="btn" style="display:none;">Подать заявку менеджера</button>
     </div>
   </div>
 
@@ -945,7 +947,6 @@
           select_country_h1: 'Выберите вашу страну',
           select_role_h1: 'Выберите роль',
           role_hint_new: 'Зарегистрируйтесь как рекламодатель или креатор.',
-          role_hint_manager_application: 'Анкета менеджера откроется в чате с ботом.',
           role_hint_has_profile: 'Можете зарегистрироваться как вторая роль или вернуться в кабинет.',
           btn_advertiser: 'Рекламодатель',
           btn_blogger: 'Креатор',
@@ -1099,7 +1100,6 @@
           select_country_h1: 'Select your country',
           select_role_h1: 'Select your role',
           role_hint_new: 'Register as an advertiser or creator.',
-          role_hint_manager_application: 'The manager application opens in the bot chat.',
           role_hint_has_profile: 'You can register as a second role or return to your dashboard.',
           btn_advertiser: 'Advertiser',
           btn_blogger: 'Creator',
@@ -1253,7 +1253,6 @@
           select_country_h1: 'Еліңізді таңдаңыз',
           select_role_h1: 'Рөліңізді таңдаңыз',
           role_hint_new: 'Жарнама беруші немесе креатор ретінде тіркеліңіз.',
-          role_hint_manager_application: 'Менеджер сауалнамасы бот чатында ашылады.',
           role_hint_has_profile: 'Екінші рөл ретінде тіркеле аласыз немесе кабинетке орала аласыз.',
           btn_advertiser: 'Жарнама беруші',
           btn_blogger: 'Креатор',
@@ -1403,7 +1402,6 @@
           select_country_h1: 'Выберыце вашу краіну',
           select_role_h1: 'Выберыце ролю',
           role_hint_new: 'Зарэгіструйцеся як рэкламадаўца або крэатар.',
-          role_hint_manager_application: 'Анкета менеджара адкрыецца ў чаце з ботам.',
           role_hint_has_profile: 'Можна зарэгістравацца другой роляй або вярнуцца ў кабінет.',
           btn_advertiser: 'Рэкламадаўца',
           btn_blogger: 'Крэатар',
@@ -1550,7 +1548,6 @@
           select_country_h1: 'Mamlakatni tanlang',
           select_role_h1: 'Rolni tanlang',
           role_hint_new: 'Reklamachi yoki kreator sifatida ro\'yxatdan o\'ting.',
-          role_hint_manager_application: 'Menejer anketasi bot chatida ochiladi.',
           role_hint_has_profile: 'Ikkinchi rol sifatida ro\'yxatdan o\'tishingiz yoki kabinetga qaytishingiz mumkin.',
           btn_advertiser: 'Reklamachi',
           btn_blogger: 'Kreator',
@@ -1952,8 +1949,6 @@
         if (hint) {
           if (me && (me.has_advertiser_profile || me.has_blogger_profile)) {
             hint.textContent = tx('role_hint_has_profile');
-          } else if (document.getElementById('link-manager-application').hasAttribute('href')) {
-            hint.textContent = tx('role_hint_manager_application');
           } else {
             hint.textContent = tx('role_hint_new');
           }
@@ -2107,9 +2102,10 @@
           company_activity: document.getElementById('adv-activity').value.trim() || null,
           display_name: document.getElementById('adv-name').value.trim() || null
         };
+        if (window.UMCProfileDrafts && !window.UMCProfileDrafts.begin('advertiser')) return;
         var advSubmitBtn = document.getElementById('btn-submit-advertiser');
         if (advSubmitBtn) advSubmitBtn.disabled = true;
-        verifiedProfileRequest('/register/advertiser', payload, {refreshProfile: true}).then(function(res) {
+        verifiedProfileRequest('/register/advertiser', payload, {refreshProfile: true, onSaved: function() { if (window.UMCProfileDrafts) window.UMCProfileDrafts.saved('advertiser'); }}).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
               showAgreement('advertiser');
@@ -2119,6 +2115,7 @@
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
+          if (window.UMCProfileDrafts) window.UMCProfileDrafts.finish('advertiser');
           if (advSubmitBtn) advSubmitBtn.disabled = false;
         });
       });
@@ -2144,7 +2141,6 @@
           document.getElementById(city ? 'btn-blogger-city-confirm' : 'btn-blogger-city-map').focus();
           return;
         }
-        if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         var topicsRaw = document.getElementById('blg-topics').value.trim();
         var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
         var day = document.getElementById('blg-birth-day').value;
@@ -2191,9 +2187,12 @@
             Object.assign(payload, savedBloggerLocation.fields);
           }
         }
+        if (window.UMCProfileDrafts && !window.UMCProfileDrafts.begin('blogger')) return;
+        if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         verifiedProfileRequest('/register/blogger', payload, {
           refreshProfile: true,
           onSaved: function() {
+            if (window.UMCProfileDrafts) window.UMCProfileDrafts.saved('blogger');
             if (!selectedLocation) return;
             savedBloggerLocation = selectedLocation;
             var profile = (window._me || {}).blogger_profile;
@@ -2209,6 +2208,7 @@
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
+          if (window.UMCProfileDrafts) window.UMCProfileDrafts.finish('blogger');
           if (blgSubmitBtn) blgSubmitBtn.disabled = false;
         });
       });
@@ -3347,10 +3347,7 @@
         if (managerBtn) managerBtn.style.display = (me && me.is_manager) ? '' : 'none';
         var managerLink = document.getElementById('link-manager-application');
         var config = window._config || {};
-        var canApply = !me.is_manager && config.manager_application_enabled === true
-          && /^[A-Za-z0-9_]{5,32}$/.test(config.bot_username || '');
-        if (canApply) managerLink.href = 'https://t.me/' + config.bot_username + '?start=manager';
-        else managerLink.removeAttribute('href');
+        var canApply = !me.is_manager && config.manager_application_enabled === true;
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
         var view = new URLSearchParams(location.search).get('view');
@@ -3429,7 +3426,25 @@
           }
         });
       }
-      window.__umcAppBridge = { setInstagramCode: setVerificationCode, request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
+      var profileForms = {
+        isVerified: function() { try { assertVerifiedMe(); return !!(window._me || {}).user_id; } catch (_) { return false; } },
+        clear: function(role) {
+          document.getElementById('form-' + role).reset();
+          if (role === 'blogger') { bloggerLocation.reset(); savedBloggerLocation = null; }
+          document.getElementById(role === 'blogger' ? 'blg-error' : 'adv-error').textContent = '';
+        },
+        prepare: function(role) {
+          var committedLocation = savedBloggerLocation;
+          profileForms.clear(role);
+          if (role === 'blogger') {
+            var profile = (window._me || {}).blogger_profile;
+            fillBloggerForm(profile);
+            if (profile && committedLocation && committedLocation.actor === (window._me || {}).user_id && committedLocation.platform === verifiedMePlatform && committedLocation.city === profile.city) savedBloggerLocation = committedLocation;
+          } else fillAdvertiserForm((window._me || {}).advertiser_profile);
+        },
+        cityPending: function() { return bloggerLocation.pending || bloggerLocation.needsConfirmation; }
+      };
+      window.__umcAppBridge = { profileForms: profileForms, setInstagramCode: setVerificationCode, request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       // Deferred modules subscribe to app-ready and selection events.
