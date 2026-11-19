@@ -1,5 +1,6 @@
 """Serialize observations with canonical ownership, never with API calls."""
 
+import re
 from dataclasses import replace
 from datetime import datetime, timedelta
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -46,6 +47,29 @@ def _db(session: object) -> AsyncSession:
     return session
 
 
+def _observation_handle(profile: BloggerProfile) -> str:
+    """Read legacy link formats without changing ownership or editor rules.
+
+    Historic registration accepted HTTP, schemeless URLs and bare handles.
+    Availability bookkeeping must never roll back a valid code confirmation
+    because its stored link predates the strict social-link normalizer.
+    """
+    value = (profile.instagram_url or "").strip()
+    if value.lower().startswith("http://"):
+        value = "https://" + value[7:]
+    elif "://" not in value:
+        if re.fullmatch(r"@?[A-Za-z0-9_.]{1,30}", value):
+            value = "instagram.com/" + value.removeprefix("@")
+        value = "https://" + value
+    try:
+        return normalize_social_url(SocialPlatform.INSTAGRAM, value)[1]
+    except ValueError:
+        # Fresh verification supplies the API-observed username. Preserve
+        # unknown historical handles as unknown rather than inventing one.
+        known = (profile.instagram_username or "").strip().lower()
+        return known if re.fullmatch(r"[a-z0-9_.]{1,30}", known) else ""
+
+
 class SqlAlchemyInstagramMaintenanceRepository:
     def __init__(
         self,
@@ -81,9 +105,7 @@ class SqlAlchemyInstagramMaintenanceRepository:
         )
         if previous and previous["meta_id"] == profile.instagram_user_id:
             return dict(previous)
-        _, handle = normalize_social_url(
-            SocialPlatform.INSTAGRAM, profile.instagram_url
-        )
+        handle = _observation_handle(profile)
         return dict(
             user_id=profile.user_id,
             meta_id=profile.instagram_user_id,
@@ -248,9 +270,7 @@ class SqlAlchemyInstagramMaintenanceRepository:
         if identity_changed:
             health["identity_since"] = at
             health["metrics_observed_at"] = None
-        _, handle = normalize_social_url(
-            SocialPlatform.INSTAGRAM, profile.instagram_url
-        )
+        handle = _observation_handle(profile)
         customer_refresh = bool(
             previous_profile is not None
             and previous_profile.instagram_user_id
