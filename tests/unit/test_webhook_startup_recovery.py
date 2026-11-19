@@ -10,7 +10,9 @@ import ugc_bot.telegram_webhook_app as webhook
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure_stage", ["database_read", "worker_start"])
+@pytest.mark.parametrize(
+    "failure_stage", ["database_read", "logging_setup", "worker_start"]
+)
 async def test_failed_startup_closes_acquired_resources(
     monkeypatch, failure_stage
 ):
@@ -44,6 +46,9 @@ async def test_failed_startup_closes_acquired_resources(
     max_session = SimpleNamespace(close=AsyncMock())
     max_session_factory = Mock(return_value=max_session)
     register = AsyncMock()
+    install_logging = Mock(
+        side_effect=failure if failure_stage == "logging_setup" else None
+    )
     start_workers = Mock(side_effect=failure)
     monkeypatch.setattr(webhook, "load_config", lambda: config)
     monkeypatch.setattr(webhook, "configure_logging", Mock())
@@ -55,6 +60,7 @@ async def test_failed_startup_closes_acquired_resources(
         webhook, "build_dispatcher", Mock(return_value=dispatcher)
     )
     monkeypatch.setattr(webhook, "Bot", bot_factory)
+    monkeypatch.setattr(webhook, "install_start_logging", install_logging)
     monkeypatch.setattr(webhook, "_set_webhook_with_retry", register)
     monkeypatch.setattr(webhook, "start_checkout_runtime", start_workers)
     monkeypatch.setattr(webhook, "stop_checkout_runtime", AsyncMock())
@@ -70,11 +76,19 @@ async def test_failed_startup_closes_acquired_resources(
     exchange.close.assert_awaited_once()
     if failure_stage == "database_read":
         bot_factory.assert_not_called()
+        install_logging.assert_not_called()
         register.assert_not_awaited()
         start_workers.assert_not_called()
         max_session_factory.assert_not_called()
         assert not hasattr(application.state, "dispatcher")
+    elif failure_stage == "logging_setup":
+        install_logging.assert_called_once_with(dispatcher, bot)
+        bot.session.close.assert_awaited_once()
+        register.assert_not_awaited()
+        start_workers.assert_not_called()
+        max_session_factory.assert_not_called()
     else:
+        install_logging.assert_called_once_with(dispatcher, bot)
         bot.session.close.assert_awaited_once()
         max_session.close.assert_awaited_once()
         register.assert_awaited_once()
