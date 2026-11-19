@@ -141,6 +141,7 @@
       if (error.textContent === text('city_confirm_required')) error.textContent = '';
       showMap(false);
       toggle.focus();
+      city.closest('form').dispatchEvent(new Event('change', {bubbles: true}));
     });
 
     return {
