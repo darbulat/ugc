@@ -84,10 +84,11 @@ archiving rather than deleting a required chain to make space.
    and existing `/opt/myapp/ugc-ops` tools; install only the new primary helper
    beside them. No application rebuild or Compose update is needed.
 2. Read current primary and reserve state again. Wait for the currently
-   announced neighboring rollouts to finish. Obtain an individually
-   provisioned restricted operator key for the reserve; its forced command is
+   announced neighboring rollouts to finish. Use an existing individually
+   provisioned owner SSH key when already authorized. For a new operator,
+   obtain an explicitly approved restricted key whose forced command is
    `/usr/bin/python3 -Es /opt/ugc-pitr/releases/<revision>/pitr_operator.py`.
-   It has no forwarding, PTY, agent access or general shell.
+   A new restricted key has no forwarding, PTY, agent access or general shell.
 3. Install only the new reserve files/units. `pitr_operator.py install` requires
    the full main revision and the trusted primary `known_hosts` entry. Record
    existing unit state, generate reserve keys, and pass only public recipients

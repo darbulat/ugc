@@ -20,6 +20,7 @@ ROOT = Path("/opt/ugc-pitr")
 ETC = Path("/etc/ugc-pitr")
 STATE = Path("/var/lib/ugc-pitr")
 RESTORE = Path("/var/lib/ugc-pitr-restore")
+UNIT_ROOT = Path("/etc/systemd/system")
 AGE_URL = (
     "https://github.com/FiloSottile/age/releases/download/v1.3.2/"
     "age-v1.3.2-linux-amd64.tar.gz"
@@ -125,6 +126,25 @@ def download(url, maximum):
     return data
 
 
+def age_binaries():
+    # The official bundle includes optional plugins and exceeds 16 MiB.
+    archive = download(AGE_URL, 32 * 1024**2)
+    if hashlib.sha256(archive).hexdigest() != AGE_SHA:
+        raise ValueError("Pinned age archive checksum mismatch")
+    result = {}
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+        for name in ("age", "age-keygen"):
+            member = tar.getmember("age/" + name)
+            if not member.isfile() or not 0 < member.size <= 16 * 1024**2:
+                raise ValueError("Unsafe or oversized age binary")
+            with tar.extractfile(member) as source:
+                data = source.read(16 * 1024**2 + 1)
+            if len(data) != member.size:
+                raise ValueError("Incomplete age binary")
+            result[name] = data
+    return result
+
+
 def install_sources(release, revision):
     for name in SCRIPTS:
         target = release / name
@@ -146,8 +166,8 @@ def install_sources(release, revision):
             16 * 1024,
         )
         private_file(release / name, data)
-        shutil.copyfile(release / name, Path("/etc/systemd/system", name))
-        Path("/etc/systemd/system", name).chmod(0o644)
+        shutil.copyfile(release / name, UNIT_ROOT / name)
+        (UNIT_ROOT / name).chmod(0o644)
 
 
 def install(payload):  # noqa: C901
@@ -156,7 +176,7 @@ def install(payload):  # noqa: C901
         raise ValueError("A full reviewed main commit is required")
     if ETC.exists() or STATE.exists() or RESTORE.exists():
         raise ValueError("Existing reserve paths require manual review")
-    if any(Path("/etc/systemd/system", u).exists() for u in UNITS):
+    if any((UNIT_ROOT / u).exists() for u in UNITS):
         raise ValueError("Existing PITR units must not be overwritten")
     baseline = neighbors()
     release = ROOT / "releases" / revision
@@ -168,6 +188,8 @@ def install(payload):  # noqa: C901
         pass
     else:
         raise ValueError("Existing service user must not be adopted")
+    # Validate the pinned asset before creating accounts or installing units.
+    binaries_data = age_binaries()
     run(
         [
             "/usr/sbin/useradd",
@@ -194,14 +216,9 @@ def install(payload):  # noqa: C901
     binaries = ROOT / "bin"
     binaries.mkdir(mode=0o755)
     binaries.chmod(0o755)
-    archive = download(AGE_URL, 16 * 1024**2)
-    if hashlib.sha256(archive).hexdigest() != AGE_SHA:
-        raise ValueError("Pinned age archive checksum mismatch")
-    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
-        for name in ("age", "age-keygen"):
-            data = tar.extractfile("age/" + name).read(16 * 1024**2)
-            private_file(binaries / name, data)
-            (binaries / name).chmod(0o755)
+    for name, data in binaries_data.items():
+        private_file(binaries / name, data)
+        (binaries / name).chmod(0o755)
     run([str(binaries / "age-keygen"), "-o", str(ETC / "pitr.identity")])
     run(
         [
