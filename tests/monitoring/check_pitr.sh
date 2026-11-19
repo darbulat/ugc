@@ -42,6 +42,8 @@ prepared=$(docker exec "${name}-client" cat /work/prepared-name)
 docker exec "${name}-client" chown -R 999:999 /work/restore /work/archive /work/keys
 docker exec "${name}-client" chown 999:999 /socket
 docker run -d --name "${name}-restore" --network none --memory 512m --memory-swap 512m \
+  --user 999:999 --entrypoint /usr/lib/postgresql/16/bin/postgres \
+  -e PATH=/usr/bin \
   -e PGDATA=/restore/pgdata -e CREDENTIALS_DIRECTORY=/keys \
   -v "$fixture/restore/$prepared:/restore" -v "$fixture/archive:/archive:ro" \
   -v "$fixture/keys:/keys:ro" -v "$age_dir/age:/tools/age:ro" \
