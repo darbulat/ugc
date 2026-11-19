@@ -22,6 +22,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from ugc_bot.app import build_dispatcher, create_storage
 from ugc_bot.application.services.checkout_paid_receipts import native_receipt
+from ugc_bot.bot.telegram.start_logging import install_start_logging
 from ugc_bot.checkout_runtime import (
     start_checkout_runtime,
     stop_checkout_runtime,
@@ -126,6 +127,7 @@ async def _lifespan(app: FastAPI):
         dispatcher = build_dispatcher(config, storage=storage)
         await dispatcher["bot_texts_service"].load_from_db()
         bot = Bot(token=config.bot.bot_token)
+        install_start_logging(dispatcher, bot)
         recorder = dispatcher.get("transaction_manager")
         messenger_client = TelegramMessengerClient(
             bot,

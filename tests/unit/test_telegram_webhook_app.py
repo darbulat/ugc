@@ -138,6 +138,10 @@ async def test_http_metrics_middleware_records_4xx_on_http_exception() -> None:
 def test_webhook_health(client: TestClient) -> None:
     """Health endpoint returns ok."""
     response = client.get("/health")
+    from ugc_bot.bot.telegram.start_logging import StartReplyLogging
+
+    installed = app.state.bot.session.middleware.call_args.args[0]
+    assert isinstance(installed, StartReplyLogging)
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
