@@ -202,6 +202,8 @@ jobs:
           tests/e2e/test_miniapp_design_system.py::test_creator_form_title_matches_its_own_profile
           tests/e2e/test_miniapp_instagram_copy.py
           tests/e2e/test_miniapp_instagram_feedback.py
+          tests/e2e/test_miniapp_profile_drafts.py
+          tests/e2e/test_miniapp_registration_resume.py
           tests/e2e/test_partner_levels_ui.py
           tests/e2e/test_miniapp_partner_ui.py
           tests/e2e/test_partner_completion_ui.py

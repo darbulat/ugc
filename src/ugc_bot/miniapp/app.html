@@ -24,6 +24,7 @@
   <script src="/miniapp/umc-payout-state.js" defer></script>
   <script src="/miniapp/umc-shell.js" defer></script>
   <script src="/miniapp/umc-instagram-verification.js" defer></script>
+  <script src="/miniapp/umc-profile-drafts.js" defer></script>
   <script src="/miniapp/umc-payout-admin.js" defer></script>
   <script src="/miniapp/umc-payouts.js" defer></script>
   <script src="/miniapp/umc-collaborations.js" defer></script>
@@ -2110,9 +2111,10 @@
           company_activity: document.getElementById('adv-activity').value.trim() || null,
           display_name: document.getElementById('adv-name').value.trim() || null
         };
+        if (window.UMCProfileDrafts && !window.UMCProfileDrafts.begin('advertiser')) return;
         var advSubmitBtn = document.getElementById('btn-submit-advertiser');
         if (advSubmitBtn) advSubmitBtn.disabled = true;
-        verifiedProfileRequest('/register/advertiser', payload, {refreshProfile: true}).then(function(res) {
+        verifiedProfileRequest('/register/advertiser', payload, {refreshProfile: true, onSaved: function() { if (window.UMCProfileDrafts) window.UMCProfileDrafts.saved('advertiser'); }}).then(function(res) {
           if (res.needs_agreement) {
             return (window._config ? Promise.resolve(window._config) : loadConfig()).then(function() {
               showAgreement('advertiser');
@@ -2122,6 +2124,7 @@
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
+          if (window.UMCProfileDrafts) window.UMCProfileDrafts.finish('advertiser');
           if (advSubmitBtn) advSubmitBtn.disabled = false;
         });
       });
@@ -2147,7 +2150,6 @@
           document.getElementById(city ? 'btn-blogger-city-confirm' : 'btn-blogger-city-map').focus();
           return;
         }
-        if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         var topicsRaw = document.getElementById('blg-topics').value.trim();
         var topicsList = topicsRaw ? topicsRaw.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean) : [];
         var day = document.getElementById('blg-birth-day').value;
@@ -2194,9 +2196,12 @@
             Object.assign(payload, savedBloggerLocation.fields);
           }
         }
+        if (window.UMCProfileDrafts && !window.UMCProfileDrafts.begin('blogger')) return;
+        if (blgSubmitBtn) blgSubmitBtn.disabled = true;
         verifiedProfileRequest('/register/blogger', payload, {
           refreshProfile: true,
           onSaved: function() {
+            if (window.UMCProfileDrafts) window.UMCProfileDrafts.saved('blogger');
             if (!selectedLocation) return;
             savedBloggerLocation = selectedLocation;
             var profile = (window._me || {}).blogger_profile;
@@ -2212,6 +2217,7 @@
         }).catch(function(err) {
           errEl.textContent = err.message || 'Ошибка регистрации';
         }).then(function() {
+          if (window.UMCProfileDrafts) window.UMCProfileDrafts.finish('blogger');
           if (blgSubmitBtn) blgSubmitBtn.disabled = false;
         });
       });
@@ -3430,7 +3436,25 @@
           }
         });
       }
-      window.__umcAppBridge = { setInstagramCode: setVerificationCode, request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
+      var profileForms = {
+        isVerified: function() { try { assertVerifiedMe(); return !!(window._me || {}).user_id; } catch (_) { return false; } },
+        clear: function(role) {
+          document.getElementById('form-' + role).reset();
+          if (role === 'blogger') { bloggerLocation.reset(); savedBloggerLocation = null; }
+          document.getElementById(role === 'blogger' ? 'blg-error' : 'adv-error').textContent = '';
+        },
+        prepare: function(role) {
+          var committedLocation = savedBloggerLocation;
+          profileForms.clear(role);
+          if (role === 'blogger') {
+            var profile = (window._me || {}).blogger_profile;
+            fillBloggerForm(profile);
+            if (profile && committedLocation && committedLocation.actor === (window._me || {}).user_id && committedLocation.platform === verifiedMePlatform && committedLocation.city === profile.city) savedBloggerLocation = committedLocation;
+          } else fillAdvertiserForm((window._me || {}).advertiser_profile);
+        },
+        cityPending: function() { return bloggerLocation.pending || bloggerLocation.needsConfirmation; }
+      };
+      window.__umcAppBridge = { profileForms: profileForms, setInstagramCode: setVerificationCode, request: api, showScreen: showScreen, resumeAgreement: resumeAgreement, createRequestContext: createRequestContext, openOrder: openOrderDetail };
       window.__umcSocialBridge = window.__umcAppBridge;
       fillBirthDateSelects();
       // Deferred modules subscribe to app-ready and selection events.
