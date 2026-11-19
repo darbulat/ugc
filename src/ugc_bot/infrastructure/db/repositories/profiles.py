@@ -8,7 +8,7 @@ from uuid import UUID
 
 from geoalchemy2.elements import WKTElement
 from geoalchemy2.functions import ST_Intersects
-from sqlalchemy import func, or_, select, text
+from sqlalchemy import and_, case, func, or_, select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -22,12 +22,17 @@ from ugc_bot.application.ports import (
 )
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile
 from ugc_bot.domain.enums import BloggerGender, MessengerType, WorkFormat
+from ugc_bot.domain.instagram_maintenance import FAILURE_SPACING
 from ugc_bot.domain.social import CreatorIdentityConflict
 from ugc_bot.infrastructure.db.identity_history_models import (
     IDENTITY_OBSERVATIONS,
 )
 from ugc_bot.infrastructure.db.identity_history_schema import (
     HISTORY_WRITER_LOCK_SQL,
+)
+from ugc_bot.infrastructure.db.instagram_maintenance_models import (
+    HEALTH,
+    instagram_available,
 )
 from ugc_bot.infrastructure.db.messenger_attribution import (
     REGISTRATION_CHANNELS,
@@ -303,7 +308,8 @@ class SqlAlchemyBloggerProfileRepository(
             session if isinstance(session, AsyncSession) else None
         )
         stmt = select(BloggerProfileModel.user_id).where(
-            BloggerProfileModel.confirmed.is_(True)
+            BloggerProfileModel.confirmed.is_(True),
+            instagram_available(BloggerProfileModel.__table__),
         )
         if location_geometry_wkt and location_geometry_wkt.strip():
             try:
@@ -353,11 +359,37 @@ class SqlAlchemyBloggerProfileRepository(
                 BloggerProfileModel.instagram_user_id != "",
             )
             if stats_older_than is None:
+                fetched_at = BloggerProfileModel.instagram_stats_fetched_at
+                recheck_due = and_(
+                    HEALTH.c.status == "suspect",
+                    HEALTH.c.last_failure_at
+                    <= (datetime.now(timezone.utc) - FAILURE_SPACING),
+                )
                 stmt = (
                     select(BloggerProfileModel)
+                    .outerjoin(
+                        HEALTH,
+                        and_(
+                            HEALTH.c.user_id == BloggerProfileModel.user_id,
+                            HEALTH.c.meta_id
+                            == BloggerProfileModel.instagram_user_id,
+                        ),
+                    )
                     .where(*base_conditions)
                     .order_by(
-                        BloggerProfileModel.instagram_stats_fetched_at.asc().nulls_first(),
+                        case((recheck_due, 0), else_=1),
+                        case(
+                            (
+                                HEALTH.c.checked_at > fetched_at,
+                                HEALTH.c.checked_at,
+                            ),
+                            else_=func.coalesce(
+                                fetched_at,
+                                HEALTH.c.checked_at,
+                            ),
+                        )
+                        .asc()
+                        .nulls_first(),
                         BloggerProfileModel.user_id,
                     )
                     .limit(limit)

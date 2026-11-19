@@ -692,6 +692,37 @@ async def handle_profile_my_profile_callback(
     await _send_profile(fake_msg, deps)
 
 
+@router.callback(lambda c: c.data == "instagram:refresh")
+async def handle_instagram_refresh_callback(
+    incoming: IncomingCallback, deps: dict[str, Any]
+) -> None:
+    client, state = deps["messenger_client"], deps["state_store"]
+    await client.answer_callback(callback_id=incoming.callback_id)
+    if incoming.user is None or not incoming.user.external_id:
+        return
+    profiles = deps["profile_service"]
+    user = await profiles.get_user_by_external(
+        external_id=incoming.user.external_id,
+        messenger_type=incoming.user.messenger_type,
+    )
+    if user is None or await profiles.get_blogger_profile(user.user_id) is None:
+        return
+    await state.clear()
+    await state.update_data(
+        edit_user_id=str(user.user_id),
+        edit_external_id=str(incoming.user.external_id),
+        edit_profile_type="blogger",
+        editing_field="instagram_url",
+    )
+    await state.set_state(_STATE_ENTERING_VALUE)
+    await client.send_text(
+        chat_id=incoming.chat_id,
+        text=await deps["bot_texts_service"].get(
+            "prompt_edit_instagram_url", deps.get("locale", "ru")
+        ),
+    )
+
+
 @router.callback(lambda c: c.data == CALLBACK_PROFILE_EDIT)
 async def handle_profile_edit_callback(
     incoming: IncomingCallback, deps: dict[str, Any]

@@ -400,7 +400,8 @@ def test_order_worklist_search_hide_and_restore(
         # SQLite fixture omits PostGIS models. Preview uses an empty directory.
         session.connection().exec_driver_sql(
             "CREATE TABLE IF NOT EXISTS blogger_profiles ("
-            "user_id CHAR(32) PRIMARY KEY, confirmed BOOLEAN NOT NULL)"
+            "user_id CHAR(32) PRIMARY KEY, confirmed BOOLEAN NOT NULL, "
+            "instagram_user_id VARCHAR)"
         )
         session.add(
             UserModel(

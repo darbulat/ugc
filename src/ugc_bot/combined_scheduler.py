@@ -27,6 +27,9 @@ from ugc_bot.exception_hooks import (
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
+from ugc_bot.instagram_profile_notice_scheduler import (
+    run_enabled as instagram_notice_loop,
+)
 from ugc_bot.logging_setup import configure_logging
 from ugc_bot.manual_grant_scheduler import run_loop as manual_grant_loop
 from ugc_bot.notice_delivery_scheduler import run_enabled as notice_loop
@@ -64,6 +67,17 @@ def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
             ("order-image-cleanup", image_cleanup_loop),
         )
     ]
+    if getattr(
+        getattr(config, "instagram", None),
+        "instagram_profile_maintenance_enabled",
+        False,
+    ):
+        tasks.append(
+            asyncio.create_task(
+                instagram_notice_loop(config, container, bot),
+                name="instagram-profile-notices",
+            )
+        )
     if getattr(
         getattr(config, "financial", None), "core_enabled", False
     ) and getattr(

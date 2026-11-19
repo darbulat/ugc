@@ -7,10 +7,14 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from ugc_bot.application.delays import random_delay_seconds
-from ugc_bot.application.errors import InstagramUserNotFoundError
+from ugc_bot.application.errors import (
+    InstagramProfileUnavailableError,
+    InstagramUserNotFoundError,
+)
 from ugc_bot.application.ports import (
     BloggerProfileRepository,
     InstagramGraphApiClient,
+    InstagramProfileInfo,
     TransactionManager,
 )
 from ugc_bot.domain.entities import BloggerProfile
@@ -20,6 +24,9 @@ if TYPE_CHECKING:
     from ugc_bot.application.messenger.ports import MessengerClient
     from ugc_bot.application.ports import UserRepository
     from ugc_bot.application.services.bot_texts_service import BotTextsService
+    from ugc_bot.application.services.instagram_profile_maintenance import (
+        InstagramProfileMaintenance,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +46,7 @@ class InstagramStatsUpdateService:
         max_messenger_client: Optional["MessengerClient"] = None,
         bot_texts_service: Optional["BotTextsService"] = None,
         default_locale: str = "ru",
+        profile_maintenance: "InstagramProfileMaintenance | None" = None,
     ) -> None:
         """Initialize the service.
 
@@ -64,6 +72,7 @@ class InstagramStatsUpdateService:
         self.max_messenger_client = max_messenger_client
         self.bot_texts_service = bot_texts_service
         self._default_locale = default_locale
+        self.profile_maintenance = profile_maintenance
 
     async def _handle_user_not_found(
         self, profile: BloggerProfile, instagram_user_id: str
@@ -186,33 +195,47 @@ class InstagramStatsUpdateService:
         updated = 0
         errors = 0
         now = datetime.now(timezone.utc)
+        unavailable_checks: list[tuple[BloggerProfile, str]] = []
 
         for profile in profiles:
-            ok = await self._process_profile(profile, now)
+            ok = await self._process_profile(
+                profile, now, unavailable_checks=unavailable_checks
+            )
             if ok:
                 updated += 1
             else:
                 errors += 1
 
+        # An app/scope outage may also surface as 100/33 for every account.
+        # Only apply profile-specific failures if this batch proved access.
+        if updated and self.profile_maintenance is not None:
+            for profile, reason in unavailable_checks:
+                await self._observe_profile(profile, None, now, error=reason)
+        elif unavailable_checks:
+            logger.error(
+                "No successful Instagram checks; availability unchanged"
+            )
         return (updated, errors)
 
     async def _process_profile(
-        self, profile: BloggerProfile, now: datetime
+        self,
+        profile: BloggerProfile,
+        now: datetime,
+        *,
+        unavailable_checks: list[tuple[BloggerProfile, str]] | None = None,
     ) -> bool:
         """Process a single profile. Return True if updated, False on error."""
         assert self.instagram_api_client is not None
         ig_id = profile.instagram_user_id or ""
         try:
             info = await self.instagram_api_client.get_profile_by_id(ig_id)
-        except InstagramUserNotFoundError:
-            logger.warning(
-                "Instagram user not found (9010), unconfirming",
-                extra={
-                    "user_id": str(profile.user_id),
-                    "instagram_user_id": ig_id,
-                },
+        except (
+            InstagramUserNotFoundError,
+            InstagramProfileUnavailableError,
+        ) as exc:
+            await self._record_unavailable(
+                profile, exc, now, unavailable_checks
             )
-            await self._handle_user_not_found(profile, ig_id)
             return False
         except Exception as exc:
             logger.warning(
@@ -236,6 +259,11 @@ class InstagramStatsUpdateService:
             )
             return False
 
+        if self.profile_maintenance is not None:
+            saved = await self._observe_profile(profile, info, now)
+            await asyncio.sleep(random_delay_seconds(self._delay_seconds))
+            return saved
+
         instagram_url = (
             f"https://instagram.com/{info.username}"
             if info.username
@@ -245,9 +273,17 @@ class InstagramStatsUpdateService:
         updated_profile = replace(
             profile,
             instagram_url=instagram_url,
-            instagram_followers_count=info.followers_count,
+            instagram_followers_count=(
+                info.followers_count
+                if info.followers_count is not None
+                else profile.instagram_followers_count
+            ),
             instagram_username=info.username,
-            instagram_stats_fetched_at=now,
+            instagram_stats_fetched_at=(
+                now
+                if info.followers_count is not None
+                else profile.instagram_stats_fetched_at
+            ),
         )
 
         async def _save(session: object | None) -> None:
@@ -274,3 +310,48 @@ class InstagramStatsUpdateService:
         )
         await asyncio.sleep(random_delay_seconds(self._delay_seconds))
         return True
+
+    async def _record_unavailable(
+        self,
+        profile: BloggerProfile,
+        error: InstagramUserNotFoundError | InstagramProfileUnavailableError,
+        at: datetime,
+        deferred: list[tuple[BloggerProfile, str]] | None,
+    ) -> None:
+        if self.profile_maintenance is not None:
+            reason = (
+                "100/33"
+                if isinstance(error, InstagramProfileUnavailableError)
+                else "not_found"
+            )
+            if deferred is not None:
+                deferred.append((profile, reason))
+            else:
+                await self._observe_profile(profile, None, at, error=reason)
+        elif isinstance(error, InstagramUserNotFoundError):
+            await self._handle_user_not_found(
+                profile, profile.instagram_user_id or ""
+            )
+
+    async def _observe_profile(
+        self,
+        profile: BloggerProfile,
+        info: InstagramProfileInfo | None,
+        at: datetime,
+        *,
+        error: str | None = None,
+    ) -> bool:
+        assert self.profile_maintenance is not None
+        try:
+            return await self.profile_maintenance.observe(
+                profile, info, at, error=error
+            )
+        except Exception as exc:
+            logger.error(
+                "Instagram observation rolled back",
+                extra={
+                    "user_id": str(profile.user_id),
+                    "error_type": type(exc).__name__,
+                },
+            )
+            return False

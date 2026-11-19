@@ -14,7 +14,10 @@ from tests.helpers.corrections import (
     assess_original,
     deliver_original_positions,
 )
-from tests.helpers.financial_environment import isolated_financial_database
+from tests.helpers.financial_environment import (
+    add_current_instagram_reads,
+    isolated_financial_database,
+)
 from tests.postgres_financial.test_order_intake import intake_env
 from ugc_bot.application.correction_ports import ApplySelectionRefund
 from ugc_bot.application.services.financial_ledger_service import (
@@ -47,6 +50,7 @@ def financial_pg_engine():
         target_revision="00e0_financial_completion",
         current_order_model=True,
     ) as engine:
+        add_current_instagram_reads(engine)
         yield engine
 
 

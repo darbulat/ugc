@@ -435,6 +435,13 @@ class RedisConfig(BaseSettings):
 class InstagramConfig(BaseSettings):
     model_config = _ENV
 
+    instagram_profile_maintenance_enabled: bool = Field(
+        default=False, alias="INSTAGRAM_PROFILE_MAINTENANCE_ENABLED"
+    )
+    instagram_identity_context: str = Field(
+        default="", alias="INSTAGRAM_IDENTITY_CONTEXT", max_length=200
+    )
+
     instagram_webhook_verify_token: str = Field(
         default="", alias="INSTAGRAM_WEBHOOK_VERIFY_TOKEN"
     )

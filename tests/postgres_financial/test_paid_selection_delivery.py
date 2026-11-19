@@ -169,6 +169,35 @@ def state(env):
 
 
 @pytest.mark.asyncio
+async def test_same_identity_renamed_before_handoff_uses_current_url(
+    delivery_env,
+):
+    env = delivery_env
+    url = "https://instagram.com/renamed" + env["creator"].hex[:12]
+    with env["pg"].begin() as db:
+        db.execute(
+            update(BloggerProfileModel)
+            .where(BloggerProfileModel.user_id == env["creator"])
+            .values(instagram_url=url)
+        )
+    await env["worker"].run_once()
+    assert len(env["bot"].calls) == 1
+    assert url in env["bot"].calls[0]["text"]
+    assert state(env) == "delivered"
+    # The original commercial interest remains immutable evidence.
+    interests = Base.metadata.tables["paid_selection_interests"]
+    with Session(env["pg"]) as db:
+        assert (
+            db.scalar(
+                select(interests.c.instagram_url).where(
+                    interests.c.interest_id == env["interest"].interest_id
+                )
+            )
+            == env["interest"].instagram_url
+        )
+
+
+@pytest.mark.asyncio
 async def test_actual_interest_delivers_once_with_committed_attempt(
     delivery_env,
 ):

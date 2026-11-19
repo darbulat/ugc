@@ -238,6 +238,17 @@ class SqlAlchemyPaidSelectionRepository:
             "selection_verified_creator_required",
         )
         assert profile is not None  # required above; narrow the SQL row type
+        from ugc_bot.infrastructure.db.instagram_maintenance_models import (
+            instagram_available,
+        )
+
+        available = await db.scalar(
+            select(BloggerProfileModel.user_id).where(
+                BloggerProfileModel.user_id == creator_id,
+                instagram_available(BloggerProfileModel.__table__),
+            )
+        )
+        _require(available is not None, "selection_instagram_review_required")
         manual = None
         if invite_id is not None:
             manual = await invitation(db, invite_id, at, creator_id, lock=True)

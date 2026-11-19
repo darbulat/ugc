@@ -339,7 +339,7 @@ class Container:
         repos = self.build_repos()
         instagram_api_client = self.build_instagram_api_client()
         return service_factory.build_instagram_verification_service(
-            repos, instagram_api_client, self._transaction_manager
+            repos, instagram_api_client, self._transaction_manager, self._config
         )
 
     def build_metrics_collector(self):

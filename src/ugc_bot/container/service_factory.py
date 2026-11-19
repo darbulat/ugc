@@ -157,6 +157,9 @@ from ugc_bot.container.correction_factory import (
 from ugc_bot.container.customer_workflow_factory import build_customer_workflows
 from ugc_bot.container.debt_recovery_factory import build_debt_recovery
 from ugc_bot.container.financial_review_factory import build_financial_review
+from ugc_bot.container.instagram_maintenance_factory import (
+    build_profile_maintenance,
+)
 from ugc_bot.container.manual_grant_factory import build_manual_grants
 from ugc_bot.container.messenger_linking_factory import (
     build_messenger_linking_service,
@@ -409,7 +412,7 @@ def build_feedback_scheduler_deps(
 
 
 def build_instagram_verification_service(
-    repos, instagram_api_client, transaction_manager
+    repos, instagram_api_client, transaction_manager, config=None
 ):
     """Build InstagramVerificationService for webhook."""
     user_role_service = UserRoleService(
@@ -425,6 +428,9 @@ def build_instagram_verification_service(
         transaction_manager=transaction_manager,
         user_role_service=user_role_service,
         social_repo=repos.get("social_account_repo"),
+        profile_maintenance=build_profile_maintenance(
+            config, repos, transaction_manager
+        ),
     )
 
 
@@ -452,6 +458,9 @@ def build_instagram_stats_scheduler_deps(
             max_messenger_client=max_messenger_client,
             bot_texts_service=bot_texts_service,
             default_locale=default_locale,
+            profile_maintenance=build_profile_maintenance(
+                config, repos, transaction_manager
+            ),
         ),
         "interval_seconds": ig_config.instagram_stats_update_interval_seconds,
     }
@@ -832,6 +841,9 @@ def build_bot_services(
             transaction_manager=transaction_manager,
             user_role_service=user_role_service,
             social_repo=repos.get("social_account_repo"),
+            profile_maintenance=build_profile_maintenance(
+                config, repos, transaction_manager
+            ),
         ),
         "order_service": order_service,
         "subscription_service": SubscriptionService(

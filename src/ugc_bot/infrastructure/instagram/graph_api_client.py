@@ -10,7 +10,10 @@ from urllib.parse import quote
 
 import httpx
 
-from ugc_bot.application.errors import InstagramUserNotFoundError
+from ugc_bot.application.errors import (
+    InstagramProfileUnavailableError,
+    InstagramUserNotFoundError,
+)
 from ugc_bot.application.ports import (
     InstagramDirectMessage,
     InstagramGraphApiClient,
@@ -51,13 +54,25 @@ def _is_no_matching_user_error(response_text: str) -> bool:
     """
     try:
         data = json.loads(response_text)
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, TypeError):
         return False
     error = data.get("error") or {}
     code = error.get("code")
     if code == 9010:
         return True
     return code == 100 and error.get("error_subcode") == 2534014
+
+
+def _raise_profile_unavailable(response_text: str) -> None:
+    try:
+        error = json.loads(response_text).get("error", {})
+        unavailable = (
+            error.get("code") == 100 and error.get("error_subcode") == 33
+        )
+    except (ValueError, AttributeError, TypeError):
+        return
+    if unavailable:
+        raise InstagramProfileUnavailableError("instagram_profile_100_33")
 
 
 def _is_token_expired_error(response_text: str) -> bool:
@@ -225,7 +240,12 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 data = response.json()
-        except (httpx.HTTPStatusError, httpx.RequestError):
+        except httpx.HTTPStatusError as exc:
+            _raise_profile_unavailable(exc.response.text)
+            if _is_no_matching_user_error(exc.response.text):
+                raise InstagramUserNotFoundError(instagram_user_id) from exc
+            return None
+        except httpx.RequestError:
             return None
         return _parse_profile_response(data)
 
@@ -425,6 +445,7 @@ class HttpInstagramGraphApiClient(InstagramGraphApiClient):
         """
         if _is_no_matching_user_error(exc.response.text):
             raise InstagramUserNotFoundError(instagram_user_id) from exc
+        _raise_profile_unavailable(exc.response.text)
         if (
             _is_retriable_status(exc.response.status_code)
             and attempt < self._retry_attempts
