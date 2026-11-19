@@ -3,10 +3,16 @@
 from uuid import UUID
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LinkPreviewOptions,
+    MessageEntity,
+)
 from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 
+from ugc_bot.application.creator_offer_cards import client_contact_links
 from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.invite_handoff_models import NOTICES
@@ -39,8 +45,14 @@ async def _claim(service, identity, kind, *, manual=False):
                         OrderModel.creator_offer_card,
                         OrderModel.geography,
                         OrderModel.complimentary,
+                        OrderModel.bloggers_needed,
+                        OrderItemModel.ordinal,
                     )
                     .join(OrderModel, OrderModel.order_id == INVITES.c.order_id)
+                    .join(
+                        OrderItemModel,
+                        OrderItemModel.paid_item_id == INVITES.c.item_id,
+                    )
                     .where(
                         INVITES.c.id == identity,
                         INVITES.c.expires_at > at,
@@ -97,12 +109,28 @@ async def _claim(service, identity, kind, *, manual=False):
 
 
 def customer_contact_notice(order):
-    """The customer receives usable contacts in the message itself."""
+    """Render the actual selected position with ordinary contact-card links."""
     from ugc_bot.bot.telegram.handlers.order_summary import summary_button
 
     button = summary_button(order["order_id"])
+    profile = f"https://instagram.com/{order['instagram']}"
+    links = client_contact_links(
+        profile=profile, handle=order["telegram"], locale="ru"
+    )
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
+            *[
+                [
+                    InlineKeyboardButton(
+                        text=label,
+                        url=url,
+                        style="primary"
+                        if index == 0 and order["telegram"]
+                        else None,
+                    )
+                ]
+                for index, (label, url) in enumerate(links)
+            ],
             [
                 InlineKeyboardButton(
                     text=button.text,
@@ -110,18 +138,22 @@ def customer_contact_notice(order):
                     if order["complimentary"]
                     else button.callback_data,
                 )
-            ]
+            ],
         ]
     )
+    number = public_order_number(order["order_id"])
+    title = (order.get("creator_offer_card") or {}).get("title")
     lines = [
-        f"Контакт креатора для заказа {public_order_number(order['order_id'])}",
-        order["creator_name"] or "",
-        f"Instagram: https://instagram.com/{order['instagram']}",
+        "Креатор подтвердил интерес",
+        f"{title} · {number}" if title else number,
+        f"Позиция №{order['ordinal']} из {order['bloggers_needed']}",
+        "",
+        order["creator_name"] or "Креатор",
+        f"Instagram: {profile}",
     ]
     if order["telegram"]:
-        lines.append(f"Telegram: https://t.me/{order['telegram']}")
-    lines.append("Свяжитесь с креатором, чтобы согласовать работу.")
-    return "\n".join(line for line in lines if line), markup
+        lines.append(f"Telegram: @{order['telegram']}")
+    return "\n".join(lines), markup
 
 
 async def deliver_invite_notice(
@@ -131,6 +163,7 @@ async def deliver_invite_notice(
     if claimed is None:
         return None
     address, order = claimed
+    options = {}
     if kind == "creator":
         from ugc_bot.bot.telegram.handlers.creator_invites import (
             invitation_text,
@@ -139,6 +172,17 @@ async def deliver_invite_notice(
         text, markup = invitation_text(order, f"oi_{identity.hex}")
     elif manual:
         text, markup = customer_contact_notice(order)
+        options = {
+            "link_preview_options": LinkPreviewOptions(is_disabled=True),
+            "entities": [
+                MessageEntity(
+                    type="bold",
+                    offset=0,
+                    length=len(text.partition("\n")[0].encode("utf-16-le"))
+                    // 2,
+                )
+            ],
+        }
     else:
         from ugc_bot.bot.telegram.handlers.order_summary import summary_button
 
@@ -162,7 +206,11 @@ async def deliver_invite_notice(
         )
     try:
         await bot.send_message(
-            chat_id=address, text=text, reply_markup=markup, parse_mode=None
+            chat_id=address,
+            text=text,
+            reply_markup=markup,
+            parse_mode=None,
+            **options,
         )
         state = "sent"
     except (TelegramBadRequest, TelegramForbiddenError):
