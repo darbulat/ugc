@@ -42,13 +42,14 @@ prepared=$(docker exec "${name}-client" cat /work/prepared-name)
 docker exec "${name}-client" chown -R 999:999 /work/restore /work/archive /work/keys
 docker exec "${name}-client" chown 999:999 /socket
 docker run -d --name "${name}-restore" --network none --memory 512m --memory-swap 512m \
-  --user 999:999 --entrypoint /usr/lib/postgresql/16/bin/postgres \
+  --entrypoint /bin/bash \
   -e PATH=/usr/bin \
   -e PGDATA=/restore/pgdata -e CREDENTIALS_DIRECTORY=/keys \
   -v "$fixture/restore/$prepared:/restore" -v "$fixture/archive:/archive:ro" \
   -v "$fixture/keys:/keys:ro" -v "$age_dir/age:/tools/age:ro" \
   -v "${name}-socket:/socket" \
   -v "$root/scripts/pitr_fetch_wal.sh:/tools/fetch-wal:ro" "$pg_image" \
+  -c '/bin/chown -R postgres:postgres /restore /socket; exec /usr/local/bin/gosu postgres /usr/lib/postgresql/16/bin/postgres "$@"' postgres \
   -c listen_addresses= -c port=16544 -c unix_socket_directories=/socket \
   -c hba_file=/restore/hba.conf -c shared_buffers=64MB >/dev/null
 for attempt in $(seq 1 60); do
