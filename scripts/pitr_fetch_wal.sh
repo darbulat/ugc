@@ -1,6 +1,7 @@
 #!/bin/bash
 # Runs only inside the private recovery RootDirectory.
 set -euo pipefail
+export PATH=/usr/bin:/bin
 name="$1"
 destination="$2"
 [[ "$name" =~ ^[0-9A-F]{24}$ ]] || exit 1

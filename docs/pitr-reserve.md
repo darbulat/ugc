@@ -37,6 +37,8 @@ Restoring PostgreSQL does not reverse external side effects.
   At least 3 GiB available host RAM is required. The instance stops after
   15 minutes; after successful verification it is stopped and its plaintext
   data removed. This is a copy verification, not a production outage drill.
+  The WAL fetch helper sets its own `/usr/bin:/bin` command path, independent
+  of the host systemd search path and the public image's Docker entrypoint.
 
 ## Primary access and bounded WAL retention
 
