@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import os
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -13,6 +14,7 @@ from alembic.operations import Operations
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from tests.helpers.financial_environment import isolated_financial_database
 from tests.postgres_financial.test_creator_social import (
     profile_values,
     seed_user,
@@ -204,6 +206,21 @@ async def test_partial_updates_keep_known_fields_and_do_not_change_ownership(
                 conn.scalar(sa.select(sa.func.count()).select_from(NOTICES))
                 == notices
             )
+        assert (
+            await repo.finish(
+                target, DiscoveryResult("credentials"), "discovery:test", later
+            )
+            == "credentials"
+        )
+        with discovery_db.connect() as conn:
+            cached = (
+                conn.execute(sa.select(D).where(D.c.user_id == owner))
+                .mappings()
+                .one()
+            )
+            assert cached["next_attempt_at"] == later + timedelta(days=1)
+            assert cached["followers_count"] == 120
+            assert cached["media_count"] == 0
         conflict = DiscoveryResult(
             "success", DiscoveryProfile("111", target.username, 500, 500)
         )
@@ -230,6 +247,16 @@ async def test_partial_updates_keep_known_fields_and_do_not_change_ownership(
                 .values(instagram_followers_count=None)
             )
         assert await reader.get_audience_counts([owner]) == {}
+        with discovery_db.begin() as conn:
+            conn.execute(
+                sa.update(D)
+                .where(D.c.user_id == owner)
+                .values(attempt_id=uuid4())
+            )
+        assert (
+            await repo.finish(target, result, "discovery:test", later)
+            == "superseded"
+        )
     finally:
         await engine.dispose()
 
@@ -330,6 +357,35 @@ def test_downgrade_refuses_to_delete_collected_state(discovery_db):
         migration.downgrade()
     with discovery_db.connect() as conn:
         assert conn.scalar(sa.select(sa.func.count()).select_from(C)) == 1
+
+
+def test_empty_discovery_migration_roundtrip_preserves_existing_users(
+    financial_pg_engine,
+):
+    migration = importlib.import_module(
+        "ugc_bot.infrastructure.db.migrations.versions.0147_instagram_discovery"
+    )
+    with (
+        isolated_financial_database(
+            os.environ["FINANCIAL_TEST_DATABASE_URL"],
+            target_revision="0146_invite_partners",
+        ) as engine,
+        engine.begin() as conn,
+    ):
+        owner = seed_user(conn)
+        with Operations.context(MigrationContext.configure(conn)):
+            migration.upgrade()
+            assert conn.scalar(sa.select(sa.func.count()).select_from(D)) == 0
+            migration.downgrade()
+        assert not sa.inspect(conn).has_table(D.name)
+        assert not sa.inspect(conn).has_table(C.name)
+        assert (
+            conn.scalar(
+                sa.text("SELECT count(*) FROM users WHERE user_id=:id"),
+                {"id": owner},
+            )
+            == 1
+        )
 
 
 @pytest.mark.asyncio

@@ -23,6 +23,9 @@ from ugc_bot.domain.instagram_discovery import (
 from ugc_bot.infrastructure.db.repositories.instagram import (
     _resolve_audience_rows,
 )
+from ugc_bot.infrastructure.db.repositories.instagram_discovery import (
+    DiscoveryRepository,
+)
 from ugc_bot.infrastructure.instagram.discovery_client import (
     DiscoveryClient,
     DiscoveryCredential,
@@ -157,6 +160,86 @@ async def test_provider_errors_are_not_retried(error, outcome):
         result = await DiscoveryClient(http, credential()).fetch("creator")
     assert result.outcome == outcome
     assert handler.call_count == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"business_discovery": {"id": "invalid", "username": "creator"}},
+        {"business_discovery": {"id": "123", "username": "bad handle"}},
+        ["unexpected", "response"],
+    ],
+)
+@pytest.mark.asyncio
+async def test_malformed_profiles_do_not_become_metric_evidence(body):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=body)
+        )
+    ) as http:
+        result = await DiscoveryClient(http, credential()).fetch("creator")
+    assert result.outcome == "provider_error"
+    assert result.profile is None
+
+
+@pytest.mark.parametrize(
+    "header,usage",
+    [
+        ('{"business":[{"call_count":12,"total_time":20}]}', 20),
+        ('{"business":[{"call_count":"invalid"}]}', 100),
+        ('{"business":[{"call_count":NaN}]}', 100),
+        ("malformed-json", 100),
+    ],
+)
+@pytest.mark.asyncio
+async def test_nested_and_malformed_quota_headers_are_conservative(
+    header, usage
+):
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={"business_discovery": {"id": "123", "username": "creator"}},
+            headers={"x-business-use-case-usage": header},
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        result = await DiscoveryClient(http, credential()).fetch("creator")
+    assert result.usage_percent == usage
+
+
+@pytest.mark.asyncio
+async def test_expired_credentials_never_make_requests():
+    handler = AsyncMock()
+    expired = credential().model_copy(
+        update={"expires_at": datetime.now(timezone.utc) - timedelta(seconds=1)}
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        result = await DiscoveryClient(http, expired).fetch("creator")
+    assert result.outcome == "credentials"
+    handler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_broken_json_pauses_without_retry_or_retaining_response():
+    handler = AsyncMock(
+        return_value=httpx.Response(503, text="upstream unavailable")
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        result = await DiscoveryClient(http, credential()).fetch("creator")
+    assert result.outcome == "network"
+    assert result.profile is None
+    assert handler.call_count == 1
+
+
+def test_enrichment_requires_explicit_verification_context():
+    with pytest.raises(ValueError, match="identity context"):
+        DiscoveryRepository(None, " ")
 
 
 def test_credential_requires_exact_expiry_binding_and_private_file(tmp_path):
