@@ -1,0 +1,399 @@
+{
+  "format_version": 1,
+  "purpose": "Proposed full deletion of confirmed test residuals; not authorized for execution",
+  "schema_heads": [
+    "0145_instagram_profiles"
+  ],
+  "user_ids": [
+    "445d5faa-097b-4ec6-a4d7-60118eb08d49",
+    "85569c5b-7a46-4e61-ace4-1c6571c1d7ed",
+    "de09d5f2-d387-47e4-9910-e4d5475f07eb"
+  ],
+  "order_ids": [
+    "d6b8cdea-d5f8-5f2a-945b-5b1c1fdf980c",
+    "f654742d-9b6d-5ac1-a751-3eec6eb4ad3e"
+  ],
+  "delete_tables": [
+    {
+      "table": "accompaniment_lead_attempts",
+      "rows": 3,
+      "row_fingerprints": [
+        "00c873aad364fd9d54f26e6914804f0a",
+        "3a74309fdffec8521c53535971260bfd",
+        "d496f253cae24b4a0f4c00df33d28f24"
+      ]
+    },
+    {
+      "table": "accompaniment_lead_deliveries",
+      "rows": 3,
+      "row_fingerprints": [
+        "07402b0f7d1322b606a51642f1e3485c",
+        "1ef21c05e153993ab4a59a1cc1ebae8f",
+        "3c07343c3c2356a3e1c254ac0a56d635"
+      ]
+    },
+    {
+      "table": "accompaniment_lead_outbox",
+      "rows": 1,
+      "row_fingerprints": [
+        "b33f5f96dc37509817a5abcab8f5cb5f"
+      ]
+    },
+    {
+      "table": "accompaniment_lead_outcomes",
+      "rows": 3,
+      "row_fingerprints": [
+        "39f09876a27216728d1f8cc7e10d7f93",
+        "4fc9c11e1689419040fd93afbc375665",
+        "6bd1ff65efa6c813d61854716516f76d"
+      ]
+    },
+    {
+      "table": "accompaniment_leads",
+      "rows": 1,
+      "row_fingerprints": [
+        "b5d8b52b892c9abd9777589eb13002af"
+      ]
+    },
+    {
+      "table": "campaign_consent_events",
+      "rows": 2,
+      "row_fingerprints": [
+        "aa18efaf63c3805bfc133bceeff2a725",
+        "c5cd9a92789c56a21c1bd93baf29a3e2"
+      ]
+    },
+    {
+      "table": "campaign_draft_commands",
+      "rows": 2,
+      "row_fingerprints": [
+        "28c45aa03830b6b65fb6ef32f27933da",
+        "58d5227d1cf6864ba807d03b0e842114"
+      ]
+    },
+    {
+      "table": "campaign_draft_revisions",
+      "rows": 2,
+      "row_fingerprints": [
+        "2efcc2e374de57f9c5aa343dafe7233c",
+        "5155b7a39df12273456123b56c6f8133"
+      ]
+    },
+    {
+      "table": "campaign_drafts",
+      "rows": 1,
+      "row_fingerprints": [
+        "dc0883e8464095f2c1287ea8b30394ec"
+      ]
+    },
+    {
+      "table": "campaign_foundation_commands",
+      "rows": 4,
+      "row_fingerprints": [
+        "169c10911a781a2e0d1ba179891861dc",
+        "3182e32019d5ec1ab4d81102347b8340",
+        "72f65c19d31f7bcb8c3b0cc1f301f185",
+        "9844e497b50324f2d62afc9ef3004997"
+      ]
+    },
+    {
+      "table": "campaign_publisher_events",
+      "rows": 2,
+      "row_fingerprints": [
+        "091cfcf52a29821f7136046a8863272e",
+        "78928f6ce21791a8d818d08511f373af"
+      ]
+    },
+    {
+      "table": "checkout_link_attempts",
+      "rows": 1,
+      "row_fingerprints": [
+        "850be7cb15202be179750be53cc6df0c"
+      ]
+    },
+    {
+      "table": "checkout_link_results",
+      "rows": 1,
+      "row_fingerprints": [
+        "8da06d47de53b7c663d937090d238c64"
+      ]
+    },
+    {
+      "table": "checkout_requests",
+      "rows": 1,
+      "row_fingerprints": [
+        "c70e035361bdb6690c29c4244cd0985b"
+      ]
+    },
+    {
+      "table": "creator_direct_binding_observations",
+      "rows": 2,
+      "row_fingerprints": [
+        "4cadc1adcb43308427183c4daa5a021c",
+        "d28407f1d3bc93c205426c611c3527aa"
+      ]
+    },
+    {
+      "table": "creator_identity_observations",
+      "rows": 15,
+      "row_fingerprints": [
+        "0e797df5697b4f5878892f31a5307fbe",
+        "34cc8e86fe403f8f7a062bb2bed74e47",
+        "42b4a27b7a75b70500e663eca8b6d132",
+        "4975f99bb4b3f04ca5aa2be65b92fc15",
+        "5a780345d8b18c19e10e991b3865eaa5",
+        "773f06360705155782ddc62606e0cb3d",
+        "77452f2136018115421198075331f4c6",
+        "a108810319b98b11bf8672fcd151e3b9",
+        "a8a52d3a0bc056a120abcd42a0843579",
+        "a8ad03686de561f2346f33f4d7a32205",
+        "b57fbcd3a9047c6ff8ab13a2ecef9c71",
+        "b7cd3da23e28f7c8b26323f93077c109",
+        "b7d304e906ab946442f419651568d15a",
+        "dec0394b86e18343e44256021161047d",
+        "ff604726663e1981ecfdb218215d9780"
+      ]
+    },
+    {
+      "table": "financial_checkouts",
+      "rows": 1,
+      "row_fingerprints": [
+        "f708b41a6db6bd52b774d825b464246f"
+      ]
+    },
+    {
+      "table": "instagram_profile_observations",
+      "rows": 1,
+      "row_fingerprints": [
+        "27a0bba89785258af0f9beebd8b840b2"
+      ]
+    },
+    {
+      "table": "order_intake_receipts",
+      "rows": 2,
+      "row_fingerprints": [
+        "066438bb2d05ac1065da880b3bdf74e8",
+        "fbcc1f8fdddaff12cd33e51292046826"
+      ]
+    },
+    {
+      "table": "order_notice_deliveries",
+      "rows": 6,
+      "row_fingerprints": [
+        "979bba7e606ff707d50b2f743ee8ec09",
+        "99903500e239e398903ca1703baeeb86",
+        "c5162925100deec07ff0230125c0178e",
+        "d05df2308756427967fd195602c83bfc",
+        "d427affb2177d90155e23e789c947dfe",
+        "fec813e5eb3bb854505bcbbfa0c90f92"
+      ]
+    },
+    {
+      "table": "order_notice_events",
+      "rows": 2,
+      "row_fingerprints": [
+        "08a778d0a0820088f1787d879a9fd991",
+        "5d9c37105edb2305ce0ac01333f54c9f"
+      ]
+    },
+    {
+      "table": "orders",
+      "rows": 2,
+      "row_fingerprints": [
+        "5ee90698b842e8d9d5e44a58d324ead2",
+        "8df2bf2e19c234d41f2124fa6c20fcdc"
+      ]
+    },
+    {
+      "table": "users",
+      "rows": 3,
+      "row_fingerprints": [
+        "15e1ec2738a7a113442310cc73edf97e",
+        "2881980d4adcfcc4f0d8d65608d75895",
+        "67419ed41f640c163a188a81d6e7d795"
+      ]
+    }
+  ],
+  "delete_rows": 61,
+  "coverage_update": {
+    "key": "v1",
+    "before": {
+      "profile_seed_count": 1868,
+      "binding_seed_count": 863,
+      "profile_seed_hash": "8754a9d37371e11572f1f6c2f394652c",
+      "binding_seed_hash": "18d9eb4598c13b07e329120f0973c6c0",
+      "row_fingerprint": "e4cd74872607931b59386531434b0976"
+    },
+    "after_profile_seed_count": 1867,
+    "after_profile_seed_hash": "374f9578425ce75563099b01dfbe5ef5",
+    "preserve_binding_fields_and_covered_from": true
+  },
+  "audit_redaction": {
+    "audit_id": "6f684fca-e0b8-4e5d-9dd3-61aca50f2d79",
+    "business_order_id": "55428791-9ff3-5486-8575-e154e0428be2",
+    "before_row_fingerprint": "133dae02b3c2bec1daba1ac31d55dfc6",
+    "field": "old_values.advertiser_id",
+    "expected_old_value": "445d5faa-097b-4ec6-a4d7-60118eb08d49",
+    "replacement": null,
+    "preserve_other_fields": true
+  },
+  "protected_accounts": [
+    {
+      "user_id": "0867ed88-0ce3-4d88-b447-d7dcd33ed82a",
+      "telegram": "kamilbakhteev",
+      "status": "active",
+      "admin": true
+    },
+    {
+      "user_id": "36beb23c-7ca6-402f-aa94-581df52899d2",
+      "telegram": "Mleon8",
+      "status": "active",
+      "admin": false
+    },
+    {
+      "user_id": "7e247765-d7ba-43df-9928-5efdd7a673b2",
+      "telegram": "usemycontent",
+      "status": "active",
+      "admin": true
+    },
+    {
+      "user_id": "ad3c0abe-e0ea-462b-a42a-017b8713781a",
+      "telegram": "bzakirov17",
+      "status": "active",
+      "admin": false
+    }
+  ],
+  "delete_guards": [
+    {
+      "table_name": "accompaniment_lead_attempts",
+      "trigger_name": "accompaniment_attempt_immutable",
+      "tgenabled": "O",
+      "function_name": "intake_deny_mutation",
+      "definition": "CREATE TRIGGER accompaniment_attempt_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.accompaniment_lead_attempts FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation()"
+    },
+    {
+      "table_name": "accompaniment_lead_deliveries",
+      "trigger_name": "accompaniment_delivery_retained",
+      "tgenabled": "O",
+      "function_name": "intake_deny_mutation",
+      "definition": "CREATE TRIGGER accompaniment_delivery_retained BEFORE DELETE OR TRUNCATE ON public.accompaniment_lead_deliveries FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation()"
+    },
+    {
+      "table_name": "accompaniment_lead_outbox",
+      "trigger_name": "accompaniment_queue_retained",
+      "tgenabled": "O",
+      "function_name": "intake_deny_mutation",
+      "definition": "CREATE TRIGGER accompaniment_queue_retained BEFORE DELETE OR TRUNCATE ON public.accompaniment_lead_outbox FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation()"
+    },
+    {
+      "table_name": "accompaniment_lead_outcomes",
+      "trigger_name": "accompaniment_outcome_immutable",
+      "tgenabled": "O",
+      "function_name": "intake_deny_mutation",
+      "definition": "CREATE TRIGGER accompaniment_outcome_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.accompaniment_lead_outcomes FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation()"
+    },
+    {
+      "table_name": "accompaniment_leads",
+      "trigger_name": "accompaniment_lead_immutable",
+      "tgenabled": "O",
+      "function_name": "intake_deny_mutation",
+      "definition": "CREATE TRIGGER accompaniment_lead_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.accompaniment_leads FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation()"
+    },
+    {
+      "table_name": "campaign_consent_events",
+      "trigger_name": "campaign_fact_immutable",
+      "tgenabled": "O",
+      "function_name": "campaign_foundation_deny_mutation",
+      "definition": "CREATE TRIGGER campaign_fact_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.campaign_consent_events FOR EACH STATEMENT EXECUTE FUNCTION campaign_foundation_deny_mutation()"
+    },
+    {
+      "table_name": "campaign_draft_commands",
+      "trigger_name": "campaign_draft_immutable",
+      "tgenabled": "O",
+      "function_name": "campaign_drafts_deny_mutation",
+      "definition": "CREATE TRIGGER campaign_draft_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.campaign_draft_commands FOR EACH STATEMENT EXECUTE FUNCTION campaign_drafts_deny_mutation()"
+    },
+    {
+      "table_name": "campaign_draft_revisions",
+      "trigger_name": "campaign_draft_immutable",
+      "tgenabled": "O",
+      "function_name": "campaign_drafts_deny_mutation",
+      "definition": "CREATE TRIGGER campaign_draft_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.campaign_draft_revisions FOR EACH STATEMENT EXECUTE FUNCTION campaign_drafts_deny_mutation()"
+    },
+    {
+      "table_name": "campaign_drafts",
+      "trigger_name": "campaign_draft_immutable",
+      "tgenabled": "O",
+      "function_name": "campaign_drafts_deny_mutation",
+      "definition": "CREATE TRIGGER campaign_draft_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.campaign_drafts FOR EACH STATEMENT EXECUTE FUNCTION campaign_drafts_deny_mutation()"
+    },
+    {
+      "table_name": "campaign_foundation_commands",
+      "trigger_name": "campaign_fact_immutable",
+      "tgenabled": "O",
+      "function_name": "campaign_foundation_deny_mutation",
+      "definition": "CREATE TRIGGER campaign_fact_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.campaign_foundation_commands FOR EACH STATEMENT EXECUTE FUNCTION campaign_foundation_deny_mutation()"
+    },
+    {
+      "table_name": "campaign_publisher_events",
+      "trigger_name": "campaign_fact_immutable",
+      "tgenabled": "O",
+      "function_name": "campaign_foundation_deny_mutation",
+      "definition": "CREATE TRIGGER campaign_fact_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.campaign_publisher_events FOR EACH STATEMENT EXECUTE FUNCTION campaign_foundation_deny_mutation()"
+    },
+    {
+      "table_name": "checkout_link_attempts",
+      "trigger_name": "checkout_link_attempts_immutable",
+      "tgenabled": "O",
+      "function_name": "checkout_deny_mutation",
+      "definition": "CREATE TRIGGER checkout_link_attempts_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.checkout_link_attempts FOR EACH STATEMENT EXECUTE FUNCTION checkout_deny_mutation()"
+    },
+    {
+      "table_name": "checkout_link_results",
+      "trigger_name": "checkout_link_results_immutable",
+      "tgenabled": "O",
+      "function_name": "checkout_deny_mutation",
+      "definition": "CREATE TRIGGER checkout_link_results_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.checkout_link_results FOR EACH STATEMENT EXECUTE FUNCTION checkout_deny_mutation()"
+    },
+    {
+      "table_name": "checkout_requests",
+      "trigger_name": "checkout_requests_immutable",
+      "tgenabled": "O",
+      "function_name": "checkout_deny_mutation",
+      "definition": "CREATE TRIGGER checkout_requests_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.checkout_requests FOR EACH STATEMENT EXECUTE FUNCTION checkout_deny_mutation()"
+    },
+    {
+      "table_name": "creator_direct_binding_observations",
+      "trigger_name": "creator_binding_immutable",
+      "tgenabled": "O",
+      "function_name": "creator_history_deny_mutation",
+      "definition": "CREATE TRIGGER creator_binding_immutable BEFORE DELETE OR UPDATE ON public.creator_direct_binding_observations FOR EACH ROW EXECUTE FUNCTION creator_history_deny_mutation()"
+    },
+    {
+      "table_name": "creator_identity_observations",
+      "trigger_name": "creator_identity_immutable",
+      "tgenabled": "O",
+      "function_name": "creator_history_deny_mutation",
+      "definition": "CREATE TRIGGER creator_identity_immutable BEFORE DELETE OR UPDATE ON public.creator_identity_observations FOR EACH ROW EXECUTE FUNCTION creator_history_deny_mutation()"
+    },
+    {
+      "table_name": "instagram_profile_observations",
+      "trigger_name": "instagram_observation_immutable",
+      "tgenabled": "O",
+      "function_name": "instagram_observation_immutable",
+      "definition": "CREATE TRIGGER instagram_observation_immutable BEFORE DELETE OR UPDATE ON public.instagram_profile_observations FOR EACH ROW EXECUTE FUNCTION instagram_observation_immutable()"
+    },
+    {
+      "table_name": "order_intake_receipts",
+      "trigger_name": "intake_receipt_immutable",
+      "tgenabled": "O",
+      "function_name": "intake_deny_mutation",
+      "definition": "CREATE TRIGGER intake_receipt_immutable BEFORE DELETE OR UPDATE OR TRUNCATE ON public.order_intake_receipts FOR EACH STATEMENT EXECUTE FUNCTION intake_deny_mutation()"
+    }
+  ],
+  "coverage_guard": {
+    "tgname": "creator_coverage_immutable",
+    "tgenabled": "O",
+    "definition": "CREATE TRIGGER creator_coverage_immutable BEFORE DELETE OR UPDATE ON public.creator_identity_coverage FOR EACH ROW EXECUTE FUNCTION creator_history_deny_mutation()"
+  }
+}
