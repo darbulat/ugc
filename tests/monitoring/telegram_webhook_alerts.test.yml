@@ -1,0 +1,82 @@
+rule_files:
+  - /rules/alerts.yml
+evaluation_interval: 1m
+tests:
+  - name: No traffic stays quiet
+    interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts: []
+
+  - name: Expected GET probes returning 405 do not alert
+    interval: 1m
+    input_series:
+      - series: 'ugc_http_requests_total{method="GET",path="/webhook/telegram",status="405"}'
+        values: '0+120x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts: []
+
+  - name: GET rejections do not contaminate successful POST deliveries
+    interval: 1m
+    input_series:
+      - series: 'ugc_http_requests_total{method="GET",path="/webhook/telegram",status="405"}'
+        values: '0+120x40'
+      - series: 'ugc_http_requests_total{method="POST",path="/webhook/telegram",status="200"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts: []
+
+  - name: Low-volume POST failures alert only after the hold period
+    interval: 1m
+    input_series:
+      - series: 'ugc_http_requests_total{method="POST",path="/webhook/telegram",status="403"}'
+        values: '0+1x40'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: High Telegram webhook reject rate
+              description: More than 10% of Telegram webhook POST requests returned 4xx in 15 minutes.
+
+  - name: Less than ten percent POST failures stays quiet
+    interval: 1m
+    input_series:
+      - series: 'ugc_http_requests_total{method="POST",path="/webhook/telegram",status="403"}'
+        values: '0+1x40'
+      - series: 'ugc_http_requests_total{method="POST",path="/webhook/telegram",status="200"}'
+        values: '0+10x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts: []
+
+  - name: GET traffic does not dilute real POST rejection rate
+    interval: 1m
+    input_series:
+      - series: 'ugc_http_requests_total{method="GET",path="/webhook/telegram",status="200"}'
+        values: '0+600x40'
+      - series: 'ugc_http_requests_total{method="POST",path="/webhook/telegram",status="403"}'
+        values: '0+1x40'
+      - series: 'ugc_http_requests_total{method="POST",path="/webhook/telegram",status="200"}'
+        values: '0+4x40'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: TelegramWebhookRejectRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: High Telegram webhook reject rate
+              description: More than 10% of Telegram webhook POST requests returned 4xx in 15 minutes.
