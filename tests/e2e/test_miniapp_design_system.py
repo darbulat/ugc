@@ -192,24 +192,27 @@ def screenshot(page: Page, name: str) -> None:
         )
 
 
-def test_manager_application_opens_bot_without_opening_advertiser_form(
+def test_manager_application_opens_native_form_without_opening_bot(
     page: Page,
 ) -> None:
     network = MiniAppNetwork()
     network.manager_app_enabled = True
     errors = open_app(page, network)
-    link = page.get_by_role("link", name="Подать заявку менеджера")
+    link = page.get_by_role("button", name="Подать заявку менеджера")
     expect(link).to_be_visible()
     expect(page.locator("#btn-manager-role")).to_be_hidden()
-    url = "https://t.me/synthetic_test_bot?start=manager"
-    expect(link).to_have_attribute("href", url)
     link.click()
-    assert ["telegram-link", url] in page.evaluate("window.__host.calls")
+    expect(page.locator("#screen-manager-application")).to_be_visible()
+    assert not any(
+        call[0] == "telegram-link"
+        for call in page.evaluate("window.__host.calls")
+    )
     expect(page.locator("#screen-register-advertiser")).to_be_hidden()
     assert not any(
         path.startswith("/register/") for path, _ in network.requests
     )
 
+    page.get_by_role("button", name="К выбору роли", exact=True).click()
     page.locator('[data-role="advertiser"]').click()
     expect(page.locator("#screen-register-advertiser")).to_be_visible()
     expect(page.locator("#adv-brand")).to_be_visible()

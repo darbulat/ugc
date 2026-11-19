@@ -205,6 +205,7 @@ jobs:
           tests/e2e/test_partner_levels_ui.py
           tests/e2e/test_miniapp_partner_ui.py
           tests/e2e/test_partner_completion_ui.py
+          tests/e2e/test_miniapp_manager_application_ui.py
           tests/e2e/test_browser_payment_ui.py
           tests/e2e/test_checkout_review_ui.py
           tests/e2e/test_creator_offer_card_ui.py
