@@ -18,6 +18,52 @@ from ugc_bot.miniapp.manager_application_api import (
 BASE = "/manager/application"
 
 
+class ConstraintError(Exception):
+    def __init__(self, constraint_name):
+        super().__init__("constraint violation")
+        self.diag = SimpleNamespace(constraint_name=constraint_name)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_instagram_returns_validation_response(
+    application_client,
+):
+    from sqlalchemy.exc import IntegrityError
+
+    client, service, _, _, _, _ = application_client
+    original = ConstraintError("manager_applications_instagram_user_id_key")
+    service.answer.side_effect = IntegrityError("UPDATE", {}, original)
+    response = await client.post(
+        BASE + "/answer",
+        json=auth() | {"field": "instagram", "value": "example"},
+    )
+    assert response.status_code == 422
+    assert "Instagram" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("field", "original"),
+    [
+        ("instagram", ConstraintError("different_constraint")),
+        ("instagram", Exception("missing diagnostics")),
+        ("name", ConstraintError("manager_applications_instagram_user_id_key")),
+    ],
+)
+async def test_unrelated_integrity_error_is_not_suppressed(
+    application_client, field, original
+):
+    from sqlalchemy.exc import IntegrityError
+
+    client, service, _, _, _, _ = application_client
+    service.answer.side_effect = IntegrityError("UPDATE", {}, original)
+    with pytest.raises(IntegrityError):
+        await client.post(
+            BASE + "/answer",
+            json=auth() | {"field": field, "value": "example"},
+        )
+
+
 @pytest_asyncio.fixture
 async def application_client():
     users = {

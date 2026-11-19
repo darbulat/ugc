@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from pydantic import Field
+from sqlalchemy.exc import IntegrityError
 
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -157,6 +158,17 @@ def create_manager_application_router(
             )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from None
+        except IntegrityError as exc:
+            diag = getattr(exc.orig, "diag", None)
+            if (
+                body.field == "instagram"
+                and getattr(diag, "constraint_name", None)
+                == "manager_applications_instagram_user_id_key"
+            ):
+                raise HTTPException(
+                    422, "Этот Instagram уже привязан к другой анкете."
+                ) from None
+            raise
         return await _view(request, service, row)
 
     return router
