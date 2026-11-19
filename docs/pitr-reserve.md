@@ -64,6 +64,14 @@ new verified base. The primary is never made dependent on remote commits:
 `synchronous_standby_names` stays empty. `pg_receivewal --synchronous` fsyncs
 received bytes locally and does not enable synchronous primary replication.
 
+The audit also records the names and sources of pending restart settings.
+An existing `max_replication_slots` file/command-line mismatch alone is allowed
+when the active value comes from the command line and still has the required
+spare capacity. PostgreSQL can first report this mismatch after a reload.
+The file value is preserved; PITR uses the live slot count without a restart.
+Any other pending setting, unverified source or insufficient live capacity
+still blocks activation and requires separate review.
+
 Completed 16 MiB segments are compressed, encrypted and atomically published
 with checksums. A WAL switch is requested every five minutes when there is WAL
 activity. Consequently the completed encrypted chain normally trails by up to

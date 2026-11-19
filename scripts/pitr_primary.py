@@ -67,6 +67,9 @@ SELECT json_build_object(
  'full_page_writes',current_setting('full_page_writes'),
  'fsync',current_setting('fsync'),
  'pending_restart',(SELECT count(*) FROM pg_settings WHERE pending_restart),
+ 'pending_restart_settings',COALESCE((SELECT json_agg(json_build_object(
+   'name',name,'source',source)) FROM pg_settings WHERE pending_restart),
+   '[]'::json),
  'senders',(SELECT count(*) FROM pg_stat_replication),
  'slots',(SELECT count(*) FROM pg_replication_slots),
  'basebackups',(SELECT count(*) FROM pg_stat_progress_basebackup),
@@ -76,6 +79,19 @@ SELECT json_build_object(
  'hba_errors',(SELECT count(*) FROM pg_hba_file_rules WHERE error IS NOT NULL),
  'role_exists',EXISTS(SELECT FROM pg_roles WHERE rolname='ugc_pitr_v1'));
 """)
+    )
+
+
+def pending_restart_blocks_pitr(data):
+    if not data["pending_restart"]:
+        return False
+    # An existing command-line slot count remains effective after reload.
+    # Its live spare capacity is checked separately; never edit the file or
+    # restart the database merely to adopt that unrelated pending value.
+    return not (
+        data["pending_restart"] == 1
+        and data.get("pending_restart_settings")
+        == [{"name": "max_replication_slots", "source": "command line"}]
     )
 
 
@@ -90,7 +106,7 @@ def validate_preflight(data, expected_system_id):
         raise ValueError("Unexpected archive/synchronous replication settings")
     if data["full_page_writes"] != "on" or data["fsync"] != "on":
         raise ValueError("PostgreSQL durability preconditions not met")
-    if data["pending_restart"] or data["hba_errors"]:
+    if pending_restart_blocks_pitr(data) or data["hba_errors"]:
         raise ValueError("Resolve pending PostgreSQL configuration first")
     if (
         data["max_wal_senders"] - data["senders"] < 3
@@ -291,7 +307,9 @@ class Provision:
         if container_state() != self.before:
             raise RuntimeError("Production containers changed during setup")
         current = audit()
-        if current["slot_limit"] != "2GB" or current["pending_restart"]:
+        if current["slot_limit"] != "2GB" or pending_restart_blocks_pitr(
+            current
+        ):
             raise RuntimeError("WAL retention reload verification failed")
 
     def rollback(self):
