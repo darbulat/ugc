@@ -201,12 +201,14 @@ def test_admin_creator_invite_reports_form_errors_and_checks_order(monkeypatch):
     assert client.post(url, data=fields).status_code == 503
     csrf.assert_awaited_once()
     config.order.customer_workflows_enabled = True
-    assert client.post(url, data=fields).status_code == 422
+    # An unavailable order cannot render its form, including field errors.
+    # Active-order errors are exercised against PostgreSQL in creator invites.
+    assert client.post(url, data=fields).status_code == 404
     assert (
         client.post(url, data=fields | {"item_id": "invalid"}).status_code
-        == 422
+        == 404
     )
-    order_for_invite.assert_not_called()
+    assert order_for_invite.call_count == 2
     response = client.post(url, data=fields | {"consent_source": "instagram"})
     assert response.status_code == 404
     assert "активный оплаченный заказ" in response.json()["detail"]
