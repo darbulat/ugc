@@ -72,6 +72,8 @@ def test_customer_send_requires_visible_consent_and_preserves_link_action(
     assert page.evaluate("submissions[0].operation") == "create"
     consent.check()
     expect(customer).to_be_enabled()
+    if availability == "ready":
+        expect(page.locator("#invite-creator-action")).to_be_hidden()
     customer.click()
     assert page.evaluate("submissions.length") == 1
     page.get_by_label("Где получено согласие").select_option("telegram")

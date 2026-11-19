@@ -76,7 +76,7 @@
         </label>
       </div>
       {% if availability == "ready" %}<p>При отправке в бот креатор подтвердит участие, затем заказчик получит сообщение о контакте.</p>{% endif %}
-      <p>Контакт отправляется заказчику. Менеджер, если выбран, получит уведомление после подтверждения участия креатором.</p>
+      <p>«Отправить заказчику» передаст контакт владельцу заказа. Менеджер, если выбран, получит уведомление после подтверждения участия креатором.</p>
       <div class="mb-3">
         <label><input id="invite-consent" type="checkbox" name="record_consent" value="1"{% if record_consent or consent_source %} checked{% endif %}>
           Креатор уже согласился в личной переписке и разрешил передать контакты заказчику.
@@ -89,19 +89,22 @@
           <option value="other"{% if consent_source == "other" %} selected{% endif %}>Другая переписка</option>
         </select>
         <p>Для отправки заказчику отметьте согласие и укажите его источник. Заказчик получит имя и ссылки на Instagram и Telegram, даже если креатора ещё нет в боте или бот заблокирован.</p>
+        <p>«Создать ссылку» не отправляет сообщений. При отмеченном согласии контакт также сохранится в итогах заказа.</p>
       </div>
       <div class="admin-actions">
         <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-customer-action" value="send_customer">Отправить заказчику</button>
         <button class="admin-button" type="submit" name="operation" value="create">Создать ссылку</button>
-        {% if availability == 'ready' %}<button class="admin-button" type="submit" name="operation" value="send">Отправить приглашение креатору в бот</button>{% endif %}
+        {% if availability == 'ready' %}<button id="invite-creator-action" class="admin-button" type="submit" name="operation" value="send">Отправить приглашение креатору в бот</button>{% endif %}
       </div>
       <script>
         const consent = document.querySelector('[name=record_consent]');
         const source = document.getElementById('invite-source');
         const customer = document.getElementById('invite-customer-action');
+        const creator = document.getElementById('invite-creator-action');
         function updateConsent() {
           customer.disabled = !consent.checked;
           source.required = consent.checked;
+          if (creator) creator.hidden = consent.checked;
         }
         updateConsent();
         consent.addEventListener('change', function () {
