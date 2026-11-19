@@ -4,6 +4,7 @@ import asyncio
 import importlib
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -389,12 +390,23 @@ async def test_nontransactional_observer_rejected(runtime):
 @pytest.mark.asyncio
 async def test_suspect_gets_next_scheduled_recheck_without_extra_collection(
     runtime,
+    monkeypatch,
 ):
+    from ugc_bot.infrastructure.db.repositories import profiles as repository
+
+    # Earlier module facts use NOW. Their cooldown must not depend on the
+    # wall-clock hour at which this test happens to run.
+    recheck_at = NOW + timedelta(hours=1)
+    monkeypatch.setattr(
+        repository,
+        "datetime",
+        SimpleNamespace(now=lambda tz: recheck_at.astimezone(tz)),
+    )
     owner, profile, _, service, tx, profiles, _ = runtime
     await service.observe(
         profile,
         None,
-        datetime.now(timezone.utc) - timedelta(hours=7),
+        recheck_at - timedelta(hours=7),
         error="100/33",
     )
     async with tx.transaction() as db:
