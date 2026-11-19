@@ -15,6 +15,8 @@ UZ: dict[str, str] = {
     "btn_my_orders": "📂 Mening buyurtmalarim",
     "btn_change_role": "Rolni o'zgartirish",
     "btn_create_profile": "Profil yaratish",
+    "btn_fill_profile_app": "Profilni ilovada to‘ldirish",
+    "btn_fill_profile_chat": "Profilni chatda to‘ldirish",
     "btn_partner_program": "Hamkorlik dasturi",
     "btn_advertiser_start": "Boshlash",
     "btn_create_order": "➕ Buyurtma yaratish",

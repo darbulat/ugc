@@ -86,6 +86,7 @@ async def _choose_advertiser_role_impl(
     bot_texts_service: BotTextsService,
     messenger_client: MessengerClient,
     locale: str,
+    miniapp_base_url: str = "",
 ) -> None:
     """Shared logic for advertiser role: persist role, show menu or reg."""
     texts = await bot_texts_service.get_many(
@@ -97,6 +98,8 @@ async def _choose_advertiser_role_impl(
             "btn_edit_profile",
             "btn_support",
             "btn_advertiser_start",
+            "btn_fill_profile_app",
+            "btn_fill_profile_chat",
             "msg_choose_action",
             "btn_partner_program",
         ],
@@ -117,7 +120,9 @@ async def _choose_advertiser_role_impl(
         choose_action_text=choose_action_text or ADVERTISER_CHOOSE_ACTION_TEXT,
         intro_text=intro_text,
         menu_keyboard=advertiser_menu_inline_keyboard,
-        start_keyboard=advertiser_start_keyboard,
+        start_keyboard=lambda t: advertiser_start_keyboard(
+            t, miniapp_base_url=miniapp_base_url
+        ),
         texts=texts,
     )
 
@@ -150,6 +155,7 @@ async def choose_advertiser_role_inline(
         bot_texts_service,
         messenger_client,
         locale,
+        miniapp_base_url=config.webhook.webhook_base_url or "",
     )
 
 
@@ -180,6 +186,7 @@ async def choose_advertiser_role(
         bot_texts_service,
         messenger_client,
         locale,
+        miniapp_base_url=config.webhook.webhook_base_url or "",
     )
 
 

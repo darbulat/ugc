@@ -1920,26 +1920,23 @@
         document.dispatchEvent(new CustomEvent('umc:creator-state', { detail: me }));
       }
 
+      function openProfileRole(role, me) {
+        if (me && me['has_' + role + '_profile']) {
+          showScreen('screen-' + role + '-dashboard');
+        } else {
+          if (role === 'advertiser') fillAdvertiserForm(me && me.advertiser_profile);
+          else fillBloggerForm(me && me.blogger_profile);
+          updateRegisterButtonLabels();
+          showScreen('screen-register-' + role);
+        }
+      }
+
       document.getElementById('screen-role-choice').querySelectorAll('[data-role]').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var role = this.getAttribute('data-role');
           var me = window._me;
-          if (role === 'advertiser') {
-            if (me && me.has_advertiser_profile) {
-              showScreen('screen-advertiser-dashboard');
-            } else {
-              fillAdvertiserForm(me && me.advertiser_profile);
-              updateRegisterButtonLabels();
-              showScreen('screen-register-advertiser');
-            }
-          } else if (role === 'blogger') {
-            if (me && me.has_blogger_profile) {
-              showScreen('screen-blogger-dashboard');
-            } else {
-              fillBloggerForm(me && me.blogger_profile);
-              updateRegisterButtonLabels();
-              showScreen('screen-register-blogger');
-            }
+          if (role === 'advertiser' || role === 'blogger') {
+            openProfileRole(role, me);
           } else if (role === 'manager') {
             loadManagerOrders(0);
           }
@@ -3354,25 +3351,31 @@
         managerLink.style.display = canApply ? '' : 'none';
         updateRoleChoiceHint();
         var view = new URLSearchParams(location.search).get('view');
+        var registrationRole = view === 'register-blogger' ? 'blogger' : view === 'register-advertiser' ? 'advertiser' : null;
         var creator = me.blogger_profile;
         var advertiser = me.advertiser_profile;
         var openCreator = creator && (
           (view === 'socials' && (creator.confirmed || creator.agreement_confirmed === false)) ||
           (!view && creator.agreement_confirmed === false && advertiser && advertiser.agreement_confirmed !== false)
         );
-        if (me.is_manager && view === 'manager') {
-          loadManagerOrders(0);
-        } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
-          showScreen('screen-advertiser-dashboard');
-        } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
-          showScreen('screen-blogger-dashboard');
-        } else if (me.has_advertiser_profile && me.has_blogger_profile) {
-          showScreen('screen-advertiser-dashboard');
-        } else {
-          showScreen('screen-role-choice');
+        if (!registrationRole) {
+          if (me.is_manager && view === 'manager') {
+            loadManagerOrders(0);
+          } else if (me.has_advertiser_profile && !me.has_blogger_profile) {
+            showScreen('screen-advertiser-dashboard');
+          } else if (me.has_blogger_profile && (!me.has_advertiser_profile || openCreator)) {
+            showScreen('screen-blogger-dashboard');
+          } else if (me.has_advertiser_profile && me.has_blogger_profile) {
+            showScreen('screen-advertiser-dashboard');
+          } else {
+            showScreen('screen-role-choice');
+          }
         }
         window.__umcAppReady = true;
         document.dispatchEvent(new CustomEvent('umc:app-ready'));
+        // Draft controllers initialize their account on app-ready. Enter the
+        // requested form afterwards so that its input context stays valid.
+        if (registrationRole) openProfileRole(registrationRole, me);
       }
 
       function showCountrySelector(countries, onSelected) {

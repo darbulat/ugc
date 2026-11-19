@@ -56,13 +56,13 @@ def test_main_menu_inline_keyboard() -> None:
 
 
 def test_advertiser_start_keyboard() -> None:
-    """Advertiser start keyboard has only Start before profile filled."""
+    """A missing app URL leaves the chat registration available."""
     keyboard = advertiser_start_keyboard(_TEXTS_RU)
 
     assert keyboard.kind == KeyboardKind.INLINE
     assert keyboard.rows is not None
     assert len(keyboard.rows) == 1
-    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_advertiser_start"]
+    assert keyboard.rows[0][0].text == _TEXTS_RU["btn_fill_profile_chat"]
 
 
 def test_advertiser_menu_inline_keyboard() -> None:

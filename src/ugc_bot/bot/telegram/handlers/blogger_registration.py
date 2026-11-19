@@ -208,11 +208,14 @@ async def _choose_creator_role_impl(
     messenger_client: MessengerClient,
     locale: str,
     support_url: str | None = None,
+    miniapp_base_url: str = "",
 ) -> None:
     """Shared logic for creator role: show menu or registration prompt."""
     texts = await bot_texts_service.get_many(
         [
             "btn_create_profile",
+            "btn_fill_profile_app",
+            "btn_fill_profile_chat",
             "btn_edit_profile",
             "btn_my_profile",
             "btn_my_orders",
@@ -244,7 +247,9 @@ async def _choose_creator_role_impl(
         choose_action_text=choose_action_text,
         intro_text=intro_text,
         menu_keyboard=menu_kb,
-        start_keyboard=creator_start_keyboard,
+        start_keyboard=lambda t: creator_start_keyboard(
+            t, miniapp_base_url=miniapp_base_url
+        ),
         texts=texts,
     )
 
@@ -281,6 +286,7 @@ async def choose_creator_role_inline(
         messenger_client,
         locale,
         support_url=support_url,
+        miniapp_base_url=config.webhook.webhook_base_url or "",
     )
 
 
@@ -315,6 +321,7 @@ async def choose_creator_role(
         messenger_client,
         locale,
         support_url=support_url,
+        miniapp_base_url=config.webhook.webhook_base_url or "",
     )
 
 

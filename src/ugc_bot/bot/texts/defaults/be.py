@@ -17,6 +17,8 @@ BE: dict[str, str] = {
     "btn_my_orders": "📂 Мае заказы",
     "btn_change_role": "Змена ролі",
     "btn_create_profile": "Стварыць профіль",
+    "btn_fill_profile_app": "Запоўніць профіль у праграме",
+    "btn_fill_profile_chat": "Запоўніць профіль у чаце",
     "btn_partner_program": "Партнёрская праграма",
     "btn_advertiser_start": "Пачаць",
     "btn_create_order": "➕ Стварыць заказ",

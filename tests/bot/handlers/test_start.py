@@ -235,7 +235,13 @@ async def test_choose_role_creator_persists(
     assert user.username == ""
     assert message.answers
     assert _TEXTS_RU["msg_creator_intro"] in message.answers[-1][0]
-    assert message.answers[-1][1].rows == creator_start_keyboard(_TEXTS_RU).rows
+    assert (
+        message.answers[-1][1].rows
+        == creator_start_keyboard(
+            _TEXTS_RU,
+            miniapp_base_url=config.webhook.webhook_base_url or "",
+        ).rows
+    )
 
 
 @pytest.mark.asyncio
