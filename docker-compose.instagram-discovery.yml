@@ -18,6 +18,12 @@ services:
     security_opt: [no-new-privileges:true]
     mem_limit: 192m
     cpus: 0.25
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     healthcheck:
       test: ["CMD", "python", "-c", "import os,time; assert time.time()-os.stat('/tmp/discovery-heartbeat').st_mtime < 300"]
       interval: 60s
