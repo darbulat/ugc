@@ -283,7 +283,7 @@ jobs:
           AGE_BINARY: ${{ github.workspace }}/age/age
         run: |
           uv run ruff check scripts/production_release.py scripts/apply_resource_policy.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py scripts/pitr_{store,receiver,primary,operator,restore_isolated,tunnel}.py tests/monitoring/pitr_roundtrip.py tests/monitoring/pitr_runtime_check.py tests/monitoring/pitr_installer_check.py
-          uv run pytest -q tests/unit/test_recovery_bundle.py tests/unit/test_pitr_store.py tests/unit/test_pitr_safety.py tests/unit/test_pitr_installer.py
+          uv run pytest -q tests/unit/test_recovery_bundle.py tests/unit/test_pitr_store.py tests/unit/test_pitr_safety.py tests/unit/test_pitr_installer.py tests/unit/test_pitr_credentials.py
 
   lint-and-test:
     name: lint-and-test (3.13)

@@ -53,6 +53,11 @@ archive is encrypted for both the owner's existing recovery public key and a
 new private reserve PITR identity. The owner's private identity stays on the
 owner's Mac. The reserve identity and PostgreSQL/tunnel credentials are root
 only; systemd passes only required credentials to each unit.
+Because systemd credentials can have mode 0440, each database-client service
+copies its bounded password file to mode 0600 under its private 0700
+`RuntimeDirectory` in `/run`. The original credential is preserved. Normal or
+failed execution removes the temporary copy; systemd removes the runtime
+directory when the unit stops, including after a hard process termination.
 
 The primary uses the existing replication settings (`wal_level=logical`, four
 senders and four slots), so this release requires **no database restart**.
