@@ -20,10 +20,12 @@ from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
 from ugc_bot.application.services.invite_handoff_notices import (
+    customer_contact_notice,
     deliver_invite_notice,
     dispatch_invite,
 )
 from ugc_bot.container.creator_invite_factory import build_creator_invites
+from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ManagerOrderModel,
@@ -42,6 +44,90 @@ from ugc_bot.infrastructure.db.repositories.invite_preview import (
 )
 
 __all__ = ["financial_pg_engine", "intake_env"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("registered", [False, True])
+async def test_explicit_customer_contact_for_external_or_blocked_creator(
+    intake_env, registered
+):
+    from tests.postgres_financial.test_telegram_order_summary import paid_order
+
+    env = intake_env
+    _, order_id, _, _, _ = await paid_order(env, interested_creators=0)
+    service = build_creator_invites(env["container"].transaction_manager)
+    service.clock = env["clock"]
+    with Session(env["pg"]) as db, db.begin():
+        if registered:
+            creator = seed_profile(db, stable_id=uuid4().hex)
+            user = db.get(UserModel, creator)
+            user.telegram = "manual_creator"
+            user.status = "bot_blocked"
+            profile = db.scalar(
+                select(BloggerProfileModel).where(
+                    BloggerProfileModel.user_id == creator
+                )
+            )
+            profile.instagram_url = "https://instagram.com/manual_creator"
+            db.flush()
+        identity = create_invite(
+            db,
+            order_id,
+            None,
+            None,
+            "@manual_creator",
+            service.clock.now(),
+            telegram="@manual_creator",
+            consent_source="telegram",
+            creator_name="Мурат",
+        )
+        pending = create_invite(
+            db,
+            order_id,
+            None,
+            None,
+            "@not_consented",
+            service.clock.now(),
+            telegram="@not_consented",
+        )
+        row = (
+            db.execute(select(INVITES).where(INVITES.c.id == identity))
+            .mappings()
+            .one()
+        )
+        assert bool(row["target_id"]) == registered
+        text, markup = customer_contact_notice(dict(row, complimentary=False))
+        assert "Мурат" in text
+        assert "https://instagram.com/manual_creator" in text
+        assert "https://t.me/manual_creator" in text
+        assert markup.inline_keyboard[0][0].callback_data
+    bot = SimpleNamespace(send_message=AsyncMock())
+    assert (
+        await deliver_invite_notice(service, bot, identity, "customer") is None
+    )
+    assert (
+        await deliver_invite_notice(
+            service, bot, pending, "customer", manual=True
+        )
+        is None
+    )
+    bot.send_message.assert_not_awaited()
+    assert (
+        await deliver_invite_notice(
+            service, bot, identity, "customer", manual=True
+        )
+        == "sent"
+    )
+    assert bot.send_message.call_args.kwargs["chat_id"] == int(
+        env["user"].telegram_id
+    )
+    assert (
+        await deliver_invite_notice(
+            service, bot, identity, "customer", manual=True
+        )
+        is None
+    )
+    bot.send_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

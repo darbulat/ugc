@@ -12,7 +12,10 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from ugc_bot.admin.auth import admin_login_redirect
-from ugc_bot.application.services.invite_handoff_notices import dispatch_invite
+from ugc_bot.application.services.invite_handoff_notices import (
+    dispatch_customer_contact,
+    dispatch_invite,
+)
 from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.invite_handoff_models import NOTICES, VISITS
@@ -56,6 +59,23 @@ ERRORS = {
 }
 
 
+def _consent(form, operation):
+    source, error = "", None
+    recorded = form.get("record_consent") == "1"
+    if recorded:
+        source = str(form.get("consent_source", ""))
+        if operation != "preview" and source not in {
+            "instagram",
+            "telegram",
+            "other",
+        }:
+            error = "Укажите, где получено согласие креатора."
+        operation = "create" if operation == "send" else operation
+    if operation == "send_customer" and not (recorded or form.get("invite_id")):
+        error = "Подтвердите согласие креатора в переписке."
+    return source, error, operation
+
+
 def register_creator_invites(  # noqa: C901
     app,
     auth,
@@ -78,6 +98,7 @@ def register_creator_invites(  # noqa: C901
         telegram,
         consent_source,
         creator_name,
+        invite_id=None,
     ):
         with Session(engine) as db, db.begin():
             if db.get_bind().dialect.name != "postgresql":
@@ -86,7 +107,18 @@ def register_creator_invites(  # noqa: C901
             if order is None:
                 return None
             link, error, identity = None, None, None
-            if operation in {"create", "send"}:
+            if operation == "send_customer" and invite_id:
+                identity = db.scalar(
+                    select(INVITES.c.id).where(
+                        INVITES.c.id == invite_id,
+                        INVITES.c.order_id == order_id,
+                        INVITES.c.reported_at.is_not(None),
+                        INVITES.c.consented_at.is_(None),
+                    )
+                )
+                if identity is None:
+                    error = "Контакт недоступен. Обновите страницу заказа."
+            elif operation in {"create", "send", "send_customer"}:
                 try:
                     identity = create_invite(
                         db,
@@ -146,6 +178,13 @@ def register_creator_invites(  # noqa: C901
                         )
                         .scalar_subquery()
                         .label("notice_state"),
+                        select(NOTICES.c.state)
+                        .where(
+                            NOTICES.c.invite_id == INVITES.c.id,
+                            NOTICES.c.kind == "customer",
+                        )
+                        .scalar_subquery()
+                        .label("customer_state"),
                     )
                     .join(
                         OrderItemModel,
@@ -195,7 +234,8 @@ def register_creator_invites(  # noqa: C901
             instagram = request.query_params.get("instagram", "")[:250]
             telegram = request.query_params.get("telegram", "")[:100]
         posted = request.method == "POST"
-        operation = ""
+        operation, form_error, invite_id = "", None, None
+        record_consent = False
         if posted:
             await require_action_token(request)
             if (
@@ -206,10 +246,16 @@ def register_creator_invites(  # noqa: C901
                 raise HTTPException(503, "Приглашения пока недоступны.")
             form = await request.form()
             operation = str(form.get("operation") or "create")
-            if operation not in {"preview", "create", "send"}:
-                raise HTTPException(422, "Проверьте действие.")
-            if operation == "send" and transactions is None:
+            if operation not in {"preview", "create", "send", "send_customer"}:
+                form_error = "Проверьте действие."
+            if operation in {"send", "send_customer"} and transactions is None:
                 raise HTTPException(503, "Отправка в бот сейчас недоступна.")
+            instagram = str(form.get("instagram", ""))[:250]
+            telegram = str(form.get("telegram", ""))[:100]
+            creator_name = str(form.get("creator_name", "")).strip()[:80]
+            record_consent = form.get("record_consent") == "1"
+            consent_source, consent_error, operation = _consent(form, operation)
+            form_error = form_error or consent_error
             try:
                 item_id = (
                     UUID(str(form["item_id"])) if form.get("item_id") else None
@@ -219,36 +265,57 @@ def register_creator_invites(  # noqa: C901
                     if form.get("manager_id")
                     else None
                 )
-                instagram = str(form.get("instagram", ""))[:250]
-                telegram = str(form.get("telegram", ""))[:100]
-                creator_name = str(form.get("creator_name", "")).strip()[:80]
-                if form.get("record_consent") == "1":
-                    consent_source = str(form.get("consent_source", ""))
-                    if operation != "preview" and consent_source not in {
-                        "instagram",
-                        "telegram",
-                        "other",
-                    }:
-                        raise ValueError("Укажите источник согласия.")
-                    operation = "create" if operation == "send" else operation
-
-            except ValueError as exc:
-                raise HTTPException(
-                    422, "Проверьте выбранную позицию."
-                ) from exc
+                invite_id = (
+                    UUID(str(form["invite_id"]))
+                    if form.get("invite_id")
+                    else None
+                )
+            except ValueError:
+                form_error = (
+                    "Позиция или менеджер недоступны. Обновите страницу."
+                )
         data = await asyncio.to_thread(
             load,
             order_id,
             item_id,
             manager_id,
             instagram,
-            operation,
+            "preview" if form_error else operation,
             telegram,
             consent_source,
             creator_name,
+            invite_id,
         )
         if data is None:
             raise HTTPException(404, "Нужен активный оплаченный заказ.")
+        data["error"] = form_error or data["error"]
+        data["record_consent"] = record_consent
+        if operation == "send_customer" and data["identity"] and not form_error:
+            from ugc_bot.container.creator_invite_factory import (
+                build_creator_invites,
+            )
+
+            try:
+                status = await dispatch_customer_contact(
+                    config,
+                    build_creator_invites(transactions),
+                    data["identity"],
+                )
+            except ValueError:
+                status = None
+            data["status"] = {
+                "sent": "Контакт отправлен заказчику в Telegram.",
+                "sending": "Отправка заказчику уже началась.",
+                "unknown": (
+                    "Telegram не подтвердил отправку. Проверьте чат заказчика."
+                ),
+                "failed": (
+                    "Контакт не доставлен. Проверьте Telegram заказчика."
+                ),
+            }.get(status, "Отправка недоступна. Проверьте заказ.")
+            data["sent_identity"] = (
+                data["identity"] if status == "sent" else None
+            )
         if operation == "send" and data["identity"]:
             from ugc_bot.container.creator_invite_factory import (
                 build_creator_invites,
@@ -276,6 +343,7 @@ def register_creator_invites(  # noqa: C901
             request,
             "creator_invites.html",
             data,
+            status_code=422 if form_error else 200,
             headers={
                 "Cache-Control": "no-store",
                 "Referrer-Policy": "no-referrer",

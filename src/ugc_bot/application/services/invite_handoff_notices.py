@@ -10,14 +10,22 @@ from sqlalchemy.dialects.postgresql import insert
 from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.invite_handoff_models import NOTICES
-from ugc_bot.infrastructure.db.models import OrderModel, UserModel
+from ugc_bot.infrastructure.db.models import (
+    OrderItemModel,
+    OrderModel,
+    UserModel,
+)
+from ugc_bot.infrastructure.db.repositories import (
+    correction_funding,
+    creator_invites,
+)
 from ugc_bot.infrastructure.db.repositories.bot_availability import (
     creator_directory_status,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
-async def _claim(service, identity, kind):
+async def _claim(service, identity, kind, *, manual=False):
     async with service.transactions.transaction() as session:
         db = _session(session)
         at = service.clock.now()
@@ -44,7 +52,7 @@ async def _claim(service, identity, kind):
             .mappings()
             .one_or_none()
         )
-        if order is None or order["target_id"] is None:
+        if order is None:
             return None
         recipient = order["target_id"]
         if kind == "customer":
@@ -53,11 +61,24 @@ async def _claim(service, identity, kind):
                     NOTICES.c.invite_id == identity, NOTICES.c.kind == "creator"
                 )
             )
-            if not direct or not (
-                order["reported_at"] or order["consented_at"]
+            if not (order["reported_at"] or order["consented_at"]) or (
+                not direct and not manual
             ):
                 return None
             recipient = order["advertiser_id"]
+            if manual:
+                if not order["reported_at"] or not order["telegram"]:
+                    return None
+                if not await db.scalar(
+                    creator_invites.free_positions(order["order_id"]).where(
+                        OrderItemModel.paid_item_id == order["item_id"]
+                    )
+                ):
+                    return None
+                if not order["complimentary"]:
+                    await correction_funding.require_forward_clear(
+                        order["item_id"], session=db
+                    )
         address = await db.scalar(
             select(UserModel.telegram_id).where(
                 UserModel.user_id == recipient,
@@ -75,10 +96,38 @@ async def _claim(service, identity, kind):
         return (int(address), order) if claimed else None
 
 
+def customer_contact_notice(order):
+    """The customer receives usable contacts in the message itself."""
+    from ugc_bot.bot.telegram.handlers.order_summary import summary_button
+
+    button = summary_button(order["order_id"])
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=button.text,
+                    callback_data=f"ip:{order['order_id'].hex}"
+                    if order["complimentary"]
+                    else button.callback_data,
+                )
+            ]
+        ]
+    )
+    lines = [
+        f"Контакт креатора для заказа {public_order_number(order['order_id'])}",
+        order["creator_name"] or "",
+        f"Instagram: https://instagram.com/{order['instagram']}",
+    ]
+    if order["telegram"]:
+        lines.append(f"Telegram: https://t.me/{order['telegram']}")
+    lines.append("Свяжитесь с креатором, чтобы согласовать работу.")
+    return "\n".join(line for line in lines if line), markup
+
+
 async def deliver_invite_notice(
-    service, bot, identity: UUID, kind: str
+    service, bot, identity: UUID, kind: str, *, manual=False
 ) -> str | None:
-    claimed = await _claim(service, identity, kind)
+    claimed = await _claim(service, identity, kind, manual=manual)
     if claimed is None:
         return None
     address, order = claimed
@@ -88,6 +137,8 @@ async def deliver_invite_notice(
         )
 
         text, markup = invitation_text(order, f"oi_{identity.hex}")
+    elif manual:
+        text, markup = customer_contact_notice(order)
     else:
         from ugc_bot.bot.telegram.handlers.order_summary import summary_button
 
@@ -125,6 +176,23 @@ async def deliver_invite_notice(
             .values(state=state)
         )
     return state
+
+
+async def dispatch_customer_contact(config, service, identity):
+    from aiogram import Bot
+
+    async with Bot(token=config.bot.bot_token).context() as bot:
+        state = await deliver_invite_notice(
+            service, bot, identity, "customer", manual=True
+        )
+    if state is not None:
+        return state
+    async with service.transactions.transaction() as session:
+        return await _session(session).scalar(
+            select(NOTICES.c.state).where(
+                NOTICES.c.invite_id == identity, NOTICES.c.kind == "customer"
+            )
+        )
 
 
 async def dispatch_invite(config, service, identity):
