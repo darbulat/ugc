@@ -112,7 +112,7 @@ class StartReplyLogging(BaseRequestMiddleware):
             trace is not None
             and trace.active
             and isinstance(method, (SendMessage, SendPhoto, SendInvoice))
-            and method.chat_id == trace.chat_id
+            and str(method.chat_id) == str(trace.chat_id)
             and isinstance(response, Message)
         ):
             trace.reply_ids.append(response.message_id)

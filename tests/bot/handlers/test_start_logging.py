@@ -208,6 +208,20 @@ async def test_failure_after_reply_preserves_ack_without_claiming_completion(
 
 
 @pytest.mark.asyncio
+async def test_direct_sdk_reply_with_numeric_string_chat_id(bot, caplog):
+    caplog.set_level(logging.INFO, logger=LOG_NAME)
+
+    async def handler(event, data):
+        await bot.send_message(str(event.chat.id), "reply")
+
+    item = update()
+    await StartCommandLogging()(handler, item.message, data(item))
+    assert len(events(caplog)) == 3
+    assert events(caplog)[-1].reply_message_id == 1071
+    assert events(caplog)[-1].outcome == "completed"
+
+
+@pytest.mark.asyncio
 async def test_retry_logs_only_successful_api_reply(bot, caplog):
     caplog.set_level(logging.INFO, logger=LOG_NAME)
     make_reply = bot.session.make_request.side_effect
