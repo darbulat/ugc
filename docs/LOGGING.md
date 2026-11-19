@@ -49,6 +49,31 @@ LOG_FORMAT=json
 
 ## Критические события
 
+### Цепочка Telegram `/start`
+
+В webhook-приложении команда `/start` пишет три JSON-события уровня `INFO`:
+
+- `telegram.start.received` — обработчик команды начал работу.
+- `telegram.start.reply_sent` — Telegram API успешно вернул созданное сообщение.
+- `telegram.start.completed` — обработчик завершён; `outcome` равен
+  `completed`, `no_reply` или `failed`.
+
+Все события связаны через `update_id`. После отправки `reply_message_id`
+содержит ID последнего ответа, а `reply_message_ids` — ID всех ответов команды.
+У первого события ID ответа ещё нет. Завершение также содержит `duration_ms`
+и безопасное имя типа ошибки `error_type`, если обработчик выбросил исключение.
+Успешный ответ означает принятие сообщения Telegram API.
+
+Логи используют существующий маршрут Docker → Promtail → Loki → Grafana.
+В Grafana Explore с источником Loki:
+
+```logql
+{service=~"app|app_2",log_scope="compose_service"} | json | update_id="123456"
+```
+
+Логирование ограничено `/start` и его ответами в тот же чат. Токены, текст
+сообщений, параметры deep link и ID чата в эти события не записываются.
+
 ### Создание заказа (`order.created`)
 
 **Уровень:** `INFO`
