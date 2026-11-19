@@ -88,6 +88,8 @@ _FLAT_KEYS = {
     ],
     "redis": ["REDIS_URL", "USE_REDIS_STORAGE"],
     "instagram": [
+        "INSTAGRAM_DISCOVERY_METRICS_ENABLED",
+        "INSTAGRAM_IDENTITY_CONTEXT",
         "INSTAGRAM_WEBHOOK_VERIFY_TOKEN",
         "INSTAGRAM_APP_SECRET",
         "_INSTAGRAM_APP_SECRET",
@@ -434,6 +436,10 @@ class RedisConfig(BaseSettings):
 
 class InstagramConfig(BaseSettings):
     model_config = _ENV
+
+    instagram_discovery_metrics_enabled: bool = Field(
+        default=False, alias="INSTAGRAM_DISCOVERY_METRICS_ENABLED"
+    )
 
     instagram_profile_maintenance_enabled: bool = Field(
         default=False, alias="INSTAGRAM_PROFILE_MAINTENANCE_ENABLED"

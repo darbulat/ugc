@@ -1,0 +1,26 @@
+# Opt-in overlay. Never supplies the working Instagram token or bot tokens.
+# Include only in the verified durable production snapshot, after migration.
+services:
+  instagram_discovery_scheduler:
+    image: ${INSTAGRAM_DISCOVERY_IMAGE:?Verified release image required}
+    environment:
+      DATABASE_URL: ${INSTAGRAM_DISCOVERY_DATABASE_URL:?Database URL required}
+      INSTAGRAM_IDENTITY_CONTEXT: ${INSTAGRAM_IDENTITY_CONTEXT:?Identity context required}
+      INSTAGRAM_DISCOVERY_CREDENTIAL_FILE: /discovery/credential.json
+    volumes:
+      - ${INSTAGRAM_DISCOVERY_CREDENTIAL_DIRECTORY:?Private Discovery-only directory required}:/discovery:ro
+    command: ["python", "-m", "ugc_bot.instagram_discovery_scheduler"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; assert time.time()-os.stat('/tmp/discovery-heartbeat').st_mtime < 300"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
