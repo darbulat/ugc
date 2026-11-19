@@ -244,6 +244,9 @@ jobs:
       - name: Verify the reserve installer with the actual pinned age bundle
         run: bash tests/monitoring/check_pitr_installer.sh ugc-admin-import:ci "$PWD/age.tar.gz"
 
+      - name: Verify real systemd credential isolation and cleanup
+        run: sudo -n python3 tests/monitoring/pitr_systemd_check.py --user "$(id -un)"
+
       - name: Build a dedicated PostgreSQL verification client
         run: docker build -f tests/monitoring/Dockerfile.pitr-client -t ugc-pitr-client:ci .
 
@@ -283,7 +286,7 @@ jobs:
           AGE_BINARY: ${{ github.workspace }}/age/age
         run: |
           uv run ruff check scripts/production_release.py scripts/apply_resource_policy.py scripts/configure_live_restore.py scripts/recovery_bundle.py scripts/backup_recovery.py scripts/pitr_{store,receiver,primary,operator,restore_isolated,tunnel}.py tests/monitoring/pitr_roundtrip.py tests/monitoring/pitr_runtime_check.py tests/monitoring/pitr_installer_check.py
-          uv run pytest -q tests/unit/test_recovery_bundle.py tests/unit/test_pitr_store.py tests/unit/test_pitr_safety.py tests/unit/test_pitr_installer.py
+          uv run pytest -q tests/unit/test_recovery_bundle.py tests/unit/test_pitr_store.py tests/unit/test_pitr_safety.py tests/unit/test_pitr_installer.py tests/unit/test_pitr_credentials.py
 
   lint-and-test:
     name: lint-and-test (3.13)

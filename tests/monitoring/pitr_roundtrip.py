@@ -12,7 +12,12 @@ from pathlib import Path
 sys.path.insert(0, "/pitr")
 import pitr_primary  # noqa: E402
 import pitr_tunnel  # noqa: E402
-from pitr_receiver import PostgreSQL, archive_completed, take_base  # noqa: E402
+from pitr_receiver import (  # noqa: E402
+    PostgreSQL,
+    archive_completed,
+    private_pgpass,
+    take_base,
+)
 from pitr_restore_isolated import prepare, verify  # noqa: E402
 from pitr_store import Store  # noqa: E402
 
@@ -66,7 +71,7 @@ def setup():
     creds.mkdir(mode=0o700)
     password_file = creds / "pgpass"
     password_file.write_text("127.0.0.1:16543:*:ugc_pitr_v1:fixture-replica\n")
-    password_file.chmod(0o600)
+    password_file.chmod(0o440)
     os.environ["CREDENTIALS_DIRECTORY"] = str(creds)
     admin(
         "CREATE ROLE ugc_pitr_v1 LOGIN REPLICATION NOSUPERUSER "
@@ -97,11 +102,28 @@ def setup():
         "restore_superuser": "postgres",
         "application_database": "fixture",
     }
+    with private_pgpass(config) as authenticated:
+        private_path = Path(authenticated["private_pgpass"])
+        assert private_path.stat().st_mode & 0o777 == 0o600
+        stream_and_prepare(config, authenticated, keys, postmaster_started)
+    assert not private_path.exists()
+    assert password_file.stat().st_mode & 0o777 == 0o440
+    print(
+        json.dumps(
+            {
+                "systemd_credential_supported": True,
+                "private_pgpass_removed": True,
+            }
+        )
+    )
+
+
+def stream_and_prepare(config, authenticated, keys, postmaster_started):
     store = Store(
         config["root"],
-        system_id,
+        config["system_id"],
         AGE,
-        [recipient],
+        config["recipients"],
         max_bytes=2 * 1024**3,
         min_free_bytes=0,
     )
@@ -117,7 +139,7 @@ def setup():
     pitr_tunnel.ssh_command = lambda config: [sys.executable, "-c", relay_code]
     relay = pitr_tunnel.Relay(config)
     threading.Thread(target=relay.serve_forever, daemon=True).start()
-    pg = PostgreSQL(config)
+    pg = PostgreSQL(authenticated)
     pg.control()
     subprocess.run(
         [

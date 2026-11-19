@@ -67,6 +67,24 @@ def credentials(name):
     return path
 
 
+@contextlib.contextmanager
+def private_pgpass(config):
+    # systemd credentials may be 0440; libpq rejects any group-readable file.
+    # RuntimeDirectory is private tmpfs and systemd removes it on unit stop.
+    with tempfile.TemporaryDirectory(
+        prefix="auth-", dir=os.environ.get("RUNTIME_DIRECTORY")
+    ) as directory:
+        with credentials("pgpass").open("rb") as source:
+            content = source.read(4097)
+        if not 0 < len(content) <= 4096:
+            raise ValueError("Invalid replication credential size")
+        path = Path(directory) / "pgpass"
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(content)
+        yield config | {"private_pgpass": str(path)}
+
+
 def ssh_command(config):
     return [
         "/usr/bin/ssh",
@@ -106,7 +124,8 @@ class PostgreSQL:
                 "PGPORT": str(self.config["pg_port"]),
                 "PGUSER": self.config["pg_user"],
                 "PGDATABASE": "postgres",
-                "PGPASSFILE": str(credentials("pgpass")),
+                "PGPASSFILE": self.config.get("private_pgpass")
+                or str(credentials("pgpass")),
                 "PGCONNECT_TIMEOUT": "5",
                 "PGSSLMODE": "disable",
                 "PGAPPNAME": SLOT,
@@ -417,16 +436,18 @@ def main():
     args = parser.parse_args()
     os.umask(0o077)
     config = load_config(args.config)
-    if args.action == "receive":
-        run_receiver(config)
-    elif args.action == "base":
-        create_base(config)
-    else:
+    if args.action == "status":
         print(
             json.dumps(
                 json.loads((Path(config["root"]) / "status.json").read_text())
             )
         )
+        return
+    with private_pgpass(config) as authenticated:
+        if args.action == "receive":
+            run_receiver(authenticated)
+        else:
+            create_base(authenticated)
 
 
 if __name__ == "__main__":
