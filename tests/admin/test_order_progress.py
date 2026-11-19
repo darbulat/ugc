@@ -55,7 +55,10 @@ def delivery_db():
             complimentary=Boolean,
         ),
         items=table(
-            OrderItemModel.__tablename__, paid_item_id=Uuid, order_id=Uuid
+            OrderItemModel.__tablename__,
+            paid_item_id=Uuid,
+            order_id=Uuid,
+            ordinal=Integer,
         ),
         assignments=table(
             ItemAssignmentModel.__tablename__,
@@ -219,3 +222,203 @@ def test_visible_order_batch_uses_constant_query_count(delivery_db):
         assert load_order_progress(session, []) == {} and not calls
     finally:
         event.remove(session.get_bind(), "before_cursor_execute", count)
+
+
+def add_manual_tables(session, t):
+    metadata = t["orders"].metadata
+    definitions = {
+        "order_creator_invites": dict(
+            id=Uuid,
+            order_id=Uuid,
+            item_id=Uuid,
+            creator_id=Uuid,
+            target_id=Uuid,
+            instagram=String,
+            telegram=String,
+            creator_name=String,
+            reported_at=DateTime,
+        ),
+        "order_creator_invite_notices": dict(
+            invite_id=Uuid,
+            kind=String,
+            state=String,
+        ),
+        "order_invite_staff_deliveries": dict(
+            delivery_id=Uuid,
+            order_id=Uuid,
+            paid_item_id=Uuid,
+            client_id=Uuid,
+        ),
+    }
+    for name, columns in definitions.items():
+        table = Table(
+            name,
+            metadata,
+            *(Column(key, kind) for key, kind in columns.items()),
+        )
+        table.create(session.connection())
+        t[name] = table
+
+
+def add_manual(
+    session,
+    t,
+    order,
+    *,
+    creator=None,
+    instagram=None,
+    state="sent",
+    kind="customer",
+    reported=True,
+    ordinal=3,
+):
+    from datetime import datetime, timezone
+
+    identity, item = uuid4(), uuid4()
+    session.execute(
+        t["items"]
+        .insert()
+        .values(
+            paid_item_id=item,
+            order_id=order,
+            ordinal=ordinal,
+        )
+    )
+    session.execute(
+        t["order_creator_invites"]
+        .insert()
+        .values(
+            id=identity,
+            order_id=order,
+            item_id=item,
+            target_id=creator,
+            instagram=instagram or f"creator_{identity.hex[:12]}",
+            telegram="manual_creator",
+            creator_name="Ручной автор",
+            reported_at=datetime.now(timezone.utc) if reported else None,
+        )
+    )
+    if state is not None:
+        session.execute(
+            t["order_creator_invite_notices"]
+            .insert()
+            .values(
+                invite_id=identity,
+                kind=kind,
+                state=state,
+            )
+        )
+    return identity, item
+
+
+def test_manual_sent_contacts_count_without_inflating_paid_assignments(
+    delivery_db,
+):
+    session, t = delivery_db
+    add_manual_tables(session, t)
+    order, client = add_order(session, t)
+    regular, manual = uuid4(), uuid4()
+    session.execute(
+        t["accepted"]
+        .insert()
+        .values(
+            order_id=order,
+            client_id=client,
+            creator_id=regular,
+        )
+    )
+    add_manual(session, t, order, creator=manual)
+    add_manual(session, t, order, instagram="external_creator", ordinal=4)
+    add_manual(session, t, order, instagram="EXTERNAL_CREATOR", ordinal=4)
+    for state in (None, "sending", "failed", "unknown"):
+        add_manual(session, t, order, state=state)
+    add_manual(session, t, order, kind="creator")
+    add_manual(session, t, order, reported=False)
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 3, 2
+    )
+    # A creator registering later must not count as a fourth delivered person.
+    session.execute(
+        t["accepted"]
+        .insert()
+        .values(
+            order_id=order,
+            client_id=client,
+            creator_id=manual,
+        )
+    )
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 3, 2
+    )
+
+
+def test_manual_acknowledgement_requires_the_order_customer(delivery_db):
+    session, t = delivery_db
+    add_manual_tables(session, t)
+    order, client = add_order(session, t)
+    identity, item = add_manual(session, t, order, state=None)
+    ack = t["order_invite_staff_deliveries"]
+    session.execute(
+        ack.insert().values(
+            delivery_id=identity,
+            order_id=order,
+            paid_item_id=item,
+            client_id=uuid4(),
+        )
+    )
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 0, 0
+    )
+    session.execute(
+        ack.insert().values(
+            delivery_id=identity,
+            order_id=order,
+            paid_item_id=item,
+            client_id=client,
+        )
+    )
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 1, 1
+    )
+    # The following notification does not count the acknowledgement twice.
+    session.execute(
+        t["order_creator_invite_notices"]
+        .insert()
+        .values(
+            invite_id=identity,
+            kind="customer",
+            state="sent",
+        )
+    )
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 1, 1
+    )
+
+
+def test_unregistered_manual_contact_merges_after_accepting_its_link(
+    delivery_db,
+):
+    session, t = delivery_db
+    add_manual_tables(session, t)
+    order, client = add_order(session, t)
+    identity, _ = add_manual(session, t, order, instagram="external_creator")
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 1, 1
+    )
+    creator = uuid4()
+    table = t["order_creator_invites"]
+    session.execute(
+        table.update().where(table.c.id == identity).values(creator_id=creator)
+    )
+    session.execute(
+        t["accepted"]
+        .insert()
+        .values(
+            order_id=order,
+            client_id=client,
+            creator_id=creator,
+        )
+    )
+    assert load_order_progress(session, [order])[order] == OrderProgress(
+        0, 1, 1
+    )

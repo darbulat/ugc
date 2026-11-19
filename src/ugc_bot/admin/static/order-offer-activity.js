@@ -39,12 +39,18 @@
     const value = document.getElementById('order-transferred-value');
     const plan = document.getElementById('order-transferred-plan');
     const extra = document.getElementById('order-transferred-extra');
+    const manual = document.getElementById('order-transferred-manual');
+    const manualCount = Number(source.dataset.manualTransferredCount || 0);
     const over = Math.max(count - needed, 0);
     if (value.textContent !== String(count)) value.textContent = count;
     if (plan.textContent !== String(needed)) plan.textContent = needed;
     value.classList.toggle('order-detail__transfer-over', over > 0);
     extra.hidden = over === 0;
     extra.textContent = over ? `+${over} сверх плана` : '';
+    if (manual) {
+      manual.hidden = !Number.isFinite(manualCount) || manualCount <= 0;
+      manual.textContent = manual.hidden ? '' : `${manualCount} вручную`;
+    }
     counter.hidden = false;
   }
 

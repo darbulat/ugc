@@ -80,7 +80,7 @@
           {% endif %}
         </td>
         <td class="order-number">
-          {{ order_progress(info.picked, row.bloggers_needed, info.get('transferred_count'), compact=true) }}
+          {{ order_progress(info.picked, row.bloggers_needed, info.get('transferred_count'), compact=true, manual=info.get('manual_transferred_count', 0)) }}
         </td>
         <td>
           {% if info.is_test %}<small class="badge bg-secondary-lt mb-1">Служебный</small>{% endif %}

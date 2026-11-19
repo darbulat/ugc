@@ -47,7 +47,7 @@
                   {% endif %}
                 {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
               </small>
-              {{ order_progress(row.picked_count, row.needed_count, row.get('transferred_count')) }}
+              {{ order_progress(row.picked_count, row.needed_count, row.get('transferred_count'), manual=row.get('manual_transferred_count', 0)) }}
             {% else %}
               <small>{{ row.age_hours|round|int }} ч с создания</small>
             {% endif %}

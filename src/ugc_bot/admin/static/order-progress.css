@@ -4,6 +4,7 @@
 .order-progress__line strong { font-size: 1rem; white-space: nowrap; }
 .order-progress__over { color: #b42332; }
 .order-progress__extra { padding: .1rem .3rem; border-radius: .3rem; background: #fff0f1; color: #a32230; font-size: .7rem; white-space: nowrap; }
+.order-progress__manual { padding: .1rem .3rem; border-radius: .3rem; background: #f3e8ff; color: #6d28d9; font-size: .7rem; white-space: nowrap; }
 .order-progress__bar { height: .35rem; border-radius: 1rem; background: #e0e8f5; overflow: hidden; }
 .order-progress__bar > span { display: block; height: 100%; background: #2563eb; }
 .attention-list__meta .order-progress { width: 12rem; margin-top: .35rem; }

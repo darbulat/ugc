@@ -3,7 +3,7 @@
 {{ '{:,.2f}'.format(value).replace(',', ' ').replace('.', ',').removesuffix(',00') }} {{ '₽' if workspace.currency == 'RUB' else workspace.currency }}
 {%- endmacro %}
 <div class="order-creators" data-creator-workspace
-     {% if workspace.transfer_count is not none %}data-transferred-count="{{ workspace.transfer_count }}" data-transfer-needed="{{ workspace.needed }}"{% endif %}>
+     {% if workspace.transfer_count is not none %}data-transferred-count="{{ workspace.transfer_count }}" data-transfer-needed="{{ workspace.needed }}" data-manual-transferred-count="{{ workspace.manual_count }}"{% endif %}>
   <div class="order-creators__toolbar">
     <div class="order-creators__filters" role="group" aria-label="Показать креаторов">
       {% for filter in workspace.filters %}
@@ -27,7 +27,7 @@
       {% for row in workspace.rows %}
         <tr data-creator-row="{{ row.creator_id }}" data-creator-group="{{ row.group }}" data-creator-search-text="{{ row.name }} {{ row.contact.get('instagram') or '' }} {{ row.contact.get('telegram') or '' }} {{ row.contact.get('phone') or '' }} {{ row.reason or '' }} {% if row.search_contact %}{{ row.search_contact.get('name') or '' }} {{ row.search_contact.get('instagram') or '' }} {{ row.search_contact.get('telegram') or '' }}{% endif %}">
           <td data-label="Креатор">
-            <a class="order-detail__creator" href="{{ request.url_for('admin_user_card', user_id=row.creator_id).include_query_params(from_order=order_id, return_to=order_return_url(request)) }}">{{ row.name }}</a>
+            {% if row.profile_id %}<a class="order-detail__creator" href="{{ request.url_for('admin_user_card', user_id=row.profile_id).include_query_params(from_order=order_id, return_to=order_return_url(request)) }}">{{ row.name }}</a>{% else %}<strong class="order-detail__creator">{{ row.name }}</strong>{% endif %}
             <div class="order-detail__contacts">
               {% if row.contact.get('instagram') %}{{ instagram(row.contact.instagram, show_platform=true) }}{% endif %}
               {% if row.contact.get('telegram') %}{{ telegram(row.contact.telegram, show_platform=true) }}{% endif %}
@@ -61,9 +61,10 @@
           </td>
           <td data-label="Передача">
             {% if row.delivered %}
-              <span class="badge badge--ok">Передан</span>
-              <small>{{ row.sent_at|admin_date }}</small>
-              <small>{{ {'selection':'Основной подбор','replacement':'Ранее переданная замена','reserve':'Дополнительно из резерва','counteroffer':'Дополнительно · новая цена'}.get(row.source, '') }}</small>
+              <span class="badge {{ 'order-creators__manual' if row.manual else 'badge--ok' }}">{{ 'Передан вручную' if row.manual else 'Передан' }}</span>
+              {% if row.sent_at %}<small>{{ row.sent_at|admin_date }}</small>{% endif %}
+              {% if row.manual and row.ordinal %}<small>Позиция №{{ row.ordinal }}</small>{% endif %}
+              <small>{{ {'selection':'Основной подбор','replacement':'Ранее переданная замена','reserve':'Дополнительно из резерва','counteroffer':'Дополнительно · новая цена','manual':'Ручной контакт команды'}.get(row.source, '') }}</small>
             {% elif row.state %}
               <span class="order-creators__delivery-state" role="status">{{ {'sent':'Отправлено заказчице','sending':'Отправка началась','failed':'Не доставлено','unknown':'Результат неизвестен'}.get(row.state, row.state) }}</span>
               {% if row.state == 'unknown' %}<small>Проверьте Telegram перед повтором</small>{% endif %}

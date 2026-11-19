@@ -552,6 +552,11 @@ def worklist_row_details(
                 if row[0].order_id in progress
                 else None
             ),
+            "manual_transferred_count": (
+                progress[row[0].order_id].manual_count
+                if row[0].order_id in progress
+                else 0
+            ),
             "replaceable_managers": replaceable[row[0].order_id],
             "attention_reasons": active_pick_reasons(
                 now, row[0], row.picked, row.dispatch_paused, thresholds
