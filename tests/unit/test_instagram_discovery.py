@@ -52,7 +52,7 @@ def credential(**changes):
             app_id="1528779102424926",
             business_id="17841436959803981",
             token="test-secret",
-            expires_at=NOW + timedelta(days=60),
+            expires_at=datetime.now(timezone.utc) + timedelta(days=60),
             expiry_fingerprint=hashlib.sha256(b"test-secret").hexdigest(),
             **changes,
         )
