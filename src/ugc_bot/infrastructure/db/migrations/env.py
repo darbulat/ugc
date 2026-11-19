@@ -10,6 +10,7 @@ from ugc_bot.infrastructure.db import (  # noqa: F401
     creator_invite_models,
     dispatch_control,
     invite_handoff_models,
+    invite_partner_models,
     manager_application_models,
     messenger_attribution,
     models,

@@ -4,10 +4,18 @@
 <style>
   .invite-form-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin-bottom: 16px; }
   .invite-form-fields label { display: grid; gap: 6px; }
-  .invite-position, .invite-profile-result { grid-column: 1 / -1; }
+  .invite-position, .invite-profile-result, .invite-creator-name { grid-column: 1 / -1; }
   .invite-position { max-width: 22rem; display: grid; gap: 6px; }
   .invite-profile-result strong { display: inline-block; margin: 6px 10px; }
   #invite-creator-action[hidden] { display: none; }
+  .invite-outcome { border: 2px solid #15803d; background: #f0fdf4; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+  .invite-outcome h2 { margin-top: 0; }
+  .invite-outcome--warning { border-color: #a16207; background: #fefce8; }
+  .invite-outcome--danger { border-color: #b91c1c; background: #fef2f2; }
+  #invite-creator-form[aria-busy="true"] button { opacity: .65; cursor: wait; }
+  .invite-responsibility { padding: 16px; border: 1px solid #d8e1f0; border-radius: 8px; min-width: 0; }
+  .invite-responsibility legend { font-size: 1rem; font-weight: 600; }
+  .invite-responsibility p { margin-bottom: 0; }
   @media (max-width: 650px) { .invite-form-fields { grid-template-columns: minmax(0, 1fr); } }
 </style>
 <div class="section">
@@ -18,7 +26,18 @@
   {% if preview %}
     <p>Предпросмотр заказа без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Открыть итоги в Telegram</a>.</p>
   {% endif %}
-  {% if status %}<p role="status">{{ status }}</p>{% endif %}
+  {% if handoff %}
+    <section id="invite-result" class="invite-outcome" role="status" aria-live="polite" tabindex="-1">
+      <h2>Контакт отправлен заказчице в Telegram</h2>
+      <p><strong>Позиция №{{ handoff.ordinal }} из {{ needed }} · {{ handoff.creator_name or ('@' ~ handoff.instagram) }}</strong></p>
+      <p>Ручная передача учтена в заказе. Можно перейти к следующему креатору.</p>
+      <div class="admin-actions">
+        {% if enabled and items %}<a id="invite-add-next" class="admin-button admin-button--primary" href="{{ request.url_for('admin_creator_invites', order_id=order_id) }}">Добавить следующего креатора · №{{ items[0].ordinal }}</a>{% endif %}
+        <a class="admin-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">Открыть заказ</a>
+      </div>
+    </section>
+    <script>document.getElementById('invite-result').focus({preventScroll: true});</script>
+  {% elif status %}<section class="invite-outcome invite-outcome--{{ status_kind or 'warning' }}" role="status"><h2>{{ status }}</h2></section>{% endif %}
   {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
   {% if link %}
     <section class="card section">
@@ -44,15 +63,16 @@
       </script>
     </section>
   {% endif %}
-  {% if enabled and items %}
+  {% if not handoff and enabled and (items or retained_item) %}
   <section class="card section">
-    <form method="post">
+    <form id="invite-creator-form" method="post">
       <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
       <div class="invite-form-fields">
         <div class="invite-position">
           <label for="invite-item">{{ "Позиция для предпросмотра" if preview else "Позиция в заказе" }}</label>
           <select name="item_id" id="invite-item" class="form-select">
-            <option value=""{% if not item_id %} selected{% endif %}>Первая свободная · №{{ items[0].ordinal }}</option>
+            {% if items %}<option value=""{% if not item_id %} selected{% endif %}>Первая свободная · №{{ items[0].ordinal }}</option>{% endif %}
+            {% if retained_item %}<option value="{{ retained_item.item_id }}" selected>№{{ retained_item.ordinal }} · текущий контакт</option>{% endif %}
             {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}</option>{% endfor %}
           </select>
         </div>
@@ -66,15 +86,36 @@
           <button type="submit" class="admin-button" name="operation" value="preview" formnovalidate>Проверить в базе</button>
           {% if known %}<strong role="status">{{ known }}</strong>{% endif %}
         </div>
-        <label>Имя креатора для карточки
+        <label class="invite-creator-name">Имя креатора для карточки
           <input class="form-control" name="creator_name" value="{{ creator_name }}" maxlength="80">
         </label>
-        <label>Менеджер команды заказа
+        <fieldset class="invite-responsibility"><legend>Рабочий менеджер</legend>
+        <label>Кто общается с креатором по заказу
           <select class="form-select" name="manager_id">
             <option value="">Без менеджера · общается заказчик</option>
             {% for manager in managers %}<option value="{{ manager.user_id }}"{% if manager.user_id == manager_id %} selected{% endif %}>{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
           </select>
         </label>
+        <p>Выберите менеджера из базы. Он войдёт в команду этого заказа и будет вести креатора.</p>
+        </fieldset>
+        {% if partners_enabled %}
+        <fieldset class="invite-responsibility"><legend>Реферер / партнёр</legend>
+          {% if referrer %}
+            <p><strong>{{ referrer.username or referrer.telegram or referrer.user_id }}</strong></p>
+            <input type="hidden" name="referrer_id" value="{{ referrer.user_id }}">
+            <p>Ранее приглашён этим партнёром. Существующая привязка сохраняется.</p>
+          {% else %}
+          <label>Кому принадлежит реферальная привязка
+            <select name="referrer_id" class="form-select">
+              <option value="">Не указывать партнёра</option>
+              {% for person in referrers %}<option value="{{ person.user_id }}"{% if person.user_id == referrer_id %} selected{% endif %}>{{ person.username or person.telegram or person.user_id }}{% if person.telegram and person.username %} · @{{ person.telegram.lstrip('@') }}{% endif %}</option>{% endfor %}
+            </select>
+          </label>
+          {% endif %}
+          <p>Постоянная привязка для комиссии по правилам партнёрской программы. За общение отвечает рабочий менеджер выше. В двух полях можно выбрать одного человека.</p>
+          <p>Если креатора ещё нет в боте, передайте ему персональную ссылку: партнёр сохранится при переходе и регистрации.</p>
+        </fieldset>
+        {% endif %}
       </div>
       {% if availability == "ready" %}<p>При отправке в бот креатор подтвердит участие, затем заказчик получит сообщение о контакте.</p>{% endif %}
       <p>«Отправить заказчику» передаст контакт владельцу заказа. Менеджер, если выбран, получит уведомление после подтверждения участия креатором.</p>
@@ -97,6 +138,7 @@
         <button class="admin-button" type="submit" name="operation" value="create">Создать ссылку</button>
         {% if availability == 'ready' %}<button id="invite-creator-action" class="admin-button" type="submit" name="operation" value="send">Отправить приглашение креатору в бот</button>{% endif %}
       </div>
+      <p id="invite-submit-status" role="status" hidden></p>
       <script>
         const consent = document.querySelector('[name=record_consent]');
         const source = document.getElementById('invite-source');
@@ -111,9 +153,22 @@
         consent.addEventListener('change', function () {
           updateConsent();
         });
+        const form = document.getElementById('invite-creator-form');
+        let submitting = false;
+        form.addEventListener('submit', function (event) {
+          if (submitting) { event.preventDefault(); return; }
+          if (!['send_customer', 'send'].includes(event.submitter?.value)) return;
+          submitting = true;
+          form.setAttribute('aria-busy', 'true');
+          const status = document.getElementById('invite-submit-status');
+          status.hidden = false;
+          status.textContent = 'Отправляем в Telegram. Дождитесь результата…';
+          event.submitter.textContent = 'Отправляем…';
+        });
       </script>
     </form>
   </section>
+  {% elif handoff %}{% if not items %}<p>Все оплаченные позиции заполнены.</p>{% endif %}
   {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
   {% else %}<p>{{ "Свободных позиций для предпросмотра нет." if preview else "Свободных оплаченных позиций нет." }}</p>{% endif %}
   {% if invites %}
