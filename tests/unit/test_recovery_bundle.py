@@ -161,6 +161,23 @@ def test_bundle_plan_includes_configuration_assets_and_certificates(
     assert all("recovery-archives" not in item for item in sources)
 
 
+def test_bundle_keeps_discovery_credential_only_when_worker_is_configured(
+    backup_module,
+):
+    recovery_plan = backup_module["recovery_plan"]
+    without = recovery_plan({"services": {}}, "age1synthetic")
+    assert not any(
+        "instagram-discovery" in item["name"] for item in without["sources"]
+    )
+    with_worker = recovery_plan(
+        {"services": {"instagram_discovery_scheduler": {}}}, "age1synthetic"
+    )
+    assert {
+        "path": "/sources/operations/instagram-discovery",
+        "name": "operations/instagram-discovery",
+    } in with_worker["sources"]
+
+
 def test_removed_historical_image_is_recorded_without_inventing_a_digest(
     backup_module, monkeypatch
 ):
