@@ -296,13 +296,13 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         page = client.get(path)
         assert page.status_code == 200
         token = search(r'name="csrf_token" value="([^"]+)"', page.text)
-        assert "Без менеджера · общается заказчик" in page.text
+        assert "Без выбора — заказчик" in page.text
         assert 'id="invite-consent"' in page.text
         assert "<summary>Креатор уже согласился" not in page.text
         assert 'value="send_customer"' in page.text
         assert 'value="create">Создать ссылку' in page.text
         position = search(
-            r'<option value="([a-f0-9-]{36})">№1</option>', page.text
+            r'<option value="([a-f0-9-]{36})"[^>]*>№1</option>', page.text
         )
         assert token and position
         form = {"instagram": "@external_creator", "item_id": position[1]}
@@ -340,7 +340,7 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
         assert "Подтвердите согласие креатора" in missing.text
         sent = client.post(path, data={**known, "operation": "send"})
         assert "Приглашение отправлено в Telegram." in sent.text
-        assert "Персональная ссылка готова" not in sent.text
+        assert "Ссылка готова" not in sent.text
         send.assert_awaited_once()
         manual = client.post(
             path,
@@ -351,7 +351,7 @@ async def test_admin_creates_invite_from_order(intake_env, monkeypatch):
                 "consent_source": "telegram",
             },
         )
-        assert "Персональная ссылка готова" in manual.text
+        assert "Ссылка готова" in manual.text
         send.assert_awaited_once()
         sent_customer = client.post(
             path,
