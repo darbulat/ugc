@@ -1,6 +1,7 @@
 """Keyboard helpers. All button labels come from texts (bot_texts)."""
 
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit, urlunsplit
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.bot.partner_entry import partner_menu_button
@@ -244,19 +245,60 @@ def role_inline_keyboard(
     return keyboard
 
 
-def creator_start_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Creator after role: Create profile. Needs: btn_create_profile."""
+def _profile_registration_keyboard(
+    texts: dict[str, str],
+    *,
+    role: str,
+    callback_data: str,
+    miniapp_base_url: str,
+) -> Keyboard:
+    """Offer the role's app form first and keep the chat flow available."""
+    rows: list[list[Button]] = []
+    try:
+        base = urlsplit(miniapp_base_url.strip())
+        valid_url = (
+            base.scheme == "https"
+            and bool(base.hostname)
+            and not base.username
+            and not base.password
+            and not base.query
+            and not base.fragment
+        )
+    except ValueError:
+        valid_url = False
+    if valid_url:
+        url = urlunsplit(
+            (
+                base.scheme,
+                base.netloc,
+                base.path.rstrip("/") + "/miniapp/app.html",
+                f"view=register-{role}",
+                "",
+            )
+        )
+        rows.append(
+            [Button(text=texts["btn_fill_profile_app"], web_app_url=url)]
+        )
+    rows.append(
+        [
+            Button(
+                text=texts["btn_fill_profile_chat"],
+                callback_data=callback_data,
+            )
+        ]
+    )
+    return Keyboard(kind=KeyboardKind.INLINE, rows=rows)
 
-    return Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
-            [
-                Button(
-                    text=texts["btn_create_profile"],
-                    callback_data=CALLBACK_CREATOR_CREATE,
-                )
-            ]
-        ],
+
+def creator_start_keyboard(
+    texts: dict[str, str], *, miniapp_base_url: str = ""
+) -> Keyboard:
+    """Creator profile entry. Needs: btn_fill_profile_app/chat."""
+    return _profile_registration_keyboard(
+        texts,
+        role="blogger",
+        callback_data=CALLBACK_CREATOR_CREATE,
+        miniapp_base_url=miniapp_base_url,
     )
 
 
@@ -330,19 +372,15 @@ def creator_filled_profile_inline_keyboard(
     )
 
 
-def advertiser_start_keyboard(texts: dict[str, str]) -> Keyboard:
-    """Advertiser role: Start (inline). Needs: btn_advertiser_start."""
-
-    return Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
-            [
-                Button(
-                    text=texts["btn_advertiser_start"],
-                    callback_data=CALLBACK_ADV_START,
-                )
-            ]
-        ],
+def advertiser_start_keyboard(
+    texts: dict[str, str], *, miniapp_base_url: str = ""
+) -> Keyboard:
+    """Advertiser profile entry. Needs: btn_fill_profile_app/chat."""
+    return _profile_registration_keyboard(
+        texts,
+        role="advertiser",
+        callback_data=CALLBACK_ADV_START,
+        miniapp_base_url=miniapp_base_url,
     )
 
 

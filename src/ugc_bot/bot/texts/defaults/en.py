@@ -22,6 +22,8 @@ EN: dict[str, str] = {
     "btn_my_orders": "📂 My orders",
     "btn_change_role": "Change role",
     "btn_create_profile": "Create profile",
+    "btn_fill_profile_app": "Fill out profile in app",
+    "btn_fill_profile_chat": "Fill out profile in chat",
     "btn_partner_program": "Partner program",
     "btn_advertiser_start": "Start",
     "btn_create_order": "➕ Create order",

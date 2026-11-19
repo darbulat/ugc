@@ -15,6 +15,8 @@ KK: dict[str, str] = {
     "btn_my_orders": "📂 Менің тапсырыстарым",
     "btn_change_role": "Рөлді өзгерту",
     "btn_create_profile": "Профиль жасау",
+    "btn_fill_profile_app": "Профильді қолданбада толтыру",
+    "btn_fill_profile_chat": "Профильді чатта толтыру",
     "btn_partner_program": "Серіктестік бағдарлама",
     "btn_advertiser_start": "Бастау",
     "btn_create_order": "➕ Тапсырыс жасау",
