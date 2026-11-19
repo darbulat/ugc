@@ -1,5 +1,6 @@
 """Independent metrics cache. No canonical identity or notification writes."""
 
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -35,9 +36,16 @@ class DiscoveryRepository:
         self.sessions = sessions
         self.identity_context = identity_context
 
+    @asynccontextmanager
+    async def _transaction(self):
+        async with self.sessions.begin() as db:
+            await db.execute(sa.text("SET LOCAL lock_timeout = '1s'"))
+            await db.execute(sa.text("SET LOCAL statement_timeout = '5s'"))
+            yield db
+
     async def claim(self, at: datetime) -> UUID | None:
         """New workers record a future slot, never run at boot."""
-        async with self.sessions.begin() as db:
+        async with self._transaction() as db:
             await db.execute(
                 insert(C)
                 .values(singleton=1, next_run_at=next_discovery_run(at))
@@ -81,7 +89,7 @@ class DiscoveryRepository:
         self, lease: UUID, at: datetime
     ) -> DiscoveryTarget | None:
         """Reserve budget before HTTP, including unsuccessful or lost calls."""
-        async with self.sessions.begin() as db:
+        async with self._transaction() as db:
             control = (
                 (await db.execute(sa.select(C).with_for_update()))
                 .mappings()
@@ -172,7 +180,7 @@ class DiscoveryRepository:
         context: str,
         at: datetime,
     ) -> str:
-        async with self.sessions.begin() as db:
+        async with self._transaction() as db:
             # Follow the same ownership writer lock order as verification.
             await db.scalar(
                 sa.select(UserModel.user_id)
@@ -231,7 +239,7 @@ class DiscoveryRepository:
             return outcome
 
     async def release(self, lease: UUID, outcome: str) -> None:
-        async with self.sessions.begin() as db:
+        async with self._transaction() as db:
             await db.execute(
                 sa.update(C)
                 .where(C.c.lease_id == lease)

@@ -330,3 +330,43 @@ def test_downgrade_refuses_to_delete_collected_state(discovery_db):
         migration.downgrade()
     with discovery_db.connect() as conn:
         assert conn.scalar(sa.select(sa.func.count()).select_from(C)) == 1
+
+
+@pytest.mark.asyncio
+async def test_busy_ownership_writer_aborts_enrichment_without_data_changes(
+    discovery_db,
+):
+    context = str(uuid4())
+    owner = seed(discovery_db, context)
+    engine, sessions = async_sessions(discovery_db)
+    repo = DiscoveryRepository(sessions, context)
+    try:
+        await repo.claim(NOW - timedelta(minutes=1))
+        lease = await repo.claim(NOW)
+        target = await repo.prepare(lease, NOW)
+        result = DiscoveryResult(
+            "success", DiscoveryProfile("987", target.username, 100, 10)
+        )
+        with discovery_db.begin() as busy:
+            busy.execute(
+                sa.text(
+                    "SELECT user_id FROM users WHERE user_id=:id FOR UPDATE"
+                ),
+                {"id": owner},
+            )
+            with pytest.raises(DBAPIError, match="lock timeout"):
+                await repo.finish(target, result, "discovery:test", NOW)
+        with discovery_db.connect() as conn:
+            snapshot = (
+                conn.execute(sa.select(D).where(D.c.user_id == owner))
+                .mappings()
+                .one()
+            )
+            assert snapshot["observed_at"] is None
+            assert snapshot["last_outcome"] == "reserved"
+            assert (
+                conn.scalar(sa.select(P.confirmed).where(P.user_id == owner))
+                is True
+            )
+    finally:
+        await engine.dispose()

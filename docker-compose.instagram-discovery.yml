@@ -3,6 +3,7 @@
 services:
   instagram_discovery_scheduler:
     image: ${INSTAGRAM_DISCOVERY_IMAGE:?Verified release image required}
+    user: "${INSTAGRAM_DISCOVERY_UID:?Credential owner UID required}:${INSTAGRAM_DISCOVERY_GID:?Credential owner GID required}"
     environment:
       DATABASE_URL: ${INSTAGRAM_DISCOVERY_DATABASE_URL:?Database URL required}
       INSTAGRAM_IDENTITY_CONTEXT: ${INSTAGRAM_IDENTITY_CONTEXT:?Identity context required}

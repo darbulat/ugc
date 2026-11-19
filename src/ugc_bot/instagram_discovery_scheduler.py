@@ -34,7 +34,7 @@ async def scheduled_batch(repository, lease, client, *, now, sleep):
             )
             if result.outcome in STOP_OUTCOMES or result.usage_percent >= 50:
                 break
-            await sleep(30)
+            await sleep(60)
     finally:
         await repository.release(lease, outcome)
     return outcome

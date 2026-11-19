@@ -79,6 +79,8 @@ def test_matching_uses_actual_observation_not_last_attempt():
     )
     counts = _resolve_audience_rows([row])[owner]
     assert (counts.followers_count, counts.media_count) == (110, 220)
+    undated = dict(row, meta_at=None, discovery_followers=None)
+    assert _resolve_audience_rows([undated])[owner].followers_count == 9000
     row["metrics_observed_at"] = NOW + timedelta(seconds=1)
     assert _resolve_audience_rows([row])[owner].followers_count == 9000
     row.update(identity_since=NOW + timedelta(days=1), old_handle="old")
@@ -196,7 +198,7 @@ async def test_batch_hard_cap_spacing_and_global_stop(outcome, usage, expected):
     lease = uuid4()
     await scheduled_batch(repo, lease, client, now=lambda: NOW, sleep=sleep)
     assert client.fetch.call_count == expected
-    assert all(call.args == (30,) for call in sleep.call_args_list)
+    assert all(call.args == (60,) for call in sleep.call_args_list)
     repo.release.assert_awaited_once_with(lease, outcome)
 
 

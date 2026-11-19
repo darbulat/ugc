@@ -349,7 +349,11 @@ def _resolve_audience_rows(
             return (value, at, priority)
 
         followers = freshest_count(
-            candidate(row["meta_followers"], row["meta_at"], 3),
+            candidate(
+                row["meta_followers"],
+                row["meta_at"],
+                3 if row["meta_at"] is not None else 0,
+            ),
             candidate(
                 row.get("discovery_followers"),
                 row.get("followers_observed_at"),
