@@ -59,12 +59,16 @@ from ugc_bot.bot.telegram.handlers.utils import (
     get_user_and_ensure_allowed_callback,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.telegram.navigation import NavigationMiddleware, callback_role
 from ugc_bot.bot.texts.defaults.customer import customer_text
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 
 router = Router()
+_navigation = NavigationMiddleware(None)
+router.message.middleware(_navigation)
+router.callback_query.middleware(_navigation)
 
 ORDER_STATUS_KEYS = {
     OrderStatus.NEW: "msg_status_new",
@@ -356,7 +360,16 @@ async def show_my_orders(
     )
 
 
-@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_MENU_MY_ORDERS)
+@router.callback_query(
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_PROFILE_MENU_MY_ORDERS,
+            CALLBACK_PROFILE_MENU_MY_ORDERS + ":blogger",
+            CALLBACK_PROFILE_MENU_MY_ORDERS + ":advertiser",
+        )
+    )
+)
 async def show_my_orders_from_profile_callback(
     callback: CallbackQuery,
     state: FSMContext,
@@ -400,6 +413,13 @@ async def show_my_orders_from_profile_callback(
         return
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
     blogger = await profile_service.get_blogger_profile(user.user_id)
+    role = callback_role(incoming.data)
+    if role == "blogger":
+        advertiser = None
+    elif role == "advertiser":
+        blogger = None
+    if role:
+        await state.update_data(profile_view_role=role)
     await _send_my_orders_content(
         incoming,
         state,

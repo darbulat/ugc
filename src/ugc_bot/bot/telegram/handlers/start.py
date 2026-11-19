@@ -21,7 +21,7 @@ from ugc_bot.application.services.bot_texts_service import BotTextsService
 from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
-from ugc_bot.bot.partner_entry import CALLBACK_PARTNER_OPEN, send_partner_entry
+from ugc_bot.bot.partner_entry import CALLBACK_PARTNER_OPEN
 from ugc_bot.bot.telegram.filters import TextEqualsKey
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_CHANGE_COUNTRY_PREFIX,
@@ -39,6 +39,7 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     role_inline_keyboard,
 )
 from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.partner_entry import send_telegram_partner_entry
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
@@ -53,13 +54,24 @@ async def partner_command(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    user_role_service: UserRoleService | None = None,
+    partner_view_service=None,
+    transaction_manager=None,
+    bot_texts_service: BotTextsService | None = None,
 ) -> None:
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
     incoming = event_adapter.from_message(message)
-    await send_partner_entry(
-        messenger_client, incoming.chat_id, config, "telegram", user_locale
+    await send_telegram_partner_entry(
+        incoming,
+        messenger_client,
+        config,
+        user_locale,
+        user_role_service,
+        partner_view_service,
+        transaction_manager,
+        bot_texts_service,
     )
 
 
@@ -70,14 +82,25 @@ async def partner_callback(
     user_locale: str = "ru",
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
+    user_role_service: UserRoleService | None = None,
+    partner_view_service=None,
+    transaction_manager=None,
+    bot_texts_service: BotTextsService | None = None,
 ) -> None:
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
     incoming = event_adapter.from_callback(callback)
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
-    await send_partner_entry(
-        messenger_client, incoming.chat_id, config, "telegram", user_locale
+    await send_telegram_partner_entry(
+        incoming,
+        messenger_client,
+        config,
+        user_locale,
+        user_role_service,
+        partner_view_service,
+        transaction_manager,
+        bot_texts_service,
     )
 
 

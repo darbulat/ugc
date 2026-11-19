@@ -40,6 +40,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     parse_user_id_from_state,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.telegram.navigation import NavigationMiddleware
 from ugc_bot.bot.telegram.validators import (
     VALIDATOR_ERR_KEYS,
     normalize_url,
@@ -54,6 +55,9 @@ from ugc_bot.config import AppConfig
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
+_navigation = NavigationMiddleware("advertiser")
+router.message.middleware(_navigation)
+router.callback_query.middleware(_navigation)
 logger = logging.getLogger(__name__)
 
 

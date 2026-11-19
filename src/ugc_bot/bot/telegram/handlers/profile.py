@@ -77,6 +77,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
     resolve_currency_symbol,
     resolve_messenger_dependencies,
 )
+from ugc_bot.bot.telegram.navigation import NavigationMiddleware, callback_role
 from ugc_bot.bot.telegram.validators import (
     INSTAGRAM_URL_REGEX,
     VALIDATOR_ERR_KEYS,
@@ -105,6 +106,18 @@ from ugc_bot.domain.enums import (
 from ugc_bot.domain.instagram_maintenance import REFRESH_CALLBACK
 
 router = Router()
+_navigation = NavigationMiddleware(None)
+router.message.middleware(_navigation)
+router.callback_query.middleware(_navigation)
+
+
+def _selected_profiles(blogger, advertiser, role):
+    if role == "blogger":
+        return blogger, None
+    if role == "advertiser":
+        return None, advertiser
+    return blogger, advertiser
+
 
 # FSM state ids for agreement step (must match blogger/advertiser registration).
 _BLOGGER_AGREEMENTS_STATE = "BloggerRegistrationStates:agreements"
@@ -1139,6 +1152,7 @@ async def show_profile(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     country_repo: CountryRepository | None = None,
+    profile_role: str | None = None,
 ) -> None:
     """Show current user's profile or ask to confirm agreement if not yet."""
     if isinstance(message, MessageContext):
@@ -1149,6 +1163,9 @@ async def show_profile(
         )
         incoming = event_adapter.from_message(message)
         message_ctx = MessageContext(incoming, messenger_client)
+    profile_role = profile_role or getattr(
+        message_ctx._messenger_client, "profile_role", None
+    )
     await state.clear()
 
     if message_ctx.from_user is None or not message_ctx.from_user.id:
@@ -1171,6 +1188,7 @@ async def show_profile(
     )
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    blogger, advertiser = _selected_profiles(blogger, advertiser, profile_role)
     needs_agreement = (
         blogger is not None and blogger.agreement_confirmed_at is None
     ) or (advertiser is not None and advertiser.agreement_confirmed_at is None)
@@ -1198,7 +1216,9 @@ async def show_profile(
             ),
             parse_mode="HTML",
         )
-        await state.update_data(user_id=user.user_id)
+        await state.update_data(
+            user_id=user.user_id, profile_view_role=profile_role
+        )
         if blogger is not None:
             await state.set_state(_BLOGGER_AGREEMENTS_STATE)
         else:
@@ -1289,9 +1309,8 @@ async def handle_profile_agree_callback(
         return
     await messenger_client.answer_callback(callback_id=incoming.callback_id)
     await _remove_inline_keyboard_from_callback(incoming, messenger_client)
-    # Confirm agreements for ALL profiles the user has to avoid an infinite
-    # loop when both blogger and advertiser profiles exist: show_profile
-    # checks both via OR, but state can only encode one profile type.
+    # Confirm the displayed role. Legacy combined views also confirm the
+    # other profile below, preserving their existing agreement behavior.
     if current == _BLOGGER_AGREEMENTS_STATE:
         telegram_username = getattr(incoming.user, "username", None)
         await blogger_registration_service.confirm_blogger_agreement(
@@ -1303,11 +1322,14 @@ async def handle_profile_agree_callback(
             user_id=user_id,
         )
 
+    # Scoped views confirm their own role; legacy views confirm both.
+    profile_role = data.get("profile_view_role")
     # Also confirm the other profile if it exists
     blogger = await profile_service.get_blogger_profile(user_id)
     advertiser = await profile_service.get_advertiser_profile(user_id)
     if (
-        current == _BLOGGER_AGREEMENTS_STATE
+        profile_role is None
+        and current == _BLOGGER_AGREEMENTS_STATE
         and advertiser is not None
         and advertiser.agreement_confirmed_at is None
     ):
@@ -1315,7 +1337,8 @@ async def handle_profile_agree_callback(
             user_id=user_id,
         )
     elif (
-        current == _ADVERTISER_AGREEMENTS_STATE
+        profile_role is None
+        and current == _ADVERTISER_AGREEMENTS_STATE
         and blogger is not None
         and blogger.agreement_confirmed_at is None
     ):
@@ -1339,6 +1362,7 @@ async def handle_profile_agree_callback(
         return
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    blogger, advertiser = _selected_profiles(blogger, advertiser, profile_role)
     profile_texts = await bot_texts_service.get_many(
         list(PROFILE_DISPLAY_KEYS), locale
     )
@@ -1425,7 +1449,16 @@ async def handle_instagram_refresh_callback(
     )
 
 
-@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_EDIT)
+@router.callback_query(
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_PROFILE_EDIT,
+            CALLBACK_PROFILE_EDIT + ":blogger",
+            CALLBACK_PROFILE_EDIT + ":advertiser",
+        )
+    )
+)
 async def handle_profile_edit_callback(
     callback: CallbackQuery,
     state: FSMContext,
@@ -1461,6 +1494,8 @@ async def handle_profile_edit_callback(
         return
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    profile_role = callback_role(incoming.data)
+    blogger, advertiser = _selected_profiles(blogger, advertiser, profile_role)
     if blogger is None and advertiser is None:
         msg_incomplete = await bot_texts_service.get(
             "msg_profile_incomplete", locale
@@ -1527,7 +1562,16 @@ async def handle_profile_edit_callback(
     await state.set_state(EditProfileStates.choosing_field)
 
 
-@router.callback_query(lambda c: c.data == CALLBACK_PROFILE_MY_PROFILE)
+@router.callback_query(
+    lambda c: (
+        c.data
+        in (
+            CALLBACK_PROFILE_MY_PROFILE,
+            CALLBACK_PROFILE_MY_PROFILE + ":blogger",
+            CALLBACK_PROFILE_MY_PROFILE + ":advertiser",
+        )
+    )
+)
 async def handle_profile_my_profile_callback(
     callback: CallbackQuery,
     state: FSMContext,
@@ -1569,6 +1613,8 @@ async def handle_profile_my_profile_callback(
     )
     blogger = await profile_service.get_blogger_profile(user.user_id)
     advertiser = await profile_service.get_advertiser_profile(user.user_id)
+    profile_role = callback_role(incoming.data)
+    blogger, advertiser = _selected_profiles(blogger, advertiser, profile_role)
     needs_agreement = (
         blogger is not None and blogger.agreement_confirmed_at is None
     ) or (advertiser is not None and advertiser.agreement_confirmed_at is None)
@@ -1598,7 +1644,9 @@ async def handle_profile_my_profile_callback(
             ),
             parse_mode="HTML",
         )
-        await state.update_data(user_id=user.user_id)
+        await state.update_data(
+            user_id=user.user_id, profile_view_role=profile_role
+        )
         if blogger is not None:
             await state.set_state(_BLOGGER_AGREEMENTS_STATE)
         else:

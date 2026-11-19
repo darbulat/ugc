@@ -13,6 +13,7 @@ from aiogram.exceptions import (
 )
 from aiogram.types import (
     BufferedInputFile,
+    CopyTextButton,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
@@ -357,6 +358,10 @@ def _build_markup(keyboard: Keyboard | None):
 
 def _inline_button(button: Button) -> InlineKeyboardButton:
     """Build InlineKeyboardButton from neutral Button."""
+    if button.copy_text:
+        return InlineKeyboardButton(
+            text=button.text, copy_text=CopyTextButton(text=button.copy_text)
+        )
     web_app_url = getattr(button, "web_app_url", None)
     if web_app_url:
         return InlineKeyboardButton(
