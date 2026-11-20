@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
+from ugc_bot.domain.enums import UserStatus
 from ugc_bot.domain.instagram_discovery import (
     MOSCOW,
     DiscoveryResult,
@@ -22,9 +23,15 @@ from ugc_bot.infrastructure.db.instagram_discovery_models import (
     DISCOVERY_CONTROL as C,
 )
 from ugc_bot.infrastructure.db.instagram_maintenance_models import HEALTH as H
-from ugc_bot.infrastructure.db.models import BloggerProfileModel, UserModel
+from ugc_bot.infrastructure.db.models import (
+    BloggerProfileModel,
+    InstagramStatsModel,
+    UserModel,
+)
 
 P = BloggerProfileModel.__table__
+S = InstagramStatsModel.__table__
+U = UserModel.__table__
 REFRESH = timedelta(days=14)
 LEASE = timedelta(seconds=120)
 
@@ -85,6 +92,106 @@ class DiscoveryRepository:
             H.c.handle.op("~")(r"^[A-Za-z0-9_.]{1,30}$"),
         )
 
+    def _snapshot_current(self):
+        return sa.and_(
+            D.c.observed_meta_id == P.c.instagram_user_id,
+            D.c.identity_context == self.identity_context,
+            sa.func.lower(D.c.username)
+            == sa.func.lower(P.c.instagram_username),
+            D.c.observed_at.is_not(None),
+            sa.or_(
+                H.c.identity_since.is_(None),
+                D.c.observed_at >= H.c.identity_since,
+            ),
+        )
+
+    def _priority_at(self):
+        # Failed attempts and cooldowns do not make observations fresher.
+        def current_date(column):
+            return sa.case(
+                (
+                    sa.or_(
+                        H.c.identity_since.is_(None),
+                        column >= H.c.identity_since,
+                    ),
+                    column,
+                ),
+                else_=None,
+            )
+
+        return sa.case(
+            (
+                self._snapshot_current(),
+                sa.func.least(
+                    current_date(D.c.followers_observed_at),
+                    current_date(D.c.media_observed_at),
+                    D.c.observed_at,
+                ),
+            ),
+            else_=H.c.last_success_at,
+        )
+
+    def _publication_known(self):
+        current_discovery = sa.and_(
+            self._snapshot_current(),
+            D.c.media_count >= 0,
+            sa.or_(
+                H.c.identity_since.is_(None),
+                D.c.media_observed_at >= H.c.identity_since,
+            ),
+        )
+        current_legacy = sa.and_(
+            S.c.media_count >= 0,
+            sa.or_(
+                H.c.identity_since.is_(None),
+                sa.and_(
+                    H.c.metrics_observed_at >= H.c.identity_since,
+                    sa.func.lower(S.c.instagram_username)
+                    == sa.func.lower(P.c.instagram_username),
+                ),
+            ),
+        )
+        return sa.or_(current_discovery, current_legacy)
+
+    def target_query(self, at: datetime):
+        """Pure SELECT for the queue, also safe for read-only previews."""
+        # Load after model registration; the availability writer imports ports.
+        from ugc_bot.infrastructure.db.repositories.bot_availability import (
+            creator_directory_status,
+        )
+
+        return (
+            sa.select(
+                P.c.user_id,
+                P.c.instagram_user_id,
+                P.c.instagram_url,
+                H.c.handle,
+            )
+            .select_from(P)
+            .join(H, H.c.user_id == P.c.user_id)
+            .join(U, U.c.user_id == P.c.user_id)
+            .outerjoin(D, D.c.user_id == P.c.user_id)
+            .outerjoin(S, S.c.user_id == P.c.user_id)
+            .where(
+                self._eligible(at),
+                sa.or_(
+                    D.c.user_id.is_(None),
+                    D.c.next_attempt_at <= at,
+                    D.c.attempt_meta_id != P.c.instagram_user_id,
+                    D.c.attempt_profile_url != P.c.instagram_url,
+                ),
+            )
+            .order_by(
+                self._priority_at(),
+                sa.case(
+                    (creator_directory_status() == UserStatus.ACTIVE, 0),
+                    else_=1,
+                ),
+                sa.case((self._publication_known(), 1), else_=0),
+                P.c.user_id,
+            )
+        )
+
     async def prepare(
         self, lease: UUID, at: datetime
     ) -> DiscoveryTarget | None:
@@ -107,33 +214,7 @@ class DiscoveryRepository:
             ):
                 return None
             row = (
-                (
-                    await db.execute(
-                        sa.select(
-                            P.c.user_id,
-                            P.c.instagram_user_id,
-                            P.c.instagram_url,
-                            H.c.handle,
-                        )
-                        .join(H, H.c.user_id == P.c.user_id)
-                        .outerjoin(D, D.c.user_id == P.c.user_id)
-                        .where(
-                            self._eligible(at),
-                            sa.or_(
-                                D.c.user_id.is_(None),
-                                D.c.next_attempt_at <= at,
-                                D.c.attempt_meta_id != P.c.instagram_user_id,
-                                D.c.attempt_profile_url != P.c.instagram_url,
-                            ),
-                        )
-                        .order_by(
-                            D.c.next_attempt_at.asc().nullsfirst(),
-                            H.c.last_success_at,
-                            P.c.user_id,
-                        )
-                        .limit(1)
-                    )
-                )
+                (await db.execute(self.target_query(at).limit(1)))
                 .mappings()
                 .first()
             )
