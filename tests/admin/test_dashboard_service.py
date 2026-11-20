@@ -416,7 +416,13 @@ async def test_get_user_card_returns_none_for_unknown_user(service) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_user_card_returns_user_data(service) -> None:
+@pytest.mark.parametrize(
+    ("profile_name", "application_name", "expected_name"),
+    [("john", None, "john"), ("", "Рената", "Рената"), ("  ", None, "")],
+)
+async def test_get_user_card_returns_user_data(
+    service, profile_name, application_name, expected_name
+) -> None:
     """get_user_card returns user dict with all fields when user exists."""
     uid = uuid4()
     created = datetime.now(timezone.utc)
@@ -425,7 +431,7 @@ async def test_get_user_card_returns_user_data(service) -> None:
         telegram_id="ext123",
         max_id=None,
         messenger_type=SimpleNamespace(value="telegram"),
-        username="john",
+        username=profile_name,
         status=UserStatus.ACTIVE,
         issue_count=0,
         created_at=created,
@@ -435,13 +441,16 @@ async def test_get_user_card_returns_user_data(service) -> None:
         admin=False,
         referral_code="ref1",
     )
-    svc = service(
-        [_FakeResult(one_or_none_value=(user_ns, None, None, user_ns.status))]
-    )
+    results = [
+        _FakeResult(one_or_none_value=(user_ns, None, None, user_ns.status))
+    ]
+    if not profile_name.strip():
+        results.append(_FakeResult(scalar_value=application_name))
+    svc = service(results)
     card = await svc.get_user_card(uid)
     assert card is not None
     assert card["user_id"] == str(uid)
-    assert card["username"] == "john"
+    assert card["username"] == expected_name
     assert card["telegram"] == "@john"
     assert card["telegram_id"] == "ext123"
     assert card["referral_code"] == "ref1"

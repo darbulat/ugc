@@ -1,0 +1,20 @@
+{% from 'people_parts.html' import telegram %}
+{% macro order_managers(managers, request, order_id, return_to) -%}
+  {% if managers is none %}
+    <span class="muted">Данные о менеджере обновляются</span>
+  {% else %}
+  {% for manager in managers %}
+    {% set name = (manager.name or manager.telegram or 'Профиль менеджера')|trim %}
+    {% set name_handle = name|telegram_handle %}
+    {% set contact_handle = manager.telegram|telegram_handle %}
+    <span class="order-manager">
+      <a href="{{ request.url_for('admin_user_card', user_id=manager.id).include_query_params(from_order=order_id, return_to=return_to) }}">{{ name }}</a>
+      {% if manager.telegram and (name_handle or name)|lower != (contact_handle or manager.telegram|trim)|lower %}
+        {{ telegram(manager.telegram) }}
+      {% endif %}
+    </span>
+  {% else %}
+    <span class="muted">Менеджер не назначен</span>
+  {% endfor %}
+  {% endif %}
+{%- endmacro %}

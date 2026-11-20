@@ -310,6 +310,7 @@ def test_admin_dashboard_html(monkeypatch) -> None:
     assert "Средний чек · USD" in response.text
     assert "Ориентир админки 3 дн." in response.text
     assert "Дата оплаты неизвестна" in response.text
+    assert "Данные о менеджере обновляются" in response.text
     assert "101 ч с создания" not in response.text
     assert "data-dashboard-content" in response.text
     assert 'href="/admin/orders?period=today"' in response.text
@@ -612,6 +613,45 @@ def test_admin_order_detail_html(monkeypatch) -> None:
     )
     response = client.get(f"/admin/orders/{order_id}")
     assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("name", "telegram", "show_contact"),
+    [
+        ("Sh_renetta", "@Sh_renetta", False),
+        (" @SH_RENETTA ", "sh_renetta", False),
+        (None, "@Sh_renetta", False),
+        ("Рената", "@Sh_renetta", True),
+        ("Рената", None, False),
+    ],
+)
+def test_order_manager_profile_does_not_repeat_the_same_handle(
+    monkeypatch, name, telegram, show_contact
+):
+    order_id = "11111111-1111-1111-1111-111111111111"
+    manager_id = "22222222-2222-2222-2222-222222222222"
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={},
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={
+            "order_id": order_id,
+            "status_label": "active",
+            "managers": [
+                {"id": manager_id, "name": name, "telegram": telegram}
+            ],
+        },
+    )
+    response = client.get(f"/admin/orders/{order_id}")
+    assert response.status_code == 200
+    manager = response.text.split('class="order-manager"', 1)[1].split(
+        "</span>", 1
+    )[0]
+    assert f"/admin/users/{manager_id}?from_order={order_id}" in manager
+    assert manager.count("<a ") == (2 if show_contact else 1)
+    assert ("https://t.me/" in manager) is show_contact
 
 
 def test_admin_creates_browser_link_with_csrf_and_reads_paid_status(

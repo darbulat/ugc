@@ -10,6 +10,7 @@ from sqlalchemy.sql import ColumnElement
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.social import SocialPlatform
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ComplaintModel,
@@ -128,13 +129,30 @@ def _manager_assignments():
     ).subquery()
 
 
+def manager_display_name():
+    """Use the required application name when the general profile is blank."""
+    application_name = (
+        select(
+            func.nullif(
+                func.trim(APPLICATIONS.c.answers["name"].as_string()), ""
+            )
+        )
+        .where(APPLICATIONS.c.user_id == UserModel.user_id)
+        .correlate(UserModel)
+        .scalar_subquery()
+    )
+    return func.coalesce(
+        func.nullif(func.trim(UserModel.username), ""), application_name
+    )
+
+
 def order_managers_query(order_ids):
     assignments = _manager_assignments()
     return (
         select(
             assignments.c.order_id,
             UserModel.user_id,
-            UserModel.username,
+            manager_display_name().label("username"),
             UserModel.telegram,
         )
         .join(UserModel, UserModel.user_id == assignments.c.user_id)
