@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.domain.entities import Order
 from ugc_bot.domain.enums import OrderType, RejectionReason
+from ugc_bot.domain.offer_intake import reserve_notice
 
 CALLBACK_PREFIX = "offer_card:"
 NEUTRAL_COVER = "ugc:neutral-offer-cover"
@@ -245,14 +246,22 @@ def _state_content(
             "The current selection is full.",
         ),
         "closed": (
-            "Заказ закрыт",
+            "Набор завершён",
             "Отклики больше не принимаются.",
-            "Order closed",
+            "Applications closed",
             "This order is no longer accepting responses.",
         ),
     }
     headline, detail = variants[view][0:2] if ru else variants[view][2:4]
     if view == "confirm":
+        if order.offer_reserve_until is not None:
+            detail = (
+                "Заявка попадёт в резерв. Если потребуется замена, "
+                "с тобой свяжутся."
+                if ru
+                else "Your application will join the reserve. "
+                "You may be contacted if a replacement is needed."
+            )
         return headline, [escape(reward(order, ru)), "", detail]
     return headline, [detail] if detail else []
 
@@ -266,6 +275,8 @@ def _keyboard(order: Order, view: str, ru: bool) -> Keyboard | None:
         )
 
     apply = action("Откликнуться" if ru else "Respond", "confirm")
+    if order.offer_reserve_until is not None:
+        apply = action("В резерв" if ru else "Join reserve", "confirm")
     back = action("← К офферу" if ru else "← Back", "open")
     brief = action("Бриф" if ru else "Brief", "brief")
     safety = action("Правила" if ru else "Rules", "safe")
@@ -304,6 +315,13 @@ def render_public_offer(
     ru = _ru(locale)
     heading, lines = _state_content(order, card, view, ru)
     text = "\n".join([f"<b>{escape(heading)}</b>", "", *lines]).rstrip()
+    if order.offer_reserve_until is not None and view not in {
+        "closed",
+        "skipped",
+    }:
+        text += "\n\n" + escape(
+            reserve_notice(order.offer_reserve_until, locale)
+        )
     # The generated markup has only bold tags. Count its decoded text in
     # UTF-16, including dynamic fields, ahead of any provider call.
     visible_text = unescape(text.replace("<b>", "").replace("</b>", ""))

@@ -182,6 +182,10 @@ class SqlAlchemyOrderRepository(OrderRepository):
     async def save(self, order: Order, session: object | None = None) -> None:
         """Persist order."""
         model = _to_order_model(order)
+        # Once set, the intake deadline is not cleared by unrelated saves of
+        # an entity read before the final primary response committed.
+        if order.offer_reserve_until is None:
+            del model.offer_reserve_until
         async with _resolve_session(
             self.session_factory, session
         ) as db_session:
@@ -304,6 +308,7 @@ def _to_order_entity(model: OrderModel) -> Order:
         complimentary=model.complimentary is True,
         dispatch_stopped=model.dispatch_stopped is True,
         creator_offer_card=model.creator_offer_card,
+        offer_reserve_until=model.offer_reserve_until,
     )
 
 
@@ -346,6 +351,7 @@ def _to_order_model(order: Order) -> OrderModel:
         complimentary=order.complimentary is True,
         dispatch_stopped=order.dispatch_stopped is True,
         creator_offer_card=order.creator_offer_card,
+        offer_reserve_until=order.offer_reserve_until,
     )
 
 

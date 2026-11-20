@@ -46,7 +46,8 @@ from ugc_bot.application.services.profile_service import ProfileService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.domain.entities import Order, User
-from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.domain.enums import MessengerType, UserStatus
+from ugc_bot.domain.offer_intake import intake_open
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,10 @@ class CreatorOfferCardFlow:
             return None
         if matching.accepted and matching.in_offer:
             return render_saved_offer(order, self.locale)
+        if not intake_open(
+            order.status, order.dispatch_stopped, order.offer_reserve_until
+        ):
+            return render_public_offer(order, self.locale, "closed")
         view = "reserve" if matching.accepted else "skipped"
         return render_public_offer(order, self.locale, view)
 
@@ -196,6 +201,10 @@ class CreatorOfferCardFlow:
         stored = await self._stored_view(order, user)
         if stored:
             return stored, None
+        if not intake_open(
+            order.status, order.dispatch_stopped, order.offer_reserve_until
+        ):
+            return render_public_offer(order, self.locale, "closed"), None
         profile = await self.profiles.get_blogger_profile(user.user_id)
         if not profile or not profile.confirmed:
             await self._answer(incoming, "msg_confirm_instagram_first")
@@ -213,6 +222,8 @@ class CreatorOfferCardFlow:
                 channel=incoming.user.messenger_type,
             )
         except PaidSelectionResponseError as exc:
+            if exc.reason == "offer_intake_closed":
+                return render_public_offer(order, self.locale, "closed"), None
             await self._answer(
                 incoming, selection_response_message_key(exc.reason)
             )
@@ -236,6 +247,10 @@ class CreatorOfferCardFlow:
         stored = await self._stored_view(order, user)
         if stored:
             return stored
+        if not intake_open(
+            order.status, order.dispatch_stopped, order.offer_reserve_until
+        ):
+            return render_public_offer(order, self.locale, "closed")
         if action == "s_price" and order.price > 0 and self.start_price_entry:
             await self.start_price_entry(order.order_id)
             await self._answer(incoming)
@@ -247,21 +262,21 @@ class CreatorOfferCardFlow:
                 order.order_id,
             )
             return None
-        if order.status != OrderStatus.ACTIVE or order.dispatch_stopped:
-            return render_public_offer(order, self.locale, "closed")
         reason = (
             SKIP_REASONS.get(action.removeprefix("s_"))
             if action.startswith("s_")
             else None
         )
         if reason:
-            await self.dispatch.record_skip(
+            result = await self.dispatch.record_skip(
                 order.order_id,
                 user.user_id,
                 rejection_reason=reason,
                 channel=incoming.user.messenger_type,
                 only_unanswered=True,
             )
+            if result.intake_closed is True:
+                return render_public_offer(order, self.locale, "closed")
             return await self._stored_view(order, user) or render_public_offer(
                 order, self.locale, "skipped"
             )

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -433,7 +433,7 @@ async def test_rejected_callback_cannot_reveal_contacts(
 @pytest.mark.parametrize(
     ("state", "action", "caption"),
     [
-        ("closed", "brief", "Заказ закрыт"),
+        ("closed", "brief", "Набор завершён"),
         ("accepted", "done", "Отклик сохранён"),
         ("accepted", "open", "Отклик сохранён"),
         ("reserve", "done", "Ты в листе ожидания"),
@@ -505,7 +505,7 @@ async def test_failed_or_unavailable_response_stays_in_same_card(
         card = harness.messenger.edit_offer_card.call_args.args[2]
         assert card.keyboard is None
         assert (
-            "Заказ закрыт" if reason == "expired" else "Ты в листе ожидания"
+            "Набор завершён" if reason == "expired" else "Ты в листе ожидания"
         ) in card.text
     harness.messenger.send_offer_card.assert_not_awaited()
 
@@ -961,7 +961,11 @@ async def test_offer_card_opens_price_entry(
     order, offer_session, status, channel
 ):
     flow = offer_session.flow
-    flow.orders.get_by_id.return_value = replace(order, status=status)
+    flow.orders.get_by_id.return_value = replace(
+        order,
+        status=status,
+        offer_reserve_until=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
     start = AsyncMock()
     flow.start_price_entry = start
 
@@ -975,3 +979,108 @@ async def test_offer_card_opens_price_entry(
         self_message["keyboard"].rows[0][0].callback_data
         == f"orr_cancel:{order.order_id}"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("channel", [MessengerType.TELEGRAM, MessengerType.MAX])
+@pytest.mark.parametrize(
+    "action", ["open", "brief", "confirm", "done", "s_price", "s_time"]
+)
+@pytest.mark.parametrize("phase", ["expired", "historical", "manual"])
+async def test_finished_intake_disables_every_card_action(
+    order, offer_session, channel, action, phase
+):
+    until = datetime.now(timezone.utc) - timedelta(seconds=1)
+    closed = replace(order, offer_reserve_until=until)
+    if phase == "historical":
+        closed = replace(order, status=OrderStatus.CLOSED)
+    elif phase == "manual":
+        closed = replace(order, dispatch_stopped=True)
+    flow = offer_session.flow
+    flow.orders.get_by_id.return_value = closed
+    flow.start_price_entry = AsyncMock()
+    await flow.handle(click(order, action, channel))
+    flow.start_price_entry.assert_not_awaited()
+    flow.dispatch.record_skip.assert_not_awaited()
+    flow.responses.respond_and_finalize.assert_not_awaited()
+    card = offer_session.messenger.edit_offer_card.call_args.args[2]
+    assert "Набор завершён" in card.text
+    assert card.keyboard is None
+
+
+@pytest.mark.asyncio
+async def test_selected_creator_keeps_brief_and_contacts_after_intake(
+    order, creator, offer_session
+):
+    closed = replace(order, offer_reserve_until=datetime.now(timezone.utc))
+    offer_session.flow.orders.get_by_id.return_value = closed
+    offer_session.receipts.list_responses_by_blogger.return_value = [
+        SimpleNamespace(order_id=order.order_id, accepted=True, in_offer=True)
+    ]
+    await offer_session.flow.handle(click(order, "open"))
+    card = offer_session.messenger.edit_offer_card.call_args.args[2]
+    assert "Отклик сохранён" in card.text
+    assert order.brief_link in {
+        button.url for row in card.keyboard.rows for button in row
+    }
+
+
+def test_reserve_card_discloses_deadline_before_confirmation(order):
+    reserve = replace(
+        order,
+        offer_reserve_until=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    for action in ("open", "confirm", "reserve"):
+        card = render_public_offer(reserve, "ru", action)
+        assert "Основной состав набран" in card.text
+        assert "Участие не гарантировано" in card.text
+
+
+def test_dispatch_stops_when_reserve_starts(order):
+    reserve = replace(
+        order,
+        offer_reserve_until=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    assert not _dispatch_ready(reserve, None)
+    assert not _dispatch_ready(reserve, 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["done", "s_time", "open"])
+async def test_card_closes_when_intake_expires_during_response(
+    order, offer_session, action
+):
+    from ugc_bot.application.services.offer_dispatch_service import SkipResult
+
+    flow = offer_session.flow
+    if action == "done":
+        flow.responses.respond_and_finalize.side_effect = (
+            PaidSelectionResponseError("offer_intake_closed")
+        )
+    elif action == "s_time":
+        flow.dispatch.record_skip.return_value = SkipResult(intake_closed=True)
+    else:
+        flow.orders.get_by_id.return_value = replace(
+            order, offer_reserve_until=datetime.now(timezone.utc)
+        )
+        offer_session.receipts.list_responses_by_blogger.return_value = [
+            SimpleNamespace(
+                order_id=order.order_id, accepted=True, in_offer=False
+            )
+        ]
+    await flow.handle(click(order, action))
+    card = offer_session.messenger.edit_offer_card.call_args.args[2]
+    assert "Набор завершён" in card.text
+    assert card.keyboard is None
+    offer_session.messenger.send_offer_card.assert_not_awaited()
+
+
+def test_english_reserve_card_does_not_promise_contact_delivery(order):
+    reserve = replace(
+        order,
+        offer_reserve_until=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    card = render_public_offer(reserve, "en", "confirm")
+    assert "reserve" in card.text
+    assert "Participation is not guaranteed" in card.text
+    assert "share your profile and contact" not in card.text

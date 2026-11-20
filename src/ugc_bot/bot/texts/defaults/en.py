@@ -662,6 +662,7 @@ EN: dict[str, str] = {
     "msg_describe_complaint": "Describe the complaint:",
     "msg_error_try_later": "An error occurred. Try again later.",
     "msg_enter_complaint_reason": "Please enter the complaint reason.",
+    "msg_offer_intake_closed": "Applications closed. Responses are no longer accepted.",
     "msg_order_closed": "Order already closed.",
     "msg_order_closed_full": (
         "❗ Order already closed\n\n"

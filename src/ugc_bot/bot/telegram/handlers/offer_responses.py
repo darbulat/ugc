@@ -53,6 +53,7 @@ from ugc_bot.bot.telegram.handlers.utils import (
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import MessengerType, OrderType, RejectionReason
+from ugc_bot.domain.offer_intake import intake_open, reserve_notice
 
 router = Router()
 
@@ -168,10 +169,8 @@ async def _send_order_closed_and_remove_keyboard(
     locale: str,
 ) -> None:
     """Answer callback, remove offer keyboard, and send order-closed message."""
-    msg_closed = await bot_texts_service.get("msg_order_closed", locale)
-    msg_closed_full = await bot_texts_service.get(
-        "msg_order_closed_full", locale
-    )
+    msg_closed = await bot_texts_service.get("msg_offer_intake_closed", locale)
+    msg_closed_full = msg_closed
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
         text=msg_closed,
@@ -187,6 +186,22 @@ async def _send_order_closed_and_remove_keyboard(
         chat_id=incoming.chat_id,
         text=msg_closed_full,
     )
+
+
+async def _check_offer_intake(
+    incoming, service, messenger, texts, locale
+) -> bool:
+    raw = (incoming.data or "").split(":", 2)
+    try:
+        order_id = UUID(raw[1])
+    except (ValueError, IndexError):
+        return False
+    if await service.is_intake_open(order_id):
+        return True
+    await _send_order_closed_and_remove_keyboard(
+        incoming, messenger, texts, locale
+    )
+    return False
 
 
 async def _reply_offer_response_result(
@@ -224,6 +239,10 @@ async def _reply_offer_response_result(
         msg_waitlist = await bot_texts_service.get(
             "msg_offer_order_filled", locale
         )
+        if result.order.offer_reserve_until is not None:
+            msg_waitlist = reserve_notice(
+                result.order.offer_reserve_until, locale
+            )
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=msg_waitlist,
@@ -301,6 +320,15 @@ async def handle_offer_skip(
     locale = user_locale
     msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
     order_id = _parse_offer_skip_order_id(callback.data or "")
+
+    if order_id is not None and not await _check_offer_intake(
+        incoming,
+        offer_dispatch_service,
+        messenger_client,
+        bot_texts_service,
+        locale,
+    ):
+        return
 
     # Answer callback (empty toast) and remove original offer keyboard
     await messenger_client.answer_callback(
@@ -453,6 +481,16 @@ async def handle_rejection_reason(
     except ValueError:
         return
 
+    if not await _check_offer_intake(
+        incoming,
+        offer_dispatch_service,
+        messenger_client,
+        bot_texts_service,
+        locale,
+    ):
+        await state.clear()
+        return
+
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id, text=""
     )
@@ -487,13 +525,21 @@ async def handle_rejection_reason(
         )
     else:
         # Non-price reason: record skip immediately
-        await offer_dispatch_service.record_skip(
+        result = await offer_dispatch_service.record_skip(
             order_id,
             user.user_id,
             rejection_reason=reason,
             channel=MessengerType.TELEGRAM,
             only_unanswered=True,
         )
+        if result.intake_closed is True:
+            await messenger_client.send_text(
+                chat_id=incoming.chat_id,
+                text=await bot_texts_service.get(
+                    "msg_offer_intake_closed", locale
+                ),
+            )
+            return
         reason_texts = await bot_texts_service.get_many(
             list(_REJECTION_REASON_BUTTONS.values()), locale
         )
@@ -546,7 +592,9 @@ async def handle_desired_price(
     bounds = await offer_dispatch_service.get_order_price_bounds(order_id)
     if bounds is None:
         await state.clear()
-        msg_skip = await bot_texts_service.get("msg_offer_skipped", locale)
+        msg_skip = await bot_texts_service.get(
+            "msg_offer_intake_closed", locale
+        )
         await messenger_client.send_text(
             chat_id=str(message.chat.id), text=msg_skip
         )
@@ -601,7 +649,11 @@ async def handle_desired_price(
     )
     await state.clear()
 
-    if result.desired_price is None:
+    if result.intake_closed is True:
+        response = await bot_texts_service.get(
+            "msg_offer_intake_closed", locale
+        )
+    elif result.desired_price is None:
         response = await bot_texts_service.get(
             "err_order_already_responded", locale
         )
@@ -698,7 +750,9 @@ async def handle_offer_response(
         return
 
     order = await order_repo.get_by_id(order_id)
-    if order is None:
+    if order is None or not intake_open(
+        order.status, order.dispatch_stopped, order.offer_reserve_until
+    ):
         await _send_order_closed_and_remove_keyboard(
             incoming, messenger_client, bot_texts_service, locale
         )
@@ -728,6 +782,8 @@ async def handle_offer_response(
     confirm_text = await bot_texts_service.get(
         "msg_offer_confirm_response", locale
     )
+    if order.offer_reserve_until is not None:
+        confirm_text = reserve_notice(order.offer_reserve_until, locale)
     btn_texts = await bot_texts_service.get_many(
         ["btn_offer_confirm", "btn_offer_cancel"], locale
     )
@@ -810,6 +866,11 @@ async def handle_offer_confirm(
             order_id, user.user_id, channel=MessengerType.TELEGRAM
         )
     except PaidSelectionResponseError as exc:
+        if exc.reason == "offer_intake_closed":
+            await _send_order_closed_and_remove_keyboard(
+                incoming, messenger_client, bot_texts_service, locale
+            )
+            return
         text = await bot_texts_service.get(
             selection_response_message_key(exc.reason), locale
         )

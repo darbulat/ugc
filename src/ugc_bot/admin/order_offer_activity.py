@@ -7,6 +7,7 @@ from sqlalchemy import and_, exists, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.domain.enums import OrderStatus, RejectionReason
+from ugc_bot.domain.offer_intake import intake_open, reserve_notice
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
 from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
@@ -122,6 +123,7 @@ async def load_order_offer_activity(
     result = await session.execute(
         select(
             OrderModel.status,
+            OrderModel.offer_reserve_until,
             OrderModel.currency,
             OrderModel.dispatch_stopped,
             CONTROLS.c.audience_ready,
@@ -160,6 +162,23 @@ async def load_order_offer_activity(
         if row.blogger_id is not None
     ]
     return {
+        "intake_notice": (
+            reserve_notice(summary.offer_reserve_until)
+            if summary.offer_reserve_until is not None
+            and intake_open(
+                summary.status,
+                summary.dispatch_stopped,
+                summary.offer_reserve_until,
+            )
+            else "Набор завершён"
+            if summary.status in (OrderStatus.ACTIVE, OrderStatus.CLOSED)
+            and not intake_open(
+                summary.status,
+                summary.dispatch_stopped,
+                summary.offer_reserve_until,
+            )
+            else None
+        ),
         "sent": summary.sent_to_audience
         if summary.audience_ready
         else summary.sent,

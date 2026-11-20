@@ -433,8 +433,10 @@ async def _claim_offer(service, order_id, blogger, run):
 
 
 def _dispatch_ready(order: Order, run: int | None) -> bool:
-    if order.dispatch_stopped or (
-        run is not None and order.status != OrderStatus.ACTIVE
+    if (
+        order.offer_reserve_until is not None
+        or order.dispatch_stopped
+        or (run is not None and order.status != OrderStatus.ACTIVE)
     ):
         return False
     if order.creator_offer_card is not None:

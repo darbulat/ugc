@@ -398,6 +398,10 @@ class OrderModel(Base):
 
     __tablename__ = "orders"
 
+    offer_reserve_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # NULL is a pre-existing order. An empty object is a new, unapproved card.
     creator_offer_card: Mapped[Optional[dict[str, str]]] = mapped_column(
         JSON(none_as_null=True).with_variant(

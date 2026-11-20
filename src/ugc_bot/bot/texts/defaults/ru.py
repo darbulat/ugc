@@ -729,6 +729,7 @@ RU: dict[str, str] = {
     "msg_error_try_later": "Произошла ошибка. Попробуйте позже.",
     "msg_enter_complaint_reason": "Пожалуйста, введите причину жалобы.",
     # Messages: offer responses
+    "msg_offer_intake_closed": "Набор завершён. Отклики больше не принимаются.",
     "msg_order_closed": "Заказ уже закрыт.",
     "msg_order_closed_full": (
         "❗ Заказ уже закрыт\n\n"

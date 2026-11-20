@@ -1612,7 +1612,9 @@ async def test_send_offers_stops_before_next_recipient_after_admin_stop():
         get_order_and_advertiser=AsyncMock(
             return_value=(
                 SimpleNamespace(
-                    dispatch_stopped=False, creator_offer_card=None
+                    dispatch_stopped=False,
+                    creator_offer_card=None,
+                    offer_reserve_until=None,
                 ),
                 SimpleNamespace(status=UserStatus.ACTIVE),
             )

@@ -106,7 +106,9 @@ def isolated_financial_database(
                         "boolean NOT NULL DEFAULT false, "
                         "ADD COLUMN IF NOT EXISTS dispatch_stopped "
                         "boolean NOT NULL DEFAULT false, "
-                        "ADD COLUMN IF NOT EXISTS creator_offer_card jsonb"
+                        "ADD COLUMN IF NOT EXISTS creator_offer_card jsonb, "
+                        "ADD COLUMN IF NOT EXISTS offer_reserve_until "
+                        "timestamptz"
                     )
                 )
         yield engine

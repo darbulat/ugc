@@ -13,6 +13,7 @@ from ugc_bot.application.services.business_order_card import order_card_url
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.offer_intake import intake_open, reserve_notice
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
 from ugc_bot.infrastructure.db.order_selection import picked_order_count
 from ugc_bot.infrastructure.db.repositories.admin_recipients import (
@@ -62,6 +63,8 @@ class CounterofferAdminDelivery:
                 select(
                     OrderModel.offer_text,
                     OrderModel.status,
+                    OrderModel.offer_reserve_until,
+                    OrderModel.dispatch_stopped,
                     OrderModel.bloggers_needed,
                     picked_order_count().label("picked"),
                     UserModel.username,
@@ -95,13 +98,24 @@ class CounterofferAdminDelivery:
         handle = (order.telegram or "").strip().lstrip("@")
         if fullmatch(r"[A-Za-z0-9_]{1,32}", handle) and name != f"@{handle}":
             name += f" · @{handle}"
+        status = _STATUS[order.status]
+        if order.offer_reserve_until is not None:
+            status = (
+                reserve_notice(order.offer_reserve_until)
+                if intake_open(
+                    order.status,
+                    order.dispatch_stopped,
+                    order.offer_reserve_until,
+                )
+                else "Набор завершён"
+            )
         text = (
             f"Новая цена от креатора\n{title}\n{name}\n"
             f"Просит {_money(event.payload['amount'])} {symbol} "
             f"(в оффере {_money(event.payload['offer_price'])} {symbol})\n"
             f"Занято {order.picked} из {order.bloggers_needed} · "
             f"Осталось {max(order.bloggers_needed - order.picked, 0)}\n"
-            f"{_STATUS[order.status]}"
+            f"{status}"
         )
         async with Bot(token=self.config.bot.bot_token).context() as bot:
             await TelegramNoticeReceipts(bot, use_web_app=False).send(

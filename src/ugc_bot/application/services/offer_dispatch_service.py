@@ -43,6 +43,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
     WorkFormat,
 )
+from ugc_bot.domain.offer_intake import intake_open
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -288,6 +289,7 @@ class SkipResult:
 
     rejection_reason: RejectionReason | None = None
     desired_price: Decimal | None = None
+    intake_closed: bool = False
 
 
 @dataclass(slots=True)
@@ -327,7 +329,11 @@ class OfferDispatchService:
     async def is_dispatch_stopped(self, order_id: UUID) -> bool:
         async def _run(session):
             order = await self.order_repo.get_by_id(order_id, session=session)
-            return order is None or order.dispatch_stopped
+            return (
+                order is None
+                or order.dispatch_stopped
+                or order.offer_reserve_until is not None
+            )
 
         return await with_optional_tx(self.transaction_manager, _run)
 
@@ -430,7 +436,10 @@ class OfferDispatchService:
         order = await self.order_repo.get_by_id(order_id, session=session)
         if order is None:
             raise OrderNotFoundError("Order not found.")
-        if order.status != OrderStatus.ACTIVE:
+        if (
+            order.status != OrderStatus.ACTIVE
+            or order.offer_reserve_until is not None
+        ):
             raise OrderNotActiveError("Order is not active.")
         ord, cids, aset, uful = await self._get_initial_data_for_order(
             order_id, order, session
@@ -673,10 +682,18 @@ class OfferDispatchService:
         Returns None if order not found.
         """
         order = await self.order_repo.get_by_id(order_id)
-        if order is None:
+        if order is None or not intake_open(
+            order.status, order.dispatch_stopped, order.offer_reserve_until
+        ):
             return None
         offer_price = Decimal(str(order.price))
         return offer_price, offer_price * 10
+
+    async def is_intake_open(self, order_id: UUID) -> bool:
+        order = await self.order_repo.get_by_id(order_id)
+        return order is not None and intake_open(
+            order.status, order.dispatch_stopped, order.offer_reserve_until
+        )
 
     async def record_skip(
         self,
@@ -694,17 +711,19 @@ class OfferDispatchService:
         async def _run(sess: object | None) -> SkipResult:
             amount = desired_price
             counteroffer = rejection_reason == RejectionReason.LOW_PRICE
-            order = None
-            if only_unanswered or (counteroffer and amount is not None):
-                order = await self.order_repo.get_by_id_for_update(
-                    order_id, session=sess
-                )
-                if order is None or order.status == OrderStatus.DELETED:
-                    return SkipResult()
-                if await self.offer_dispatch_repo.exists_responded(
-                    order_id, blogger_id, session=sess
-                ):
-                    return SkipResult()
+            order = await self.order_repo.get_by_id_for_update(
+                order_id, session=sess
+            )
+            if order is None or not intake_open(
+                order.status, order.dispatch_stopped, order.offer_reserve_until
+            ):
+                return SkipResult(intake_closed=True)
+            if (
+                only_unanswered or (counteroffer and amount is not None)
+            ) and await self.offer_dispatch_repo.exists_responded(
+                order_id, blogger_id, session=sess
+            ):
+                return SkipResult()
             if counteroffer and amount is not None and order is not None:
                 base_price = Decimal(str(order.price))
                 if (

@@ -1,7 +1,7 @@
 """Tests for offer dispatch service."""
 
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Optional
 from uuid import UUID
@@ -973,6 +973,20 @@ async def test_record_skip() -> None:
     )
     order_id = UUID("00000000-0000-0000-0000-000000000001")
     blogger_id = UUID("00000000-0000-0000-0000-000000000002")
+    await service.order_repo.save(
+        Order(
+            order_id,
+            blogger_id,
+            OrderType.UGC_ONLY,
+            "test",
+            "Offer",
+            None,
+            500,
+            1,
+            OrderStatus.ACTIVE,
+            datetime.now(timezone.utc),
+        )
+    )
     await offer_dispatch_repo.record_sent(order_id, blogger_id)
     await service.record_skip(order_id, blogger_id)
     responses = await offer_dispatch_repo.list_responses_by_order(order_id)
@@ -3129,6 +3143,8 @@ async def test_closed_order_counteroffer_queues_once() -> None:
             price=2000.0,
             bloggers_needed=1,
             status=OrderStatus.CLOSED,
+            offer_reserve_until=datetime.now(timezone.utc)
+            + timedelta(hours=72),
             created_at=datetime.now(timezone.utc),
             completed_at=None,
         )
