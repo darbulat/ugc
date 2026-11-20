@@ -332,11 +332,12 @@ def _check_idle(db):
     require(
         not db.scalar(
             text("""
-SELECT EXISTS(SELECT 1 FROM accompaniment_lead_deliveries
-        WHERE order_id=ANY(CAST(:ids AS uuid[]))
-AND
-        (state<>'accepted' OR lease_token IS NOT
-NULL OR lease_until IS NOT NULL))
+SELECT EXISTS(SELECT 1 FROM accompaniment_lead_deliveries d
+        WHERE order_id=ANY(CAST(:ids AS uuid[])) AND
+        (state<>'accepted' OR lease_until>clock_timestamp()
+         OR NOT EXISTS(SELECT 1 FROM accompaniment_lead_outcomes o
+             WHERE o.attempt_id=d.current_attempt_id
+               AND o.status='accepted' AND o.applied)))
 """),
             {"ids": list(TARGET_ORDERS)},
         ),
@@ -357,7 +358,7 @@ AND expanded_at IS NULL)
         not db.scalar(
             text("""SELECT EXISTS(SELECT 1 FROM order_notice_deliveries
         WHERE order_id=ANY(CAST(:ids AS uuid[])) AND
-        (state<>'sent' OR lease_until IS NOT NULL))"""),
+        (state<>'sent' OR lease_until>clock_timestamp()))"""),
             {"ids": list(TARGET_ORDERS)},
         ),
         "order_notice_not_idle",

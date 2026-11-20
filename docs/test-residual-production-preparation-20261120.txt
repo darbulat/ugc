@@ -1,0 +1,162 @@
+Production cleanup preparation — execution requires separate owner agreement
+==========================================================================
+
+The rehearsal PR #329 at 1510c4d664d74d333e9b03441c294bdcef62b5fd has green
+GitHub CI, including lint-and-test (3.13), all four shards, migrations, browser,
+image import and recovery encryption. The follow-up changes here prepare SQL;
+they do not merge, deploy, connect automatically or execute production writes.
+
+Live evidence, READ ONLY
+-----------------------
+The application release is main 1e68fcd8f2376a92bd6db3d86bc37b91ea3124c8,
+using the durable release Compose snapshot. App, app_2 and admin are healthy.
+The live schema advanced to 0146_invite_partners. The approved 61-row slice is
+unchanged. Both deleted orders have no payments/items/financial obligations,
+collaborations or paid inbox entries. The original history baseline is healthy:
+1868 cutover profiles and 863 cutover bindings.
+
+Three accepted lead deliveries retain expired lease tokens from November 12.
+The delivery worker considers only ready/sending jobs. All three have an
+applied accepted outcome for their current attempt. Preparation now checks
+terminal state, expiry and the acceptance proof, rather than requiring that
+all historical lease fields be null. Future leases, missing acceptance proof,
+active sends and checkout authority still prohibit cleanup.
+
+New scope finding: execution remains blocked
+-------------------------------------------
+Two already absent user UUIDs have eight additional identity observations:
+94852816-543e-476d-abd5-9fc11f61b81c — four observations;
+b33f3d6a-469a-492c-a99d-db9984f65b1e — four observations.
+Four observations share the test Instagram identity; the other four record
+unverified/revoked states. None is a canonical cutover seed. There are no
+binding-history links or structured financial references to these two UUIDs.
+No matching references were found in 35 checked financial JSON columns.
+
+Two audit entries identify the prior actions as test_registration_reset:
+d0f59b93-147e-453d-9e66-604a7db517f1;
+f918cae7-1b02-45fb-ac94-c1bd178881c4.
+Their old_values contain account and had_verified_creator. The event payload
+contains reason, messages_sent and technical deletion/retention flags.
+No contact values were printed during these metadata checks.
+
+These ten rows were NOT added to the approved scope or modified. A proposed
+extension is 69 deletions (the original 61 plus eight identity facts) and four
+updated rows (the original two plus anonymization of two test-reset audits).
+Keep the audit events, action/timestamps and technical flags. Proposed audit
+redactions: replace old_values.account with JSON null and new_values.reason
+with a generic test-reset explanation. Preserve had_verified_creator and all
+other technical flags. Exact fingerprints need a fresh manifest/backup/test
+after the owner agrees to the expanded scope. Money/rates are not recalculated.
+
+The current backup explicitly preserves shared_instagram_identity as a
+blocker. Both SQL compilers refuse a snapshot with unresolved blockers. No
+production delete.sql has been generated. The preparation does not silently
+loosen the check or delete the newly discovered observations.
+
+Bounded lock and query design
+----------------------------
+scripts/residual_purge_sql.py only compiles SQL strings. It never opens a
+production connection. Its inputs are the pinned approved scope and an
+authenticated selective snapshot, not an arbitrary account/order selector.
+
+Target rows are read, checked, row-locked and deleted through complete primary
+keys. The scripts never hash all orders to find the two target records.
+The chosen PostgreSQL system identifier, database, schema, Alembic head,
+columns, constraints, trigger set and trigger function definitions are pinned.
+All original trigger states are restored and checked before COMMIT.
+
+Immutable fact tables require brief table-level write exclusion to alter
+their guards. Logical UUID anchors without an FK are also fenced. The plan
+derives an explicit subset of tables rather than locking the whole schema.
+The live metadata currently yields 65 table write fences. users/orders use
+SHARE UPDATE EXCLUSIVE, compatible with ordinary ROW EXCLUSIVE DML, plus
+FOR UPDATE NOWAIT on the exact target rows. No full users/orders write pause.
+Tests prove unrelated user/order inserts and updates proceed while the target
+rows and immutable guards are locked. Registration/profile, financial and
+queue writes to fenced tables can wait briefly; zero delay is not promised.
+
+Every acquisition is NOWAIT, including the existing shared financial/history
+barrier (pg_try_advisory_xact_lock). Busy root rows, active history readers,
+writers, schema maintenance or fact writers abort the attempt immediately.
+No retry loop, worker shutdown, queue drain or service restart is performed.
+The transaction checks a three-second budget before mutation, after each
+table and before COMMIT. Statement timeout is 750ms; idle transaction timeout
+is two seconds. Commit/WAL flush itself can add time after the final budget
+check. Hold the existing /tmp/ugc-production-deploy.lock in the eventual
+operator wrapper so deployments/migrations cannot overlap the cleanup.
+
+Incoming FKs include CASCADE/SET NULL. Logical UUID/text/JSON references in
+fenced tables, identity facts and current confirmations are rechecked after
+the backup, before mutation. Root-key changes, new outside facts/proofs,
+columns, constraints, triggers or a different cluster abort without a partial
+result. Foreign keys/CHECK constraints stay enabled. No TRUNCATE, DISABLE
+TRIGGER ALL or session_replication_role bypass exists.
+
+Preparation checks structured ownership of instagram_stats by user_id/FK.
+The unchanged external provider raw_response is an opaque cache payload and
+is not scanned for internal UUID substrings. This matches its producer and
+avoids an expensive full provider-archive scan. Other structured/declared
+business references remain checked. The blob is neither exported nor deleted.
+
+Backup and actual selective recovery evidence
+--------------------------------------------
+The approved 61 rows plus two original update rows were captured in an
+explicit REPEATABLE READ READ ONLY transaction. They were streamed directly
+into the installed age v1.3.2 using the existing server public recipient.
+Only ciphertext reached disk. The owner's existing private identity stayed
+on the owner's computer and successfully decrypted the copy in memory.
+
+Ciphertext size: 4,985,450 bytes.
+SHA-256: 148064ed6ffb6f20611c760b2ea7dc9820badcb8ab93ad5d7e5bc9c55f77e9b4
+Snapshot SHA-256:
+5236ee6cfc87d495d7cd2e769e021bd54750f7d6de67615e786cd7d76ca71a96
+
+The actual backup documents were restored in a new local PostgreSQL schema
+with synthetic external parent rows. All 63 source row fingerprints matched;
+FK/CHECK constraints remained enabled and original guards were restored.
+No plaintext backup was written to disk or logs. A modified ciphertext was
+rejected, and any partial plaintext output was discarded before DB access.
+
+The portable test does not copy thousands of unaffected production seeds and
+does not claim a full-database restore. A separate representative benchmark
+used the actual 4,740,788 bytes of target documents plus synthetic 1868/863
+cutover records and 10,000 unrelated sent notice deliveries. Indexed deletion
+took 0.397s and restoration 0.361s locally. Retained test data was unchanged.
+These measurements are not a production latency guarantee.
+
+The ciphertext and verification receipts are saved in the owner's private
+recovery storage (directory 0700, files 0600), independently of the server.
+They do not cover the proposed eight extra facts and two old audit payloads.
+A fresh extended backup and rehearsal are required if that proposal is chosen.
+The proposed 24-hour emergency retention starts only after a verified actual
+cleanup; ordinary scheduled backups retain their existing rotation.
+
+Execution checklist after scope agreement, review and exact-head approval
+------------------------------------------------------------------------
+1. Re-inventory the agreed roots and all dependent keys. Update the pinned
+   manifest and preserve the owner's four accounts and the real Bulat order.
+2. Capture a fresh encrypted selective backup covering every DELETE/UPDATE;
+   decrypt and restore it in isolation. Bind its checksum and test receipt to
+   the exact manifest and reviewed source version. Keep it independent of prod.
+3. Require green CI and review for the exact operational PR head. Merge only
+   with explicit owner approval. Deliver the tool from the verified merged
+   source/image; do not touch the dirty /opt/myapp/ugc operational checkout.
+4. Verify the server, cluster, schema, live images, backup checksum/permissions,
+   recovery receipt and generated SQL checksum. Acquire the deployment lock
+   nonblockingly and check current write activity. Do not restart services.
+5. Execute the reviewed psql script once with ON_ERROR_STOP and a single
+   transaction. Any failed precondition or occupied lock ends the attempt.
+6. If the connection/ack is lost at COMMIT, do not retry blindly. Read the
+   deterministic technical audit ID and target-key counts to establish whether
+   the transaction committed. A pre-commit error rolls back data and guard DDL.
+7. Check history coverage, target absence, preserved working data, all guards,
+   both app replicas/admin readiness and only the relevant cache namespaces.
+8. If recovery is needed after COMMIT, separately agree a selective restore.
+   Verify schema/guard/baseline/audit post-state and empty target keys, insert
+   original IDs parent-first, suspend only the six named historical INSERT
+   proofs, preserve newer unrelated data and never rewind history sequences.
+   Do not restore the whole production database over newer customer data.
+
+Current result: no production DELETE, UPDATE, trigger change, table write lock,
+deploy or merge was executed. Read-only observation/preparation only. Scope
+extension needs owner agreement before preparing a final executable release.
