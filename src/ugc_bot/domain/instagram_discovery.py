@@ -74,7 +74,18 @@ class DiscoveryProfile:
 
 
 @dataclass(frozen=True)
+class DiscoveryDiagnostic:
+    """Allowlisted provider metadata; never error text, headers or bodies."""
+
+    http_status: int | None = None
+    meta_code: int | None = None
+    meta_subcode: int | None = None
+    transient: bool | None = None
+
+
+@dataclass(frozen=True)
 class DiscoveryResult:
     outcome: str
     profile: DiscoveryProfile | None = None
     usage_percent: float = 0
+    diagnostic: DiscoveryDiagnostic = field(default_factory=DiscoveryDiagnostic)
