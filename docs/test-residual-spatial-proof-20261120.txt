@@ -1,0 +1,63 @@
+Spatial proof for the closed 69-row cleanup
+
+The first approved production attempt rolled back without COMMIT. A full
+to_jsonb(orders) fingerprint converted a 4,707,899-byte location_geometry into
+GeoJSON and exceeded the 750ms statement cap. READ ONLY diagnosis confirmed
+all 69 originals, all four unchanged update rows, original guards and coverage,
+no cleanup audit and no leftover cleanup session. The four protected accounts,
+the retained real order and all 17 payments were unchanged. Services stayed
+healthy. Do not retry that SQL; its owner-side operational receipt is blocked.
+
+The candidate changes only operational scripts/tests. Scope remains 69 DELETE
+and four UPDATE rows, SHA-256
+19a7861dd7e503e38cbf0f743f2f51bdf7cc5d858cf78eadb616137d34524570.
+No database migration or application behavior change is included.
+
+Capture still compares every original full-row JSON fingerprint against the
+closed manifest, in REPEATABLE READ READ ONLY. Snapshot format 3 additionally
+records orders through a complete projection of all columns, replacing only
+location_geometry's JSON conversion with lossless little-endian EWKB encoded
+as hex. All non-spatial fields must match the original document. Shapely checks
+that the EWKB has SRID 4326 and matches the approved GeoJSON to its decimal
+precision (1e-9); the transaction checks the complete binary fingerprint, so
+later coordinate changes at any binary precision still abort. The original
+document is retained. No field is omitted from the transactional comparison.
+
+The same lossless document is used for restoration. The portable recovery
+verifier checks both the original full JSON fingerprint and exact EWKB proof.
+Legacy format-2 backups remain supported. All snapshots and SQL are encrypted
+before persistence; no raw GeoJSON or backup payload is committed to Git.
+
+The 750ms statement cap, three-second pre-COMMIT budget, 2s idle timeout,
+NOWAIT locks, deployment lock, schema/cluster/catalog pins, immutable guards,
+reference checks and financial/history barrier remain unchanged. Foreign keys
+stay enabled. The data selectors, baseline delta and audit redactions are
+unchanged. The candidate does not alter production data during preparation.
+
+On the actual production rows, READ ONLY profiling of the candidate completed
+all conditions under 750ms. The formerly failing order fingerprint took about
+120ms; the previous full-GeoJSON condition repeatedly took 850-960ms and was
+cancelled. These read timings are not a guaranteed production transaction time.
+
+Fresh candidate reserve captured 2026-11-20 09:24:55 UTC, schema 0147, cluster
+7598122211340197923, ugc/public. It contains the same 73 original rows and
+additional binary order documents. Ciphertext bytes: 10,808,743.
+SHA-256: 5f42b6d2cf779dfe9e242091af556076d526934cb73973ae5930b03bdad69d13
+Snapshot SHA-256:
+31a89e42ba7f1cfed2250cc72e1fe975637064e80b9f7be3449ff9794cc258c2
+Fresh recovery verification must succeed before any execution approval.
+
+Regression coverage includes a generated multipolygon larger than the real
+case, full binary coordinate restoration, late geometry/non-geometry edits,
+forged alternate documents, exact-row scope, legacy backups, lock contention,
+rollback/disconnect and financial regressions. Use the actual encrypted reserve
+for a separate local recovery proof after the sequential test suite; concurrent
+test schemas share the database-wide history barrier and must not race.
+
+This changes a database guard implementation. Follow AGENTS.md: green CI and
+explicit approval of this new PR head are required before merging/execution.
+The earlier approval of a605a45 is recorded as historical approval of the
+rolled-back attempt; it is not silently reused for the candidate. After review,
+repeat live preflight under the deployment lock and run the approved transaction
+once. Handle an uncertain COMMIT through deterministic audit/key checks, never
+a blind retry. Keep the tested encrypted recovery reserve independent of prod.

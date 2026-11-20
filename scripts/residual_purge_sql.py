@@ -21,6 +21,10 @@ from scripts.residual_purge_scope import (
     reset_audit_document,
     validate_reset_audits,
 )
+from scripts.residual_purge_spatial import (
+    spatial_document,
+    validate_spatial_documents,
+)
 from ugc_bot.infrastructure.db.identity_history_schema import (
     BINDING_HASH,
     PROFILE_HASH,
@@ -199,6 +203,7 @@ def validate_snapshot(snapshot, *, permit_backup_only=False):
         "wrong_delete_order",
     )
     validate_reset_audits(snapshot, approved)
+    validate_spatial_documents(snapshot)
 
 
 def _guard_check(snapshot):
@@ -328,9 +333,14 @@ def _exact_rows(snapshot, *, present):
                     f"DO $purge$ BEGIN PERFORM 1 FROM {name} t "
                     f"WHERE {where} FOR UPDATE NOWAIT; END $purge$;"
                 )
+                expression = "to_jsonb(t)::text"
+                fingerprint = row["fingerprint"]
+                if snapshot.get("spatial_proof") and table == "orders":
+                    expression = spatial_document(json.loads(row["document"]))
+                    fingerprint = row["restore_fingerprint"]
                 condition = (
-                    f"SELECT md5(to_jsonb(t)::text)="
-                    f"{literal(row['fingerprint'])} "
+                    f"SELECT md5({expression})="
+                    f"{literal(fingerprint)} "
                     f"FROM {name} t WHERE {where}"
                 )
             else:
@@ -693,7 +703,7 @@ def restore_statements(snapshot):
     result += _update_guards(snapshot, restore=True)
     for table in reversed(snapshot["delete_order"]):
         for row in snapshot["rows"][table]:
-            document = literal(row["document"])
+            document = literal(row.get("restore_document", row["document"]))
             result.append(
                 f"INSERT INTO {qualified(snapshot, table)} "
                 f"OVERRIDING SYSTEM VALUE "
