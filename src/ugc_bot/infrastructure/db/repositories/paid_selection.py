@@ -374,7 +374,7 @@ class SqlAlchemyPaidSelectionRepository:
             _require(item is not None, "creator_invite_position_unavailable")
         _require(
             manual is not None
-            or item is None
+            or (item is None and order["offer_reserve_until"] is not None)
             or all(i["selection_due_at"] > at for i in items),
             "selection_due_elapsed",
         )

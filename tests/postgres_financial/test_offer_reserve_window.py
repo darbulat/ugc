@@ -184,3 +184,31 @@ async def test_paid_reserve_72_hours_preserves_financial_due(
         await instance.respond(env["order"], creators[4])
     assert len(rows(env, "paid_selection_interests")) == 3
     assert len(rows(env, "paid_selection_delivery_jobs")) == 2
+
+
+@pytest.mark.asyncio
+async def test_no_window_keeps_original_financial_deadline(capture_env):
+    env = capture_env
+    creators = seed_creators(env)
+    await capture(env)
+    for creator in creators[:2]:
+        await service(env).respond(env["order"], creator)
+    # Simulate pre-window assignment history. Only an explicitly bounded
+    # reserve can outlive the paid selection deadline.
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == env["order"])
+            .values(offer_reserve_until=None)
+        )
+        due = db.scalar(
+            select(func.max(OrderItemModel.selection_due_at)).where(
+                OrderItemModel.order_id == env["order"]
+            )
+        )
+    instance = service(env)
+    instance.clock = SimpleNamespace(now=lambda: due + timedelta(seconds=1))
+    with pytest.raises(ValueError, match="selection_due_elapsed"):
+        await instance.respond(env["order"], creators[2])
+    assert len(rows(env, "paid_selection_interests")) == 2
+    assert len(rows(env, "paid_selection_delivery_jobs")) == 2
