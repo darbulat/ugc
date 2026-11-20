@@ -23,6 +23,14 @@ from scripts.residual_purge_catalog import quote, require, triggers
 def verify_documents_in_test_database(engine, snapshot):
     """The caller supplies empty target keys and synthetic external parents."""
     with sandbox_transaction(engine) as db:
+        # Test restores must not leak a failing raw document into DB logs.
+        for setting in (
+            "SET LOCAL log_statement='none'",
+            "SET LOCAL log_min_error_statement='panic'",
+            "SET LOCAL log_error_verbosity='terse'",
+            "SET LOCAL log_parameter_max_length_on_error=0",
+        ):
+            db.execute(text(setting))
         guard_before = triggers(
             db, [*snapshot["rows"], "creator_identity_coverage"]
         )

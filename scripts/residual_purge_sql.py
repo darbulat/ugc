@@ -254,6 +254,10 @@ def _begin(snapshot):
     identity = snapshot["identity"]
     result = [
         "SET LOCAL standard_conforming_strings=on;",
+        "SET LOCAL log_statement='none';",
+        "SET LOCAL log_min_error_statement='panic';",
+        "SET LOCAL log_error_verbosity='terse';",
+        "SET LOCAL log_parameter_max_length_on_error=0;",
         "SET LOCAL timezone='UTC';",
         "SET LOCAL statement_timeout='750ms';",
         "SET LOCAL lock_timeout='100ms';",
@@ -267,6 +271,11 @@ def _begin(snapshot):
             + " AND (SELECT system_identifier::text FROM pg_control_system())="
             + literal(identity["system_identifier"]),
             "wrong_database_identity",
+        ),
+        assertion(
+            "COALESCE(current_setting('pgaudit.log',true),'none') "
+            "IN ('none','')",
+            "independent_statement_auditing_requires_review",
         ),
         assertion(
             "SELECT array_agg(version_num ORDER BY version_num)::text[]="
@@ -637,7 +646,6 @@ def restore_statements(snapshot):
 def render_psql(statements):
     """The caller must verify encrypted backup + recovery receipt first."""
     return (
-        "\\set ON_ERROR_STOP on\nBEGIN;\n"
-        + "\n".join(statements)
-        + "\nCOMMIT;\n"
+        "\\set ON_ERROR_STOP on\n\\set VERBOSITY terse\n"
+        "\\set ECHO none\nBEGIN;\n" + "\n".join(statements) + "\nCOMMIT;\n"
     )

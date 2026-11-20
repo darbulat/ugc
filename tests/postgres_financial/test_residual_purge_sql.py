@@ -98,7 +98,9 @@ def test_indexed_delete_and_restore_preserve_all_unrelated_data(release_case):
     assert execute(case, restore_statements(snapshot)) < 3
     assert database_digest(case["engine"], exclude_operations=True) == before
     script = render_psql(delete_statements(snapshot))
-    assert script.startswith("\\set ON_ERROR_STOP on\nBEGIN;")
+    assert script.startswith("\\set ON_ERROR_STOP on\n")
+    assert "\\set VERBOSITY terse\n" in script
+    assert "\\set ECHO none\nBEGIN;\n" in script
     assert script.endswith("COMMIT;\n")
     assert "session_replication_role" not in script
     assert "DISABLE TRIGGER ALL" not in script

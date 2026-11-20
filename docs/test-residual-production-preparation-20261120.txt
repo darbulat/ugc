@@ -92,6 +92,12 @@ columns, constraints, triggers or a different cluster abort without a partial
 result. Foreign keys/CHECK constraints stay enabled. No TRUNCATE, DISABLE
 TRIGGER ALL or session_replication_role bypass exists.
 
+Session-local statement/error payload logging is suppressed before any raw
+restore document is sent; psql output is terse and does not echo input.
+Insufficient logging-control privileges or independent pgaudit statement
+capture prohibit execution rather than exposing backup contents. These
+settings affect only the transaction and revert on commit/rollback.
+
 Preparation checks structured ownership of instagram_stats by user_id/FK.
 The unchanged external provider raw_response is an opaque cache payload and
 is not scanned for internal UUID substrings. This matches its producer and
