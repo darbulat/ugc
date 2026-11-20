@@ -79,6 +79,7 @@ def test_public_card_saves_as_draft_and_rejects_private_links(
             page.get_by_label(
                 "Использовать новую карточку для этого черновика"
             ).check()
+        expect(page.locator("body")).not_to_contain_text("Набор завершён")
         for name, value in values.items():
             page.locator(f'[name="creator_card_{name}"]').fill(value)
         if communication_role:

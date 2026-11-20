@@ -98,16 +98,9 @@ class CounterofferAdminDelivery:
         handle = (order.telegram or "").strip().lstrip("@")
         if fullmatch(r"[A-Za-z0-9_]{1,32}", handle) and name != f"@{handle}":
             name += f" · @{handle}"
-        text = (
-            f"Новая цена от креатора\n{title}\n{name}\n"
-            f"Просит {_money(event.payload['amount'])} {symbol} "
-            f"(в оффере {_money(event.payload['offer_price'])} {symbol})\n"
-            f"Занято {order.picked} из {order.bloggers_needed} · "
-            f"Осталось {max(order.bloggers_needed - order.picked, 0)}\n"
-            f"{_STATUS[order.status]}"
-        )
+        status = _STATUS[order.status]
         if order.offer_reserve_until is not None:
-            text += "\n" + (
+            status = (
                 reserve_notice(order.offer_reserve_until)
                 if intake_open(
                     order.status,
@@ -116,6 +109,14 @@ class CounterofferAdminDelivery:
                 )
                 else "Набор завершён"
             )
+        text = (
+            f"Новая цена от креатора\n{title}\n{name}\n"
+            f"Просит {_money(event.payload['amount'])} {symbol} "
+            f"(в оффере {_money(event.payload['offer_price'])} {symbol})\n"
+            f"Занято {order.picked} из {order.bloggers_needed} · "
+            f"Осталось {max(order.bloggers_needed - order.picked, 0)}\n"
+            f"{status}"
+        )
         async with Bot(token=self.config.bot.bot_token).context() as bot:
             await TelegramNoticeReceipts(bot, use_web_app=False).send(
                 _CounterofferMessage(address, text, f"{base}/orders/{order_id}")

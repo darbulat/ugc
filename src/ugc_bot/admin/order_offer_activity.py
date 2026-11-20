@@ -171,7 +171,8 @@ async def load_order_offer_activity(
                 summary.offer_reserve_until,
             )
             else "Набор завершён"
-            if not intake_open(
+            if summary.status in (OrderStatus.ACTIVE, OrderStatus.CLOSED)
+            and not intake_open(
                 summary.status,
                 summary.dispatch_stopped,
                 summary.offer_reserve_until,

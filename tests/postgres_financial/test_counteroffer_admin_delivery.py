@@ -154,7 +154,8 @@ async def test_counteroffer_worker_delivers_only_to_kamil_after_order_closed(
         assert "Автор · @creator_example" in args()["text"]
         assert "Просит 5,50 ₽ (в оффере 1 ₽)" in args()["text"]
         assert "Занято 1 из 2 · Осталось 1" in args()["text"]
-        assert "Закрыт" in args()["text"]
+        assert "Основной состав набран" in args()["text"]
+        assert "Закрыт" not in args()["text"]
         button = args()["reply_markup"].inline_keyboard[0][0]
         assert button.text == "Открыть заказ"
         assert (

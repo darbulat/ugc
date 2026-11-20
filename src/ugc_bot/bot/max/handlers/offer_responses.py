@@ -546,11 +546,7 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         "msg_offer_confirm_response", locale
     )
     if order.offer_reserve_until is not None:
-        confirm_text = (
-            reserve_notice(order.offer_reserve_until, locale)
-            + "\n\n"
-            + confirm_text
-        )
+        confirm_text = reserve_notice(order.offer_reserve_until, locale)
     btn_texts = await bot_texts_service.get_many(
         ["btn_offer_confirm", "btn_offer_cancel"], locale
     )
