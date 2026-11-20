@@ -203,6 +203,7 @@ jobs:
           tests/e2e/test_admin_ui.py::test_order_worklist_search_hide_and_restore
           tests/e2e/test_admin_ui.py::test_manual_order_closure_requires_and_displays_reason
           tests/e2e/test_admin_order_workspace.py
+          tests/e2e/test_admin_dashboard_order_cards.py
           tests/e2e/test_admin_creator_invites_ui.py
           tests/e2e/test_miniapp_design_system.py::test_creator_form_title_matches_its_own_profile
           tests/e2e/test_miniapp_registration_entry.py
