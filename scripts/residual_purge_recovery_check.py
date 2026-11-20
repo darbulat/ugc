@@ -6,6 +6,7 @@ the complete baseline behavior is exercised separately with synthetic facts.
 """
 
 import hashlib
+import json
 
 from sqlalchemy import text
 
@@ -94,6 +95,18 @@ def verify_documents_in_test_database(engine, snapshot):
             ),
             {"doc": snapshot["audit"]},
         )
+        for row in snapshot.get("reset_audits", []):
+            db.execute(
+                text("DELETE FROM audit_log WHERE id=CAST(:id AS uuid)"),
+                {"id": row["audit_id"]},
+            )
+            db.execute(
+                text(
+                    "INSERT INTO audit_log SELECT * FROM "
+                    "jsonb_populate_record(NULL::audit_log,CAST(:doc AS jsonb))"
+                ),
+                {"doc": row["document"]},
+            )
         for table, trigger in sorted(INSERT_GUARDS):
             db.execute(
                 text(
@@ -132,10 +145,14 @@ def verify_documents_in_test_database(engine, snapshot):
                     found == row["fingerprint"], "restored_document_differs"
                 )
                 verified += 1
-        for table, doc in (
+        update_rows = [
             ("creator_identity_coverage", snapshot["coverage"]),
             ("audit_log", snapshot["audit"]),
-        ):
+        ] + [
+            ("audit_log", r["document"])
+            for r in snapshot.get("reset_audits", [])
+        ]
+        for table, doc in update_rows:
             where = (
                 "coverage_key='v1'"
                 if table == "creator_identity_coverage"
@@ -148,7 +165,7 @@ def verify_documents_in_test_database(engine, snapshot):
                         f"FROM {quote(table)} t WHERE {where}"
                     )
                 ),
-                {"id": AUDIT_ID},
+                {"id": json.loads(doc).get("id")},
             )
             require(
                 found == hashlib.md5(doc.encode()).hexdigest(),

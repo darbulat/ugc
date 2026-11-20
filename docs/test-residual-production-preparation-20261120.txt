@@ -1,6 +1,11 @@
 Production cleanup preparation — execution requires separate owner agreement
 ==========================================================================
 
+Later owner-approved preparation: see
+test-residual-extension-preparation-20261120.txt for the closed 69-delete /
+4-update scope, schema 0147 and fresh 73-original recovery proof. The initial
+blocked snapshot and evidence below are retained as historical preparation.
+
 The rehearsal PR #329 at 1510c4d664d74d333e9b03441c294bdcef62b5fd has green
 GitHub CI, including lint-and-test (3.13), all four shards, migrations, browser,
 image import and recovery encryption. The follow-up changes here prepare SQL;

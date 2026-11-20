@@ -6,8 +6,8 @@ from time import monotonic
 from sqlalchemy import text
 
 from scripts.residual_purge import (
-    APPROVED_SCOPE_SHA256,
     AUDIT_ID,
+    TARGET_USERS,
     _check_guards,
     _check_idle,
     _check_roots,
@@ -18,6 +18,7 @@ from scripts.residual_purge import (
 from scripts.residual_purge_catalog import (
     UnsafePurge,
     deletion_order,
+    digest,
     foreign_keys,
     primary_keys,
     quote,
@@ -25,6 +26,11 @@ from scripts.residual_purge_catalog import (
     require,
     rows,
     triggers,
+)
+from scripts.residual_purge_scope import (
+    allowed_audit_ids,
+    load_extended_plan,
+    load_plan,
 )
 from scripts.residual_purge_sql import (
     CONSTRAINT_HASH_SQL,
@@ -70,7 +76,11 @@ def _all_logical_references(db, snapshot, *, backup_only=False):
                 snapshot, table, [r["key"] for r in snapshot["rows"][table]]
             )
         if table == "audit_log":
-            allowed = "t.id=" + literal(AUDIT_ID)
+            allowed = (
+                "t.id IN ("
+                + ",".join(literal(uid) for uid in allowed_audit_ids(snapshot))
+                + ")"
+            )
         exists = db.scalar(
             text(
                 f"SELECT EXISTS(SELECT 1 FROM {qualified(snapshot, table)} t "
@@ -91,6 +101,9 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
         "read_only_required",
     )
     require(db.scalar(text("SHOW timezone")) == "UTC", "utc_required")
+    approved = (
+        load_extended_plan() if "extension_sha256" in scope else load_plan()
+    )
     identity = rows(
         db,
         """SELECT current_database() AS database,current_schema() AS schema,
@@ -99,7 +112,7 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
     )[0]
     snapshot = {
         "version": 2,
-        "scope_sha256": APPROVED_SCOPE_SHA256,
+        "scope_sha256": digest(approved),
         "schema_heads": [
             r["version_num"]
             for r in rows(db, "SELECT version_num FROM alembic_version")
@@ -128,11 +141,18 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
             r["table"]: sorted(r["row_fingerprints"])
             for r in scope["delete_tables"]
         }
+        snapshot["rehearsal_reset_hashes"] = {
+            r["audit_id"]: r["before_row_fingerprint"]
+            for r in scope.get("reset_audit_redactions", [])
+        }
     db.info["purge_phase"] = "root_state_checks"
     _check_roots(db, scope)
     _check_idle(db)
     try:
-        _check_shared_identities(db)
+        _check_shared_identities(
+            db,
+            actor_ids=[*TARGET_USERS, *approved.get("retired_actor_ids", [])],
+        )
     except UnsafePurge as exc:
         if not backup_only:
             raise
@@ -179,6 +199,19 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
         ),
         {"id": AUDIT_ID},
     )
+    snapshot["reset_audits"] = []
+    for target in approved.get("reset_audit_redactions", []):
+        document = db.scalar(
+            text(
+                "SELECT to_jsonb(t)::text FROM audit_log t "
+                "WHERE id=CAST(:id AS uuid)"
+            ),
+            {"id": target["audit_id"]},
+        )
+        require(document is not None, "reset_audit_missing")
+        snapshot["reset_audits"].append(
+            {"audit_id": target["audit_id"], "document": document}
+        )
     change = scope["coverage_update"]
     snapshot["coverage_after"] = {
         "profile_seed_count": change["after_profile_seed_count"],
@@ -196,7 +229,23 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
     snapshot["column_hash"] = db.scalar(text(SCHEMA_HASH_SQL))
     snapshot["delete_order"] = deletion_order(db, snapshot["rows"])
     snapshot["reference_ids"] = _reference_ids(db, snapshot["rows"], scope)
+    snapshot["reference_ids"] = sorted(
+        set(snapshot["reference_ids"])
+        | set(approved.get("retired_actor_ids", []))
+    )
     validate_snapshot(snapshot, permit_backup_only=backup_only)
+    # These are read-only assertions, identical to the execution-time guards.
+    # Require exact selected history; actor IDs cannot authorize extra facts.
+    if "extension_sha256" in approved:
+        from scripts.residual_purge_sql import (
+            _external_identities,
+            _retired_actors,
+        )
+
+        for statement in _external_identities(snapshot) + _retired_actors(
+            snapshot
+        ):
+            db.exec_driver_sql(statement)
     _all_logical_references(db, snapshot, backup_only=backup_only)
     locks = lock_plan(snapshot)
     snapshot["lock_observation"] = rows(

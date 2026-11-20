@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "purpose": "Owner-approved preparation scope; production execution not authorized",
+  "base_scope_sha256": "635049a70db7f34ece9fee6e567de30af907350209a7446e39aa5c1eb608b29a",
+  "schema_heads": ["0147_instagram_discovery"],
+  "retired_actor_ids": [
+    "94852816-543e-476d-abd5-9fc11f61b81c",
+    "b33f3d6a-469a-492c-a99d-db9984f65b1e"
+  ],
+  "history_rows": [
+    {"observation_sequence": "2767", "actor_id": "b33f3d6a-469a-492c-a99d-db9984f65b1e", "fingerprint": "cbe71202e55410f531d4e74d8ed9c45e"},
+    {"observation_sequence": "2768", "actor_id": "b33f3d6a-469a-492c-a99d-db9984f65b1e", "fingerprint": "152537e526ba206d0855713b43490213"},
+    {"observation_sequence": "2769", "actor_id": "b33f3d6a-469a-492c-a99d-db9984f65b1e", "fingerprint": "8c8ee7ae7cfb9cc68e2b383bf0dbc37c"},
+    {"observation_sequence": "2779", "actor_id": "b33f3d6a-469a-492c-a99d-db9984f65b1e", "fingerprint": "3def39ff417992beecf30d89b2fac01d"},
+    {"observation_sequence": "2780", "actor_id": "94852816-543e-476d-abd5-9fc11f61b81c", "fingerprint": "35d4b6bf95201c79c66d4da5042413c5"},
+    {"observation_sequence": "2781", "actor_id": "94852816-543e-476d-abd5-9fc11f61b81c", "fingerprint": "317a803b2095401734cd3f11006558c3"},
+    {"observation_sequence": "2782", "actor_id": "94852816-543e-476d-abd5-9fc11f61b81c", "fingerprint": "731a719117477e65851daeb5c4e34362"},
+    {"observation_sequence": "2789", "actor_id": "94852816-543e-476d-abd5-9fc11f61b81c", "fingerprint": "35e06642d075f2ccc76797706bb390ef"}
+  ],
+  "audit_redactions": [
+    {"audit_id": "d0f59b93-147e-453d-9e66-604a7db517f1", "actor_id": "b33f3d6a-469a-492c-a99d-db9984f65b1e", "before_row_fingerprint": "3cd66f78e5d200e67ad8ddee50d2431c"},
+    {"audit_id": "f918cae7-1b02-45fb-ac94-c1bd178881c4", "actor_id": "94852816-543e-476d-abd5-9fc11f61b81c", "before_row_fingerprint": "b3821c7c1c9bb5ec5b9c0783080ee5b0"}
+  ],
+  "replacement_reason": "Confirmed test registration reset; account details removed during agreed test cleanup"
+}

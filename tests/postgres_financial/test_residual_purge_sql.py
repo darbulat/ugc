@@ -68,7 +68,7 @@ def release_case(request):
             pytest.fail("FINANCIAL_TEST_DATABASE_URL is required")
         pytest.skip("An explicit isolated test database is required")
     with isolated_financial_database(
-        url, target_revision="0146_invite_partners"
+        url, target_revision=getattr(request, "param", "0146_invite_partners")
     ) as engine:
         case = seed_residuals(engine)
         yield case

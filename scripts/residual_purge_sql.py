@@ -10,12 +10,17 @@ import json
 from uuid import NAMESPACE_URL, uuid5
 
 from scripts.residual_purge import (
-    APPROVED_SCOPE_SHA256,
     AUDIT_ID,
     INSERT_GUARDS,
     load_plan,
 )
 from scripts.residual_purge_catalog import digest, quote, require
+from scripts.residual_purge_scope import (
+    allowed_audit_ids,
+    approved_scope,
+    reset_audit_document,
+    validate_reset_audits,
+)
 from ugc_bot.infrastructure.db.identity_history_schema import (
     BINDING_HASH,
     PROFILE_HASH,
@@ -132,9 +137,13 @@ def lock_plan(snapshot):
 
 
 def validate_snapshot(snapshot, *, permit_backup_only=False):
-    approved = load_plan()
-    require(snapshot["scope_sha256"] == APPROVED_SCOPE_SHA256, "wrong_scope")
-    require(snapshot["schema_heads"] == ["0146_invite_partners"], "wrong_head")
+    approved = approved_scope(snapshot)
+    heads = (
+        approved["schema_heads"]
+        if "extension_sha256" in approved
+        else ["0146_invite_partners"]
+    )
+    require(snapshot["schema_heads"] == heads, "wrong_head")
     actual = {
         t: sorted(r["fingerprint"] for r in values)
         for t, values in snapshot["rows"].items()
@@ -189,6 +198,7 @@ def validate_snapshot(snapshot, *, permit_backup_only=False):
         and len(snapshot["delete_order"]) == len(actual),
         "wrong_delete_order",
     )
+    validate_reset_audits(snapshot, approved)
 
 
 def _guard_check(snapshot):
@@ -390,7 +400,11 @@ def _logical(snapshot, *, restoring=False):
                 snapshot, table, [r["key"] for r in snapshot["rows"][table]]
             )
         if table == "audit_log":
-            allowed = "t.id=" + literal(AUDIT_ID)
+            allowed = (
+                "t.id IN ("
+                + ",".join(literal(uid) for uid in allowed_audit_ids(snapshot))
+                + ")"
+            )
         condition = (
             f"NOT EXISTS(SELECT 1 FROM {qualified(snapshot, table)} t WHERE ("
         )
@@ -444,6 +458,65 @@ def _external_identities(snapshot):
             )
         )
     return clauses
+
+
+def _retired_actors(snapshot):
+    actors = approved_scope(snapshot).get("retired_actor_ids", [])
+    if not actors:
+        return []
+    require(
+        set(actors) <= set(snapshot["reference_ids"]),
+        "retired_reference_ids_missing",
+    )
+    ids = "(" + ",".join(literal(uid) for uid in actors) + ")"
+    return [
+        assertion(
+            f"NOT EXISTS(SELECT 1 FROM users WHERE user_id IN {ids})",
+            "retired_actor_reappeared",
+        ),
+        assertion(
+            "NOT EXISTS(SELECT 1 FROM creator_direct_binding_observations "
+            f"WHERE referrer_user_id IN {ids} OR referred_user_id IN {ids})",
+            "retired_actor_binding_exists",
+        ),
+    ]
+
+
+def _reset_audit_checks(snapshot, *, redacted):
+    return [
+        assertion(
+            "SELECT to_jsonb(t)="
+            + literal(
+                json.dumps(
+                    reset_audit_document(row["document"], redact=redacted),
+                    sort_keys=True,
+                )
+            )
+            + "::jsonb FROM audit_log t WHERE id="
+            + literal(row["audit_id"]),
+            "reset_audit_row_changed",
+        )
+        for row in snapshot.get("reset_audits", [])
+    ]
+
+
+def _reset_audit_updates(snapshot, *, redact):
+    result = []
+    for row in snapshot.get("reset_audits", []):
+        document = reset_audit_document(row["document"], redact=redact)
+        # Set only the two agreed JSON paths; preserve all other audit fields.
+        account = literal(json.dumps(document["old_values"]["account"]))
+        reason = literal(json.dumps(document["new_values"]["reason"]))
+        result.append(
+            "UPDATE audit_log SET old_values=jsonb_set(old_values,'{account}',"
+            + account
+            + "::jsonb,false),new_values=jsonb_set(new_values,'{reason}',"
+            + reason
+            + "::jsonb,false) WHERE id="
+            + literal(row["audit_id"])
+            + ";"
+        )
+    return result
 
 
 def _coverage(snapshot, *, restored=False):
@@ -524,9 +597,9 @@ def _operational_audit(snapshot, action):
         json.dumps(
             {
                 "action": action,
-                "scope_sha256": APPROVED_SCOPE_SHA256,
+                "scope_sha256": snapshot["scope_sha256"],
                 "snapshot_sha256": digest(snapshot),
-                "rows": 61,
+                "rows": sum(len(v) for v in snapshot["rows"].values()),
             }
         )
     )
@@ -552,7 +625,8 @@ def delete_statements(snapshot):
         _audit(snapshot, restore=True)
     ]
     result += _incoming(snapshot) + _logical(snapshot)
-    result += _external_identities(snapshot) + [deadline()]
+    result += _external_identities(snapshot) + _retired_actors(snapshot)
+    result += _reset_audit_checks(snapshot, redacted=False) + [deadline()]
     result += _update_guards(snapshot)
     for table in snapshot["delete_order"]:
         values = snapshot["rows"][table]
@@ -582,8 +656,12 @@ def delete_statements(snapshot):
         "'null'::jsonb,false) WHERE id=" + literal(AUDIT_ID) + ";",
     ]
     result += _update_guards(snapshot, enable=True)
+    result += _reset_audit_updates(snapshot, redact=True)
     result += _exact_rows(snapshot, present=False) + _coverage(snapshot)
     result += [_audit(snapshot)] + _guard_check(snapshot) + _logical(snapshot)
+    result += _reset_audit_checks(snapshot, redacted=True) + _retired_actors(
+        snapshot
+    )
     result += [_operational_audit(snapshot, "delete"), deadline()]
     return result
 
@@ -592,6 +670,9 @@ def restore_statements(snapshot):
     validate_snapshot(snapshot)
     result = _begin(snapshot) + _exact_rows(snapshot, present=False)
     result += _coverage(snapshot) + [_audit(snapshot), deadline()]
+    result += _reset_audit_checks(snapshot, redacted=True) + _retired_actors(
+        snapshot
+    )
     for table in (
         "creator_identity_observations",
         "creator_direct_binding_observations",
@@ -635,10 +716,15 @@ def restore_statements(snapshot):
         + ";",
     ]
     result += _update_guards(snapshot, restore=True, enable=True)
+    result += _reset_audit_updates(snapshot, redact=False)
     result += _exact_rows(snapshot, present=True) + _coverage(
         snapshot, restored=True
     )
     result += [_audit(snapshot, restore=True)] + _guard_check(snapshot)
+    result += _external_identities(snapshot)
+    result += _reset_audit_checks(snapshot, redacted=False) + _retired_actors(
+        snapshot
+    )
     result += [_operational_audit(snapshot, "restore"), deadline()]
     return result
 

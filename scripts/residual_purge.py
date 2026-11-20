@@ -374,8 +374,8 @@ AND expanded_at IS NULL)
     )
 
 
-def _check_shared_identities(db):
-    params = {"ids": list(TARGET_USERS)}
+def _check_shared_identities(db, *, actor_ids=TARGET_USERS):
+    params = {"ids": list(actor_ids)}
     own = """SELECT instagram_user_id FROM creator_identity_observations
 WHERE creator_user_id=ANY(CAST(:ids AS uuid[])) AND instagram_user_id
 IS NOT NULL"""
