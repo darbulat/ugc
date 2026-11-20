@@ -1,0 +1,44 @@
+{% from 'order_progress.html' import order_progress %}
+{% from 'order_managers.html' import order_managers %}
+{% macro day_count(days) -%}
+  {{ ('%.1f'|format(days)).removesuffix('.0')|replace('.', ',') }} дн.
+{%- endmacro %}
+{% macro deadline_duration(days) -%}
+  {% if days < 1 %}меньше дня{% else %}{{ day_count(days) }}{% endif %}
+{%- endmacro %}
+{% macro dashboard_order_card(row, queue, request, return_to, reason_labels) %}
+  <li class="attention-order">
+    <div class="attention-list__main">
+      <a href="{{ request.url_for('admin_order_detail', order_id=row.order_id).include_query_params(return_to=return_to) }}">{{ row.offer_text or ('Заказ ' ~ row.order_id[:8]) }}</a>
+      <small>{{ row.advertiser }} · создан {{ row.created_at|admin_date }}</small>
+      <div class="attention-order__managers">
+        <small>{{ 'Менеджеры' if row.get('managers', [])|length > 1 else 'Менеджер' }}</small>
+        {{ order_managers(row.get('managers'), request, row.order_id, return_to) }}
+      </div>
+    </div>
+    <div class="attention-list__meta">
+      <div class="attention-order__reasons">
+        {% for reason in row.reasons %}
+          <span class="badge">{{ reason_labels.get(reason, reason) }}</span>
+        {% endfor %}
+      </div>
+      {% if queue == 'delayed' %}
+        <small>
+          {% if row.days_since_payment is not none %}
+            {% if row.days_since_payment < 1 %}Меньше дня{% else %}{{ day_count(row.days_since_payment) }}{% endif %} с оплаты
+          {% elif row.complimentary %}Без оплаты
+          {% else %}Дата оплаты неизвестна{% endif %}
+          {% if row.selection_due_at %}
+            · Срок подбора {% if row.selection_days is not none %}{{ day_count(row.selection_days) }} · {% endif %}до {{ row.selection_due_at|admin_date }}
+            {% if row.days_until_selection_due is defined and row.days_until_selection_due is not none %}
+              · <strong>{% if row.days_until_selection_due < 0 %}Просрочено {% if row.days_until_selection_due <= -1 %}на {% endif %}{{ deadline_duration(-row.days_until_selection_due) }}{% elif row.days_until_selection_due > 0 %}Осталось {{ deadline_duration(row.days_until_selection_due) }}{% else %}Срок истёк{% endif %}</strong>
+            {% endif %}
+          {% else %}· Ориентир админки {{ day_count(row.selection_target_days) }}{% endif %}
+        </small>
+        {{ order_progress(row.picked_count, row.needed_count, row.get('transferred_count'), manual=row.get('manual_transferred_count', 0)) }}
+      {% else %}
+        <small>{{ row.age_hours|round|int }} ч с создания</small>
+      {% endif %}
+    </div>
+  </li>
+{% endmacro %}

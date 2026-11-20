@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "people_parts.html" import telegram, instagram %}
+{% from 'order_managers.html' import order_managers %}
 {% block title %}{{ (order.offer_text or 'Заказ')|truncate(65) }}{% endblock %}
 {% block head %}
   <link rel="stylesheet" href="{{ admin_asset(request, 'order-detail.css') }}">
@@ -70,14 +71,7 @@
         </article>
         <article>
           <h2>Менеджеры</h2>
-          {% for manager in order.get('managers', []) %}
-            <div class="order-detail__manager">
-              <a href="{{ request.url_for('admin_user_card', user_id=manager.id).include_query_params(from_order=order.order_id, return_to=back_url) }}">{{ manager.name or 'Профиль менеджера' }}</a>
-              {{ telegram(manager.telegram) }}
-            </div>
-          {% else %}
-            <span class="muted">Менеджер не назначен</span>
-          {% endfor %}
+          {{ order_managers(order.get('managers', []), request, order.order_id, back_url) }}
         </article>
         <article>
           <h2>Последняя активность</h2>

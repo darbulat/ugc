@@ -26,3 +26,15 @@ matching scan, notification path, payment operation or migration is introduced.
 
 This change applies to the order card. The reusable direction for person cards
 is the same: state and actions first, one authoritative list, details on demand.
+
+Dashboard order queues share `dashboard_order_card.html`: the order, customer,
+creation date and responsible managers stay on the left, while reasons, timing
+and selection progress stay on the right. Moderation, delayed selection and
+unpaid orders use this same structure. Queue colors communicate urgency. Cards
+in the same dashboard row align in height and stack on narrow screens.
+
+Manager profiles use `order_managers.html` in the dashboard and order overview.
+One manager has one profile link; their Telegram contact appears separately
+only when it differs from the displayed name, ignoring case and a leading `@`.
+Multiple responsible managers remain separate people. Dashboard managers come
+from the same batched assignment query used by the order overview and list.

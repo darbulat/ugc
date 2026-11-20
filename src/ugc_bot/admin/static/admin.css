@@ -572,7 +572,13 @@ body {
 }
 
 .attention-queue {
+  min-width: 0;
   padding: .7rem .85rem;
+}
+
+.attention-queue--moderation,
+.attention-queue--delayed {
+  align-self: stretch;
 }
 
 .attention-queue--moderation {
@@ -639,6 +645,29 @@ body {
   gap: .45rem .75rem;
   padding: .55rem .25rem;
   border-top: 1px solid #e9edf4;
+}
+
+.attention-list li > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.attention-order__managers {
+  margin-top: .5rem;
+  font-size: .875rem;
+}
+
+.order-manager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem .5rem;
+  overflow-wrap: anywhere;
+}
+
+.attention-order__reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
 }
 
 .attention-list small {

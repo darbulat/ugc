@@ -326,6 +326,71 @@ async def test_dashboard_selection_timing_uses_captured_payment_and_deadline(
     assert attention["active"] == 3
 
 
+@pytest.mark.asyncio
+async def test_dashboard_order_managers_are_unique_and_scoped_to_each_queue(
+    worklist,
+):
+    _, engine, ids = worklist
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        active = session.get(OrderModel, ids["Active example"])
+        manager_id = active.advertiser_id
+        teammate_id = session.scalars(
+            select(UserModel.user_id).where(UserModel.user_id != manager_id)
+        ).one()
+        for title in ("Active example", "Draft example", "Paid example"):
+            session.get(OrderModel, ids[title]).created_at = now - timedelta(
+                days=9
+            )
+        session.get(
+            OrderModel, ids["Paid example"]
+        ).status = OrderStatus.PENDING_MODERATION
+        for title, uid in (
+            ("Active example", manager_id),
+            ("Active example", teammate_id),
+            ("Paid example", teammate_id),
+        ):
+            session.add(
+                ManagerOrderModel(
+                    order_id=ids[title], user_id=uid, created_at=now
+                )
+            )
+        session.add(
+            OfferDispatchModel(
+                order_id=ids["Active example"],
+                blogger_id=teammate_id,
+                manager_id=manager_id,
+                in_offer=True,
+                created_at=now,
+            )
+        )
+
+    database = create_async_engine(
+        engine.url.set(drivername="sqlite+aiosqlite")
+    )
+    sessions = async_sessionmaker(database)
+    service = AdminDashboardService(
+        sessions, "UTC", DelayThresholds(3, 24, 48, 7)
+    )
+    try:
+        async with sessions() as session:
+            attention = await service._get_order_attention(session)
+    finally:
+        await database.dispose()
+    active_row = next(
+        row
+        for row in attention["delayed"]
+        if row["order_id"] == str(ids["Active example"])
+    )
+    assert {manager["id"] for manager in active_row["managers"]} == {
+        str(manager_id),
+        str(teammate_id),
+    }
+    assert len(active_row["managers"]) == 2
+    assert attention["moderation"][0]["managers"][0]["id"] == str(teammate_id)
+    assert attention["unpaid"][0]["managers"] == []
+
+
 def test_worklist_filters_search_and_pagination(worklist):
     client, _, ids = worklist
     _login(client)
