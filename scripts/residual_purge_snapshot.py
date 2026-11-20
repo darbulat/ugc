@@ -1,5 +1,6 @@
 """Read-only selective backup capture, with indexed target row selection."""
 
+import hashlib
 import json
 from time import monotonic
 
@@ -32,6 +33,7 @@ from scripts.residual_purge_scope import (
     load_extended_plan,
     load_plan,
 )
+from scripts.residual_purge_spatial import SPATIAL_PROOF, spatial_document
 from scripts.residual_purge_sql import (
     CONSTRAINT_HASH_SQL,
     SCHEMA_HASH_SQL,
@@ -45,6 +47,19 @@ from scripts.residual_purge_sql import (
 # The producer stores this external response without an internal-ID envelope.
 # Ownership is checked through the separate UUID/FK column, not the opaque blob.
 OPAQUE_PROVIDER_COLUMNS = {("instagram_stats", "raw_response")}
+
+
+def _spatial_capture_column(db, table):
+    if table != "orders":
+        return ""
+    columns = db.scalars(
+        text(
+            "SELECT attname FROM pg_attribute "
+            "WHERE attrelid='orders'::regclass AND attnum>0 "
+            "AND NOT attisdropped ORDER BY attnum"
+        )
+    ).all()
+    return "," + spatial_document(columns) + " AS restore_document"
 
 
 def _all_logical_references(db, snapshot, *, backup_only=False):
@@ -111,7 +126,8 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
         AS system_identifier""",
     )[0]
     snapshot = {
-        "version": 2,
+        "version": 3,
+        "spatial_proof": SPATIAL_PROOF,
         "scope_sha256": digest(approved),
         "schema_heads": [
             r["version_num"]
@@ -163,11 +179,12 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
         table = target["table"]
         db.info["purge_phase"] = "indexed_capture:" + table
         where = predicate(snapshot, table, keys[table])
+        extra = _spatial_capture_column(db, table)
         selected = rows(
             db,
             f"SELECT to_jsonb(t)::text AS document,"
             f"md5(to_jsonb(t)::text) AS "
-            f"fingerprint FROM {qualified(snapshot, table)} "
+            f"fingerprint{extra} FROM {qualified(snapshot, table)} "
             f"t "
             f"WHERE {where}",
         )
@@ -175,7 +192,12 @@ def capture_snapshot(db, scope, keys, *, rehearsal=False, backup_only=False):
         for row in selected:
             document = json.loads(row["document"])
             key = {k: str(document[k]) for k in snapshot["primary_keys"][table]}
-            documents.append(dict(row, key=key))
+            captured = dict(row, key=key)
+            if table == "orders":
+                captured["restore_fingerprint"] = hashlib.md5(
+                    captured["restore_document"].encode()
+                ).hexdigest()
+            documents.append(captured)
         snapshot["rows"][table] = sorted(
             documents, key=lambda r: r["fingerprint"]
         )

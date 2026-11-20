@@ -19,6 +19,23 @@ from scripts.residual_purge import (
     sandbox_transaction,
 )
 from scripts.residual_purge_catalog import quote, require, triggers
+from scripts.residual_purge_spatial import spatial_document
+
+
+def _check_spatial_recovery(db, snapshot, table, row, where, params):
+    if snapshot.get("spatial_proof") and table == "orders":
+        binary = db.scalar(
+            text(
+                "SELECT md5("
+                + spatial_document(json.loads(row["document"]))
+                + f") FROM orders t WHERE {where}"
+            ),
+            params,
+        )
+        require(
+            binary == row["restore_fingerprint"],
+            "restored_spatial_precision_differs",
+        )
 
 
 def verify_documents_in_test_database(engine, snapshot):
@@ -144,6 +161,7 @@ def verify_documents_in_test_database(engine, snapshot):
                 require(
                     found == row["fingerprint"], "restored_document_differs"
                 )
+                _check_spatial_recovery(db, snapshot, table, row, where, params)
                 verified += 1
         update_rows = [
             ("creator_identity_coverage", snapshot["coverage"]),

@@ -1,6 +1,7 @@
 """The agreed 69-delete/4-update extension, including rollback and recovery."""
 
 import copy
+import hashlib
 import json
 import os
 from uuid import uuid4
@@ -240,3 +241,148 @@ def test_extended_compiler_rejects_scope_expansion_or_changed_backup(
         snapshot["scope_sha256"] = "0" * 64
     with pytest.raises(UnsafePurge):
         delete_statements(snapshot)
+
+
+def add_spatial_order(case, *, large=False):
+    with case["engine"].begin() as db:
+        geometry = (
+            "(SELECT ST_Multi(ST_Collect(ST_Buffer("
+            "ST_SetSRID(ST_MakePoint(35+2*i,55),4326),"
+            "0.123456789012345,32768))) FROM generate_series(0,2) i)"
+            if large
+            else "ST_Multi(ST_GeomFromText('POLYGON((12.123456789012345 "
+            "34.123456789012345,13 34,13 35,12.123456789012345 "
+            "34.123456789012345))',4326))"
+        )
+        db.execute(
+            text(
+                "UPDATE orders SET location_geometry="
+                + geometry
+                + " WHERE order_id=CAST(:id AS uuid)"
+            ),
+            {"id": case["plan"]["order_ids"][0]},
+        )
+        fingerprints = db.scalars(
+            text(
+                "SELECT md5(to_jsonb(t)::text) FROM orders t "
+                "WHERE order_id=ANY(CAST(:ids AS uuid[]))"
+            ),
+            {"ids": case["plan"]["order_ids"]},
+        ).all()
+        next(
+            t for t in case["plan"]["delete_tables"] if t["table"] == "orders"
+        )["row_fingerprints"] = sorted(fingerprints)
+    return case
+
+
+@pytest.mark.parametrize("large", [False, True])
+def test_spatial_proof_keeps_all_fields_and_binary_precision(
+    release_case, large
+):
+    case = add_spatial_order(extend_case(release_case), large=large)
+    snapshot = capture(case)
+    assert snapshot["version"] == 3
+    if large:
+        assert (
+            max(len(r["document"]) for r in snapshot["rows"]["orders"])
+            > 4_000_000
+        )
+    before = database_digest(case["engine"], exclude_operations=True)
+    with case["engine"].connect() as db:
+        binary = db.scalar(
+            text(
+                "SELECT encode(ST_AsEWKB(location_geometry,'NDR'),'hex') "
+                "FROM orders WHERE order_id=CAST(:id AS uuid)"
+            ),
+            {"id": case["plan"]["order_ids"][0]},
+        )
+    execute(case, delete_statements(snapshot))
+    execute(case, restore_statements(snapshot))
+    assert database_digest(case["engine"], exclude_operations=True) == before
+    with case["engine"].connect() as db:
+        assert (
+            db.scalar(
+                text(
+                    "SELECT encode(ST_AsEWKB(location_geometry,'NDR'),'hex') "
+                    "FROM orders WHERE order_id=CAST(:id AS uuid)"
+                ),
+                {"id": case["plan"]["order_ids"][0]},
+            )
+            == binary
+        )
+
+
+@pytest.mark.parametrize("change", ["geometry", "other_field"])
+def test_spatial_proof_rejects_late_change_to_any_order_field(
+    release_case, change
+):
+    case = add_spatial_order(extend_case(release_case))
+    snapshot = capture(case)
+    with case["engine"].begin() as db:
+        expression = (
+            "location_geometry=ST_Translate(location_geometry,1e-12,0)"
+            if change == "geometry"
+            else "offer_text='changed after backup'"
+        )
+        db.execute(
+            text(
+                "UPDATE orders SET "
+                + expression
+                + " WHERE order_id=CAST(:id AS uuid)"
+            ),
+            {"id": case["plan"]["order_ids"][0]},
+        )
+    before = database_digest(case["engine"])
+    with pytest.raises(DBAPIError, match="target_row_changed:orders"):
+        execute(case, delete_statements(snapshot))
+    assert database_digest(case["engine"]) == before
+
+
+@pytest.mark.parametrize(
+    "tamper", ["geometry", "other_field", "missing_field", "digest"]
+)
+def test_spatial_backup_rejects_inconsistent_alternate_document(
+    release_case, tamper
+):
+    snapshot = capture(add_spatial_order(extend_case(release_case)))
+    row = next(
+        r
+        for r in snapshot["rows"]["orders"]
+        if json.loads(r["document"])["location_geometry"] is not None
+    )
+    alternate = json.loads(row["restore_document"])
+    if tamper == "geometry":
+        from shapely import set_srid, to_wkb
+        from shapely.geometry import Point
+
+        alternate["location_geometry"] = to_wkb(
+            set_srid(Point(1, 2), 4326),
+            hex=True,
+            byte_order=1,
+            include_srid=True,
+        ).lower()
+    elif tamper == "other_field":
+        alternate["offer_text"] = "forged"
+    elif tamper == "missing_field":
+        del alternate["status"]
+    row["restore_document"] = json.dumps(alternate)
+    row["restore_fingerprint"] = hashlib.md5(
+        row["restore_document"].encode()
+    ).hexdigest()
+    if tamper == "digest":
+        row["restore_fingerprint"] = "0" * 32
+    with pytest.raises(UnsafePurge):
+        delete_statements(snapshot)
+
+
+def test_original_v2_backup_remains_supported(release_case):
+    case = extend_case(release_case)
+    snapshot = capture(case)
+    snapshot["version"] = 2
+    del snapshot["spatial_proof"]
+    for row in snapshot["rows"]["orders"]:
+        del row["restore_document"], row["restore_fingerprint"]
+    before = database_digest(case["engine"], exclude_operations=True)
+    execute(case, delete_statements(snapshot))
+    execute(case, restore_statements(snapshot))
+    assert database_digest(case["engine"], exclude_operations=True) == before

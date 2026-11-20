@@ -816,7 +816,7 @@ CAST(:document
 AS jsonb))
 """
                 ),
-                {"document": row["document"]},
+                {"document": row.get("restore_document", row["document"])},
             )
         if fault:
             fault("restored:" + table, db)
