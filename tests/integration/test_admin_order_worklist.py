@@ -31,6 +31,7 @@ from ugc_bot.domain.enums import (
     UserStatus,
 )
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
@@ -335,6 +336,15 @@ async def test_dashboard_order_managers_are_unique_and_scoped_to_each_queue(
     with Session(engine) as session, session.begin():
         active = session.get(OrderModel, ids["Active example"])
         manager_id = active.advertiser_id
+        session.get(UserModel, manager_id).username = "  "
+        session.execute(
+            APPLICATIONS.insert().values(
+                user_id=manager_id,
+                state="approved",
+                answers={"name": "Рената"},
+                updated_at=now,
+            )
+        )
         teammate_id = session.scalars(
             select(UserModel.user_id).where(UserModel.user_id != manager_id)
         ).one()
@@ -387,6 +397,14 @@ async def test_dashboard_order_managers_are_unique_and_scoped_to_each_queue(
         str(teammate_id),
     }
     assert len(active_row["managers"]) == 2
+    assert (
+        next(
+            manager["name"]
+            for manager in active_row["managers"]
+            if manager["id"] == str(manager_id)
+        )
+        == "Рената"
+    )
     assert attention["moderation"][0]["managers"][0]["id"] == str(teammate_id)
     assert attention["unpaid"][0]["managers"] == []
 

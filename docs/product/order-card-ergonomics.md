@@ -38,3 +38,6 @@ One manager has one profile link; their Telegram contact appears separately
 only when it differs from the displayed name, ignoring case and a leading `@`.
 Multiple responsible managers remain separate people. Dashboard managers come
 from the same batched assignment query used by the order overview and list.
+When the general user name is blank, manager links and the user card read the
+required name saved in the manager application. Telegram remains a separate
+contact; completing the manager application does not require a creator profile.

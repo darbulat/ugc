@@ -59,6 +59,7 @@ from ugc_bot.admin.order_summary import (
     active_pick_reasons,
     latest_order_activity,
     manager_contact,
+    manager_display_name,
     order_activity_at,
     order_age_hours,
     order_has_manager,
@@ -1355,6 +1356,13 @@ class AdminDashboardService:
         if row is None:
             return None
         user, blogger, advertiser, directory_status = row
+        display_name = user.username
+        if not (display_name or "").strip():
+            display_name = await session.scalar(
+                select(manager_display_name()).where(
+                    UserModel.user_id == user_id
+                )
+            )
         card: dict = {
             "user_id": str(user.user_id),
             "telegram_id": user.telegram_id or "",
@@ -1362,7 +1370,7 @@ class AdminDashboardService:
             "messenger_type": user.messenger_type.value
             if user.messenger_type
             else "",
-            "username": user.username,
+            "username": display_name or "",
             "status": user.status.value if user.status else "",
             "status_label": self._user_status_label(
                 directory_status if blogger is not None else user.status
