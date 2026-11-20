@@ -12,6 +12,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr
 
 from ugc_bot.domain.instagram_discovery import (
     HANDLE,
+    DiscoveryDiagnostic,
     DiscoveryProfile,
     DiscoveryResult,
 )
@@ -132,6 +133,22 @@ def _profile(data: dict) -> DiscoveryProfile | None:
     )
 
 
+def _diagnostic(status: int, error: dict | None = None) -> DiscoveryDiagnostic:
+    error = error or {}
+
+    def code(key):
+        value = error.get(key)
+        return value if type(value) is int and 0 <= value < 2**31 else None
+
+    transient = error.get("is_transient")
+    return DiscoveryDiagnostic(
+        status,
+        code("code"),
+        code("error_subcode"),
+        transient if type(transient) is bool else None,
+    )
+
+
 class DiscoveryClient:
     def __init__(
         self, client: httpx.AsyncClient, credential: DiscoveryCredential
@@ -146,6 +163,7 @@ class DiscoveryClient:
             return DiscoveryResult("credentials")
         token = self.credential.token.get_secret_value()
         fields = f"business_discovery.username({username}){{{FIELDS}}}"
+        response = None
         try:
             response = await self.client.get(
                 f"https://graph.facebook.com/v27.0/{self.credential.business_id}",
@@ -157,12 +175,23 @@ class DiscoveryClient:
             usage = _usage(response.headers)
             body = response.json()
         except (httpx.HTTPError, ValueError):
-            return DiscoveryResult("network")
+            return DiscoveryResult(
+                "network",
+                diagnostic=(
+                    _diagnostic(response.status_code)
+                    if response is not None
+                    else DiscoveryDiagnostic()
+                ),
+            )
+        diagnostic = _diagnostic(response.status_code)
         if not isinstance(body, dict):
-            return DiscoveryResult("provider_error", usage_percent=usage)
+            return DiscoveryResult(
+                "provider_error", usage_percent=usage, diagnostic=diagnostic
+            )
         error = body.get("error")
         if isinstance(error, dict):
-            code, subcode = error.get("code"), error.get("error_subcode")
+            diagnostic = _diagnostic(response.status_code, error)
+            code, subcode = diagnostic.meta_code, diagnostic.meta_subcode
             if code in {4, 17, 32, 613, 80002}:
                 outcome = "rate_limit"
             elif code in {10, 190, 200}:
@@ -171,7 +200,11 @@ class DiscoveryClient:
                 outcome = "unavailable"
             else:
                 outcome = "invalid_request"
-            return DiscoveryResult(outcome, usage_percent=usage)
+            return DiscoveryResult(
+                outcome,
+                usage_percent=usage,
+                diagnostic=diagnostic,
+            )
         data = body.get("business_discovery")
         profile = (
             _profile(data)
@@ -179,5 +212,8 @@ class DiscoveryClient:
             else None
         )
         return DiscoveryResult(
-            "success" if profile else "provider_error", profile, usage
+            "success" if profile else "provider_error",
+            profile,
+            usage,
+            diagnostic,
         )

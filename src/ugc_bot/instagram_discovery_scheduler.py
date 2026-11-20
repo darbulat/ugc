@@ -1,8 +1,11 @@
 """Rare enrichment with separate credentials and scheduled starts only."""
 
 import asyncio
+import json
 import logging
 import os
+from collections import Counter
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,6 +26,8 @@ LOG = logging.getLogger(__name__)
 
 async def scheduled_batch(repository, lease, client, *, now, sleep):
     outcome = "complete"
+    outcomes: Counter[str] = Counter()
+    stopped_by = "no_target_or_budget"
     try:
         for _ in range(150):
             target = await repository.prepare(lease, now())
@@ -32,11 +37,47 @@ async def scheduled_batch(repository, lease, client, *, now, sleep):
             outcome = await repository.finish(
                 target, result, client.credential.context, now()
             )
+            outcomes[outcome] += 1
+            if result.outcome != "success":
+                LOG.warning(
+                    "Discovery attempt failed: %s",
+                    json.dumps(
+                        {
+                            "user_id": str(getattr(target, "user_id", "")),
+                            "provider_outcome": result.outcome,
+                            "saved_outcome": outcome,
+                            "usage_percent": result.usage_percent,
+                            **asdict(result.diagnostic),
+                        },
+                        sort_keys=True,
+                    ),
+                )
             if result.outcome in STOP_OUTCOMES or result.usage_percent >= 50:
+                stopped_by = (
+                    "quota_header"
+                    if result.usage_percent >= 50
+                    else result.outcome
+                )
                 break
             await sleep(60)
+        else:
+            stopped_by = "batch_cap"
+    except BaseException:
+        outcome = stopped_by = "interrupted"
+        raise
     finally:
         await repository.release(lease, outcome)
+        LOG.info(
+            "Discovery batch summary: %s",
+            json.dumps(
+                {
+                    "completed_attempts": sum(outcomes.values()),
+                    "outcomes": dict(outcomes),
+                    "stopped_by": stopped_by,
+                },
+                sort_keys=True,
+            ),
+        )
     return outcome
 
 

@@ -15,6 +15,7 @@ from ugc_bot import instagram_discovery_scheduler as scheduler
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
 from ugc_bot.domain.instagram_discovery import (
+    DiscoveryDiagnostic,
     DiscoveryResult,
     discovery_window,
     freshest_count,
@@ -159,6 +160,9 @@ async def test_provider_errors_are_not_retried(error, outcome):
     ) as http:
         result = await DiscoveryClient(http, credential()).fetch("creator")
     assert result.outcome == outcome
+    assert result.diagnostic.http_status == 400
+    assert result.diagnostic.meta_code == error["code"]
+    assert result.diagnostic.meta_subcode == error.get("error_subcode")
     assert handler.call_count == 1
 
 
@@ -233,8 +237,142 @@ async def test_broken_json_pauses_without_retry_or_retaining_response():
     ) as http:
         result = await DiscoveryClient(http, credential()).fetch("creator")
     assert result.outcome == "network"
+    assert result.diagnostic.http_status == 503
     assert result.profile is None
     assert handler.call_count == 1
+
+
+@pytest.mark.parametrize("value", ["test-secret", True, -1, 2**40, {}, []])
+@pytest.mark.asyncio
+async def test_untrusted_error_values_cannot_leak_into_diagnostics(value):
+    error = {
+        "code": value,
+        "error_subcode": value,
+        "is_transient": value,
+        "message": "test-secret",
+        "fbtrace_id": "test-secret",
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(400, json={"error": error})
+        )
+    ) as http:
+        result = await DiscoveryClient(http, credential()).fetch("creator")
+    assert result.outcome == "invalid_request"
+    assert result.diagnostic == DiscoveryDiagnostic(
+        http_status=400,
+        transient=True if value is True else None,
+    )
+    assert "test-secret" not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_timeout_does_not_retain_url_or_exception_text():
+    handler = AsyncMock(side_effect=httpx.ReadTimeout("test-secret"))
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        result = await DiscoveryClient(http, credential()).fetch("creator")
+    assert result.outcome == "network"
+    assert result.diagnostic == DiscoveryDiagnostic()
+    assert "test-secret" not in repr(result)
+
+
+@pytest.mark.asyncio
+async def test_batch_logs_safe_provider_codes_and_auditable_totals(caplog):
+    owner = uuid4()
+    repo = SimpleNamespace(
+        prepare=AsyncMock(
+            return_value=SimpleNamespace(username="creator", user_id=owner)
+        ),
+        finish=AsyncMock(return_value="invalid_request"),
+        release=AsyncMock(),
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": 100,
+                        "error_subcode": 2108006,
+                        "is_transient": False,
+                        "message": "test-secret",
+                        "fbtrace_id": "test-secret",
+                    }
+                },
+            )
+        )
+    ) as http:
+        client = DiscoveryClient(http, credential())
+        with caplog.at_level("INFO", logger=scheduler.__name__):
+            await scheduled_batch(
+                repo, uuid4(), client, now=lambda: NOW, sleep=AsyncMock()
+            )
+    messages = [record.getMessage() for record in caplog.records]
+    failure = json.loads(
+        next(
+            x.split(": ", 1)[1]
+            for x in messages
+            if x.startswith("Discovery attempt failed:")
+        )
+    )
+    assert failure == {
+        "user_id": str(owner),
+        "provider_outcome": "invalid_request",
+        "saved_outcome": "invalid_request",
+        "usage_percent": 0,
+        "http_status": 400,
+        "meta_code": 100,
+        "meta_subcode": 2108006,
+        "transient": False,
+    }
+    summary = json.loads(
+        next(
+            x.split(": ", 1)[1]
+            for x in messages
+            if x.startswith("Discovery batch summary:")
+        )
+    )
+    assert summary == {
+        "completed_attempts": 1,
+        "outcomes": {"invalid_request": 1},
+        "stopped_by": "invalid_request",
+    }
+    assert "test-secret" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_empty_queue_does_not_call_provider_and_reports_zero(caplog):
+    repo = SimpleNamespace(
+        prepare=AsyncMock(return_value=None), release=AsyncMock()
+    )
+    client = SimpleNamespace(fetch=AsyncMock())
+    with caplog.at_level("INFO", logger=scheduler.__name__):
+        await scheduled_batch(
+            repo, uuid4(), client, now=lambda: NOW, sleep=AsyncMock()
+        )
+    client.fetch.assert_not_called()
+    assert '"completed_attempts": 0' in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_interrupted_batch_is_not_reported_as_complete(caplog):
+    repo = SimpleNamespace(
+        prepare=AsyncMock(side_effect=RuntimeError("test-secret")),
+        release=AsyncMock(),
+    )
+    lease = uuid4()
+    with (
+        caplog.at_level("INFO", logger=scheduler.__name__),
+        pytest.raises(RuntimeError),
+    ):
+        await scheduled_batch(
+            repo, lease, object(), now=lambda: NOW, sleep=AsyncMock()
+        )
+    repo.release.assert_awaited_once_with(lease, "interrupted")
+    assert '"stopped_by": "interrupted"' in caplog.text
+    assert "test-secret" not in caplog.text
 
 
 def test_enrichment_requires_explicit_verification_context():
