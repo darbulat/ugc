@@ -1,0 +1,113 @@
+Confirmed test residual purge: rehearsal release
+================================================
+
+Owner request: prepare and test deletion/restore; do not delete in production.
+This version ONLY operates on explicitly addressed local *_test databases and
+financial_test_<32 hex> schemas. It rejects public, production database names,
+remote hosts, URL routing overrides and implicit application DATABASE_URL.
+The default CLI action is an actual READ ONLY inspection. No app routes,
+migrations, deployment configuration or ordinary deletion behavior changes.
+
+Approved scope
+--------------
+config/test-residual-purge-20261120.json preserves the approved inventory:
+3 archived test users, 2 deleted test orders, 56 related rows across 23 tables.
+The original manifest is pinned by canonical SHA-256:
+635049a70db7f34ece9fee6e567de30af907350209a7446e39aa5c1eb608b29a
+
+Two approved updates:
+* Remove exactly one identified test cutover profile from the history baseline,
+  reducing profile_seed_count by one and verifying the projected hash. Preserve
+  the binding baseline, coverage start and other fields.
+* Set only old_values.advertiser_id to JSON null in the identified audit row
+  of the preserved working order. Keep its owner, reason and entire audit event.
+
+Rehearsals use synthetic payloads with the same root IDs and relation structure.
+Synthetic row hashes/baseline counts differ from production. The CLI requires
+the explicit digest of the supplied synthetic manifest for both mutations.
+No production dump, profile payload, secret or private key belongs in Git.
+
+Transaction and recovery behavior
+---------------------------------
+1. Validate the isolated destination before connecting. Pin the schema version
+   to production's inventoried 0145_instagram_profiles; refuse schema drift.
+2. In the isolated schema, take NOWAIT table locks and the existing history
+   writer barrier with pg_try_advisory_xact_lock. Never wait behind production
+   activity. SQL statement/lock/idle timeouts and a transaction budget apply.
+3. Match all row fingerprints; verify archived/idle states and working accounts.
+   Check every incoming FK, including CASCADE and SET NULL; reject outside rows.
+   Check UUID/text/JSON references to roots AND deleted child primary UUIDs.
+   Reject identities/bindings shared with other accounts.
+4. Save a selective, authenticated Fernet-encrypted backup containing original
+   row documents, two original update rows, guard states/functions, schema
+   signature and destination identity. Verify decryption before any DELETE.
+   Key/ciphertext are owner-only files, not symlinks. The backup directory must
+   be private. Existing backups are never overwritten. Nothing is logged raw.
+5. Temporarily disable only the 18 approved DELETE guards and coverage UPDATE
+   guard. Keep FKs/CHECK constraints and all other triggers enabled. Delete in
+   FK child-first order, enforce exact affected counts, apply two updates.
+6. Restore every guard before COMMIT. Verify coverage, absence of references,
+   and hashes of ALL retained table data in this small isolated rehearsal.
+   Record a technical audit event without deleted profile content.
+7. Any exception, failed check, timeout or lost connection rolls back the whole
+   transaction, including trigger DDL and partial deletions.
+8. Restore only into the bound original database/schema with matching schema,
+   guards, post-delete baseline and retained-data hashes. Refuse tampering,
+   wrong keys, another destination, changed working data and repeated restore.
+   INSERT original values/identity sequence IDs in parent-first order. Do not
+   rewind sequences. Restore only the two approved update fields.
+
+Historical restore needs six explicitly listed INSERT proof triggers suspended
+temporarily: intake_receipt_source, accompaniment_lead_source,
+accompaniment_queue_proof, accompaniment_delivery_proof,
+accompaniment_attempt_proof, accompaniment_outcome_proof. These validate the
+original creation moment against item/contact state which no longer exists.
+They are re-enabled before COMMIT. FK/CHECK constraints remain active.
+
+Reproduction
+------------
+Install locked dependencies with uv sync --all-extras --locked.
+Provide ONLY FINANCIAL_TEST_DATABASE_URL pointing at an isolated PostgreSQL
+with PostGIS, using the project's existing guarded test environment helper.
+Do not load or mount a production .env. Do not point tests at an external app.
+
+uv run pytest -q -x --no-cov --require-financial-postgres \
+  tests/postgres_financial/test_residual_purge.py \
+  tests/unit/test_residual_purge_safety.py
+
+uv run pytest -q -x --no-cov --require-financial-postgres \
+  tests/postgres_financial/test_identity_history_postgres.py \
+  tests/postgres_financial/test_order_intake.py \
+  tests/postgres_financial/test_checkout_runtime.py
+
+make format-check lint typecheck
+uv run ruff check scripts/{rehearse_test_residual_purge,residual_purge,\
+residual_purge_backup,residual_purge_catalog}.py
+
+The PostgreSQL test fixture migrates a fresh UUID schema per scenario, seeds
+only synthetic history, protected users, an independent working order, paid
+item/payment, rate snapshot, obligation and movement. Its teardown drops only
+that test schema. Test backup keys/ciphertexts live inside the test runner.
+No test bot, mail, external payment or Instagram/Telegram operation is sent.
+
+CLI: python -m scripts.rehearse_test_residual_purge --help
+Only PURGE_REHEARSAL_DATABASE_URL is used by the CLI. A financial_test_* schema
+must already have been provisioned and seeded by the isolated fixture.
+
+Limits before any separately approved production release
+-------------------------------------------------------
+This is evidence from the real PostgreSQL schema and synthetic facts, not a
+load rehearsal of the complete production database. The rehearsal deliberately
+locks/hashes its whole isolated application schema for strong unchanged-data
+assertions. Do not enable this broad-lock strategy on a live database.
+
+A production execution release needs a separately reviewed narrow locking and
+retained-data strategy, a fresh read-only production inventory and schema
+check, a verified operational encrypted backup destination and concrete
+current-head approval under AGENTS.md. No flag in this version enables it.
+The approved operational backup retention proposal is 24 hours after verified
+success; ordinary backups keep their standard rotation. This rehearsal release
+neither connects to production nor creates/deletes any production backup.
+
+Do not merge, deploy or execute a production cleanup merely because this
+rehearsal succeeds. Report results to the owner first, as requested.

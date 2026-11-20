@@ -1,0 +1,93 @@
+Expanded test cleanup preparation — 69 DELETE / 4 UPDATE, no production writes
+
+The owner agreed to prepare eight additional identity observations and
+anonymize two retained test-reset audits. This is preparation approval.
+Production execution, merge and deployment remain separate decisions.
+This supersedes the initial unresolved-scope section and schema 0146 target
+in test-residual-production-preparation-20261120.txt.
+
+The original manifest and green PR #329 are preserved. The closed extension
+is config/test-residual-extension-20261120.json; its SHA-256 is pinned in
+scripts/residual_purge_scope.py. Effective scope SHA-256:
+19a7861dd7e503e38cbf0f743f2f51bdf7cc5d858cf78eadb616137d34524570
+
+The exact production schema is now 0147_instagram_discovery. The topic branch
+includes main 8b8e145 with that migration; cleanup adds no migration or runtime
+feature. The pure SQL compiler has no connection/execution entry point.
+Original 61-row SQL rehearsals remain pinned to their original test schema;
+extended SQL requires 0147.
+
+Additional DELETE: creator_identity_observations primary keys
+2767, 2768, 2769, 2779, 2780, 2781, 2782, 2789.
+They belong only to the already absent test UUIDs
+94852816-543e-476d-abd5-9fc11f61b81c and
+b33f3d6a-469a-492c-a99d-db9984f65b1e.
+None is a canonical cutover seed. The original baseline adjustment remains
+1868 -> 1867 profiles and preserves 863 bindings.
+
+Additional UPDATE: only old_values.account and new_values.reason of audits
+d0f59b93-147e-453d-9e66-604a7db517f1 and
+f918cae7-1b02-45fb-ac94-c1bd178881c4.
+Account becomes JSON null; reason becomes a generic test-reset note. Events,
+entity UUIDs, timestamps, actions, changed_by, had_verified_creator and technical
+flags remain unchanged. Complete before fingerprints and payload shapes are
+pinned. No audit event is deleted.
+
+All 69 DELETE documents and four original UPDATE rows were captured through
+REPEATABLE READ READ ONLY. Both additional actors are absent, no binding or
+outside logical reference was found, and no unresolved blocker remains.
+Execution repeats exact-row checks, outside Instagram proof checks, absent
+actor checks, binding checks and complete audit assertions. New facts, revived
+actors, bindings or changed audits abort without partial deletion. User UUIDs
+must never be reused; actor absence is checked again before COMMIT while normal
+unrelated users/orders DML remains allowed as in the base plan.
+
+Lock policy: 65 table fences, exact target row locks, NOWAIT, shared financial/
+history advisory barrier, three-second pre-COMMIT budget, 750ms statement limit.
+COMMIT/WAL flushing can add time. Profile, financial and queue writes to fenced
+tables can wait briefly. Before execution, hold /tmp/ugc-production-deploy.lock
+nonblockingly so migrations/releases cannot overlap. No production write lock,
+trigger change, service restart, merge, deployment or mutation was performed.
+
+Fresh backup captured 2026-11-20 07:57:22 UTC (10:57:22 Moscow), schema 0147,
+cluster 7598122211340197923, database ugc/public. Read time: 7.748 seconds.
+Ciphertext size: 4,985,502 bytes. SHA-256:
+fceecd072ae3ad9434a8b52262e6182cb8d52388b997407923a78dc0ce4bc9d4
+Snapshot SHA-256:
+1bd3e79ce6f02c763b121065c4e808de43d7cbbc5ee30490cc45be21dfbd6b49
+
+Only ciphertext is saved. The existing owner key decrypted the copy in memory;
+the private key stayed on the owner's computer. Deletion and restoration SQL
+are encrypted too, because guard expressions may contain original audit values.
+Payload statement/error logging is suppressed only within the transaction;
+independent pgaudit statement capture prohibits execution.
+
+Real backup documents were restored in a local isolated *_test PostgreSQL
+schema with synthetic external parents. All 73 original fingerprints matched;
+FK/CHECK constraints stayed enabled and guards were restored. This verifies
+selective recovery, not restoration of the full production database.
+
+Representative local benchmark: actual 4,743,751 bytes of target row documents,
+synthetic 1868/863 cutover baseline and 10,000 unrelated sent notices.
+Deletion 0.701s, restoration 0.557s; retained test-data digest unchanged.
+These local timings do not guarantee production latency. The proposed 24-hour
+emergency retention starts after verified actual cleanup; ordinary scheduled
+backups keep their existing rotation.
+
+New PostgreSQL cases cover 73 originals, exact two-field redaction, late facts,
+revived actors, new bindings, changed audits, rollback after redaction and
+tampered/expanded backup rejection. Run sequentially with the existing lock,
+failure, recovery and financial regressions: advisory locks span test schemas.
+
+The browser CI exhausted its 12-minute budget twice after slow Chromium setup.
+The job budget is now 20 minutes; browser cases/assertions are unchanged.
+Green CI, code review and current-head owner approval remain required before
+merge or production execution.
+
+Next: save the encrypted backup/SQL/checksums and recovery receipt independently
+of the server with 0700/0600 rights; verify exact-head CI/review; show results
+and separately agree execution. Recheck live schema, cluster, target rows,
+protected real data, guards, leases and receipt immediately before execution.
+Any drift requires new preparation. Follow the base plan's uncertain-COMMIT
+audit check and selective recovery; never overwrite newer customer data with
+a historical full-database restore.
