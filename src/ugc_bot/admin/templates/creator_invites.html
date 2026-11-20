@@ -1,206 +1,117 @@
 {% extends "base.html" %}
-{% block title %}Добавить креатора{% endblock %}
-{% block content %}
-<style>
-  .invite-form-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; margin-bottom: 16px; }
-  .invite-form-fields label { display: grid; gap: 6px; }
-  .invite-position, .invite-profile-result, .invite-creator-name { grid-column: 1 / -1; }
-  .invite-position { max-width: 22rem; display: grid; gap: 6px; }
-  .invite-profile-result strong { display: inline-block; margin: 6px 10px; }
-  #invite-creator-action[hidden] { display: none; }
-  .invite-outcome { border: 2px solid #15803d; background: #f0fdf4; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
-  .invite-outcome h2 { margin-top: 0; }
-  .invite-outcome--warning { border-color: #a16207; background: #fefce8; }
-  .invite-outcome--danger { border-color: #b91c1c; background: #fef2f2; }
-  #invite-creator-form[aria-busy="true"] button { opacity: .65; cursor: wait; }
-  .invite-responsibility { padding: 16px; border: 1px solid #d8e1f0; border-radius: 8px; min-width: 0; }
-  .invite-responsibility legend { font-size: 1rem; font-weight: 600; }
-  .invite-responsibility p { margin-bottom: 0; }
-  @media (max-width: 650px) { .invite-form-fields { grid-template-columns: minmax(0, 1fr); } }
-</style>
-<div class="section">
-  <div class="admin-actions">
-    <a class="admin-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">← К заказу</a>
+{% block title %}Добавить креатора · {{ title }}{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="{{ admin_asset(request, 'creator-invites.css') }}">
+<script src="{{ admin_asset(request, 'creator-invites.js') }}" defer></script>
+{% endblock %}
+{% block content_class %} invite-page{% endblock %}
+{% macro picker(kind, label, hint, selected, locked=false) %}
+<div class="invite-picker" data-person-picker="{{ kind }}" data-empty-hint="{{ hint }}"{% if locked %} data-locked="true"{% endif %}>
+  <label for="invite-{{ kind }}-search">{{ label }}{% if locked %}<span class="invite-lock">Закреплён ранее</span>{% endif %}</label>
+  <input type="hidden" name="{{ kind }}_id" value="{{ selected.id if selected else '' }}">
+  <div class="invite-search-field">
+    <svg class="invite-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+    <input id="invite-{{ kind }}-search" class="invite-input" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="invite-{{ kind }}-results" aria-describedby="invite-{{ kind }}-detail" autocomplete="off" placeholder="Имя, Telegram или Instagram" value="{{ selected.name if selected else '' }}"{% if locked %} readonly{% endif %}>
+    <button class="invite-clear" type="button" aria-label="Снять выбор: {{ label }}"{% if not selected or locked %} hidden{% endif %}>×</button>
   </div>
-  <h1>Добавить креатора · {{ title }}</h1>
-  {% if preview %}
-    <p>Предпросмотр заказа без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Открыть итоги в Telegram</a>.</p>
-  {% endif %}
+  <div class="invite-popup" hidden>
+    <div id="invite-{{ kind }}-results" role="listbox" aria-label="{{ label }}: результаты"></div>
+    <p class="invite-search-status" role="status"></p>
+  </div>
+  <p class="invite-field-hint" id="invite-{{ kind }}-detail" data-person-detail>{{ selected.detail if selected else hint }}</p>
+</div>
+{% endmacro %}
+{% block content %}
+<div class="invite-workspace">
+  <a class="invite-back" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">← К заказу <span>{{ title }}</span></a>
+  <header class="invite-heading">
+    <div><p class="invite-eyebrow">Ручное добавление</p><h1>Добавить креатора</h1><p>Найдите в базе или укажите контакты нового автора.</p></div>
+    {% if items and not handoff %}<span class="invite-position-badge">Следующая позиция <strong>№{{ items[0].ordinal }}{% if needed %} из {{ needed }}{% endif %}</strong></span>{% endif %}
+  </header>
+  {% if preview %}<p class="invite-notice">Предпросмотр без оплаты и рассылки. <a href="https://t.me/{{ bot }}?start=ip_{{ order_id.hex }}">Итоги в Telegram ↗</a></p>{% endif %}
   {% if handoff %}
     <section id="invite-result" class="invite-outcome" role="status" aria-live="polite" tabindex="-1">
-      <h2>Контакт отправлен заказчице в Telegram</h2>
-      <p><strong>Позиция №{{ handoff.ordinal }} из {{ needed }} · {{ handoff.creator_name or ('@' ~ handoff.instagram) }}</strong></p>
-      <p>Ручная передача учтена в заказе. Можно перейти к следующему креатору.</p>
-      <div class="admin-actions">
-        {% if enabled and items %}<a id="invite-add-next" class="admin-button admin-button--primary" href="{{ request.url_for('admin_creator_invites', order_id=order_id) }}">Добавить следующего креатора · №{{ items[0].ordinal }}</a>{% endif %}
-        <a class="admin-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">Открыть заказ</a>
+      <span class="invite-success-icon" aria-hidden="true">✓</span>
+      <p class="invite-eyebrow">Готово</p><h2>Контакт отправлен заказчице в Telegram</h2>
+      <p class="invite-sent-person">Позиция №{{ handoff.ordinal }} из {{ needed }} · {{ handoff.creator_name or ('@' ~ handoff.instagram) }}</p>
+      <p>Ручная передача учтена в заказе.</p>
+      <div class="invite-actions">
+        {% if enabled and items %}<a id="invite-add-next" class="invite-button invite-button--primary" href="{{ request.url_for('admin_creator_invites', order_id=order_id) }}">Добавить следующего креатора · №{{ items[0].ordinal }} <span aria-hidden="true">→</span></a>{% endif %}
+        <a class="invite-button" href="{{ request.url_for('admin_order_detail', order_id=order_id) }}">Открыть заказ</a>
       </div>
     </section>
-    <script>document.getElementById('invite-result').focus({preventScroll: true});</script>
   {% elif status %}<section class="invite-outcome invite-outcome--{{ status_kind or 'warning' }}" role="status"><h2>{{ status }}</h2></section>{% endif %}
-  {% if error %}<p class="alert alert-danger" role="alert">{{ error }}</p>{% endif %}
+  {% if error %}<p class="invite-error" role="alert">{{ error }}</p>{% endif %}
   {% if link %}
-    <section class="card section">
-      <h2>Персональная ссылка готова</h2>
-      <label for="invite-link">Ссылка для креатора</label>
-      <input id="invite-link" class="form-control" value="{{ link }}" readonly>
-      <button class="admin-button" type="button" id="copy-invite-link">Скопировать ссылку</button>
+    <section class="invite-panel invite-link-panel">
+      <div><p class="invite-eyebrow">Персональное приглашение</p><h2>Ссылка готова</h2><p>Передайте её креатору или менеджеру. Срок действия — 30 дней.</p></div>
+      <div class="invite-link-copy"><input id="invite-link" class="invite-input" aria-label="Ссылка для креатора" value="{{ link }}" readonly><button class="invite-button" type="button" id="copy-invite-link">Скопировать</button></div>
       <span id="invite-copy-status" role="status"></span>
-      <p>Передайте ссылку менеджеру или креатору. Креатор откроет бота, зарегистрируется и подтвердит участие в этом заказе. Ссылка действует до 30 дней.</p>
-      <script>
-        document.getElementById('copy-invite-link').addEventListener('click', async function () {
-          const link = document.getElementById('invite-link');
-          const status = document.getElementById('invite-copy-status');
-          try {
-            await navigator.clipboard.writeText(link.value);
-            status.textContent = 'Ссылка скопирована.';
-          } catch {
-            link.focus();
-            link.select();
-            status.textContent = 'Скопируйте выделенную ссылку.';
-          }
-        });
-      </script>
     </section>
   {% endif %}
   {% if not handoff and enabled and (items or retained_item) %}
-  <section class="card section">
-    <form id="invite-creator-form" method="post">
-      <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
-      <div class="invite-form-fields">
-        <div class="invite-position">
-          <label for="invite-item">{{ "Позиция для предпросмотра" if preview else "Позиция в заказе" }}</label>
-          <select name="item_id" id="invite-item" class="form-select">
-            {% if items %}<option value=""{% if not item_id %} selected{% endif %}>Первая свободная · №{{ items[0].ordinal }}</option>{% endif %}
-            {% if retained_item %}<option value="{{ retained_item.item_id }}" selected>№{{ retained_item.ordinal }} · текущий контакт</option>{% endif %}
-            {% for item in items %}<option value="{{ item.paid_item_id }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}</option>{% endfor %}
-          </select>
+  <form id="invite-creator-form" method="post" data-search-url="{{ request.url_for('admin_invite_search', order_id=order_id) }}" data-profile-url="{{ request.url_for('admin_invite_profile', order_id=order_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
+    <section class="invite-panel">
+      <div class="invite-panel-heading"><div class="invite-step" aria-hidden="true">1</div><div><h2>Креатор</h2><p>Поиск по имени, нику или ссылке на профиль</p></div>
+        <div class="invite-position"><label for="invite-item">Позиция в заказе</label><select name="item_id" id="invite-item" class="invite-input">
+          {% if items %}<option value="" data-ordinal="{{ items[0].ordinal }}"{% if not item_id %} selected{% endif %}>Первая свободная · №{{ items[0].ordinal }}</option>{% endif %}
+          {% if retained_item %}<option value="{{ retained_item.item_id }}" data-ordinal="{{ retained_item.ordinal }}" selected>№{{ retained_item.ordinal }} · текущий контакт</option>{% endif %}
+          {% for item in items %}<option value="{{ item.paid_item_id }}" data-ordinal="{{ item.ordinal }}"{% if item.paid_item_id == item_id %} selected{% endif %}>№{{ item.ordinal }}</option>{% endfor %}
+        </select></div>
+      </div>
+      <div class="invite-picker invite-creator-picker" data-person-picker="creator">
+        <label class="invite-sr-only" for="invite-creator-search">Найти креатора в базе</label>
+        <div class="invite-search-field">
+          <svg class="invite-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+          <input id="invite-creator-search" class="invite-input" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="invite-creator-results" autocomplete="off" placeholder="Найти креатора: имя, @ник или ссылка">
+          <button class="invite-clear" type="button" aria-label="Очистить поиск креатора" hidden>×</button>
         </div>
-        <label>Ник или ссылка на Instagram
-          <input id="invite-instagram" class="form-control" name="instagram" value="{{ instagram }}" maxlength="250" placeholder="@username" required>
-        </label>
-        <label>Telegram креатора
-          <input id="invite-telegram" class="form-control" name="telegram" value="{{ telegram }}" maxlength="100" placeholder="@username">
-        </label>
-        <div class="invite-profile-result">
-          <button type="submit" class="admin-button" name="operation" value="preview" formnovalidate>Проверить в базе</button>
-          {% if known %}<strong role="status">{{ known }}</strong>{% endif %}
-        </div>
-        <label class="invite-creator-name">Имя креатора для карточки
-          <input class="form-control" name="creator_name" value="{{ creator_name }}" maxlength="80">
-        </label>
-        <fieldset class="invite-responsibility"><legend>Рабочий менеджер</legend>
-        <label>Кто общается с креатором по заказу
-          <select class="form-select" name="manager_id">
-            <option value="">Без менеджера · общается заказчик</option>
-            {% for manager in managers %}<option value="{{ manager.user_id }}"{% if manager.user_id == manager_id %} selected{% endif %}>{{ manager.username or manager.telegram or manager.user_id }}</option>{% endfor %}
-          </select>
-        </label>
-        <p>Выберите менеджера из базы. Он войдёт в команду этого заказа и будет вести креатора.</p>
-        </fieldset>
-        {% if partners_enabled %}
-        <fieldset class="invite-responsibility"><legend>Реферер / партнёр</legend>
-          {% if referrer %}
-            <p><strong>{{ referrer.username or referrer.telegram or referrer.user_id }}</strong></p>
-            <input type="hidden" name="referrer_id" value="{{ referrer.user_id }}">
-            <p>Ранее приглашён этим партнёром. Существующая привязка сохраняется.</p>
-          {% else %}
-          <label>Кому принадлежит реферальная привязка
-            <select name="referrer_id" class="form-select">
-              <option value="">Не указывать партнёра</option>
-              {% for person in referrers %}<option value="{{ person.user_id }}"{% if person.user_id == referrer_id %} selected{% endif %}>{{ person.username or person.telegram or person.user_id }}{% if person.telegram and person.username %} · @{{ person.telegram.lstrip('@') }}{% endif %}</option>{% endfor %}
-            </select>
-          </label>
-          {% endif %}
-          <p>Постоянная привязка для комиссии по правилам партнёрской программы. За общение отвечает рабочий менеджер выше. В двух полях можно выбрать одного человека.</p>
-          <p>Если креатора ещё нет в боте, передайте ему персональную ссылку: партнёр сохранится при переходе и регистрации.</p>
-        </fieldset>
-        {% endif %}
+        <div class="invite-popup" hidden><div id="invite-creator-results" role="listbox" aria-label="Креаторы: результаты"></div><p class="invite-search-status" role="status"></p><button type="button" class="invite-manual" hidden>Ввести контакты вручную →</button></div>
       </div>
-      {% if availability == "ready" %}<p>При отправке в бот креатор подтвердит участие, затем заказчик получит сообщение о контакте.</p>{% endif %}
-      <p>«Отправить заказчику» передаст контакт владельцу заказа. Менеджер, если выбран, получит уведомление после подтверждения участия креатором.</p>
-      <div class="mb-3">
-        <label><input id="invite-consent" type="checkbox" name="record_consent" value="1"{% if record_consent or consent_source %} checked{% endif %}>
-          Креатор уже согласился в личной переписке и разрешил передать контакты заказчику.
-        </label>
-        <label for="invite-source">Где получено согласие</label>
-        <select id="invite-source" name="consent_source" class="form-select">
-          <option value="">Выберите источник</option>
-          <option value="instagram"{% if consent_source == "instagram" %} selected{% endif %}>Instagram Direct</option>
-          <option value="telegram"{% if consent_source == "telegram" %} selected{% endif %}>Telegram</option>
-          <option value="other"{% if consent_source == "other" %} selected{% endif %}>Другая переписка</option>
-        </select>
-        <p>Для отправки заказчику отметьте согласие и укажите его источник. Заказчик получит карточку с номером позиции, именем, Instagram и Telegram, а также кнопками «Написать креатору» и «Открыть профиль», даже если креатора ещё нет в боте или бот заблокирован.</p>
-        <p>«Создать ссылку» не отправляет сообщений. При отмеченном согласии контакт также сохранится в итогах заказа.</p>
+      <div class="invite-contact-fields">
+        <label for="invite-name">Имя для карточки<input id="invite-name" class="invite-input" name="creator_name" value="{{ creator_name }}" maxlength="80" placeholder="Имя и фамилия"></label>
+        <label for="invite-instagram">Instagram<input id="invite-instagram" class="invite-input" name="instagram" value="{{ instagram }}" maxlength="250" placeholder="@ник или ссылка" required autocomplete="off" spellcheck="false"></label>
+        <label for="invite-telegram">Telegram<input id="invite-telegram" class="invite-input" name="telegram" value="{{ telegram }}" maxlength="100" placeholder="@username" autocomplete="off" spellcheck="false"></label>
       </div>
-      <div class="admin-actions">
-        <button class="admin-button admin-button--primary" type="submit" name="operation" id="invite-customer-action" value="send_customer">Отправить заказчику</button>
-        <button class="admin-button" type="submit" name="operation" value="create">Создать ссылку</button>
-        {% if availability == 'ready' %}<button id="invite-creator-action" class="admin-button" type="submit" name="operation" value="send">Отправить приглашение креатору в бот</button>{% endif %}
+      <div class="invite-profile-check"><span id="invite-profile-status" role="status" data-availability="{{ availability or '' }}">{{ known or 'Новый автор? Просто заполните контакты выше.' }}</span><button id="invite-check-profile" type="submit" class="invite-text-button" name="operation" value="preview" formnovalidate>Проверить в базе</button></div>
+    </section>
+    <section class="invite-panel">
+      <div class="invite-panel-heading"><div class="invite-step" aria-hidden="true">2</div><div><h2>Кто ведёт и кто пригласил</h2><p>Можно выбрать разных людей или одного человека.</p></div><span class="invite-optional">Необязательно</span></div>
+      <div class="invite-people-grid">
+        {{ picker('manager', 'Рабочий менеджер', 'Общается с креатором по этому заказу. Без выбора — заказчик.', manager) }}
+        {% if partners_enabled %}{{ picker('referrer', 'Реферер / партнёр', 'Постоянная привязка для партнёрской комиссии.', selected_referrer, referrer is defined and referrer) }}{% endif %}
       </div>
+    </section>
+    <section class="invite-panel invite-consent-panel">
+      <div class="invite-consent-row"><label class="invite-consent-label" for="invite-consent"><input id="invite-consent" type="checkbox" name="record_consent" value="1"{% if record_consent or consent_source %} checked{% endif %}><span><strong>Креатор согласился в переписке</strong><span>Разрешил передать контакты заказчику</span></span></label>
+        <div id="invite-source-wrap"><label for="invite-source">Где получено согласие</label><select id="invite-source" name="consent_source" class="invite-input"><option value="">Выберите источник</option><option value="instagram"{% if consent_source == 'instagram' %} selected{% endif %}>Instagram Direct</option><option value="telegram"{% if consent_source == 'telegram' %} selected{% endif %}>Telegram</option><option value="other"{% if consent_source == 'other' %} selected{% endif %}>Другая переписка</option></select></div>
+      </div>
+      <details class="invite-help"><summary>Как работают отправка и ссылка</summary><p>«Отправить заказчику» отправит карточку с номером позиции, именем и контактами, даже если креатор ещё не зарегистрирован или заблокировал бота.</p><p>«Создать ссылку» подготовит приглашение для регистрации без отправки сообщений. При отмеченном согласии контакт сохранится в итогах заказа. Выбранный партнёр сохранится после перехода креатора и регистрации.</p><p>Рабочий менеджер получит уведомление после подтверждения участия креатором. Уже закреплённый реферер не меняется.</p></details>
+    </section>
+    <footer class="invite-footer"><div><strong id="invite-action-summary">Карточка для заказчика</strong><p id="invite-action-hint">Для отправки отметьте согласие креатора.</p></div><div class="invite-actions"><button class="invite-button" type="submit" name="operation" value="create">Создать ссылку</button><button class="invite-button invite-button--primary" type="submit" name="operation" id="invite-customer-action" value="send_customer">Отправить заказчику <span aria-hidden="true">→</span></button></div>
+      <button id="invite-creator-action" class="invite-text-button" type="submit" name="operation" value="send"{% if availability != 'ready' %} hidden{% endif %}>Пригласить креатора в бот</button>
       <p id="invite-submit-status" role="status" hidden></p>
-      <script>
-        const consent = document.querySelector('[name=record_consent]');
-        const source = document.getElementById('invite-source');
-        const customer = document.getElementById('invite-customer-action');
-        const creator = document.getElementById('invite-creator-action');
-        function updateConsent() {
-          customer.disabled = !consent.checked;
-          source.required = consent.checked;
-          if (creator) creator.hidden = consent.checked;
-        }
-        updateConsent();
-        consent.addEventListener('change', function () {
-          updateConsent();
-        });
-        const form = document.getElementById('invite-creator-form');
-        let submitting = false;
-        form.addEventListener('submit', function (event) {
-          if (submitting) { event.preventDefault(); return; }
-          if (!['send_customer', 'send'].includes(event.submitter?.value)) return;
-          submitting = true;
-          form.setAttribute('aria-busy', 'true');
-          const status = document.getElementById('invite-submit-status');
-          status.hidden = false;
-          status.textContent = 'Отправляем в Telegram. Дождитесь результата…';
-          event.submitter.textContent = 'Отправляем…';
-        });
-      </script>
-    </form>
-  </section>
-  {% elif handoff %}{% if not items %}<p>Все оплаченные позиции заполнены.</p>{% endif %}
-  {% elif not enabled %}<p>Приглашения для этого контура пока недоступны.</p>
-  {% else %}<p>{{ "Свободных позиций для предпросмотра нет." if preview else "Свободных оплаченных позиций нет." }}</p>{% endif %}
+    </footer>
+  </form>
+  {% elif handoff %}{% if not items %}<p class="invite-notice">Все оплаченные позиции заполнены.</p>{% endif %}
+  {% elif not enabled %}<p class="invite-notice">Приглашения для этого контура пока недоступны.</p>
+  {% else %}<p class="invite-notice">{{ 'Свободных позиций для предпросмотра нет.' if preview else 'Свободных оплаченных позиций нет.' }}</p>{% endif %}
   {% if invites %}
-  <section class="card section">
-    <h2>Приглашения</h2>
-    <ul>
-      {% for invite in invites %}
-      <li>
-        <strong>№{{ invite.ordinal }} · @{{ invite.instagram }}</strong>
-        {% if invite.customer_state == 'sent' or invite.id == sent_identity %}<span role="status"> · Контакт отправлен заказчику</span>
-        {% elif invite.customer_state == 'sending' %} · Отправка заказчику началась
-        {% elif invite.customer_state == 'unknown' %} · Проверьте доставку в Telegram заказчика
-        {% elif invite.customer_state == 'failed' %} · Контакт не доставлен заказчику{% endif %}
-        {% if invite.reported_at %} · Согласие в переписке{% endif %}
-        {% if invite.consented_at or invite.consent_source == preview_consent %} · Участие подтверждено
-        {% elif invite.expires_at <= now %} · Срок истёк
-        {% else %}
-          · {{ 'Открыто в боте' if invite.opened else 'Ждём подтверждения' }}
-          {% if invite.notice_state == "sent" %} · Отправлено в Telegram
-          {% else %}<input class="form-control" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}
-        {% endif %}
-        {% if invite.reported_at and not invite.consented_at and invite.expires_at > now and not invite.customer_state and invite.id != sent_identity %}
-        <form method="post">
-          <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
-          <input type="hidden" name="invite_id" value="{{ invite.id }}">
-          <button class="admin-button admin-button--primary" type="submit" name="operation" value="send_customer">Отправить заказчику</button>
-        </form>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ul>
-  </section>
+  <details class="invite-history invite-panel"><summary>История добавлений <span>{{ invites|length }}</span></summary><ul>
+    {% for invite in invites %}<li><div class="invite-history-person"><span class="invite-history-position">№{{ invite.ordinal }}</span><div><strong>{{ invite.creator_name or ('@' ~ invite.instagram) }}</strong><span>@{{ invite.instagram }}</span></div></div><div class="invite-history-status">
+      {% if invite.customer_state == 'sent' or invite.id == sent_identity %}<span class="invite-state invite-state--sent">Передан заказчику</span>
+      {% elif invite.customer_state == 'sending' %}<span class="invite-state">Отправляется</span>
+      {% elif invite.customer_state == 'unknown' %}<span class="invite-state invite-state--warning">Проверьте доставку в Telegram</span>
+      {% elif invite.customer_state == 'failed' %}<span class="invite-state invite-state--danger">Не доставлен</span>
+      {% elif invite.consented_at or invite.consent_source == preview_consent %}<span class="invite-state">Участие подтверждено</span>
+      {% elif invite.expires_at <= now %}<span class="invite-state">Срок истёк</span>
+      {% else %}<span class="invite-state">{{ 'Открыто в боте' if invite.opened else 'Ждём подтверждения' }}</span>{% endif %}
+      {% if invite.reported_at %}<small>Согласие в переписке</small>{% endif %}
+      {% if invite.notice_state == 'sent' %}<small>Приглашение отправлено в Telegram</small>{% elif not invite.consented_at and invite.expires_at > now %}<input class="invite-input" aria-label="Ссылка для @{{ invite.instagram }}" value="https://t.me/{{ bot }}?start=oi_{{ invite.id.hex }}" readonly>{% endif %}
+      {% if invite.reported_at and not invite.consented_at and invite.expires_at > now and not invite.customer_state and invite.id != sent_identity %}<form method="post"><input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}"><input type="hidden" name="invite_id" value="{{ invite.id }}"><button class="invite-button" type="submit" name="operation" value="send_customer">Отправить заказчику</button></form>{% endif %}
+    </div></li>{% endfor %}
+  </ul></details>
   {% endif %}
 </div>
 {% endblock %}

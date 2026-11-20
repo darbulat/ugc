@@ -85,6 +85,13 @@ def recovery_plan(snapshot, recipient):
             "config",
         )
     ]
+    if "instagram_discovery_scheduler" in snapshot.get("services", {}):
+        sources.append(
+            {
+                "path": "/sources/operations/instagram-discovery",
+                "name": "operations/instagram-discovery",
+            }
+        )
     sources += [
         {"path": "/sources/operations/" + name, "name": "operations/" + name}
         for name in (

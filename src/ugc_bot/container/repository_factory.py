@@ -102,6 +102,9 @@ def _build_instagram_verification_repo(
 def build_repos(
     session_factory: async_sessionmaker[AsyncSession],
     redis_url: str | None = None,
+    *,
+    discovery_metrics_enabled: bool = False,
+    instagram_identity_context: str = "",
 ) -> dict[str, object]:
     """Build all repositories for the application.
 
@@ -155,7 +158,9 @@ def build_repos(
             session_factory, redis_url
         ),
         "instagram_stats_repo": SqlAlchemyInstagramStatsRepository(
-            session_factory=session_factory
+            session_factory=session_factory,
+            include_discovery_metrics=discovery_metrics_enabled,
+            identity_context=instagram_identity_context,
         ),
         "order_repo": SqlAlchemyOrderRepository(
             session_factory=session_factory

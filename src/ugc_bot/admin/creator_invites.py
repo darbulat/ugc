@@ -12,6 +12,10 @@ from sqlalchemy.orm import Session
 from starlette.requests import Request
 
 from ugc_bot.admin.auth import admin_login_redirect
+from ugc_bot.admin.invite_directory import (
+    register_invite_directory,
+    selected_person,
+)
 from ugc_bot.application.services.invite_handoff_notices import (
     dispatch_customer_contact,
     dispatch_invite,
@@ -27,11 +31,9 @@ from ugc_bot.infrastructure.db.repositories.creator_invites import (
     order_for_invite,
 )
 from ugc_bot.infrastructure.db.repositories.invite_partners import (
-    admin_managers,
     ensure_work_manager,
     lock_invite_people,
     profile_referrer,
-    referrer_choices,
     save_partner,
 )
 from ugc_bot.infrastructure.db.repositories.invite_partners import (
@@ -129,6 +131,7 @@ def register_creator_invites(  # noqa: C901
     config,
     transactions=None,
 ):
+    register_invite_directory(app, auth, engine)
     bot = config.bot.bot_username.strip().lstrip("@")
     if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", bot):
         bot = ""
@@ -268,9 +271,11 @@ def register_creator_invites(  # noqa: C901
                 needed=order.bloggers_needed,
                 handoff=_sent_contact(db, order_id, receipt_id),
                 items=items,
-                managers=db.execute(admin_managers(order)).all(),
+                manager=selected_person(db, manager_id),
                 partners_enabled=partners_installed(db),
-                referrers=db.execute(referrer_choices()).all(),
+                selected_referrer=selected_person(
+                    db, referrer.user_id if referrer else referrer_id
+                ),
                 referrer=referrer,
                 referrer_id=referrer.user_id if referrer else referrer_id,
                 link=link,

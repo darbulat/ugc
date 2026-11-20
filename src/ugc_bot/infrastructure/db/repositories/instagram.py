@@ -1,8 +1,9 @@
 """SQLAlchemy Instagram verification and stats repositories."""
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 from uuid import UUID
 
 from sqlalchemy import (
@@ -11,7 +12,6 @@ from sqlalchemy import (
     case,
     exists,
     func,
-    or_,
     select,
     update,
 )
@@ -28,6 +28,8 @@ from ugc_bot.domain.entities import (
     InstagramVerificationCode,
 )
 from ugc_bot.domain.enums import MessengerType
+from ugc_bot.domain.instagram_discovery import freshest_count, utc
+from ugc_bot.infrastructure.db.instagram_discovery_models import DISCOVERY
 from ugc_bot.infrastructure.db.instagram_maintenance_models import HEALTH
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
@@ -150,6 +152,8 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
     """SQLAlchemy-backed Instagram stats repository (Rapid API results)."""
 
     session_factory: async_sessionmaker[AsyncSession]
+    include_discovery_metrics: bool = False
+    identity_context: str = ""
 
     async def get_by_user_id(
         self, user_id: UUID, session: object | None = None
@@ -194,45 +198,61 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
         if not user_ids:
             return {}
         async with _resolve_session(self.session_factory, session) as db:
-            rows = await db.execute(
+            query = (
                 select(
-                    InstagramStatsModel.user_id,
-                    InstagramStatsModel.followers_count,
-                    InstagramStatsModel.media_count,
+                    UserModel.user_id,
+                    InstagramStatsModel.user_id.label("stats_id"),
+                    InstagramStatsModel.followers_count.label("old_followers"),
+                    InstagramStatsModel.media_count.label("old_media"),
+                    InstagramStatsModel.instagram_username.label("old_handle"),
+                    BloggerProfileModel.instagram_username.label("handle"),
+                    BloggerProfileModel.instagram_followers_count.label(
+                        "meta_followers"
+                    ),
+                    BloggerProfileModel.instagram_stats_fetched_at.label(
+                        "meta_at"
+                    ),
+                    HEALTH.c.identity_since,
+                    HEALTH.c.metrics_observed_at,
+                )
+                .select_from(UserModel)
+                .outerjoin(
+                    InstagramStatsModel,
+                    InstagramStatsModel.user_id == UserModel.user_id,
                 )
                 .outerjoin(
                     BloggerProfileModel,
-                    BloggerProfileModel.user_id == InstagramStatsModel.user_id,
+                    BloggerProfileModel.user_id == UserModel.user_id,
                 )
                 .outerjoin(
                     HEALTH,
                     and_(
-                        HEALTH.c.user_id == InstagramStatsModel.user_id,
+                        HEALTH.c.user_id == UserModel.user_id,
                         HEALTH.c.meta_id
                         == BloggerProfileModel.instagram_user_id,
                     ),
                 )
-                .where(
-                    InstagramStatsModel.user_id.in_(user_ids),
-                    or_(
-                        HEALTH.c.identity_since.is_(None),
-                        and_(
-                            HEALTH.c.metrics_observed_at
-                            >= HEALTH.c.identity_since,
-                            func.lower(InstagramStatsModel.instagram_username)
-                            == func.lower(
-                                BloggerProfileModel.instagram_username
-                            ),
-                        ),
+                .where(UserModel.user_id.in_(user_ids))
+            )
+            if self.include_discovery_metrics and self.identity_context:
+                query = query.add_columns(
+                    DISCOVERY.c.followers_count.label("discovery_followers"),
+                    DISCOVERY.c.followers_observed_at,
+                    DISCOVERY.c.media_count.label("discovery_media"),
+                    DISCOVERY.c.media_observed_at,
+                ).outerjoin(
+                    DISCOVERY,
+                    and_(
+                        DISCOVERY.c.user_id == UserModel.user_id,
+                        DISCOVERY.c.observed_meta_id
+                        == BloggerProfileModel.instagram_user_id,
+                        DISCOVERY.c.identity_context == self.identity_context,
+                        func.lower(DISCOVERY.c.username)
+                        == func.lower(BloggerProfileModel.instagram_username),
                     ),
                 )
-            )
-            return {
-                row.user_id: InstagramAudienceCounts(
-                    row.followers_count, row.media_count
-                )
-                for row in rows
-            }
+            rows = await db.execute(query)
+            return _resolve_audience_rows(rows.mappings())
 
     async def save(
         self, stats: InstagramStats, session: object | None = None
@@ -304,6 +324,52 @@ class SqlAlchemyInstagramStatsRepository(InstagramStatsRepository):
                     )
                 )
                 await db_session.flush()
+
+
+def _resolve_audience_rows(
+    rows: Iterable[Any],
+) -> Dict[UUID, InstagramAudienceCounts]:
+    result = {}
+    for row in rows:
+        since = row["identity_since"]
+        observed = row["metrics_observed_at"]
+        legacy_valid = row["stats_id"] is not None and (
+            since is None
+            or (
+                observed is not None
+                and utc(observed) >= utc(since)
+                and (row["old_handle"] or "").lower()
+                == (row["handle"] or "").lower()
+            )
+        )
+
+        def candidate(value, at, priority, since=since):
+            if since is not None and (at is None or utc(at) < utc(since)):
+                return (None, None, priority)
+            return (value, at, priority)
+
+        followers = freshest_count(
+            candidate(
+                row["meta_followers"],
+                row["meta_at"],
+                3 if row["meta_at"] is not None else 0,
+            ),
+            candidate(
+                row.get("discovery_followers"),
+                row.get("followers_observed_at"),
+                2,
+            ),
+            (row["old_followers"] if legacy_valid else None, observed, 1),
+        )
+        media = freshest_count(
+            candidate(
+                row.get("discovery_media"), row.get("media_observed_at"), 2
+            ),
+            (row["old_media"] if legacy_valid else None, observed, 1),
+        )
+        if legacy_valid or followers is not None or media is not None:
+            result[row["user_id"]] = InstagramAudienceCounts(followers, media)
+    return result
 
 
 def _to_verification_entity(

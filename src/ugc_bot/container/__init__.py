@@ -98,7 +98,10 @@ class Container:
             else None
         )
         self._repos = repository_factory.build_repos(
-            self._session_factory, redis_url=redis_url
+            self._session_factory,
+            redis_url=redis_url,
+            discovery_metrics_enabled=self._config.instagram.instagram_discovery_metrics_enabled,
+            instagram_identity_context=self._config.instagram.instagram_identity_context,
         )
         return self._repos
 
