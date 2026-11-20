@@ -1034,3 +1034,12 @@ def test_reserve_card_discloses_deadline_before_confirmation(order):
         card = render_public_offer(reserve, "ru", action)
         assert "Основной состав набран" in card.text
         assert "Участие не гарантировано" in card.text
+
+
+def test_dispatch_stops_when_reserve_starts(order):
+    reserve = replace(
+        order,
+        offer_reserve_until=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    assert not _dispatch_ready(reserve, None)
+    assert not _dispatch_ready(reserve, 1)
