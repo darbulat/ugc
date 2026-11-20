@@ -275,6 +275,8 @@ class CreatorOfferCardFlow:
         user: User,
         interactions: InteractionService,
         other_client: MessengerClient | None,
+        *,
+        manager_id: UUID | None = None,
     ) -> None:
         await self._edit(
             incoming,
@@ -284,7 +286,7 @@ class CreatorOfferCardFlow:
             terminal=True,
         )
         await self._notify_direct_client(
-            incoming, order, user, interactions, other_client
+            incoming, order, user, interactions, other_client, manager_id
         )
 
     async def _notify_direct_client(
@@ -294,12 +296,18 @@ class CreatorOfferCardFlow:
         user: User,
         interactions: InteractionService,
         other_client: MessengerClient | None,
+        manager_id: UUID | None,
     ) -> None:
         client = await self.users.get_user_by_id(order.advertiser_id)
         profile = await self.profiles.get_blogger_profile(user.user_id)
         profile_url = https_link(profile.instagram_url) if profile else None
-        if not (client and profile and profile_url):
+        if not (profile and profile_url):
             return
+        recipients = [client] if client else []
+        if manager_id is not None and manager_id != order.advertiser_id:
+            manager = await self.users.get_user_by_id(manager_id)
+            if manager is not None:
+                recipients.append(manager)
         channel = incoming.user.messenger_type
         transports = (
             {
@@ -312,20 +320,43 @@ class CreatorOfferCardFlow:
                 MessengerType.TELEGRAM: other_client,
             }
         )
+        sent: set[tuple[MessengerType, str]] = set()
+        client_delivered = False
+        for recipient in recipients:
+            delivered = await self._deliver_direct_contact(
+                order, user, profile, profile_url, recipient, transports, sent
+            )
+            if delivered and recipient.user_id == order.advertiser_id:
+                client_delivered = True
+        if client_delivered:
+            await interactions.reactivate_or_create_for_contacts_sent(
+                order_id=order.order_id,
+                blogger_id=user.user_id,
+                advertiser_id=order.advertiser_id,
+            )
+
+    async def _deliver_direct_contact(
+        self, order, user, profile, profile_url, recipient, transports, sent
+    ) -> bool:
         addresses = {
-            MessengerType.TELEGRAM: client.telegram_id,
-            MessengerType.MAX: client.max_chat_id,
+            MessengerType.TELEGRAM: recipient.telegram_id,
+            MessengerType.MAX: recipient.max_chat_id,
         }
         available = [
-            (transports[target], addresses[target])
-            for target in dict.fromkeys((client.messenger_type, *addresses))
+            (target, transports[target], addresses[target])
+            for target in dict.fromkeys((recipient.messenger_type, *addresses))
             if transports.get(target) and addresses.get(target)
         ]
         if not available:
-            return
-        sender, address = available[0]
+            return False
+        channel, sender, address = available[0]
         assert sender is not None and address is not None
-        locale = client.language or "ru"
+        destination = (channel, address)
+        if destination in sent:
+            return False
+        # An uncertain send must not be repeated to the same destination.
+        sent.add(destination)
+        locale = recipient.language or "ru"
         text = client_contact_text(
             order_title=(order.creator_offer_card or {}).get("title", ""),
             name=user.username,
@@ -355,12 +386,8 @@ class CreatorOfferCardFlow:
                     "error": type(exc).__name__,
                 },
             )
-            return
-        await interactions.reactivate_or_create_for_contacts_sent(
-            order_id=order.order_id,
-            blogger_id=user.user_id,
-            advertiser_id=order.advertiser_id,
-        )
+            return False
+        return True
 
     async def _edit(
         self,
