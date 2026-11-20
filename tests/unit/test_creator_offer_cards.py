@@ -1043,3 +1043,44 @@ def test_dispatch_stops_when_reserve_starts(order):
     )
     assert not _dispatch_ready(reserve, None)
     assert not _dispatch_ready(reserve, 1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action", ["done", "s_time", "open"])
+async def test_card_closes_when_intake_expires_during_response(
+    order, offer_session, action
+):
+    from ugc_bot.application.services.offer_dispatch_service import SkipResult
+
+    flow = offer_session.flow
+    if action == "done":
+        flow.responses.respond_and_finalize.side_effect = (
+            PaidSelectionResponseError("offer_intake_closed")
+        )
+    elif action == "s_time":
+        flow.dispatch.record_skip.return_value = SkipResult(intake_closed=True)
+    else:
+        flow.orders.get_by_id.return_value = replace(
+            order, offer_reserve_until=datetime.now(timezone.utc)
+        )
+        offer_session.receipts.list_responses_by_blogger.return_value = [
+            SimpleNamespace(
+                order_id=order.order_id, accepted=True, in_offer=False
+            )
+        ]
+    await flow.handle(click(order, action))
+    card = offer_session.messenger.edit_offer_card.call_args.args[2]
+    assert "Набор завершён" in card.text
+    assert card.keyboard is None
+    offer_session.messenger.send_offer_card.assert_not_awaited()
+
+
+def test_english_reserve_card_does_not_promise_contact_delivery(order):
+    reserve = replace(
+        order,
+        offer_reserve_until=datetime.now(timezone.utc) + timedelta(hours=72),
+    )
+    card = render_public_offer(reserve, "en", "confirm")
+    assert "reserve" in card.text
+    assert "Participation is not guaranteed" in card.text
+    assert "share your profile and contact" not in card.text
