@@ -13,6 +13,7 @@ from ugc_bot.application.services.business_order_card import order_card_url
 from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.offer_intake import intake_open, reserve_notice
 from ugc_bot.infrastructure.db.models import OrderModel, UserModel
 from ugc_bot.infrastructure.db.order_selection import picked_order_count
 from ugc_bot.infrastructure.db.repositories.admin_recipients import (
@@ -62,6 +63,8 @@ class CounterofferAdminDelivery:
                 select(
                     OrderModel.offer_text,
                     OrderModel.status,
+                    OrderModel.offer_reserve_until,
+                    OrderModel.dispatch_stopped,
                     OrderModel.bloggers_needed,
                     picked_order_count().label("picked"),
                     UserModel.username,
@@ -103,6 +106,16 @@ class CounterofferAdminDelivery:
             f"Осталось {max(order.bloggers_needed - order.picked, 0)}\n"
             f"{_STATUS[order.status]}"
         )
+        if order.offer_reserve_until is not None:
+            text += "\n" + (
+                reserve_notice(order.offer_reserve_until)
+                if intake_open(
+                    order.status,
+                    order.dispatch_stopped,
+                    order.offer_reserve_until,
+                )
+                else "Набор завершён"
+            )
         async with Bot(token=self.config.bot.bot_token).context() as bot:
             await TelegramNoticeReceipts(bot, use_web_app=False).send(
                 _CounterofferMessage(address, text, f"{base}/orders/{order_id}")

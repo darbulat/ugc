@@ -1,6 +1,6 @@
 """Creator-card moderation through the actual order editor."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -144,4 +144,59 @@ def test_public_card_saves_as_draft_and_rejects_private_links(
             assert order.creator_offer_card == values
             assert order.status == OrderStatus.NEW
     finally:
+        engine.dispose()
+
+
+@pytest.mark.e2e
+@pytest.mark.timeout(45)
+def test_admin_shows_reserve_and_finished_intake(
+    admin_server, page, test_database
+):
+    if not test_database:
+        pytest.skip("Requires the isolated local browser database")
+    engine = create_engine(test_database)
+    client_id, order_id = uuid4(), uuid4()
+    now = datetime.now(timezone.utc)
+    with Session(engine) as db, db.begin():
+        db.add(
+            UserModel(
+                user_id=client_id,
+                username="Reserve test client",
+                created_at=now,
+                updated_at=now,
+                messenger_type=MessengerType.TELEGRAM,
+                status=UserStatus.ACTIVE,
+            )
+        )
+        db.flush()
+        db.add(
+            OrderModel(
+                order_id=order_id,
+                advertiser_id=client_id,
+                status=OrderStatus.ACTIVE,
+                offer_text="Reserve UI test",
+                created_at=now,
+                updated_at=now,
+                product_link="https://example.test",
+                price=500,
+                bloggers_needed=1,
+                offer_reserve_until=now + timedelta(hours=72),
+            )
+        )
+    try:
+        _login(page, admin_server)
+        page.goto(f"{admin_server}/admin/orders/{order_id}")
+        activity = page.locator("#order-offer-activity")
+        expect(activity).to_contain_text("Основной состав набран")
+        expect(activity).to_contain_text("Участие не гарантировано")
+        with Session(engine) as db, db.begin():
+            db.get(OrderModel, order_id).offer_reserve_until = now
+        page.reload()
+        expect(page.locator("#order-offer-activity")).to_contain_text(
+            "Набор завершён"
+        )
+    finally:
+        with Session(engine) as db, db.begin():
+            db.delete(db.get(OrderModel, order_id))
+            db.delete(db.get(UserModel, client_id))
         engine.dispose()

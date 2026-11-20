@@ -136,6 +136,7 @@ class SqlDispatchControl:
             order is not None
             and order.status == OrderStatus.ACTIVE
             and not order.dispatch_stopped
+            and order.offer_reserve_until is None
             and control is not None
             and not control.paused
             and control.run == run

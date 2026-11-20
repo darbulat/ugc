@@ -24,6 +24,7 @@ from ugc_bot.application.services.paid_selection_interest import (
 )
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import MessengerType, OrderStatus
+from ugc_bot.domain.offer_intake import RESERVE_WINDOW, intake_open
 from ugc_bot.infrastructure.db.session import with_optional_tx
 
 
@@ -167,11 +168,11 @@ class OfferResponseService:
         self, order_id: UUID, blogger_id: UUID, *, channel: MessengerType | None
     ) -> OfferResponseResult:
         assert self.transaction_manager is not None
-        now = datetime.now(timezone.utc)
         async with self.transaction_manager.transaction() as session:
             order = await self.order_repo.get_by_id_for_update(
                 order_id, session=session
             )
+            now = datetime.now(timezone.utc)
             if order is None:
                 raise OrderNotFoundError("Order not found.")
             if order.financial_version is not None and not order.complimentary:
@@ -179,10 +180,11 @@ class OfferResponseService:
             accepted_count = await self.dispatch_repo.count_accepted_by_order(
                 order_id, session=session
             )
-            order_closed_or_inactive = order.status != OrderStatus.ACTIVE
-            if (
-                order_closed_or_inactive
-                and accepted_count < order.bloggers_needed
+            if not intake_open(
+                order.status,
+                order.dispatch_stopped,
+                order.offer_reserve_until,
+                now=now,
             ):
                 raise OrderNotActiveError("Order is not active.")
             if await self.dispatch_repo.exists_responded(
@@ -304,11 +306,18 @@ def _update_order_after_response(
         else order.status
     )
     completed_at = (
-        now if response_count >= order.bloggers_needed else order.completed_at
+        order.completed_at or now
+        if response_count >= order.bloggers_needed
+        else order.completed_at
     )
     return replace(
         order,
         status=new_status,
         completed_at=completed_at,
+        offer_reserve_until=(
+            order.offer_reserve_until or now + RESERVE_WINDOW
+            if response_count >= order.bloggers_needed
+            else order.offer_reserve_until
+        ),
         updated_at=now,
     )

@@ -2,6 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -75,7 +76,11 @@ async def test_counteroffer_worker_delivers_only_to_kamil_after_order_closed(
             await db.execute(
                 update(OrderModel)
                 .where(OrderModel.order_id == env["order"])
-                .values(status=OrderStatus.CLOSED)
+                .values(
+                    status=OrderStatus.CLOSED,
+                    offer_reserve_until=datetime.now(timezone.utc)
+                    + timedelta(hours=72),
+                )
             )
             await db.execute(
                 update(UserModel)

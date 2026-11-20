@@ -252,6 +252,7 @@ class Order:
     complimentary: bool = False
     dispatch_stopped: bool = False
     creator_offer_card: dict[str, str] | None = None
+    offer_reserve_until: datetime | None = None
 
 
 @dataclass(frozen=True)

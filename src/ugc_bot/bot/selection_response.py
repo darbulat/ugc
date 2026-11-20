@@ -2,6 +2,8 @@
 
 
 def selection_response_message_key(reason: str) -> str:
+    if reason == "offer_intake_closed":
+        return "msg_offer_intake_closed"
     if reason == "selection_verified_creator_required":
         return "msg_offer_response_verification_required"
     if reason == "selection_identity_already_interested":

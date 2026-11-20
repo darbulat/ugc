@@ -302,6 +302,12 @@ async def test_offer_skip_handler(
         transaction_manager=None,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000748")
+    await create_test_order(
+        offer_dispatch_service.order_repo,
+        blogger_user.user_id,
+        order_id=order_id,
+        status=OrderStatus.ACTIVE,
+    )
     await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
     message = FakeMessage()
     message.reply_markup = object()
@@ -601,7 +607,7 @@ async def test_send_order_closed_and_remove_keyboard(
         incoming, client, bot_texts_service, locale
     )
     assert len(client.answered_callbacks) == 1
-    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_offer_intake_closed"]
     assert any(msg_closed_full in s["text"] for s in client.sent_text)
 
 
@@ -845,7 +851,7 @@ async def test_offer_response_handler_overflow_saved_no_contact(
     )
     assert len(message.edit_reply_markup_calls) == 1
     assert message.edit_reply_markup_calls[0] is None
-    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    msg_closed_full = DEFAULT_TEXTS["ru"]["msg_offer_intake_closed"]
     assert msg_closed_full not in message.answers
     total = await dispatch_repo.count_by_order(order.order_id)
     assert total == 2
@@ -1940,6 +1946,12 @@ async def test_offer_skip_shows_reason_menu(
         offer_dispatch_repo=offer_dispatch_repo,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000a02")
+    await create_test_order(
+        offer_dispatch_service.order_repo,
+        blogger_user.user_id,
+        order_id=order_id,
+        status=OrderStatus.ACTIVE,
+    )
     await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
 
     message = FakeMessage()
@@ -2011,6 +2023,12 @@ async def test_rejection_reason_non_price_records_skip(
         completed_at=None,
     )
     await order_repo.save(order)
+    await create_test_order(
+        offer_dispatch_service.order_repo,
+        blogger_user.user_id,
+        order_id=order_id,
+        status=OrderStatus.ACTIVE,
+    )
     await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
 
     message = FakeMessage()
@@ -2065,6 +2083,12 @@ async def test_rejection_reason_low_price_enters_fsm(
         offer_dispatch_repo=offer_dispatch_repo,
     )
     order_id = UUID("00000000-0000-0000-0000-000000000a21")
+    await create_test_order(
+        offer_dispatch_service.order_repo,
+        blogger_user.user_id,
+        order_id=order_id,
+        status=OrderStatus.ACTIVE,
+    )
     await offer_dispatch_repo.record_sent(order_id, blogger_user.user_id)
 
     message = FakeMessage()
@@ -3213,7 +3237,7 @@ async def test_handle_offer_response_order_creation_error(
     # Order-closed message should be sent
     from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS as _DEFAULT_TEXTS
 
-    msg_closed_full = _DEFAULT_TEXTS["ru"]["msg_order_closed_full"]
+    msg_closed_full = _DEFAULT_TEXTS["ru"]["msg_offer_intake_closed"]
     assert any(msg_closed_full in s["text"] for s in messenger_client.sent_text)
 
 

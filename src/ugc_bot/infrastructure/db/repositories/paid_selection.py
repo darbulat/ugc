@@ -9,6 +9,7 @@ from ugc_bot.application.paid_selection_ports import SelectionInterest
 from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.offer_intake import RESERVE_WINDOW, intake_open
 from ugc_bot.infrastructure.db.creator_invite_models import (
     INVITES,
     MANUAL_READY,
@@ -32,6 +33,7 @@ from ugc_bot.infrastructure.db.models import (
     UserModel,
 )
 from ugc_bot.infrastructure.db.order_review_models import OWNERS
+from ugc_bot.infrastructure.db.order_selection import picked_order_count
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.repositories.creator_invites import (
     invitation,
@@ -300,6 +302,15 @@ class SqlAlchemyPaidSelectionRepository:
         _require(
             order["status"] == OrderStatus.ACTIVE, "selection_order_not_active"
         )
+        _require(
+            intake_open(
+                order["status"],
+                order["dispatch_stopped"],
+                order["offer_reserve_until"],
+                now=at,
+            ),
+            "offer_intake_closed",
+        )
         items = (
             (
                 await db.execute(
@@ -314,11 +325,6 @@ class SqlAlchemyPaidSelectionRepository:
         _require(
             len(items) == order["bloggers_needed"],
             "selection_purchased_pool_mismatch",
-        )
-        _require(
-            manual is not None
-            or all(i["selection_due_at"] > at for i in items),
-            "selection_due_elapsed",
         )
         item = None
         staff_reservations = {}
@@ -366,6 +372,12 @@ class SqlAlchemyPaidSelectionRepository:
                 break
         if manual is not None:
             _require(item is not None, "creator_invite_position_unavailable")
+        _require(
+            manual is not None
+            or item is None
+            or all(i["selection_due_at"] > at for i in items),
+            "selection_due_elapsed",
+        )
         # A completed initial assignment is never silently recycled here.
         accepted, assignment, manager = item is not None, None, None
         if item is not None:
@@ -466,6 +478,16 @@ class SqlAlchemyPaidSelectionRepository:
             session=db,
             channel=channel,
         )
+        if accepted and order["offer_reserve_until"] is None:
+            await db.execute(
+                update(OrderModel)
+                .where(
+                    OrderModel.order_id == order_id,
+                    OrderModel.offer_reserve_until.is_(None),
+                    picked_order_count() >= OrderModel.bloggers_needed,
+                )
+                .values(offer_reserve_until=at + RESERVE_WINDOW)
+            )
         if manager is not None and manual is None:
             await db.execute(
                 update(OrderModel)
