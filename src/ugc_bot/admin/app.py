@@ -2403,7 +2403,14 @@ def _creator_card_edit_data(order, data, form, *, activating):
     if "creator_card_title" in form:
         draft = {
             key: str(form.get(f"creator_card_{key}", "") or "")
-            for key in (*PUBLIC_FIELDS, "contact", "photo")
+            for key in (
+                *PUBLIC_FIELDS,
+                "contact",
+                "client_contact",
+                "manager_contact",
+                "communication_role",
+                "photo",
+            )
         }
     card = validate_public_offer(
         draft,

@@ -1,5 +1,17 @@
 const editor = document.querySelector("#order-edit-form");
 
+const communicationRole = editor.elements.namedItem("creator_card_communication_role");
+if (communicationRole) {
+  const updateCommunicationContact = () => {
+    const selected = communicationRole.value ? `${communicationRole.value}_contact` : "contact";
+    for (const field of editor.querySelectorAll("[data-communication-contact]")) {
+      field.hidden = field.dataset.communicationContact !== selected;
+    }
+  };
+  communicationRole.addEventListener("change", updateCommunicationContact);
+  updateCommunicationContact();
+}
+
 const closureField = document.getElementById("order-closure-field");
 if (closureField) {
   const status = editor.elements.namedItem("status");

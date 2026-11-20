@@ -79,6 +79,7 @@ async def handle_creator_offer_card(
             creator,
             deps["interaction_service"],
             deps.get("telegram_messenger_client"),
+            manager_id=response.manager_id,
         )
 
 

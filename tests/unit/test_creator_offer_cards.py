@@ -16,6 +16,7 @@ from ugc_bot.application.creator_offer_cards import (
     NEUTRAL_COVER,
     render_public_offer,
     render_saved_offer,
+    validate_public_offer,
 )
 from ugc_bot.application.errors import (
     OrderCreationError,
@@ -111,6 +112,79 @@ def test_first_card_only_exposes_approved_public_fields(order):
         order.product_link,
         order.brief_link,
     }
+
+
+@pytest.mark.parametrize("role", ["client", "manager"])
+def test_selected_communicator_is_independent_of_notification_recipients(
+    order, role
+):
+    values = {
+        **order.creator_offer_card,
+        "sender_name": "UseMyContent",
+        "communication_role": role,
+        "client_contact": "@client_account",
+        "manager_contact": "@manager_account",
+        # A stale legacy value must never override the selected role.
+        "contact": "@another_account",
+    }
+    configured = replace(order, creator_offer_card=values)
+    public = render_public_offer(configured, "ru")
+    assert "<b>Заказчик</b> · UseMyContent" in public.text
+    assert "_account" not in public.text
+    saved = render_saved_offer(configured, "ru")
+    assert saved.keyboard.rows[0][0].url == f"https://t.me/{role}_account"
+    normalized = validate_public_offer(values, ready=True)
+    assert normalized["contact"] == f"@{role}_account"
+    assert normalized["communication_role"] == role
+
+
+def test_missing_manager_contact_cannot_expose_the_client_contact(order):
+    values = {
+        **order.creator_offer_card,
+        "communication_role": "manager",
+        "client_contact": "@private_client",
+    }
+    saved = render_saved_offer(replace(order, creator_offer_card=values), "ru")
+    assert all(
+        "t.me" not in button.url
+        for row in saved.keyboard.rows
+        for button in row
+    )
+    with pytest.raises(ValueError, match="выбранного ответственного"):
+        validate_public_offer(values, ready=True)
+    assert "contact" not in validate_public_offer(values)
+
+
+def test_invalid_communication_role_is_rejected(order):
+    with pytest.raises(ValueError, match="кто общается"):
+        validate_public_offer(
+            {**order.creator_offer_card, "communication_role": "everyone"}
+        )
+
+
+def test_admin_switches_contact_and_preserves_both_role_settings(order):
+    form = {
+        f"creator_card_{key}": value
+        for key, value in {
+            **order.creator_offer_card,
+            "sender_name": "UseMyContent",
+            "communication_role": "client",
+            "client_contact": "@client_account",
+            "manager_contact": "@manager_account",
+        }.items()
+    }
+    client = _creator_card_edit_data(order, {}, form, activating=True)[
+        "creator_offer_card"
+    ]
+    assert client["contact"] == "@client_account"
+    assert client["sender_name"] == "UseMyContent"
+    form["creator_card_communication_role"] = "manager"
+    manager = _creator_card_edit_data(order, {}, form, activating=True)[
+        "creator_offer_card"
+    ]
+    assert manager["contact"] == "@manager_account"
+    assert manager["client_contact"] == "@client_account"
+    assert manager["manager_contact"] == "@manager_account"
 
 
 @pytest.mark.parametrize("bad_task", ["https://brand.ru", "💡" * 110])
@@ -450,7 +524,7 @@ async def test_direct_response_notifies_the_preferred_address_once(
         flow.users.get_user_by_id.return_value, messenger_type=platform
     )
     harness.response.respond_and_finalize.return_value = SimpleNamespace(
-        order=order, accepted=True, delivery_queued=False
+        order=order, accepted=True, delivery_queued=False, manager_id=None
     )
     if platform == MessengerType.MAX:
         await handle_max_creator_offer(
@@ -529,6 +603,69 @@ async def test_direct_response_does_not_record_contacts_that_were_not_delivered(
         harness.messenger.send_offer_card.assert_not_awaited()
     harness.alternative.send_offer_card.assert_not_awaited()
     harness.interactions.reactivate_or_create_for_contacts_sent.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("platform", list(MessengerType))
+@pytest.mark.parametrize("failed_recipient", [None, "client", "manager"])
+async def test_direct_response_copies_manager_independently_of_client_failure(
+    order, creator, offer_session, platform, failed_recipient
+):
+    harness = offer_session
+    client = harness.flow.users.get_user_by_id.return_value
+    manager = replace(
+        client,
+        user_id=uuid4(),
+        telegram_id="990",
+        max_chat_id="991",
+        language="en",
+    )
+    harness.flow.users.get_user_by_id.side_effect = [client, manager]
+    transport = (
+        harness.messenger
+        if platform == MessengerType.TELEGRAM
+        else harness.alternative
+    )
+    transport.send_offer_card.side_effect = [
+        TimeoutError() if failed_recipient == "client" else "client-receipt",
+        TimeoutError() if failed_recipient == "manager" else "manager-receipt",
+    ]
+    await harness.flow.finish_direct(
+        click(order, channel=platform),
+        order,
+        creator,
+        harness.interactions,
+        harness.alternative,
+        manager_id=manager.user_id,
+    )
+    calls = transport.send_offer_card.await_args_list
+    assert [call.args[0] for call in calls] == ["980", "990"]
+    assert "Новый отклик" in calls[0].args[1].text
+    assert "New response" in calls[1].args[1].text
+    assert (
+        harness.interactions.reactivate_or_create_for_contacts_sent.await_count
+        == (0 if failed_recipient == "client" else 1)
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("same_user", [True, False])
+async def test_direct_copy_deduplicates_a_shared_user_or_destination(
+    order, creator, offer_session, same_user
+):
+    harness = offer_session
+    client = harness.flow.users.get_user_by_id.return_value
+    manager = replace(client, user_id=client.user_id if same_user else uuid4())
+    harness.flow.users.get_user_by_id.side_effect = [client, manager]
+    await harness.flow.finish_direct(
+        click(order),
+        order,
+        creator,
+        harness.interactions,
+        harness.alternative,
+        manager_id=manager.user_id,
+    )
+    harness.messenger.send_offer_card.assert_awaited_once()
 
 
 @pytest.mark.asyncio

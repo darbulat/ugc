@@ -162,11 +162,11 @@
       {% endif %}
       <div class="order-editor__fields">
         {% for key, text, limit in [
+          ('sender_name','Название заказчика для креатора',64),
           ('title','Заголовок',64), ('task','Короткая задача',200),
           ('deadline','Срок для креатора',106), ('usage','Где используют ролик',106),
           ('brief','Анонимный бриф по кнопке',620), ('barter','Условия бартера',100),
-          ('brand','Бренд, если его показ одобрен',64),
-          ('contact','Рабочий Telegram с разрешением на передачу после отклика',33)
+          ('brand','Бренд, если его показ одобрен',64)
         ] %}
         <div>
           <label class="form-label" for="creator-card-{{ key }}">{{ text }}</label>
@@ -177,6 +177,22 @@
           {% endif %}
         </div>
         {% endfor %}
+        <div>
+          <label class="form-label" for="creator-card-communication-role">Кто общается с креатором</label>
+          <select class="form-control" id="creator-card-communication-role" name="creator_card_communication_role">
+            <option value="" {% if not card.get('communication_role') %}selected{% endif %}>Текущий рабочий контакт</option>
+            <option value="client" {% if card.get('communication_role') == 'client' %}selected{% endif %}>Заказчик</option>
+            <option value="manager" {% if card.get('communication_role') == 'manager' %}selected{% endif %}>Менеджер</option>
+          </select>
+          <p class="form-hint">После отклика креатор видит только контакт выбранного ответственного. Назначение менеджера не меняет этот выбор.</p>
+        </div>
+        {% for key, label in [('client_contact','Telegram заказчика'), ('manager_contact','Telegram менеджера'), ('contact','Рабочий Telegram с разрешением на передачу после отклика')] %}
+        <div data-communication-contact="{{ key }}">
+          <label class="form-label" for="creator-card-{{ key }}">{{ label }}</label>
+          <input class="form-control" id="creator-card-{{ key }}" name="creator_card_{{ key }}" value="{{ card.get(key, '') }}" maxlength="33" placeholder="@username">
+        </div>
+        {% endfor %}
+        <p class="form-hint">Для обычного заказа копии откликов получают заказчик и назначенный этому креатору менеджер. Общение ведёт выбранный ответственный.</p>
         <label class="form-check">
           <input class="form-check-input" type="checkbox" name="creator_card_photo" value="approved" {% if card.get('photo') == 'approved' %}checked{% endif %}>
           <span class="form-check-label">Показывать загруженную обложку до отклика. По умолчанию используется нейтральная.</span>

@@ -14,6 +14,7 @@ CALLBACK_PREFIX = "offer_card:"
 NEUTRAL_COVER = "ugc:neutral-offer-cover"
 CAPTION_LIMIT = 1024
 PUBLIC_FIELDS = {
+    "sender_name": 64,
     "title": 64,
     "task": 200,
     "brief": 620,
@@ -22,6 +23,20 @@ PUBLIC_FIELDS = {
     "barter": 100,
     "brand": 64,
 }
+CONTACT_FIELDS = ("contact", "client_contact", "manager_contact")
+COMMUNICATION_ROLES = {"client", "manager"}
+
+
+def offer_contact(card: dict[str, str]) -> str | None:
+    """Resolve only the selected role; never expose the other party."""
+    role = card.get("communication_role")
+    if role:
+        return (
+            card.get(f"{role}_contact") if role in COMMUNICATION_ROLES else None
+        )
+    return card.get("contact")
+
+
 _IDENTIFYING_LINK = re.compile(
     r"@|://|www\.|(?<!\w)[\w-]+\.(?:app|com|net|org|ru|рф|me|io)\b"
     r"|(?<!\d)\+?\d[\d ()-]{8,}\d",
@@ -75,11 +90,7 @@ def validate_public_offer(
             raise ValueError("Уберите ссылки и контакты из публичной карточки.")
         if value:
             result[key] = value
-    contact = (card.get("contact") or "").strip()
-    if contact:
-        if telegram_contact_url(contact) is None:
-            raise ValueError("Укажите рабочий Telegram в формате @username.")
-        result["contact"] = contact
+    result.update(_validated_contacts(card, ready=ready))
     if card.get("photo") == "approved":
         result["photo"] = "approved"
     required = {"title", "task", "deadline", "usage"}
@@ -90,6 +101,31 @@ def validate_public_offer(
             "Заполните заголовок, задачу, срок и использование в карточке "
             "креатора. Для бартера укажите его условия."
         )
+    return result
+
+
+def _validated_contacts(card: dict[str, str], *, ready: bool) -> dict[str, str]:
+    result = {}
+    for key in CONTACT_FIELDS:
+        contact = (card.get(key) or "").strip()
+        if contact:
+            if telegram_contact_url(contact) is None:
+                raise ValueError(
+                    "Укажите рабочий Telegram в формате @username."
+                )
+            result[key] = contact
+    role = (card.get("communication_role") or "").strip()
+    if role:
+        if role not in COMMUNICATION_ROLES:
+            raise ValueError("Выберите, кто общается: заказчик или менеджер.")
+        result["communication_role"] = role
+        selected_contact = offer_contact(result)
+        if ready and not selected_contact:
+            raise ValueError("Укажите Telegram выбранного ответственного.")
+        # Keep older app replicas on the same contact during a rolling release.
+        result.pop("contact", None)
+        if selected_contact:
+            result["contact"] = selected_contact
     return result
 
 
@@ -155,6 +191,12 @@ def _state_content(
             ("<b>Где используют</b> · " if ru else "<b>Use</b> · ")
             + escape(card["usage"]),
         ]
+        if card.get("sender_name"):
+            lines.insert(
+                0,
+                ("<b>Заказчик</b> · " if ru else "<b>Client</b> · ")
+                + escape(card["sender_name"]),
+            )
         if card.get("barter") and order.price > 0:
             lines.append(
                 ("<b>Бартер</b> · " if ru else "<b>Barter</b> · ")
@@ -273,7 +315,7 @@ def render_public_offer(
 def render_saved_offer(order: Order, locale: str) -> OfferCard:
     ru = _ru(locale)
     card = order.creator_offer_card or {}
-    contact = telegram_contact_url(card.get("contact"))
+    contact = telegram_contact_url(offer_contact(card))
     if contact:
         next_step = (
             "Рабочий контакт по заказу доступен ниже."

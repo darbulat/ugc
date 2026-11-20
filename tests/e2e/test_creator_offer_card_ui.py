@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from tests.e2e.test_admin_ui import _login
 from ugc_bot.domain.enums import MessengerType, OrderStatus, UserStatus
+from ugc_bot.infrastructure.db import manager_application_models  # noqa: F401
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     OrderModel,
@@ -20,8 +21,9 @@ from ugc_bot.infrastructure.db.models import (
 @pytest.mark.e2e
 @pytest.mark.timeout(45)
 @pytest.mark.parametrize("existing_card", [None, {}])
+@pytest.mark.parametrize("communication_role", [None, "client", "manager"])
 def test_public_card_saves_as_draft_and_rejects_private_links(
-    admin_server, page, test_database, existing_card
+    admin_server, page, test_database, existing_card, communication_role
 ):
     if not test_database:
         pytest.skip("Requires the isolated local browser database")
@@ -62,6 +64,7 @@ def test_public_card_saves_as_draft_and_rejects_private_links(
             )
         )
     values = {
+        "sender_name": "UseMyContent",
         "title": "Тестовая съёмка",
         "task": "Покажи один день с приложением",
         "deadline": "7 дней после согласования",
@@ -78,6 +81,23 @@ def test_public_card_saves_as_draft_and_rejects_private_links(
             ).check()
         for name, value in values.items():
             page.locator(f'[name="creator_card_{name}"]').fill(value)
+        if communication_role:
+            choice = page.get_by_label("Кто общается с креатором")
+            choice.select_option("client")
+            page.get_by_label("Telegram заказчика", exact=True).fill(
+                "@client_account"
+            )
+            choice.select_option("manager")
+            page.get_by_label("Telegram менеджера", exact=True).fill(
+                "@manager_account"
+            )
+            choice.select_option(communication_role)
+            values.update(
+                communication_role=communication_role,
+                client_contact="@client_account",
+                manager_contact="@manager_account",
+                contact=f"@{communication_role}_account",
+            )
         page.get_by_role(
             "button", name="Сохранить и остаться", exact=True
         ).click()
@@ -86,9 +106,21 @@ def test_public_card_saves_as_draft_and_rejects_private_links(
         )
         page.reload()
         for name, value in values.items():
+            if name == "contact" and communication_role:
+                # The compatibility value is resolved by the server on save.
+                continue
             expect(page.locator(f'[name="creator_card_{name}"]')).to_have_value(
                 value
             )
+        if communication_role:
+            selected = page.locator(
+                f'[name="creator_card_{communication_role}_contact"]'
+            )
+            expect(selected).to_be_visible()
+            other = "manager" if communication_role == "client" else "client"
+            expect(
+                page.locator(f'[name="creator_card_{other}_contact"]')
+            ).to_be_hidden()
         with Session(engine) as session:
             order = session.get(OrderModel, order_id)
             assert order.status == OrderStatus.NEW

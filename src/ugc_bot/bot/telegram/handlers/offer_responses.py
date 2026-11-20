@@ -122,6 +122,7 @@ async def handle_creator_offer_card(
             creator,
             interaction_service,
             max_messenger_client,
+            manager_id=response.manager_id,
         )
 
 
