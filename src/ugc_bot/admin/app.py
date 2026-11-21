@@ -155,6 +155,7 @@ from ugc_bot.domain.enums import (
     RaterRole,
     UserStatus,
 )
+from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.domain.social import SocialPlatform
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     browser_payment_active,
@@ -692,6 +693,7 @@ def _build_dashboard_service(
 
 
 _ADMIN_STATIC = Path(__file__).parent / "static"
+_UMC_DESIGN_STATIC = _ADMIN_STATIC.parents[1] / "miniapp" / "design-system"
 _ADMIN_ASSET_VERSIONS = {
     asset.name: sha256(asset.read_bytes()).hexdigest()[:12]
     for asset in _ADMIN_STATIC.iterdir()
@@ -730,11 +732,19 @@ def _build_templates(app: FastAPI, zone: ZoneInfo) -> Jinja2Templates:
     templates.env.filters["instagram_link"] = instagram_link
     templates.env.filters["safe_order_link"] = safe_order_link
     templates.env.filters["telegram_handle"] = telegram_handle
+    templates.env.filters["public_order_number"] = lambda value: (
+        public_order_number(UUID(str(value)))
+    )
     templates.env.filters["admin_date"] = lambda value: _admin_date(value, zone)
     app.mount(
         "/admin/mvp-static",
         StaticFiles(directory=str(_ADMIN_STATIC)),
         name="admin_mvp_static",
+    )
+    app.mount(
+        "/admin/umc-static",
+        StaticFiles(directory=str(_UMC_DESIGN_STATIC)),
+        name="admin_umc_static",
     )
     return templates
 
@@ -2007,7 +2017,7 @@ def _register_dashboard_routes(
     _LIST_CACHE_TTL = 90
     snapshots = DashboardSnapshots(cache)
     app.state.dashboard_snapshots = snapshots
-    app.add_event_handler("shutdown", snapshots.close)
+    app.router.add_event_handler("shutdown", snapshots.close)
     require_admin = _make_require_admin(auth)
     _register_dashboard_html_routes(
         app, auth, dashboard_service, templates, cache, _LIST_CACHE_TTL

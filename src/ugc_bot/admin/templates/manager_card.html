@@ -1,20 +1,26 @@
 {% extends "base.html" %}
 {% block title %}Анкета менеджера{% endblock %}
-{% block head %}<link rel="stylesheet" href="{{ admin_asset(request, 'managers.css') }}">{% endblock %}
+{% block head %}
+  <link rel="stylesheet" href="{{ request.url_for('admin_umc_static', path='fonts/fonts.css') }}">
+  <link rel="stylesheet" href="{{ request.url_for('admin_umc_static', path='tokens.css') }}">
+  <link rel="stylesheet" href="{{ request.url_for('admin_umc_static', path='umc-ui.css') }}">
+  <link rel="stylesheet" href="{{ admin_asset(request, 'managers.css') }}">
+{% endblock %}
 {% macro fields(keys, answers, labels) -%}
   <dl class="manager-fields">
     {% for key in keys %}
-      <div><dt>{{ labels[key] }}</dt><dd>{{ answers.get(key) or '—' }}{% if key == 'rate' and answers.get(key) and answers.get(key) != 'Обсудим' %} ₽{% endif %}</dd></div>
+      <div><dt>{{ labels[key] }}</dt><dd>{{ answers.get(key) or '—' }}{% if key == 'rate' and answers.get(key) and answers.get(key) != 'Обсудим' %}&nbsp;руб.{% endif %}</dd></div>
     {% endfor %}
   </dl>
 {%- endmacro %}
 {% block content %}
 {% set answers = row.answers or {} %}
-<section class="managers-page">
+{% set review_open = row.state in ('submitted', 'clarify') %}
+<section class="managers-page manager-card-page umc">
   <a class="manager-back" href="/admin/managers">← Все менеджеры</a>
   <header class="managers-heading manager-card-heading">
     <div>
-      <h1>{{ answers.name or row.username or row.telegram or 'Менеджер' }}</h1>
+      <h1 class="umc-display">{{ answers.name or row.username or row.telegram or 'Менеджер' }}</h1>
       <div class="manager-meta">
         <span class="manager-badge manager-badge--{{ row.state }}">{{ states.get(row.state, row.state) }}</span>
         {% if row.telegram %}<span class="manager-muted">@{{ row.telegram }}</span>{% endif %}
@@ -23,10 +29,12 @@
       </div>
     </div>
   </header>
-  {% if message %}<p class="manager-flash" role="status">{{ message }}</p>{% endif %}
+  {% if message %}
+    <p class="manager-flash{% if message_is_error %} umc-field__error{% endif %}" role="{{ 'alert' if message_is_error else 'status' }}">{{ message }}</p>
+  {% endif %}
   <div class="manager-card-layout">
     <div class="manager-card-content">
-      <section class="card manager-card-section">
+      <section class="umc-card manager-card-section">
         <h2>Контакты и география</h2>
         <dl class="manager-fields">
           <div><dt>Telegram</dt><dd>{% if row.telegram %}<a href="https://t.me/{{ row.telegram | urlencode }}" target="_blank" rel="noopener noreferrer">@{{ row.telegram }}</a>{% else %}—{% endif %}</dd></div>
@@ -36,36 +44,44 @@
           {% endfor %}
         </dl>
       </section>
-      <section class="card manager-card-section">
+      <section class="umc-card manager-card-section">
         <h2>Условия работы</h2>
         {{ fields(('work_format', 'work_format_details', 'weekly_capacity', 'rate', 'settlement') if answers.work_format_details else ('work_format', 'weekly_capacity', 'rate', 'settlement'), answers, labels) }}
       </section>
       {% for key in ('case', 'shortfall_plan', 'reliability', 'coverage') if answers.get(key) %}
-        <section class="card manager-card-section" data-manager-answer="{{ key }}">
+        <section class="umc-card manager-card-section" data-manager-answer="{{ key }}">
           <h2>{{ labels[key] }}</h2>
           <p class="manager-answer">{{ answers[key] | urlize(target='_blank', rel='noopener noreferrer') }}</p>
         </section>
       {% endfor %}
     </div>
-    <aside class="card manager-card-section manager-review">
+    <aside class="umc-card manager-card-section manager-review">
       <h2>Рассмотрение заявки</h2>
       <p class="manager-check{% if row.instagram_verified_at %} manager-check--verified{% endif %}">
-        {{ 'Instagram подтверждён' if row.instagram_verified_at else ('Instagram ожидает подтверждения' if answers.instagram else 'Instagram не указан') }}
+        {% if row.instagram_verified_at %}Instagram подтверждён
+        {% elif answers.instagram %}Instagram ожидает подтверждения
+        {% else %}Instagram не указан{% endif %}
       </p>
-      {% if row.state in ('submitted', 'clarify') %}
+      {% if review_open %}
         <form method="post" action="/admin/managers" class="manager-review-form">
           <input type="hidden" name="csrf_token" value="{{ admin_action_token(request) }}">
           <input type="hidden" name="identity" value="{{ row.user_id }}">
           <input type="hidden" name="version" value="{{ version }}">
           <input type="hidden" name="from_detail" value="1">
-          <label>Внутренняя заметка
-            <textarea name="note" maxlength="300" rows="3">{{ row.decision_note or '' }}</textarea>
-          </label>
-          <button class="admin-button" name="command" value="note">Сохранить заметку</button>
-          <button class="admin-button admin-button--primary" name="command" value="approved"{% if not row.instagram_verified_at %} disabled{% endif %}>Принять менеджера</button>
-          <div class="admin-actions">
-            <button class="admin-button" name="command" value="clarify">Уточнить</button>
-            <button class="admin-button" name="command" value="declined">Отклонить</button>
+          <div class="umc-field">
+            <label class="umc-field__label" for="manager-note">Внутренняя заметка</label>
+            <textarea class="umc-field__control" id="manager-note" name="note" maxlength="300" rows="3"
+                      aria-describedby="manager-note-hint">{{ row.decision_note or '' }}</textarea>
+            <small class="manager-muted" id="manager-note-hint">До 300 символов</small>
+          </div>
+          <button class="umc-btn umc-btn--ghost" type="submit" name="command" value="note">Сохранить заметку</button>
+          <button class="umc-btn umc-btn--primary" type="submit" name="command" value="approved"{% if not row.instagram_verified_at %} disabled aria-describedby="manager-approval-hint"{% endif %}>Принять менеджера</button>
+          {% if not row.instagram_verified_at %}
+            <p class="umc-field__error" id="manager-approval-hint">Принятие доступно после подтверждения Instagram.</p>
+          {% endif %}
+          <div class="manager-review-actions">
+            <button class="umc-btn umc-btn--ghost" type="submit" name="command" value="clarify">Уточнить</button>
+            <button class="umc-btn umc-btn--ghost manager-decline" type="submit" name="command" value="declined">Отклонить</button>
           </div>
         </form>
       {% else %}

@@ -207,6 +207,13 @@ def test_one_creator_table_preserves_filters_and_contacts_during_refresh(
     page.clock.install()
     page.set_viewport_size({"width": 1440, "height": 900})
     activity, requests, transfers = open_workspace(page, monkeypatch)
+    expect(page.locator(".order-detail__number")).to_have_text("UMC-00000000")
+    expect(page.locator("#order-transferred-counter")).to_contain_text(
+        "Передано контактов"
+    )
+    expect(
+        page.get_by_role("progressbar", name="Подобрано по плану")
+    ).to_have_attribute("aria-valuetext", "10 из 10")
     expect(page.get_by_role("table")).to_have_count(1)
     expect(page.locator("[data-creator-row]")).to_have_count(23)
     expect(page.locator("#browser-payment")).to_have_count(0)
@@ -396,7 +403,7 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     )
     progress = page.locator("[data-order-progress]")
     expect(progress).to_have_count(1)
-    expect(progress.locator("strong")).to_have_text("15 / 10")
+    expect(progress).to_contain_text("Передано контактов 15")
     expect(progress.locator(".order-progress__extra")).to_have_text("+5")
     expect(progress.locator(".order-progress__manual")).to_have_text(
         "1 вручную"
@@ -404,7 +411,7 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     expect(progress.get_by_role("progressbar")).to_have_attribute(
         "aria-valuenow", "100"
     )
-    expect(progress).to_contain_text("По плану 10 / 10")
+    expect(progress).to_contain_text("Подобрано по плану 10 из 10")
     screenshot(page, "order-list-delivered-progress")
     if directory := os.environ.get("UMC_UI_SCREENSHOTS"):
         progress.screenshot(
@@ -415,6 +422,7 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     expect(progress.get_by_role("progressbar")).to_have_attribute(
         "aria-valuenow", "90"
     )
+    expect(progress).to_contain_text("Подобрано по плану 9 из 10")
     expect(progress).to_contain_text("Осталось 1")
     page.goto(base + f"/admin/order-review?order_id={oid}&stage=all")
     scope = page.get_by_text("Выбран один заказ", exact=True)

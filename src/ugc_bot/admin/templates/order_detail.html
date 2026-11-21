@@ -47,21 +47,25 @@
             {% if order.get('archived') %}<span class="badge">Удалён из списка</span>{% endif %}
           </div>
           <h1>{{ title|truncate(120) }}</h1>
-          <p class="muted">{{ order.geography or 'География не указана' }} · {{ {'ugc_only': 'UGC', 'ugc_plus_placement': 'UGC + размещение', 'stories': 'Сторис'}.get(order.order_type, order.order_type or 'Формат не указан') }}</p>
+          <p class="muted"><span class="order-detail__number">{{ order.order_id|public_order_number }}</span> · {{ order.geography or 'География не указана' }} · {{ {'ugc_only': 'UGC', 'ugc_plus_placement': 'UGC + размещение', 'stories': 'Сторис'}.get(order.order_type, order.order_type or 'Формат не указан') }}</p>
         </div>
         <a class="admin-button admin-button--primary" href="{{ request.url_for('admin:edit', identity='order-model', pk=order.order_id).include_query_params(return_to=back_url) }}">Редактировать заказ</a>
       </div>
       {% if browser_payment_message and browser_payment and browser_payment.state == 'paid' %}<p role="alert">{{ browser_payment_message }}</p>{% endif %}
       <div class="order-detail__stats">
         <article>
-          <h2>{{ 'Оплаченные места' if order.get('financial_selection') else 'Подбор' }}</h2>
+          <h2>Подобрано по плану</h2>
           <strong>{{ picked }} из {{ needed }}</strong>
-          <div id="order-transferred-counter" class="order-detail__transfer" aria-live="polite" hidden>
-            <span class="order-detail__transfer-label">Передано заказчице</span>
-            <div class="order-detail__transfer-line"><strong><span id="order-transferred-value">—</span> / <span id="order-transferred-plan">{{ needed }}</span></strong><span id="order-transferred-extra" class="order-detail__over-plan" hidden></span><span id="order-transferred-manual" class="order-detail__manual" title="Ручные передачи включены в общее число переданных авторов" hidden></span></div>
-          </div>
-          <div class="order-detail__progress" role="progressbar" aria-label="Подобрано креаторов" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
+          <div class="order-detail__progress" role="progressbar" aria-label="Подобрано по плану" aria-valuetext="{{ picked }} из {{ needed }}" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
             <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>
+          </div>
+          <div id="order-transferred-counter" class="order-detail__transfer" aria-live="polite" hidden>
+            <span class="order-detail__transfer-label">Передано контактов</span>
+            <div class="order-detail__transfer-line">
+              <strong id="order-transferred-value">—</strong>
+              <span id="order-transferred-extra" class="order-detail__over-plan" hidden></span>
+              <span id="order-transferred-manual" class="order-detail__manual" title="Ручные передачи включены в общее число переданных контактов" hidden></span>
+            </div>
           </div>
           {% if order.manual_creator_count %}
           <small>Согласились в переписке: {{ order.manual_creator_count }}</small>

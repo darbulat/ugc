@@ -569,7 +569,7 @@ async def test_application_verification_review_and_directory(
             "Контакты и география" in card.text
             and "Условия работы" in card.text
         )
-        assert "600–800 ₽" in card.text and "Россия" in card.text
+        assert "600–800&nbsp;руб." in card.text and "Россия" in card.text
         assert answers["shortfall_plan"] in card.text
         assert 'value="approved" disabled' in card.text
         assert 'name="csrf_token"' in card.text
