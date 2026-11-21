@@ -161,7 +161,8 @@ Changes to payments, migrations, and sending customer notifications follow
 [the required review rule](../AGENTS.md#review-before-merge). The
 [CODEOWNERS file](../.github/CODEOWNERS) routes dedicated files in those
 areas to `@knails21`. The rule also applies to sensitive changes in shared
-files. If `@knails21` is the PR author, use another designated team reviewer.
+files. Kamil can approve a PR he authored in the task conversation. Request
+another human reviewer only when Kamil designates one for that PR.
 
 A repository administrator can require `lint-and-test (3.13)` on `main` in
 Settings → Branches.
