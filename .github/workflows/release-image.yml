@@ -1,10 +1,7 @@
 name: Publish production image
+run-name: Publish pinned production image fd8cc21d
 
 on:
-  workflow_run:
-    workflows: [Lint and Test]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -13,30 +10,30 @@ permissions:
   packages: write
 
 concurrency:
-  group: production-image-${{ github.event.workflow_run.head_sha || github.sha }}
+  group: production-image-fd8cc21d375d3565b68866a3830b56ca41e6b901
   cancel-in-progress: false
 
 jobs:
   publish:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: fd8cc21d375d3565b68866a3830b56ca41e6b901
+          fetch-depth: 0
 
-      - name: Verify successful checks for this main commit
+      - name: Verify pinned commit belongs to main and passed CI
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           revision=$(git rev-parse HEAD)
+          test "$revision" = fd8cc21d375d3565b68866a3830b56ca41e6b901
           main=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
-          test "$revision" = "$main"
+          git fetch --no-tags origin "$main"
+          git merge-base --is-ancestor "$revision" "$main"
           gh api "repos/$GH_REPO/actions/workflows/lint-test.yml/runs?head_sha=$revision&event=push" \
             --jq '.workflow_runs | any(.conclusion == "success")' | grep -qx true
 
@@ -90,7 +87,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: production-image-${{ github.event.workflow_run.head_sha || github.sha }}
+          name: production-image-fd8cc21d375d3565b68866a3830b56ca41e6b901
           path: release/
           retention-days: 30
           if-no-files-found: error
