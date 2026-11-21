@@ -592,7 +592,7 @@ EN: dict[str, str] = {
     "msg_coop_format": "What cooperation format do you prefer?",
     "msg_enter_number": "Enter a number, e.g. 1500.",
     "msg_how_many_creators": "How many creators do you need?",
-    "msg_product_link": "Enter product link (for responding creators):",
+    "msg_product_link": "Send the full link to the product or project page, for example https://example.com/product. Creators who respond will see it.",
     "msg_choose_count": "Choose one of: {counts}.",
     "msg_where_use_ugc": "Where will you use the UGC video?",
     "msg_send_photo": "Send product photo:",

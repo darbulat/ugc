@@ -553,9 +553,16 @@ def test_closed_legacy_order_keeps_manager_rating_visible(page, platform):
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-@pytest.mark.parametrize("payment_state", ["unpaid", "pending", "failed"])
+@pytest.mark.parametrize(
+    "payment_state, label",
+    [
+        ("unpaid", "Ожидает оплаты"),
+        ("pending", "Ожидает оплаты"),
+        ("failed", "Оплата не прошла"),
+    ],
+)
 def test_unpaid_order_offers_payment_continuation(
-    page, platform, payment_state
+    page, platform, payment_state, label
 ):
     network = CustomerNetwork()
     network.orders = [
@@ -570,7 +577,8 @@ def test_unpaid_order_offers_payment_continuation(
     ]
     open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
     card = page.locator(f'[data-order-id="{ORDER}"]')
-    expect(card).to_contain_text("Ожидает оплаты")
+    expect(card.get_by_text("Создан", exact=True)).to_be_visible()
+    expect(card.get_by_text(label, exact=True)).to_be_visible()
     expect(
         card.get_by_role("button", name="Продолжить оформление")
     ).to_be_visible()

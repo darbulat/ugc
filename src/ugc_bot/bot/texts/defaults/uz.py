@@ -627,7 +627,7 @@ UZ: dict[str, str] = {
     "msg_coop_format": "Qaysi hamkorlik formati sizga mos?",
     "msg_enter_number": "Raqam kiriting, masalan 1500.",
     "msg_how_many_creators": "Sizga nechta kreator kerak?",
-    "msg_product_link": "Mahsulot havolasini kiriting (javob bergan kreatorlar uchun):",
+    "msg_product_link": "Mahsulot yoki loyiha sahifasining to‘liq havolasini yuboring, masalan https://example.com/product. Uni javob bergan kreatorlar ko‘radi.",
     "msg_choose_count": "Qiymatlardan birini tanlang: {counts}.",
     "msg_where_use_ugc": "UGC-videoni qaerda ishlatmoqchisiz?",
     "msg_send_photo": "Mahsulot fotosini yuboring:",

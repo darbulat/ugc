@@ -1740,6 +1740,7 @@ async def list_orders(
             order_type=o.order_type.value,
             created_at=o.created_at.isoformat(),
             financial_version=None if o.complimentary else o.financial_version,
+            payment_state="complimentary" if o.complimentary else "unknown",
             payment_link=_payment_link_for_order(str(o.order_id), bot_username)
             if o.status == OrderStatus.NEW
             and o.financial_version is None

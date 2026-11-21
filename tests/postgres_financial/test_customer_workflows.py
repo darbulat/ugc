@@ -678,6 +678,41 @@ async def test_owner_principal_status_and_blogger_permissions(intake_env):
 
 
 @pytest.mark.asyncio
+async def test_order_list_payment_states_use_owned_payment_facts(intake_env):
+    env = intake_env
+    view = services(env)["client_order_view_service"]
+    owner = env["user"]
+    principal = AuthenticatedMessengerPrincipal(
+        owner.user_id, "telegram", owner.telegram_id
+    )
+    awaiting, processing, paid = [await order(env) for _ in range(3)]
+    with Session(env["pg"]) as db, db.begin():
+        for row, status in (
+            (processing, PaymentStatus.PENDING),
+            (paid, PaymentStatus.PAID),
+        ):
+            db.add(
+                PaymentModel(
+                    order_id=row.order_id,
+                    status=status,
+                    provider="synthetic",
+                    external_id=str(uuid4()),
+                    amount=1,
+                    currency="RUB",
+                )
+            )
+    assert await view.payment_states(
+        principal, [awaiting.order_id, processing.order_id, paid.order_id]
+    ) == {
+        awaiting.order_id: "unpaid",
+        processing.order_id: "processing",
+        paid.order_id: "paid",
+    }
+    with pytest.raises(PermissionError, match="customer_order_forbidden"):
+        await view.payment_states(principal, [awaiting.order_id, uuid4()])
+
+
+@pytest.mark.asyncio
 async def test_optout_before_activity_and_trusted_paid_hook(intake_env):
     env = intake_env
     follow = services(env)["client_followup_service"]

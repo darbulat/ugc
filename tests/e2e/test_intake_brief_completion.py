@@ -15,6 +15,17 @@ def test_full_brief_restores_and_submits_without_losing_filters(page, platform):
     network = SelectionNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
+    expect(page.locator("#form-umc-intake")).to_be_visible()
+    expect(page.locator("#form-umc-intake")).to_contain_text(
+        "Поля со звёздочкой обязательны"
+    )
+    for field in ("product", "brief", "due", "contact", "honorarium"):
+        expect(page.locator(f"#intake-{field}")).to_have_attribute(
+            "aria-describedby", f"intake-{field}-hint"
+        )
+        expect(page.locator(f"#intake-{field}-hint")).to_be_visible()
+    page.locator("#btn-intake-create").click()
+    assert not network.creates
     fill(page)
     for name, value in dict(
         city="Москва",
