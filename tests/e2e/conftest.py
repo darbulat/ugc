@@ -146,6 +146,7 @@ def test_database(
     from ugc_bot.infrastructure.db import (  # noqa: F401
         creator_invite_models,
         dispatch_control,
+        manager_application_models,
         models,
         order_review_models,
         paid_selection_models,

@@ -196,6 +196,7 @@ def register_managers(  # noqa: C901
         rows = await asyncio.to_thread(
             read, q.strip()[:100], status, (page - 1) * 30
         )
+        request.session.pop("managers_message_is_error", None)
         return templates.TemplateResponse(
             request,
             "managers.html",
@@ -229,6 +230,9 @@ def register_managers(  # noqa: C901
                 labels=MANAGER_FIELD_LABELS,
                 version=application_version(row["submitted_at"]),
                 message=request.session.pop("managers_message", None),
+                message_is_error=request.session.pop(
+                    "managers_message_is_error", False
+                ),
             ),
             headers={"Cache-Control": "no-store"},
         )
@@ -260,6 +264,7 @@ def register_managers(  # noqa: C901
             not version_text.isdecimal() or len(version_text) > 20
         ):
             raise HTTPException(422)
+        is_error = False
         try:
             if form.get("from_detail") == "1" and command != "register":
                 target += f"/{UUID(identity)}"
@@ -274,5 +279,7 @@ def register_managers(  # noqa: C901
                 message = "Менеджер принят. Уведомление поставлено в очередь."
         except ValueError as exc:
             message = str(exc)
+            is_error = True
         request.session["managers_message"] = message
+        request.session["managers_message_is_error"] = is_error
         return RedirectResponse(target, status_code=303)

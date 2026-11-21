@@ -75,6 +75,7 @@ from ugc_bot.admin.order_worklist import (
     order_archived,
     order_closure_reason,
     order_deletion_blocker,
+    order_number_condition,
     order_requires_closure_reason,
     order_test_candidate,
     worklist_conditions,
@@ -2536,6 +2537,8 @@ class AdminDashboardService:
     @staticmethod
     def _order_search_condition(search: str) -> ColumnElement[bool]:
         """Return SQL condition for free-text order search."""
+        if (number := order_number_condition(search)) is not None:
+            return number
         escaped = (
             search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         )
@@ -2551,7 +2554,11 @@ class AdminDashboardService:
             OrderModel.product_link.ilike(like_pattern),
             func.cast(OrderModel.order_id, String).ilike(like_pattern),
         ]
-        return or_(*conditions)
+        try:
+            order_id = UUID(search.strip())
+        except ValueError:
+            return or_(*conditions)
+        return or_(OrderModel.order_id == order_id, *conditions)
 
     def _is_completed(self, order: OrderModel, responses: int) -> bool:
         """Return True when order is completed."""
