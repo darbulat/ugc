@@ -630,21 +630,21 @@ async def successful_payment_handler(
         return
 
     try:
-        await payment_service.confirm_telegram_payment(
-            user_id=user.user_id,
-            order_id=order_id,
-            provider_payment_charge_id=(
-                incoming.successful_payment.provider_payment_charge_id
-            ),
-            total_amount=incoming.successful_payment.total_amount,
-            currency=incoming.successful_payment.currency,
-            receipt=incoming.successful_payment,
+        confirmation = (
+            await payment_service.confirm_telegram_payment_with_status(
+                user_id=user.user_id,
+                order_id=order_id,
+                provider_payment_charge_id=(
+                    incoming.successful_payment.provider_payment_charge_id
+                ),
+                total_amount=incoming.successful_payment.total_amount,
+                currency=incoming.successful_payment.currency,
+                receipt=incoming.successful_payment,
+            )
         )
     except (OrderCreationError, UserNotFoundError) as exc:
         # Record failed payment metric (middleware logs and shows user message)
-        metrics_collector = None
-        if hasattr(payment_service, "metrics_collector"):
-            metrics_collector = payment_service.metrics_collector
+        metrics_collector = getattr(payment_service, "metrics_collector", None)
         if metrics_collector:
             metrics_collector.record_payment_failed(
                 order_id=str(order_id),
@@ -652,6 +652,9 @@ async def successful_payment_handler(
             )
         # Re-raise so middleware can handle it
         raise
+
+    if confirmation.legacy_replay:
+        return
 
     order = await payment_service.get_order(order_id)
     if order and getattr(payment_service, "order_notices", None) is None:

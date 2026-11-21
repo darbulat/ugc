@@ -77,6 +77,12 @@ class InvoiceData:
     is_ru: bool
 
 
+@dataclass(frozen=True)
+class TelegramPaymentConfirmation:
+    payment: Payment
+    legacy_replay: bool = False
+
+
 def calculate_invoice_total(
     contact_pricing_price: Decimal,
     order_price: Decimal,
@@ -124,12 +130,7 @@ class PaymentService:
     ) -> Payment:
         """Confirm a Telegram payment and activate order."""
 
-        if self.transaction_manager is None:
-            raise ValueError(
-                "PaymentService needs transaction_manager for atomic payment."
-            )
-
-        return await self._confirm_telegram_payment_impl(
+        confirmation = await self.confirm_telegram_payment_with_status(
             user_id,
             order_id,
             provider_payment_charge_id,
@@ -137,6 +138,7 @@ class PaymentService:
             currency,
             receipt,
         )
+        return confirmation.payment
 
     async def get_order(self, order_id: UUID) -> Order | None:
         """Fetch order by id within a transaction boundary."""
@@ -332,11 +334,14 @@ class PaymentService:
             receipt,
             session=session,
         )
-        if self.order_notices is not None:
-            await self.order_notices.enqueue(
-                order.order_id, "paid", session=session
-            )
+        await self._enqueue_paid_order_notice(order.order_id, session)
         return payment
+
+    async def _enqueue_paid_order_notice(
+        self, order_id: UUID, session: object
+    ) -> None:
+        if self.order_notices is not None:
+            await self.order_notices.enqueue(order_id, "paid", session=session)
 
     async def authorize_legacy_checkout(
         self,
@@ -411,7 +416,7 @@ class PaymentService:
             raise OrderCreationError("complimentary_order_not_payable")
         return order
 
-    async def _confirm_telegram_payment_impl(
+    async def confirm_telegram_payment_with_status(
         self,
         user_id: UUID,
         order_id: UUID,
@@ -419,10 +424,13 @@ class PaymentService:
         total_amount: int,
         currency: str,
         receipt: PaymentSuccess | None = None,
-    ) -> Payment:
-        """Confirm payment (assumes transaction_manager is set)."""
+    ) -> TelegramPaymentConfirmation:
+        """Report whether an existing legacy receipt was replayed."""
 
-        assert self.transaction_manager is not None
+        if self.transaction_manager is None:
+            raise ValueError(
+                "PaymentService needs transaction_manager for atomic payment."
+            )
         async with self.transaction_manager.transaction() as session:
             user = await self.user_repo.get_by_id(user_id, session=session)
             if user is None:
@@ -438,7 +446,7 @@ class PaymentService:
             order = await self._locked_payment_order(order_id, user_id, session)
 
             if order.financial_version is not None:
-                return await self._capture_v1(
+                payment = await self._capture_v1(
                     order,
                     user_id,
                     provider_payment_charge_id,
@@ -447,6 +455,7 @@ class PaymentService:
                     receipt,
                     session,
                 )
+                return TelegramPaymentConfirmation(payment)
 
             existing = await self.payment_repo.get_by_order(
                 order_id, session=session
@@ -464,11 +473,8 @@ class PaymentService:
                     raise OrderCreationError(
                         "Payment replay identity mismatch."
                     )
-                if self.order_notices is not None:
-                    await self.order_notices.enqueue(
-                        order.order_id, "paid", session=session
-                    )
-                return existing
+                await self._enqueue_paid_order_notice(order.order_id, session)
+                return TelegramPaymentConfirmation(existing, legacy_replay=True)
 
             if order.status != OrderStatus.NEW:
                 raise OrderCreationError("Order is not in NEW status.")
@@ -510,10 +516,7 @@ class PaymentService:
                 order, status=OrderStatus.PENDING_MODERATION
             )
             await self.order_repo.save(order_pending, session=session)
-            if self.order_notices is not None:
-                await self.order_notices.enqueue(
-                    order.order_id, "paid", session=session
-                )
+            await self._enqueue_paid_order_notice(order.order_id, session)
 
         logger.info(
             "Payment confirmed",
@@ -528,4 +531,4 @@ class PaymentService:
             },
         )
 
-        return payment
+        return TelegramPaymentConfirmation(payment)

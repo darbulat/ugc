@@ -79,6 +79,12 @@ async def run_once(
             f"https://t.me/{username}?start=pay_{order.order_id}",
             "Продолжить оплату",
         )
+        async with transactions.transaction() as session:
+            payment_started = await unpaid_reminders.cancel_if_payment_started(
+                session, order.order_id, datetime.now(timezone.utc)
+            )
+        if payment_started:
+            continue
         state, reference = await _deliver(transport, message)
         async with transactions.transaction() as session:
             await unpaid_reminders.finish(
