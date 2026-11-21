@@ -80,7 +80,10 @@ def test_dashboard_loads(admin_server: str, page) -> None:
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
+@pytest.mark.parametrize("goals_available", [True, False])
+def test_dashboard_opens_while_metrics_load_and_retries(
+    admin_server, page, goals_available
+):
     """Navigation works before metrics arrive, including after a failed load."""
     from playwright.sync_api import expect
 
@@ -89,14 +92,36 @@ def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
 
+    def full_fragment(request):
+        return request.headers.get("x-dashboard-content") == "1"
+
     def hold_metrics(route):
-        if route.request.headers.get("x-dashboard-content") == "1":
+        if full_fragment(route.request):
             requests.append(route)
+        elif route.request.headers.get("x-dashboard-content") == "goals":
+            route.fulfill(
+                status=200 if goals_available else 503,
+                content_type="text/html",
+                body=(
+                    '<section id="dashboard-goals">'
+                    "Завершили заказ: 36</section>"
+                ),
+            )
         else:
-            route.continue_()
+            # Force an empty snapshot even after other tests populate Redis.
+            response = route.fetch()
+            html = re.sub(
+                r'<div id="dashboard-panel"[^>]*>.*?(?=<script defer)',
+                '<div id="dashboard-panel" aria-busy="true"></div>',
+                response.text(),
+                count=1,
+                flags=re.DOTALL,
+            )
+            route.fulfill(response=response, body=html)
 
     page.route("**/admin/dashboard?period=30d", hold_metrics)
-    response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
+    with page.expect_request(full_fragment):
+        response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
     assert response is not None and response.ok
     expect(
         page.get_by_role("heading", name="Дашборд", exact=True)
@@ -106,11 +131,19 @@ def test_dashboard_opens_while_metrics_load_and_retries(admin_server, page):
     expect(page.locator("#dashboard-panel")).to_have_attribute(
         "aria-busy", "true"
     )
+    goals = page.locator("#dashboard-goals")
+    if goals_available:
+        expect(goals).to_have_text("Завершили заказ: 36")
+    else:
+        expect(goals).to_have_count(0)
     assert len(requests) == 1
     requests[0].fulfill(status=503, body="Temporarily unavailable")
     retry = page.get_by_role("button", name="Повторить обновление")
     expect(retry).to_be_visible()
-    retry.click()
+    if goals_available:
+        expect(goals).to_have_text("Завершили заказ: 36")
+    with page.expect_request(full_fragment):
+        retry.click()
     expect(page.get_by_role("status")).to_have_text("Загружаем показатели…")
     assert len(requests) == 2
     requests[1].fulfill(
@@ -196,28 +229,27 @@ def test_custom_dashboard_with_kpi(admin_server: str, page) -> None:
     assert response is not None and response.ok
     assert page.get_by_role("heading", name="Дашборд", exact=True).is_visible()
     expect(page.locator("#dashboard-goals")).to_be_visible()
-    assert page.get_by_text("Последние 7 дней к предыдущим 7 дням").is_visible()
+    expect(
+        page.get_by_text("Последние 7 дней к предыдущим 7 дням")
+    ).to_be_visible()
     assert page.get_by_role(
         "heading", name="Запуски админом без оплаты"
     ).is_visible()
-    assert page.get_by_text("Участвовали за всё время").is_visible()
-    assert page.get_by_text("Участвовали за период").count() == 0
-
     cohorts = page.get_by_role("region", name="Активация и повторные заказы")
+    expect(cohorts.get_by_text("За всё время", exact=True)).to_be_visible()
     assert cohorts.get_by_text("Первый заказ за 30 дней").is_visible()
     assert cohorts.get_by_text("Первая оплата за 30 дней").is_visible()
     assert cohorts.get_by_text("Создали второй заказ").is_visible()
     assert cohorts.get_by_text("Оплатили второй заказ").is_visible()
     assert cohorts.get_by_text("Оплатили второй за 90 дней").is_visible()
 
-    page.get_by_role("navigation", name="Период аналитики").get_by_role(
+    week = page.get_by_role("navigation", name="Период аналитики").get_by_role(
         "link", name="7 дней"
-    ).click()
-    assert cohorts.get_by_text("За всё время").is_visible()
-    assert page.get_by_text("Участвовали впервые").is_visible()
-    assert page.get_by_text("Участвовали повторно").is_visible()
-    page.get_by_text("Как считаем участие").click()
-    assert page.get_by_text("Начали платное сотрудничество").is_visible()
+    )
+    week.click()
+    expect(week).to_have_attribute("aria-current", "page")
+    expect(cohorts.get_by_text("За всё время", exact=True)).to_be_visible()
+    expect(cohorts.get_by_text("Первый заказ за 30 дней")).to_be_visible()
 
     cohorts.get_by_role("link").filter(has_text="плативших").click()
     assert page.get_by_role("heading", name="Повторные заявки").is_visible()

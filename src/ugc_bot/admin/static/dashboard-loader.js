@@ -24,6 +24,19 @@ async function loadCharts() {
   await loadScript(panel.dataset.chartsScript);
 }
 
+async function loadGoals() {
+  const response = await fetch(window.location.href, {
+    headers: {"X-Dashboard-Content": "goals"},
+    cache: "no-store",
+    signal: AbortSignal.timeout(3500),
+  });
+  if (!response.ok || response.redirected) return;
+  const template = document.createElement("template");
+  template.innerHTML = await response.text();
+  const goals = template.content.firstElementChild;
+  if (goals?.matches("#dashboard-goals")) panel.replaceChildren(goals);
+}
+
 async function loadDashboard() {
   retry.hidden = true;
   retry.disabled = true;
@@ -37,6 +50,9 @@ async function loadDashboard() {
   const cancel = () => controller.abort();
   window.addEventListener("pagehide", cancel, {once: true});
   try {
+    if (!previous && !panel.querySelector("#dashboard-goals")) {
+      await loadGoals().catch(() => {});
+    }
     const response = await fetch(window.location.href, {
       headers: {"X-Dashboard-Content": "1"},
       cache: "no-store",

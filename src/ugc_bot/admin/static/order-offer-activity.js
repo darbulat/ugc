@@ -96,6 +96,8 @@
       setStatus('Обновляется автоматически');
     } catch {
       setStatus('Не удалось обновить данные. Повторим попытку.');
+    } finally {
+      panel.setAttribute('aria-busy', 'false');
     }
     window.setTimeout(refresh, interval);
   }
@@ -115,6 +117,5 @@
     button.disabled = true;
     button.textContent = 'Отправляем…';
   });
-  filterRows();
   refresh();
 })();

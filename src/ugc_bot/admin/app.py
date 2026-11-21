@@ -4,6 +4,7 @@ import asyncio
 import dataclasses
 import logging
 from collections.abc import Sequence
+from contextlib import suppress
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
@@ -804,7 +805,6 @@ async def _get_dashboard_payload_cached(
                 dict[str, Any],
                 deserialize_admin_payload(raw),
             )
-    options = {} if include_referrers else {"include_referrers": False}
     payload = await dashboard_service.get_dashboard(
         period_key,
         referrers_page=referrers_page,
@@ -813,7 +813,7 @@ async def _get_dashboard_payload_cached(
         referrers_order=referrers_order or "desc",
         referrers_filter=referrers_filter,
         include_timings=include_timings,
-        **options,
+        include_referrers=include_referrers,
     )
     if cache and use_cache and cache_key:
         await cache.set(
@@ -842,35 +842,15 @@ def _dashboard_cache_key(
     )
 
 
-async def _render_dashboard_page(
-    request: Request,
-    auth: AdminAuth,
+async def _refresh_dashboard_snapshot(
+    snapshots: DashboardSnapshots,
     dashboard_service: AdminDashboardService,
-    templates: Jinja2Templates,
-    cache: AdminCache | None,
-    period: str,
-    referrers_page: int,
-    referrers_per_page: int,
-    referrers_sort: str,
-    referrers_order: str,
-    referrers_filter: str,
-    timings: str,
+    period_key: PeriodKey,
+    period_date: str,
+    *,
+    include_timings: bool = False,
+    prewarm: bool = False,
 ):
-    """Render dashboard HTML page."""
-    if not await auth.authenticate(request):
-        return admin_login_redirect(request)
-    response_headers = {
-        "Cache-Control": "private, no-store",
-        "Vary": "X-Dashboard-Content",
-    }
-    content_only = request.headers.get("X-Dashboard-Content") == "1"
-    period_key = _normalize_period(period)
-    zone = dashboard_service._timezone
-    period_date = datetime.now(zone).date().isoformat()
-    key = f"{zone.key}:{period_key}"
-    snapshots: DashboardSnapshots = request.app.state.dashboard_snapshots
-    include_timings = timings.lower() in ("1", "true", "yes")
-
     async def calculate(previous):
         if previous is not None:
             return previous | {
@@ -879,12 +859,19 @@ async def _render_dashboard_page(
                 ),
                 "counts_at": datetime.now(timezone.utc).isoformat(),
             }
+        goals = None if include_timings else snapshots.recent_goals()
+        if prewarm and goals is None:
+            with suppress(TimeoutError, SQLAlchemyError):
+                goals = await snapshots.goals(
+                    dashboard_service.get_dashboard_goals
+                )
         window = dashboard_service._build_period_window(period_key)
         payload, creator_base, counts = await asyncio.gather(
             dashboard_service.get_dashboard(
                 period_key,
                 include_referrers=False,
                 include_timings=include_timings,
+                goals=goals,
             ),
             dashboard_service.get_creator_base(period_key),
             dashboard_service.get_worklist_attention_counts(),
@@ -901,22 +888,67 @@ async def _render_dashboard_page(
             "range_end": window.current_end.isoformat(),
         }
 
+    return await snapshots.refresh(
+        f"{dashboard_service._timezone.key}:{period_key}",
+        _dashboard_cache_ttl(period_key),
+        period_date,
+        calculate,
+        force=include_timings,
+    )
+
+
+async def _render_dashboard_page(
+    request: Request,
+    auth: AdminAuth,
+    dashboard_service: AdminDashboardService,
+    templates: Jinja2Templates,
+    period: str,
+    referrers_sort: str,
+    referrers_order: str,
+    referrers_filter: str,
+    timings: str,
+):
+    """Render dashboard HTML page or a requested fragment."""
+    if not await auth.authenticate(request):
+        return admin_login_redirect(request)
+    response_headers = {
+        "Cache-Control": "private, no-store",
+        "Vary": "X-Dashboard-Content",
+    }
+    fragment = request.headers.get("X-Dashboard-Content")
+    content_only = fragment == "1"
+    period_key = _normalize_period(period)
+    zone = dashboard_service._timezone
+    period_date = datetime.now(zone).date().isoformat()
+    snapshots: DashboardSnapshots = request.app.state.dashboard_snapshots
+    include_timings = timings.lower() in ("1", "true", "yes")
+
     saved: dict[str, Any] | None
-    if content_only:
-        try:
-            saved = await snapshots.refresh(
-                key,
-                _dashboard_cache_ttl(period_key),
-                period_date,
-                calculate,
-                force=include_timings,
+    try:
+        if fragment == "goals":
+            goals = await snapshots.goals(dashboard_service.get_dashboard_goals)
+            return templates.TemplateResponse(
+                request,
+                "dashboard_goals.html",
+                {"payload": goals},
+                headers=response_headers,
             )
-        except (TimeoutError, SQLAlchemyError):
-            raise HTTPException(
-                503, "Не удалось обновить показатели. Повторите попытку."
-            ) from None
-    else:
-        saved = await snapshots.read(key)
+        if content_only:
+            saved = await _refresh_dashboard_snapshot(
+                snapshots,
+                dashboard_service,
+                period_key,
+                period_date,
+                include_timings=include_timings,
+            )
+        else:
+            saved = await snapshots.read(f"{zone.key}:{period_key}")
+    except (TimeoutError, SQLAlchemyError):
+        raise HTTPException(
+            503,
+            "Не удалось обновить показатели. Повторите попытку.",
+            headers=response_headers,
+        ) from None
     if saved is None:
         return templates.TemplateResponse(
             request,
@@ -1290,7 +1322,9 @@ async def _render_order_detail_page(
     """Render order detail HTML page."""
     if not await auth.authenticate(request):
         return admin_login_redirect(request)
-    order = await dashboard_service.get_order_card(order_id)
+    order = await dashboard_service.get_order_card(
+        order_id, include_responses=False
+    )
     if order is None:
         raise HTTPException(status_code=404, detail="Заказ не найден")
     messages = request.session.get("order_closure_result", {})
@@ -1300,19 +1334,11 @@ async def _render_order_detail_page(
     checkout = getattr(request.app.state, "browser_checkout", None)
     browser_payment = await checkout.view(order_id) if checkout else None
     review_bot = getattr(request.app.state, "checkout_review_bot", None)
-    from ugc_bot.admin.order_creators import creator_workspace
-
-    workspace = creator_workspace(
-        order.get("responses_list", []),
-        {"currency": order.get("currency", "RUB")},
-        offer_price=order.get("price"),
-    )
     return templates.TemplateResponse(
         request,
         "order_detail.html",
         {
             "order": order,
-            "workspace": workspace,
             "status_labels": ORDER_STATUS_LABELS,
             "closure_reason_limit": ORDER_CLOSURE_REASON_LIMIT,
             "closure_result": closure_result,
@@ -1701,12 +1727,9 @@ def _register_dashboard_html_routes(
             auth,
             dashboard_service,
             templates,
-            cache,
             period
             or ("30d" if work_period == "90d" else work_period)
             or "today",
-            referrers_page,
-            referrers_per_page,
             referrers_sort,
             referrers_order,
             referrers_filter,
@@ -2012,11 +2035,31 @@ def _register_dashboard_routes(
     dashboard_service: AdminDashboardService,
     templates: Jinja2Templates,
     cache: AdminCache | None = None,
+    *,
+    warm_snapshots: bool = False,
 ) -> None:
     """Register dashboard and list routes on the admin app."""
     _LIST_CACHE_TTL = 90
     snapshots = DashboardSnapshots(cache)
     app.state.dashboard_snapshots = snapshots
+
+    async def warm_periods() -> None:
+        # Leave the startup path free and use the same refreshes as visitors.
+        periods: tuple[PeriodKey, ...] = ("today", "30d")
+        for period in periods:
+            date = datetime.now(dashboard_service._timezone).date().isoformat()
+            try:
+                await _refresh_dashboard_snapshot(
+                    snapshots, dashboard_service, period, date, prewarm=True
+                )
+            except (TimeoutError, SQLAlchemyError):
+                continue
+
+    async def warm_dashboard_snapshots() -> None:
+        snapshots.start_warming(warm_periods())
+
+    if warm_snapshots:
+        app.router.add_event_handler("startup", warm_dashboard_snapshots)
     app.router.add_event_handler("shutdown", snapshots.close)
     require_admin = _make_require_admin(auth)
     _register_dashboard_html_routes(
@@ -4433,7 +4476,13 @@ def create_admin_app() -> FastAPI:
         socket_connect_timeout=config.redis.redis_socket_connect_timeout,
     )
     _register_dashboard_routes(
-        app, auth, dashboard_service, templates, cache=admin_cache
+        app,
+        auth,
+        dashboard_service,
+        templates,
+        cache=admin_cache,
+        warm_snapshots=config.redis.use_redis_storage
+        and bool(config.redis.redis_url),
     )
 
     @app.post("/admin/order-photo-upload")

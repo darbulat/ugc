@@ -1,9 +1,10 @@
-"""Last successful dashboard values, refreshed only when a visitor asks."""
+"""Last successful dashboard values and shared refresh work."""
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any
 
 from ugc_bot.infrastructure.redis_cache import (
@@ -53,6 +54,34 @@ class DashboardSnapshots:
         self.cache = cache
         self._last: dict[str, Snapshot] = {}
         self._running: dict[str, asyncio.Task[Snapshot]] = {}
+        self._goals: tuple[float, Snapshot] | None = None
+        self._warming: asyncio.Task[None] | None = None
+
+    def start_warming(self, warm: Coroutine[Any, Any, None]) -> None:
+        self._warming = asyncio.create_task(warm)
+
+    def recent_goals(self) -> Snapshot | None:
+        if self._goals is not None:
+            calculated_at, goals = self._goals
+            if monotonic() - calculated_at < 5:
+                return goals
+        return None
+
+    async def goals(
+        self, calculate: Callable[[], Awaitable[Snapshot]]
+    ) -> Snapshot:
+        recent = self.recent_goals()
+        if recent is not None:
+            return recent
+
+        async def calculate_goals() -> Snapshot:
+            async with asyncio.timeout(3):
+                goals = await calculate()
+            # Share these values with the full refresh and concurrent openings.
+            self._goals = monotonic(), goals
+            return goals
+
+        return await self._share("goals", calculate_goals)
 
     async def read(self, key: str) -> Snapshot | None:
         if self.cache is not None:
@@ -88,14 +117,20 @@ class DashboardSnapshots:
         force: bool = False,
     ) -> Snapshot:
         task_key = f"{key}:diagnostics" if force else key
-        task = self._running.get(task_key)
+        return await self._share(
+            task_key,
+            lambda: self._refresh(key, ttl, period_date, calculate, force),
+        )
+
+    async def _share(
+        self, key: str, calculate: Callable[[], Coroutine[Any, Any, Snapshot]]
+    ) -> Snapshot:
+        task = self._running.get(key)
         if task is None or task.done():
-            task = asyncio.create_task(
-                self._refresh(key, ttl, period_date, calculate, force)
-            )
-            self._running[task_key] = task
+            task = asyncio.create_task(calculate())
+            self._running[key] = task
             task.add_done_callback(
-                lambda completed: self._finished(task_key, completed)
+                lambda completed: self._finished(key, completed)
             )
         # Leaving the page must not cancel the result needed by other visitors.
         return await asyncio.shield(task)
@@ -156,6 +191,9 @@ class DashboardSnapshots:
             return result
 
     async def close(self) -> None:
+        if self._warming is not None:
+            self._warming.cancel()
+            await asyncio.gather(self._warming, return_exceptions=True)
         tasks = list(self._running.values())
         for task in tasks:
             task.cancel()

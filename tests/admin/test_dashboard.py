@@ -128,6 +128,49 @@ def test_dashboard_shell_opens_without_loading_metrics(monkeypatch) -> None:
     counts.assert_not_awaited()
 
 
+def test_dashboard_goals_fragment_returns_only_authenticated_counts(
+    monkeypatch,
+):
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={},
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    counts = AsyncMock(
+        return_value={
+            "completed_creators_count": 37,
+            "picked_creators_count": 56,
+            "responded_creators_count": 81,
+            "managers_count": 9,
+        }
+    )
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard_goals", counts)
+    path = "/admin/dashboard?period=30d"
+    headers = {"X-Dashboard-Content": "goals"}
+    auth = AdminAuth.authenticate
+    auth.return_value = False
+    assert client.get(path, headers=headers, follow_redirects=False).is_redirect
+    counts.assert_not_awaited()
+
+    auth.return_value = True
+    response = client.get(path, headers=headers)
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["vary"] == "X-Dashboard-Content"
+    assert re.findall(r"<strong>(\d+)</strong>", response.text) == [
+        "37",
+        "56",
+        "81",
+        "9",
+    ]
+    assert "data-dashboard-content" not in response.text
+    counts.assert_awaited_once()
+    AdminDashboardService.get_dashboard.assert_not_awaited()
+
+
 @pytest.mark.parametrize("days_old", [0, 1])
 def test_saved_dashboard_is_visible_without_waiting_for_new_counts(
     monkeypatch, days_old
