@@ -2007,7 +2007,7 @@ def _register_dashboard_routes(
     _LIST_CACHE_TTL = 90
     snapshots = DashboardSnapshots(cache)
     app.state.dashboard_snapshots = snapshots
-    app.add_event_handler("shutdown", snapshots.close)
+    app.router.add_event_handler("shutdown", snapshots.close)
     require_admin = _make_require_admin(auth)
     _register_dashboard_html_routes(
         app, auth, dashboard_service, templates, cache, _LIST_CACHE_TTL

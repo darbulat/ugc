@@ -1,17 +1,19 @@
 """Tests for admin app setup."""
 
 from datetime import datetime, timezone
+from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from ugc_bot.admin.app import (
     BloggerProfileAdmin,
     ComplaintAdmin,
-    DashboardLinkView,
     EnumAwareAdmin,
     InteractionAdmin,
     OrderAdmin,
@@ -25,6 +27,7 @@ from ugc_bot.admin.app import (
     _update_order_location_geometry_after_geography_change,
     create_admin_app,
 )
+from ugc_bot.admin.dashboard_snapshots import DashboardSnapshots
 from ugc_bot.application.services.offer_dispatch_service import (
     OfferDispatchService,
 )
@@ -112,6 +115,78 @@ def test_order_photo_upload_requires_admin_session(
 
     assert response.status_code == 401
     assert response.json()["error"] == "Требуется вход в админку"
+
+
+@pytest.mark.parametrize(
+    ("image_format", "content_type"),
+    [("PNG", "image/png"), ("JPEG", "image/jpeg")],
+)
+def test_order_photo_upload_parses_multipart_for_admin(
+    monkeypatch: pytest.MonkeyPatch, image_format: str, content_type: str
+) -> None:
+    """The authenticated upload parses and forwards an actual image."""
+    monkeypatch.setenv("BOT_TOKEN", "test-token")
+    monkeypatch.setenv("ADMIN_USERNAME", "test_admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("SUPPORT_CHAT_ID", "12")
+    monkeypatch.setenv("USE_REDIS_STORAGE", "false")
+
+    encoded = BytesIO()
+    Image.new("RGB", (16, 16), "white").save(encoded, format=image_format)
+    image = encoded.getvalue()
+    bot = SimpleNamespace(
+        send_photo=AsyncMock(
+            return_value=SimpleNamespace(
+                photo=[SimpleNamespace(file_id="synthetic-photo")],
+                chat=SimpleNamespace(id=12),
+                message_id=42,
+            )
+        ),
+        delete_message=AsyncMock(),
+        session=SimpleNamespace(close=AsyncMock()),
+    )
+    with (
+        patch("ugc_bot.admin.app.Bot", return_value=bot),
+        TestClient(create_admin_app(), follow_redirects=False) as client,
+    ):
+        login = client.post(
+            "/admin/login",
+            data={"username": "test_admin", "password": TEST_ADMIN_PASSWORD},
+        )
+        assert login.status_code == 302
+        response = client.post(
+            "/admin/order-photo-upload",
+            files={
+                "photo": (f"test.{image_format.lower()}", image, content_type)
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {"file_id": "synthetic-photo"}
+    bot.send_photo.assert_awaited_once()
+    assert bot.send_photo.await_args.kwargs["photo"].data == image
+    bot.session.close.assert_awaited_once()
+
+
+def test_admin_shutdown_closes_dashboard_snapshots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The FastAPI lifespan drains dashboard snapshot tasks at shutdown."""
+    monkeypatch.setenv("BOT_TOKEN", "test-token")
+    monkeypatch.setenv("ADMIN_USERNAME", "test_admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("USE_REDIS_STORAGE", "false")
+    close = AsyncMock()
+    monkeypatch.setattr(DashboardSnapshots, "close", close)
+
+    with TestClient(create_admin_app()):
+        close.assert_not_awaited()
+
+    close.assert_awaited_once()
 
 
 def test_admin_health_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2574,17 +2649,29 @@ def test_payout_request_admin_list_count_form_edit_query_exclude_deleted() -> (
     assert form_edit_stmt is not None
 
 
-@pytest.mark.asyncio
-async def test_dashboard_link_view_redirect() -> None:
-    """DashboardLinkView.dashboard_redirect redirects to /admin/dashboard."""
-    view = DashboardLinkView()
-    request = MagicMock()
+def test_dashboard_link_view_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dashboard link redirects after authentication."""
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("ADMIN_USERNAME", "test_admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
+    monkeypatch.setenv("ADMIN_SECRET", TEST_ADMIN_SECRET)
+    client = TestClient(create_admin_app(), follow_redirects=False)
 
-    with patch("ugc_bot.admin.app.login_required", lambda f: f):
-        response = await view.dashboard_redirect(request)
+    denied = client.get("/admin/dashboard-mvp", follow_redirects=True)
+    assert denied.status_code == 200
+    assert denied.url.path == "/admin/login"
 
-    assert response.status_code in (302, 307)
-    assert response.headers.get("location") == "/admin/dashboard"
+    login = client.post(
+        "/admin/login",
+        data={"username": "test_admin", "password": TEST_ADMIN_PASSWORD},
+    )
+    assert login.status_code == 302
+
+    response = client.get("/admin/dashboard-mvp")
+    assert response.status_code == 307
+    assert response.headers["location"] == "/admin/dashboard"
 
 
 def test_admin_flowchart_redirects_when_unauthenticated(
