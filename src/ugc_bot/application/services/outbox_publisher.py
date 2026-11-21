@@ -49,7 +49,7 @@ class OutboxPublisher:
     financial_router: FinancialEventRouter | None = None
     dispatch_control: Any = None
     manager_notifier: (
-        Callable[[OutboxEvent, object], Awaitable[None]] | None
+        Callable[[UUID, TransactionManager, int], Awaitable[None]] | None
     ) = None
     counteroffer_notifier: (
         Callable[[OutboxEvent, object], Awaitable[None]] | None
@@ -163,6 +163,14 @@ class OutboxPublisher:
 
         async def _handle(event: OutboxEvent) -> None:
             async with sem:
+                if (
+                    event.event_type in MANAGER_NOTICE_EVENTS
+                    and self.manager_notifier is not None
+                ):
+                    await self._deliver_manager_application(
+                        event.event_id, max_retries
+                    )
+                    return
                 if event.retry_count >= max_retries:
                     await self._mark_failed(
                         event.event_id,
@@ -230,13 +238,6 @@ class OutboxPublisher:
             if event.event_type == COUNTEROFFER_SUBMITTED:
                 if not await self._deliver_counteroffer(event, session):
                     return
-            elif (
-                event.event_type in MANAGER_NOTICE_EVENTS
-                and self.manager_notifier
-            ):
-                if session is None:
-                    raise ValueError("manager_delivery_requires_database")
-                await self.manager_notifier(event, session)
             elif self.financial_router is not None:
                 await self.financial_router.route(event, session=session)
             elif event.event_type == "order.activated":
@@ -252,6 +253,22 @@ class OutboxPublisher:
             )
 
         await with_optional_tx(self.transaction_manager, _run)
+
+    async def _deliver_manager_application(
+        self, event_id: UUID, max_retries: int
+    ) -> None:
+        if self.manager_notifier is None or self.transaction_manager is None:
+            raise ValueError("manager_delivery_requires_database")
+        try:
+            await self.manager_notifier(
+                event_id, self.transaction_manager, max_retries
+            )
+        except Exception as exc:
+            # The notifier owns retries. A database error after transport I/O
+            # must not replace its committed attempt with a pending event.
+            logger.warning(
+                "Manager notice interrupted (%s)", type(exc).__name__
+            )
 
     async def _deliver_counteroffer(
         self, event: OutboxEvent, session: object | None

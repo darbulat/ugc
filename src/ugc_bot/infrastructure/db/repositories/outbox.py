@@ -13,6 +13,7 @@ from ugc_bot.application.financial_delivery_ownership import (
 from ugc_bot.application.ports import OutboxRepository
 from ugc_bot.domain.entities import OutboxEvent
 from ugc_bot.domain.enums import OutboxEventStatus
+from ugc_bot.domain.manager_application import MANAGER_TELEGRAM_RESULT_UNKNOWN
 from ugc_bot.infrastructure.db.models import OutboxEventModel
 from ugc_bot.infrastructure.db.repositories._shared import _resolve_session
 
@@ -200,6 +201,13 @@ class SqlAlchemyOutboxRepository(OutboxRepository):
                         and_(
                             OutboxEventModel.status == OutboxEventStatus.FAILED,
                             OutboxEventModel.created_at < cutoff,
+                            or_(
+                                OutboxEventModel.last_error.is_distinct_from(
+                                    MANAGER_TELEGRAM_RESULT_UNKNOWN
+                                ),
+                                OutboxEventModel.claimed_at.is_(None),
+                                OutboxEventModel.claimed_at < cutoff,
+                            ),
                         ),
                     ),
                 )

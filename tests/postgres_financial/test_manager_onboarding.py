@@ -1,5 +1,6 @@
 """Exercise Telegram verification, admin review, and private manual contacts."""
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from aiogram.client.session.aiohttp import AiohttpSession
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.methods import SendMessage
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -48,6 +50,9 @@ from ugc_bot.domain.enums import MessengerType, UserStatus
 from ugc_bot.domain.manager_application import (
     MANAGER_NOTICE_EVENTS,
     MANAGER_READY_FOR_REVIEW,
+    MANAGER_READY_FOR_REVIEW_V2,
+    MANAGER_SUBMITTED,
+    MANAGER_TELEGRAM_RESULT_UNKNOWN,
     MAX_WRITTEN_LENGTH,
     application_fields,
     application_version,
@@ -72,6 +77,163 @@ from ugc_bot.miniapp.api import router as miniapp_router
 from ugc_bot.miniapp.manager_invites import InviteRequest, manager_invite_data
 
 __all__ = ["financial_pg_engine", "intake_env"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("immediate", "failure"),
+    [
+        (False, "lost_response"),
+        (True, "lost_response"),
+        (True, "timeout"),
+        (False, "before_attempt"),
+        (True, "before_attempt"),
+        (False, "after_acceptance"),
+        (True, "after_acceptance"),
+        (False, "result_write"),
+    ],
+)
+async def test_manager_notice_recovery_sends_each_copy_once(
+    intake_env, monkeypatch, immediate, failure
+):
+    env = intake_env
+    user_id = env["user"].user_id
+    container = env["container"]
+    transactions = container.transaction_manager
+    await ManagerApplications(transactions, None).open(user_id)
+    now = datetime.now(timezone.utc)
+    event_ids = [uuid4(), uuid4()]
+    event_type = MANAGER_READY_FOR_REVIEW_V2 if immediate else MANAGER_SUBMITTED
+    addresses = [989041, 989042]
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(APPLICATIONS)
+            .where(APPLICATIONS.c.user_id == user_id)
+            .values(
+                state="submitted", submitted_at=now, instagram_verified_at=now
+            )
+        )
+        for index, (event_id, reviewer, address) in enumerate(
+            zip(
+                event_ids,
+                ("kamilbakhteev", "usemycontent"),
+                addresses,
+                strict=True,
+            )
+        ):
+            db.add(
+                UserModel(
+                    user_id=uuid4(),
+                    username=reviewer,
+                    telegram=reviewer,
+                    telegram_id=str(address),
+                    admin=True,
+                    status="active",
+                    messenger_type="telegram",
+                )
+            )
+            db.add(
+                OutboxEventModel(
+                    event_id=event_id,
+                    aggregate_id=str(user_id),
+                    aggregate_type="manager_application",
+                    event_type=event_type,
+                    created_at=now - timedelta(days=14, seconds=1 - index),
+                    payload={
+                        "reviewer": reviewer,
+                        "submission": application_version(now),
+                    },
+                )
+            )
+
+    accepted: list[int] = []
+    delivery = ManagerApplicationDelivery(env["config"])
+    prepare = delivery._prepare
+    finish = delivery._finish
+
+    async def interrupt_preparation(db, event):
+        if event.event_id == event_ids[0]:
+            monkeypatch.setattr(delivery, "_prepare", prepare)
+            raise asyncio.CancelledError
+        return await prepare(db, event)
+
+    async def interrupt_result_write(event_id, *args):
+        if event_id == event_ids[0]:
+            monkeypatch.setattr(delivery, "_finish", finish)
+            if failure == "after_acceptance":
+                raise asyncio.CancelledError
+            raise OSError("Synthetic failure to record provider acceptance")
+        await finish(event_id, *args)
+
+    if failure == "before_attempt":
+        monkeypatch.setattr(delivery, "_prepare", interrupt_preparation)
+    elif failure in {"after_acceptance", "result_write"}:
+        monkeypatch.setattr(delivery, "_finish", interrupt_result_write)
+
+    async def send(_session, bot, method, **_kwargs):
+        assert bot.token == "123456:synthetic-lost-response"
+        assert isinstance(method, SendMessage)
+        assert method.chat_id in addresses
+        event_id = event_ids[addresses.index(method.chat_id)]
+        with Session(env["pg"]) as db:
+            row = db.get(OutboxEventModel, event_id)
+            assert row.status == "failed"
+            assert row.last_error == MANAGER_TELEGRAM_RESULT_UNKNOWN
+            assert row.claimed_at is not None
+        accepted.append(method.chat_id)
+        if method.chat_id == addresses[0] and failure in {
+            "lost_response",
+            "timeout",
+        }:
+            if failure == "timeout":
+                await asyncio.sleep(5)
+            raise OSError("Synthetic response lost after Telegram acceptance")
+
+    env["config"].bot.bot_token = "123456:synthetic-lost-response"
+    monkeypatch.setattr(AiohttpSession, "make_request", send)
+    repos = container.build_repos()
+    publisher = OutboxPublisher(
+        repos["outbox_repo"],
+        repos["order_repo"],
+        transactions,
+        manager_notifier=delivery,
+    )
+    kafka = SimpleNamespace(publish=AsyncMock())
+    if failure in {"before_attempt", "after_acceptance"}:
+        with pytest.raises(asyncio.CancelledError):
+            if immediate:
+                await delivery.deliver_verification_notices(
+                    transactions, event_ids[:1]
+                )
+            else:
+                await publisher.process_pending_events(kafka, batch_limit=1)
+        with Session(env["pg"]) as db, db.begin():
+            interrupted = db.get(OutboxEventModel, event_ids[0])
+            if failure == "before_attempt":
+                assert interrupted.status == (
+                    "pending" if immediate else "processing"
+                )
+                assert accepted == []
+            else:
+                assert interrupted.status == "failed"
+                assert interrupted.last_error == MANAGER_TELEGRAM_RESULT_UNKNOWN
+                assert accepted == addresses[:1]
+            interrupted.claimed_at = now - timedelta(minutes=16)
+        assert await publisher.cleanup_processed_events(7, 100) == 0
+    elif immediate:
+        await delivery.deliver_verification_notices(transactions, event_ids)
+
+    for _ in range(3):
+        await publisher.process_pending_events(kafka)
+    assert sorted(accepted) == addresses
+    with Session(env["pg"]) as db:
+        first = db.get(OutboxEventModel, event_ids[0])
+        if failure == "before_attempt":
+            assert first.status == "published" and first.last_error is None
+        else:
+            assert first.status == "failed"
+            assert first.last_error == MANAGER_TELEGRAM_RESULT_UNKNOWN
+        assert db.get(OutboxEventModel, event_ids[1]).status == "published"
 
 
 @pytest.mark.asyncio
@@ -246,17 +408,17 @@ async def test_application_verification_review_and_directory(
             "<b>Instagram подтверждён"
         ):
             delayed_confirmation -= 1
-            raise OSError("Synthetic temporary candidate delivery failure")
+            raise TelegramRetryAfter(method, "Synthetic rate limit", 1)
         if (
             delayed_ready
             and method.chat_id == notification_addresses[1]
             and "готова к проверке" in method.text
         ):
             delayed_ready = False
-            raise OSError("Synthetic temporary reviewer delivery failure")
+            raise TelegramRetryAfter(method, "Synthetic rate limit", 1)
         if method.chat_id in delayed_reviewer:
             delayed_reviewer.remove(method.chat_id)
-            raise OSError("Synthetic temporary Telegram outage")
+            raise TelegramRetryAfter(method, "Synthetic rate limit", 1)
         sent.append(method)
 
     monkeypatch.setattr(AiohttpSession, "make_request", collect)

@@ -1,6 +1,7 @@
 """Payment reminder acceptance on isolated PostgreSQL and synthetic users."""
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -238,6 +239,104 @@ async def test_unpaid_reminders_use_test_accounts_without_duplicate_attempts(
             ids["ambiguous"][0]: "unknown",
         }
     await factory.kw["bind"].dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("payment_commit", "payment_status"),
+    [
+        (1, PaymentStatus.PAID),
+        (2, PaymentStatus.PAID),
+        (2, PaymentStatus.PENDING),
+    ],
+)
+async def test_payment_committed_before_transport_stops_reminder(
+    financial_pg_engine, monkeypatch, payment_commit, payment_status
+):
+    user_id, order_id = uuid4(), uuid4()
+    with Session(financial_pg_engine) as session, session.begin():
+        excluded = list(session.scalars(select(UserModel.user_id)))
+        session.add(
+            UserModel(
+                user_id=user_id,
+                username=f"synthetic-{user_id}",
+                telegram_id=str(
+                    11112
+                    + payment_commit
+                    + (payment_status == PaymentStatus.PENDING)
+                ),
+                messenger_type="telegram",
+                status="active",
+                role_chosen_at=AT,
+            )
+        )
+        session.flush()
+        session.add(AdvertiserProfileModel(user_id=user_id, contact="fixture"))
+        session.add(
+            OrderModel(
+                order_id=order_id,
+                advertiser_id=user_id,
+                status=OrderStatus.NEW,
+                offer_text="Synthetic payment race",
+                product_link="https://example.invalid",
+                price=1000,
+                bloggers_needed=1,
+                created_at=AT - timedelta(hours=30),
+            )
+        )
+
+    factory = create_session_factory(
+        financial_pg_engine.url.render_as_string(hide_password=False)
+    )
+    transactions = SessionTransactionManager(factory)
+    committed = 0
+
+    @asynccontextmanager
+    async def transaction():
+        nonlocal committed
+        async with transactions.transaction() as session:
+            yield session
+        committed += 1
+        if committed == payment_commit:
+            with Session(financial_pg_engine) as session, session.begin():
+                session.add(
+                    PaymentModel(
+                        payment_id=uuid4(),
+                        order_id=order_id,
+                        status=payment_status,
+                        paid_at=AT
+                        if payment_status == PaymentStatus.PAID
+                        else None,
+                        amount=1000,
+                        currency="RUB",
+                        provider="fixture",
+                        external_id=str(order_id),
+                    )
+                )
+
+    container = SimpleNamespace(
+        transaction_manager=SimpleNamespace(transaction=transaction)
+    )
+    monkeypatch.setattr(
+        scheduler, "datetime", SimpleNamespace(now=lambda zone: AT)
+    )
+    config = load_config()
+    config.bot.bot_username = "test_only_bot"
+    config.order.unpaid_reminders_enabled = True
+    config.order.unpaid_reminders_start_at = START
+    config.order.unpaid_reminders_excluded_users = frozenset(excluded)
+    transport = SimpleNamespace(send=AsyncMock())
+    try:
+        assert await scheduler.run_once(config, container, transport) == 0
+        assert await scheduler.run_once(config, container, transport) == 0
+        transport.send.assert_not_awaited()
+        with Session(financial_pg_engine) as session:
+            statuses = repo.reminder_statuses(session, [order_id])
+        assert statuses == (
+            {order_id: ("payment_started", AT)} if payment_commit == 2 else {}
+        )
+    finally:
+        await factory.kw["bind"].dispose()
 
 
 @pytest.mark.asyncio

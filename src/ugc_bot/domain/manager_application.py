@@ -13,6 +13,7 @@ MANAGER_APPROVED = "manager.application.approved"
 MANAGER_INSTAGRAM_VERIFIED = "manager.application.instagram_verified"
 MANAGER_READY_FOR_REVIEW = "manager.application.ready_for_review"
 MANAGER_READY_FOR_REVIEW_V2 = "manager.application.ready_for_review.v2"
+MANAGER_TELEGRAM_RESULT_UNKNOWN = "manager_telegram_result_unknown"
 MANAGER_REVIEWABLE_STATES = frozenset({"submitted", "clarify"})
 MANAGER_NOTICE_EVENTS = frozenset(
     {

@@ -1182,6 +1182,17 @@ async def test_successful_payment_handler(
     assert fetched_order is not None
     assert fetched_order.status == OrderStatus.PENDING_MODERATION
 
+    first_confirmation = len(message.answers)
+    await successful_payment_handler(
+        message,
+        user_service,
+        payment_service,
+        content_moderation,
+        config,
+        bot_texts_service=bot_texts_service,
+    )
+    assert len(message.answers) == first_confirmation
+
 
 @pytest.mark.asyncio
 async def test_successful_payment_invalid_payload(
@@ -1589,7 +1600,9 @@ async def test_successful_payment_handler_confirmation_error_with_metrics(
         def __init__(self, metrics_collector: FakeMetricsCollector) -> None:
             self.metrics_collector = metrics_collector
 
-        async def confirm_telegram_payment(self, **kwargs: object) -> None:
+        async def confirm_telegram_payment_with_status(
+            self, **kwargs: object
+        ) -> None:
             raise OrderCreationError("Order not found.")
 
     user_service = UserRoleService(user_repo=user_repo)
