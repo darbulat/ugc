@@ -1,6 +1,56 @@
 (function () {
   'use strict';
 
+  var leafletBase = 'https://unpkg.com/leaflet@1.9.4/dist/';
+  var leafletAssets;
+
+  function loadLeafletAsset(asset) {
+    return new Promise(function (resolve, reject) {
+      var timeout = setTimeout(unavailable, 8000);
+
+      function unavailable() {
+        clearTimeout(timeout);
+        asset.remove();
+        reject(new Error('leaflet_unavailable'));
+      }
+
+      asset.onload = function () {
+        clearTimeout(timeout);
+        resolve();
+      };
+      asset.onerror = unavailable;
+      document.head.appendChild(asset);
+    });
+  }
+
+  function loadLeaflet() {
+    if (!leafletAssets) {
+      // Older templates load both assets before this helper runs.
+      var eagerStylesheet = document.querySelector('link[href="' + leafletBase + 'leaflet.css"]');
+      if (eagerStylesheet && eagerStylesheet.sheet && window.L && typeof window.L.map === 'function') {
+        leafletAssets = Promise.resolve(window.L);
+        return leafletAssets;
+      }
+      var stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = leafletBase + 'leaflet.css';
+      stylesheet.crossOrigin = 'anonymous';
+      var script = document.createElement('script');
+      script.src = leafletBase + 'leaflet.js';
+      script.crossOrigin = 'anonymous';
+      leafletAssets = Promise.allSettled([loadLeafletAsset(stylesheet), loadLeafletAsset(script)])
+        .then(function (results) {
+          if (results.every(function (result) { return result.status === 'fulfilled'; }) &&
+              window.L && typeof window.L.map === 'function') return window.L;
+          stylesheet.remove();
+          script.remove();
+          leafletAssets = null;
+          throw new Error('leaflet_unavailable');
+        });
+    }
+    return leafletAssets;
+  }
+
   function instagramUrl(value) {
     var input = value.trim();
     var match = /^@?([a-z0-9_.]{1,30})$/i.exec(input) ||
@@ -22,12 +72,18 @@
     var toggle = byId('btn-blogger-city-map');
     var block = byId('block-blogger-city-map');
     var hint = byId('blg-city-map-hint');
+    var mapStatus = byId('blg-city-map-status');
     var error = byId('blg-error');
     var map;
+    var mapLoading = false;
     var marker;
     var candidate;
     var generation = 0;
     var pending = false;
+
+    function setMapStatus(message) {
+      if (mapStatus) mapStatus.textContent = message ? text(message) : '';
+    }
 
     function begin() {
       pending = true;
@@ -65,11 +121,13 @@
       city.value = data.city;
       confirm.hidden = false;
       hint.textContent = text('city_selected') + data.city;
-      if (map) {
-        map.setView([lat, lon], 12);
-        if (marker) marker.setLatLng([lat, lon]);
-        else marker = window.L.marker([lat, lon]).addTo(map);
-      }
+      if (map) placeMarker([lat, lon]);
+    }
+
+    function placeMarker(point) {
+      map.setView(point, 12);
+      if (marker) marker.setLatLng(point);
+      else marker = window.L.marker(point).addTo(map);
     }
 
     function lookup(path, input, id, failure) {
@@ -85,18 +143,32 @@
     function showMap(show) {
       block.style.display = show ? 'block' : 'none';
       toggle.setAttribute('aria-expanded', String(show));
-      if (!show) return;
-      if (!map && window.L) {
-        map = window.L.map('blogger-city-map').setView([55.7558, 37.6173], 5);
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      if (!show) {
+        setMapStatus();
+        return;
+      }
+      if (map) {
+        map.invalidateSize();
+        return;
+      }
+      setMapStatus('loading');
+      if (mapLoading) return;
+      mapLoading = true;
+      loadLeaflet().then(function (leaflet) {
+        if (block.style.display === 'none') return;
+        map = leaflet.map('blogger-city-map').setView([55.7558, 37.6173], 5);
+        leaflet.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         }).addTo(map);
         map.on('click', function (event) {
           lookup('/geocode/reverse', {lat: event.latlng.lat, lon: event.latlng.lng}, begin(), 'city_error');
         });
-      } else if (map && map.invalidateSize) {
-        map.invalidateSize();
-      }
+        if (candidate) placeMarker([candidate.lat, candidate.lon]);
+        else if (latitude.value && longitude.value) placeMarker([Number(latitude.value), Number(longitude.value)]);
+        setMapStatus();
+      }).catch(function () {
+        if (block.style.display !== 'none') setMapStatus('city_map_unavailable');
+      }).finally(function () { mapLoading = false; });
     }
 
     toggle.addEventListener('click', function () {
@@ -120,7 +192,6 @@
         hint.textContent = text('city_enter');
         return;
       }
-      showMap(true);
       lookup('/geocode/forward', {city: query}, begin(), 'city_not_found');
     });
 
@@ -192,6 +263,7 @@
   }
 
   window.UMCCreatorForm = {
+    loadsLeafletOnDemand: true,
     instagramUrl: instagramUrl,
     bindCity: bindCity,
     bindVerificationCopy: bindVerificationCopy

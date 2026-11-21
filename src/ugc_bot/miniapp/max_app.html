@@ -24,8 +24,6 @@
     document.head.appendChild(script);
   })();
   </script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <link rel="stylesheet" href="/miniapp/design-system/fonts/fonts.css">
   <link rel="stylesheet" href="/miniapp/design-system/tokens.css">
   <link rel="stylesheet" href="/miniapp/design-system/umc-ui.css">
@@ -141,6 +139,7 @@
           <input type="text" id="blg-city-search" placeholder="Поиск по городу" style="flex: 1; margin-top: 0;">
           <button type="button" class="btn btn-secondary" id="btn-blogger-city-search" style="margin-top: 0; width: auto; flex-shrink: 0;">Найти</button>
         </div>
+        <div id="blg-city-map-status" role="status"></div>
         <div id="blogger-city-map"></div>
       </div>
       <label id="lbl-blg-audience-geo" for="blg-audience-geo">География аудитории *</label>
@@ -960,6 +959,7 @@
           city_not_found: 'Город не найден',
           city_enter: 'Введите название города',
           city_error: 'Не удалось определить город для этой точки',
+          city_map_unavailable: 'Не удалось загрузить карту. Найдите город через поиск или откройте карту снова.',
           agreement_required: 'Подтвердите согласие с документами платформы',
           agree_checkbox_label: 'Я подтверждаю согласие с документами платформы',
           btn_map_pick: 'Выбрать на карте',
@@ -1111,6 +1111,7 @@
           city_not_found: 'City not found',
           city_enter: 'Enter city name',
           city_error: 'Could not determine city for this point',
+          city_map_unavailable: 'Could not load the map. Search for a city or reopen the map.',
           agreement_required: 'Please confirm agreement with platform documents',
           agree_checkbox_label: 'I confirm agreement with platform documents',
           btn_map_pick: 'Pick on map',
@@ -1262,6 +1263,7 @@
           city_not_found: 'Қала табылмады',
           city_enter: 'Қала атауын енгізіңіз',
           city_error: 'Осы нүкте үшін қаланы анықтау мүмкін болмады',
+          city_map_unavailable: 'Картаны жүктеу мүмкін болмады. Қаланы іздеңіз немесе картаны қайта ашыңыз.',
           agreement_required: 'Платформа құжаттарымен келісімді растаңыз',
           agree_checkbox_label: 'Платформа құжаттарымен келісімді растаймын',
           btn_map_pick: 'Картадан таңдау',
@@ -1406,6 +1408,7 @@
           city_not_found: 'Горад не знойдзены',
           city_enter: 'Увядзіце назву горада',
           city_error: 'Не ўдалося вызначыць горад для гэтай кропкі',
+          city_map_unavailable: 'Не ўдалося загрузіць карту. Знайдзіце горад праз пошук або адкрыйце карту зноў.',
           agreement_required: 'Пацвердзіце згоду з дакументамі платформы',
           agree_checkbox_label: 'Я пацвярджаю згоду з дакументамі платформы',
           btn_map_pick: 'Выбраць на карце',
@@ -1550,6 +1553,7 @@
           city_not_found: 'Shahar topilmadi',
           city_enter: 'Shahar nomini kiriting',
           city_error: 'Ushbu nuqta uchun shaharni aniqlab bo\'lmadi',
+          city_map_unavailable: 'Xaritani yuklab bo\'lmadi. Shaharni qidiring yoki xaritani qayta oching.',
           agreement_required: 'Platforma hujjatlariga roziligingizni tasdiqlang',
           agree_checkbox_label: 'Platforma hujjatlariga rozi ekanligimni tasdiqlayman',
           btn_map_pick: 'Xaritadan tanlash',
@@ -1961,6 +1965,56 @@
 
       var savedBloggerLocation = null;
       var bloggerLocation = window.UMCCreatorForm.bindCity(api, tx);
+      // A legacy helper may be served by the peer replica during a rollout.
+      if (!window.UMCCreatorForm.loadsLeafletOnDemand) {
+        var legacyMapButton = document.getElementById('btn-blogger-city-map');
+        var legacyMapStatus = document.getElementById('blg-city-map-status');
+        var legacyMapStylesheet;
+        legacyMapButton.addEventListener('click', openLegacyMap, true);
+        function openLegacyMap(event) {
+          if (legacyMapButton.getAttribute('aria-expanded') === 'true') return;
+          legacyMapButton.removeEventListener('click', openLegacyMap, true);
+          if (legacyMapStylesheet && typeof (window.L || {}).map === 'function') {
+            legacyMapStatus.textContent = '';
+            return;
+          }
+          event.stopImmediatePropagation();
+          legacyMapButton.disabled = true;
+
+          var source = 'https://unpkg.com/leaflet@1.9.4/dist/';
+          var stylesheet = document.createElement('link');
+          stylesheet.rel = 'stylesheet';
+          stylesheet.href = source + 'leaflet.css';
+          stylesheet.crossOrigin = 'anonymous';
+          var script = document.createElement('script');
+          script.src = source + 'leaflet.js';
+          script.crossOrigin = 'anonymous';
+
+          var timer = setTimeout(unavailable, 8000);
+          function unavailable() { finish(false); }
+          function finish(ready) {
+            clearTimeout(timer);
+            stylesheet.onload = stylesheet.onerror = script.onload = script.onerror = null;
+            if (!ready) {
+              if (!legacyMapStylesheet) stylesheet.remove();
+              script.remove();
+            }
+            legacyMapButton.disabled = false;
+            if (legacyMapButton.closest('.screen').classList.contains('active')) {
+              legacyMapStatus.textContent = ready ? '' : tx('city_map_unavailable');
+              legacyMapButton.click();
+            }
+            if (!ready) legacyMapButton.addEventListener('click', openLegacyMap, true);
+          }
+          script.onload = function () { finish(typeof (window.L || {}).map === 'function'); };
+          stylesheet.onerror = script.onerror = unavailable;
+          stylesheet.onload = function () {
+            legacyMapStylesheet = stylesheet;
+            document.head.appendChild(script);
+          };
+          document.head.appendChild(legacyMapStylesheet ? script : stylesheet);
+        }
+      }
       var setVerificationCode = window.UMCCreatorForm.bindVerificationCopy(tx);
       var bloggerInstagram = document.getElementById('blg-instagram');
       bloggerInstagram.addEventListener('input', function() {
