@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from html import unescape
 from unittest.mock import AsyncMock
 from urllib.parse import urlencode
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from aiogram.exceptions import TelegramForbiddenError
@@ -30,6 +30,7 @@ from ugc_bot.domain.enums import (
     PaymentStatus,
     UserStatus,
 )
+from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
@@ -504,6 +505,62 @@ def test_search_by_order_and_customer_words_in_both_views(worklist):
             )
         else:
             assert "Заказы не найдены" in grouped.text, term
+
+
+def test_order_number_search_matches_the_uuid_prefix_in_both_lists(worklist):
+    client, engine, ids = worklist
+    _login(client)
+    active_id = UUID("a102bd34-0000-0000-0000-000000000000")
+    closed_id = UUID("a102bd34-ffff-ffff-ffff-ffffffffffff")
+    number = public_order_number(active_id)
+    with Session(engine) as session, session.begin():
+        active = session.get(OrderModel, ids["Active example"])
+        active.order_id = active_id
+        advertiser = active.advertiser_id
+        session.get(OrderModel, ids["Closed example"]).order_id = closed_id
+        session.get(OrderModel, ids["Deleted example"]).order_id = UUID(
+            "a102bd34-1000-0000-0000-000000000000"
+        )
+        unrelated = session.get(OrderModel, ids["Draft example"])
+        unrelated.order_id = UUID("ba102bd3-4000-0000-0000-000000000000")
+        unrelated.offer_text = f"Упоминание {number} в оффере"
+
+    for path, params in (
+        (LIST, {"group": "all"}),
+        ("/admin/orders", {"period": "all"}),
+    ):
+        result = client.get(
+            path, params=params | {"search": f" {number.lower()} "}
+        )
+        assert result.status_code == 200
+        assert "Active example" in result.text
+        assert "Closed example" in result.text
+        assert "Deleted example" not in result.text
+        assert "Упоминание" not in result.text
+        filtered = client.get(
+            path, params=params | {"search": number, "status": "active"}
+        )
+        assert "Active example" in filtered.text
+        assert "Closed example" not in filtered.text
+        by_uuid = client.get(path, params=params | {"search": str(active_id)})
+        assert "Active example" in by_uuid.text
+        assert "Closed example" not in by_uuid.text
+        assert (
+            "Заказы не найдены"
+            in client.get(path, params=params | {"search": "UMC-FFFFFFFF"}).text
+        )
+
+    grouped = client.get(
+        LIST,
+        params={
+            "group": "all",
+            "view": "companies",
+            "company": str(advertiser),
+            "search": number,
+        },
+    )
+    assert "Active example" in grouped.text
+    assert "Closed example" not in grouped.text
 
 
 def test_company_view_filters_before_pagination_and_expansion(worklist):

@@ -123,10 +123,14 @@ def test_order_cards_share_manager_and_status_layout(page, monkeypatch):
     ).to_have_count(1)
     expect(delayed).to_contain_text("Просрочено на 6,8 дн.")
     expect(delayed).to_contain_text("4 вручную")
-    expect(delayed).to_contain_text("По плану 2 / 10")
+    expect(delayed).to_contain_text("Передано контактов 6")
+    expect(delayed).to_contain_text("Подобрано по плану 2 из 10")
     expect(delayed).to_contain_text("Осталось подобрать 8")
     expect(delayed.get_by_role("progressbar")).to_have_attribute(
         "aria-valuenow", "20"
+    )
+    expect(delayed.get_by_role("progressbar")).to_have_attribute(
+        "aria-valuetext", "2 из 10"
     )
     expect(delayed.locator(".order-manager a")).to_have_attribute(
         "href",
