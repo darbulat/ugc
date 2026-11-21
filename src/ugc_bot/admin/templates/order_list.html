@@ -98,7 +98,7 @@
         <div class="order-worklist-search">
           <label class="form-label" for="order-search">Поиск</label>
           <input class="form-control" id="order-search" name="search" type="search"
-                 placeholder="География, заказчик, бренд, оффер или ID"
+                 placeholder="Номер UMC-…, заказчик, бренд, оффер или география"
                  value="{{ request.query_params.get('search', '') }}">
         </div>
         {% if group in ('work', 'all', 'repeat') %}

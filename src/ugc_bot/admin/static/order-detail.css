@@ -223,6 +223,7 @@
 
 
 .order-detail [hidden] { display: none !important; }
+.order-detail__number { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .order-detail__transfer { display: grid; gap: .25rem; margin-block: .25rem; }
 .order-detail__transfer-label { font-size: .8rem; color: #52617a; }
 .order-detail__transfer-line { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .55rem; }

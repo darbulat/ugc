@@ -22,8 +22,7 @@
   margin-bottom: .8rem;
 }
 
-.manager-filters label,
-.manager-review-form label {
+.manager-filters label {
   display: grid;
   gap: .4rem;
   font-size: .88rem;
@@ -31,8 +30,7 @@
 }
 
 .manager-filters input,
-.manager-filters select,
-.manager-review-form textarea {
+.manager-filters select {
   width: 100%;
   min-width: 0;
   color: inherit;
@@ -110,12 +108,12 @@
   font-size: .82rem;
 }
 
-.manager-badge--submitted, .manager-badge--clarify, .manager-check {
+.manager-badge--submitted, .manager-badge--clarify {
   color: #744c16;
   background: #fff4d9;
 }
 
-.manager-badge--approved, .manager-check--verified {
+.manager-badge--approved {
   color: #175d47;
   background: #e5f5ee;
 }
@@ -127,6 +125,21 @@
 
 .manager-card-heading {
   margin-top: .9rem;
+}
+
+.manager-card-page {
+  padding: clamp(var(--space-12), 2vw, var(--space-24));
+  border-radius: var(--radius-22);
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.manager-card-page .manager-card-heading h1 {
+  letter-spacing: -.005em;
+}
+
+.manager-card-page .manager-muted {
+  color: var(--muted);
 }
 
 .manager-meta, .manager-pages {
@@ -146,13 +159,12 @@
 
 .manager-card-section {
   min-width: 0;
-  padding: 1.1rem 1.25rem;
-  border: 1px solid #e5ebf4;
+  padding: clamp(var(--space-16), 2vw, var(--space-24));
 }
 
 .manager-card-section h2 {
-  margin: 0 0 .85rem;
-  font-size: 1.07rem;
+  margin: 0;
+  font-size: 1.125rem;
 }
 
 .manager-fields {
@@ -164,14 +176,14 @@
 
 .manager-fields > div {
   min-width: 0;
-  background: #f3f6fb;
-  padding: .64rem .78rem;
-  border-radius: .5rem;
+  background: var(--bg);
+  padding: var(--space-12);
+  border-radius: var(--radius-12);
 }
 
 .manager-fields dt {
-  margin-bottom: .32rem;
-  color: #536276;
+  margin-bottom: var(--space-6);
+  color: var(--muted);
   font-size: .82rem;
 }
 
@@ -182,38 +194,71 @@
 }
 
 .manager-answer {
-  border-left: .2rem solid #8eb2e4;
   margin: 0;
-  padding: .52rem .85rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.6;
 }
 
-.manager-check,
+.manager-check {
+  align-self: flex-start;
+  border-radius: var(--radius-pill);
+  padding: var(--space-6) var(--space-12);
+  margin: 0;
+  background: var(--peach);
+  color: var(--on-pastel);
+  font-size: .88rem;
+}
+
+.manager-check--verified {
+  background: var(--mint);
+}
+
 .manager-flash {
   border-radius: .5rem;
   padding: .62rem .78rem;
   margin: 0 0 .8rem;
+  color: #163b68;
+  background: #e7f0fd;
   font-size: .88rem;
 }
 
-.manager-flash {
-  color: #163b68;
-  background: #e7f0fd;
+.manager-card-page .manager-flash {
+  border-radius: var(--radius-12);
+  color: var(--ink);
+  background: var(--mint);
 }
 
-.manager-review-form {
-  margin-top: .8rem;
+.manager-card-page .manager-flash[role="alert"] {
+  border: 1px solid var(--error);
+  color: var(--error);
+  background: var(--bg);
 }
 
-.manager-review-form textarea {
-  resize: vertical;
+.manager-review-form .umc-field__control {
+  border-color: var(--line-strong);
 }
 
-.manager-review-form button:disabled {
-  opacity: .55;
-  cursor: not-allowed;
+.manager-review-form .umc-field__control:focus {
+  border-color: var(--focus);
+}
+
+.manager-review-form .manager-muted {
+  margin: 0;
+}
+
+.manager-review-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+.manager-review-actions .umc-btn {
+  padding-inline: var(--space-8);
+}
+
+.manager-review-actions .manager-decline {
+  color: var(--error);
 }
 
 @media (max-width: 700px) {

@@ -793,7 +793,7 @@ def test_order_worklist_search_hide_and_restore(
     page.goto(f"{admin_server}/admin/order-model/list?search={managed_id}")
     managed_row = page.get_by_role("row").filter(has_text=managed_title)
     expect(managed_row).to_contain_text("Тестовый менеджер")
-    expect(managed_row).to_contain_text("1 / 5")
+    expect(managed_row).to_contain_text("Подобрано по плану 1 из 5")
     expect(managed_row).to_contain_text("Осталось 4")
     expect(managed_row).to_contain_text("Мало подобрано")
     expect(managed_row).to_contain_text("Активность")

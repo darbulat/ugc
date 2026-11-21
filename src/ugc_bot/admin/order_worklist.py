@@ -1,5 +1,6 @@
 """Queries and single-order actions for the SQLAdmin orders list."""
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -309,7 +310,22 @@ def _order_search_pattern(term: str) -> str:
     return f"%{escaped}%"
 
 
+def order_number_condition(term: str) -> ColumnElement[bool] | None:
+    match = re.fullmatch(
+        r"UMC-([0-9a-f]{8})", term.strip(), re.IGNORECASE | re.ASCII
+    )
+    if match is None:
+        return None
+    prefix = match[1]
+    # Keep the UUID column uncast so the existing primary-key index can be used.
+    return OrderModel.order_id.between(
+        UUID(hex=prefix + "0" * 24), UUID(hex=prefix + "f" * 24)
+    )
+
+
 def _order_search_word(word: str):
+    if (number := order_number_condition(word)) is not None:
+        return number
     pattern = _order_search_pattern(word.replace("ё", "е").replace("Ё", "Е"))
 
     def matches(column):
