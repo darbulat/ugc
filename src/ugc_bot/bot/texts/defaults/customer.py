@@ -2,6 +2,11 @@
 
 CUSTOMER_TEXTS = {
     "ru": {
+        "order_payment_awaiting": "Ожидает оплаты",
+        "order_payment_unpaid": "Не оплачено",
+        "order_payment_processing": "Проверяем оплату",
+        "order_payment_paid": "Оплачено",
+        "order_payment_complimentary": "Оплата не требуется",
         "payment_help": "Не получилось оплатить",
         "browser_payment_active": "Для заказа доступна оплата ЮKassa в браузере. Если вам нужна ссылка, нажмите «Не получилось оплатить», чтобы написать в поддержку UMC.",
         "payment_pending": "Есть предыдущая попытка оплаты. Пока мы проверяем её результат, не оплачивайте заказ повторно. Для связи с поддержкой выберите «Помощь с оплатой» в чате с ботом.",
@@ -49,6 +54,11 @@ CUSTOMER_TEXTS = {
         "customer_telegram_button": "Открыть Telegram для оплаты",
     },
     "en": {
+        "order_payment_awaiting": "Awaiting payment",
+        "order_payment_unpaid": "Not paid",
+        "order_payment_processing": "Checking payment",
+        "order_payment_paid": "Paid",
+        "order_payment_complimentary": "No payment required",
         "payment_help": "Payment help",
         "browser_payment_active": "A browser invoice is open for this order. For the link, select “Payment help” in the bot chat.",
         "payment_pending": "A previous payment attempt is awaiting confirmation. Please wait before trying again. For assistance, select “Payment help” in the bot chat.",
@@ -96,6 +106,11 @@ CUSTOMER_TEXTS = {
         "customer_telegram_button": "Open Telegram to pay",
     },
     "kk": {
+        "order_payment_awaiting": "Төлем күтілуде",
+        "order_payment_unpaid": "Төленбеген",
+        "order_payment_processing": "Төлем тексерілуде",
+        "order_payment_paid": "Төленді",
+        "order_payment_complimentary": "Төлем қажет емес",
         "payment_help": "Төлем бойынша көмек",
         "browser_payment_active": "Бұл тапсырысқа браузерде төлеуге арналған шот ашылды. Сілтеме қажет болса, бот чатында «Төлем бойынша көмек» түймесін таңдаңыз.",
         "payment_pending": "Алдыңғы төлем әрекеті әлі расталмады. Нәтижесі анықталғанша қайта төлемеңіз. Көмек алу үшін бот чатында «Төлем бойынша көмек» түймесін таңдаңыз.",
@@ -143,6 +158,11 @@ CUSTOMER_TEXTS = {
         "customer_telegram_button": "Төлем үшін Telegram ашу",
     },
     "be": {
+        "order_payment_awaiting": "Чакае аплаты",
+        "order_payment_unpaid": "Не аплачана",
+        "order_payment_processing": "Правяраем аплату",
+        "order_payment_paid": "Аплачана",
+        "order_payment_complimentary": "Аплата не патрэбная",
         "payment_help": "Дапамога з аплатай",
         "browser_payment_active": "Для заказу адкрыты рахунак у браўзеры. Каб атрымаць спасылку, націсніце «Дапамога з аплатай» у чаце з ботам.",
         "payment_pending": "Папярэдняя спроба аплаты яшчэ не пацверджана. Дачакайцеся выніку перад паўторнай аплатай. Па дапамогу націсніце «Дапамога з аплатай» у чаце з ботам.",
@@ -190,6 +210,11 @@ CUSTOMER_TEXTS = {
         "customer_telegram_button": "Адкрыць Telegram для аплаты",
     },
     "uz": {
+        "order_payment_awaiting": "To‘lov kutilmoqda",
+        "order_payment_unpaid": "To‘lanmagan",
+        "order_payment_processing": "To‘lov tekshirilmoqda",
+        "order_payment_paid": "To‘langan",
+        "order_payment_complimentary": "To‘lov talab qilinmaydi",
         "payment_help": "To‘lov bo‘yicha yordam",
         "browser_payment_active": "Buyurtma uchun brauzerda to‘lash hisobi ochilgan. Havola kerak bo‘lsa, bot chatida «To‘lov bo‘yicha yordam» tugmasini tanlang.",
         "payment_pending": "Avvalgi to‘lov urinishi hali tasdiqlanmagan. Natija aniqlanguncha qayta to‘lamang. Yordam olish uchun bot chatida «To‘lov bo‘yicha yordam» tugmasini tanlang.",

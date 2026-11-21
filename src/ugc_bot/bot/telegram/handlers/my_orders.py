@@ -1,5 +1,6 @@
 """Handlers for advertiser and blogger orders."""
 
+import logging
 from datetime import datetime
 from math import ceil
 from typing import Optional
@@ -19,8 +20,14 @@ from ugc_bot.application.messenger.ports import (
     MessengerClient,
     MessengerEventAdapter,
 )
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
+)
 from ugc_bot.application.ports import CountryRepository
 from ugc_bot.application.services.bot_texts_service import BotTextsService
+from ugc_bot.application.services.client_order_view_service import (
+    ClientOrderViewService,
+)
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
@@ -65,6 +72,7 @@ from ugc_bot.config import AppConfig
 from ugc_bot.domain.entities import OfferDispatch, Order
 from ugc_bot.domain.enums import OrderStatus, OrderType
 
+logger = logging.getLogger(__name__)
 router = Router()
 _navigation = NavigationMiddleware(None)
 router.message.middleware(_navigation)
@@ -184,6 +192,7 @@ async def _send_my_orders_content(
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
     order_summary_service=None,
+    client_order_view_service: ClientOrderViewService | None = None,
 ) -> None:
     """Send fill profile, agreement, or order lists depending on user state."""
     if advertiser is None and blogger is None:
@@ -252,6 +261,8 @@ async def _send_my_orders_content(
                 locale=locale,
                 cancellation=order_cancellation_service,
                 summary_enabled=order_summary_service is not None,
+                payment_view=client_order_view_service,
+                principal=principal_for(incoming, user.user_id),
             )
             await messenger_client.send_text(
                 chat_id=incoming.chat_id, text=text, keyboard=keyboard
@@ -314,6 +325,7 @@ async def show_my_orders(
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
     order_summary_service=None,
+    client_order_view_service: ClientOrderViewService | None = None,
 ) -> None:
     """Show advertiser and blogger orders in two separate messages."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -357,6 +369,7 @@ async def show_my_orders(
         country_repo=country_repo,
         order_cancellation_service=order_cancellation_service,
         order_summary_service=order_summary_service,
+        client_order_view_service=client_order_view_service,
     )
 
 
@@ -385,6 +398,7 @@ async def show_my_orders_from_profile_callback(
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
     order_summary_service=None,
+    client_order_view_service: ClientOrderViewService | None = None,
 ) -> None:
     """Show my orders from profile inline menu."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -435,6 +449,7 @@ async def show_my_orders_from_profile_callback(
         country_repo=country_repo,
         order_cancellation_service=order_cancellation_service,
         order_summary_service=order_summary_service,
+        client_order_view_service=client_order_view_service,
     )
 
 
@@ -461,6 +476,7 @@ async def paginate_orders(
     country_repo: CountryRepository | None = None,
     order_cancellation_service: OrderCancellationService | None = None,
     order_summary_service=None,
+    client_order_view_service: ClientOrderViewService | None = None,
 ) -> None:
     """Handle pagination for advertiser and blogger orders."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -558,6 +574,8 @@ async def paginate_orders(
             locale=locale,
             cancellation=order_cancellation_service,
             summary_enabled=order_summary_service is not None,
+            payment_view=client_order_view_service,
+            principal=principal_for(incoming, user.user_id),
         )
 
     if incoming.message_id:
@@ -651,6 +669,34 @@ async def cancel_order_callback(
         )
 
 
+async def _payment_states(
+    orders: list[Order],
+    payment_view: ClientOrderViewService | None,
+    principal: AuthenticatedMessengerPrincipal | None,
+) -> dict[UUID, str]:
+    if payment_view is None or principal is None:
+        return {}
+    order_ids = [order.order_id for order in orders if not order.complimentary]
+    if not order_ids:
+        return {}
+    try:
+        return await payment_view.payment_states(principal, order_ids)
+    except Exception as exc:
+        logger.warning(
+            "Order payment labels unavailable",
+            extra={"error_type": type(exc).__name__},
+        )
+        return {}
+
+
+def _payment_label(order: Order, state: str | None, locale: str) -> str:
+    if order.complimentary:
+        state = "complimentary"
+    elif state == "unpaid" and order.status == OrderStatus.NEW:
+        state = "awaiting"
+    return customer_text(locale, f"order_payment_{state}") if state else ""
+
+
 async def _render_page(
     orders,
     page: int,
@@ -662,6 +708,8 @@ async def _render_page(
     locale: str = "ru",
     cancellation: OrderCancellationService | None = None,
     summary_enabled: bool = False,
+    payment_view: ClientOrderViewService | None = None,
+    principal: AuthenticatedMessengerPrincipal | None = None,
 ) -> tuple[str, Keyboard]:
     """Render paginated orders list."""
     t = texts or {}
@@ -681,6 +729,10 @@ async def _render_page(
         )
         if cancellation is not None
         else set()
+    )
+
+    payment_states = await _payment_states(
+        slice_orders, payment_view, principal
     )
 
     title_tpl = t.get(
@@ -730,6 +782,11 @@ async def _render_page(
             date_completed_line,
             link_line,
         ]
+        payment_label = _payment_label(
+            order, payment_states.get(order.order_id), locale
+        )
+        if payment_label:
+            order_lines.insert(2, payment_label)
         lines.append("\n".join(order_lines))
         if (
             summary_enabled

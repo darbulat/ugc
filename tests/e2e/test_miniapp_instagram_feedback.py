@@ -98,7 +98,7 @@ def confirmed(page):
     expect(page.locator("#btn-instagram-open")).to_be_hidden()
 
 
-def test_return_from_instagram_shows_server_success_and_native_cabinet(
+def test_return_from_instagram_opens_social_editor_with_one_native_action(
     page, platform
 ):
     network = FeedbackNetwork()
@@ -118,9 +118,17 @@ def test_return_from_instagram_shows_server_success_and_native_cabinet(
     )
     screenshot(page, f"instagram-confirmed-{platform}")
     page.wait_for_function(
-        "window.__host.wa.MainButton.params.text === 'В личный кабинет'"
+        "window.__host.wa.MainButton.params.text === 'Добавить соцсети'"
     )
     page.evaluate("window.__host.wa.MainButton.click()")
+    editor = page.locator("#screen-social-accounts")
+    expect(editor).to_be_visible()
+    expect(
+        editor.get_by_role("button", name="Добавить Telegram")
+    ).to_be_visible()
+    assert network.count("/social/accounts") == 1
+    assert network.count("/social/prompt/dismiss") == 0
+    page.evaluate("window.__host.wa.BackButton.click()")
     expect(page.locator("#screen-blogger-dashboard")).to_be_visible()
     expect(page.locator("#btn-blogger-confirm-instagram")).to_be_hidden()
     assert network.count(START) == 1
@@ -131,6 +139,23 @@ def test_return_from_instagram_shows_server_success_and_native_cabinet(
         if path == STATUS
     )
     assert not any("/send" in path for path, _ in network.requests)
+    assert not errors
+
+
+def test_creator_can_go_to_cabinet_and_add_socials_later(page, platform):
+    network = FeedbackNetwork()
+    network.dismissed = False
+    errors = start(page, network, platform)
+    expect(page.locator("#btn-instagram-verification-check")).to_be_enabled()
+    network.confirmed = True
+    page.locator("#btn-instagram-verification-check").click()
+    confirmed(page)
+    page.locator("#btn-instagram-verification-done").click()
+    expect(page.locator("#screen-blogger-dashboard")).to_be_visible()
+    expect(page.locator("#screen-social-prompt")).to_be_hidden()
+    page.locator("#btn-blogger-social-accounts").click()
+    expect(page.locator("#screen-social-accounts")).to_be_visible()
+    assert network.count("/social/prompt/dismiss") == 0
     assert not errors
 
 
@@ -280,8 +305,10 @@ def test_verification_does_not_bypass_registration_terms(page, platform):
     expect(page.locator("#instagram-verification-detail")).to_contain_text(
         "Для завершения регистрации подтвердите условия"
     )
+    expect(page.locator("#btn-instagram-add-socials")).to_be_hidden()
     page.locator("#btn-instagram-verification-done").click()
     expect(page.locator("#screen-agreements-blogger")).to_be_visible()
+    assert network.count("/social/accounts") == 0
     assert not errors
 
 
