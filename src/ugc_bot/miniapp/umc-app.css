@@ -657,14 +657,76 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-customer #orders-list { list-style: none; margin: 0; padding: 0; }
 .umc-customer #orders-list > li { margin: 0; padding: 0; border: 0; background: none; }
 
-.umc-directory-filter { display: flex; align-items: center; gap: var(--space-8); margin: var(--space-12) 0; }
-.umc-directory-filter input { width: 20px; height: 20px; min-height: 0; padding: 0; margin: 0; accent-color: var(--ink); }
-.umc-directory-list { list-style: none; padding: 0; margin: 0; }
-.umc-directory-list .btn { text-align: start; white-space: normal; overflow-wrap: anywhere; }
-.umc-directory-list li { margin-top: var(--space-16); padding-top: var(--space-12); border-top: 1px solid var(--line); }
-.umc-directory-list .btn { margin-top: var(--space-8); }
-.umc-directory-detail { margin: var(--space-8) 0; font-size: 14px; }
+.umc-directory > h1 { margin-bottom: var(--space-16); padding-bottom: 34px; }
+.umc-directory > h1::after { height: 24px; }
+.umc-directory-toolbar {
+  display: grid;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+  padding: var(--space-12);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-20);
+  background: var(--card);
+}
+.umc-directory-toolbar form { padding: 0; background: transparent; }
+.umc-directory-toolbar input[type="search"],
+.umc-directory-toolbar select { min-height: 44px; padding-block: var(--space-8); border-color: var(--line-strong); }
+.umc-directory-toolbar select { background: var(--bg); font-size: 15px; }
+.umc-directory-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0 var(--space-6); }
+.umc-directory-filter { display: flex; align-items: center; gap: var(--space-6); min-height: 44px; margin: 0; font-size: 12px; cursor: pointer; }
+.umc-directory-filter input { flex: none; width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; accent-color: var(--ink); }
+.umc-directory #invited-followups { width: auto; margin: 0; padding: var(--space-6); font-size: 13px; background: var(--bg); }
+.umc-directory #invited-followups[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.umc-directory-message > .hint { margin-bottom: 0; }
+.umc-directory-message > .hint:not(:empty) { margin-bottom: var(--space-12); }
+.umc-directory .hint:empty, .umc-directory-card:empty { display: none; }
+.umc-directory-list { display: grid; gap: var(--space-12); list-style: none; padding: 0; margin: 0; }
+.umc-directory-card {
+  display: grid;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-20);
+  background: var(--card);
+}
+.umc-directory-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--space-6) 0 0;
+  border: 0;
+  border-radius: var(--radius-12);
+  background: transparent;
+  color: var(--ink);
+  font: 600 18px/1.25 var(--font-body);
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.umc-directory-name::after {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border: solid var(--muted);
+  border-width: 1.5px 1.5px 0 0;
+  transform: rotate(45deg);
+}
+.umc-directory-city { margin: 0; color: var(--muted); font-size: 14px; }
+.umc-directory-name + .umc-directory-city { margin-top: calc(-1 * var(--space-8)); }
+.umc-directory-statuses { display: flex; flex-wrap: wrap; gap: var(--space-6); }
+.umc-directory-statuses span { padding: 3px 8px; border-radius: var(--radius-pill); background: var(--bg); color: var(--muted); font-size: 13px; line-height: 1.4; }
+.umc-directory-statuses .umc-directory-verified { background: var(--mint); color: var(--on-pastel); }
+.umc-directory .btn { min-height: 44px; white-space: normal; overflow-wrap: anywhere; }
+.umc-directory-card .btn { margin: 0; padding: var(--space-8) var(--space-12); }
+.umc-directory .umc-directory-contact { margin-top: var(--space-6); }
+.umc-directory-followup { display: grid; gap: var(--space-6); padding-top: var(--space-8); border-top: 1px solid var(--line); }
+.umc-directory-detail { margin: 0; font-size: 14px; }
+.umc-directory-followup .umc-directory-detail:not(.error) { color: var(--muted); }
 .umc-directory-detail:empty { display: none; }
 .umc-directory-actions { display: flex; flex-wrap: wrap; gap: var(--space-8); }
-.umc-directory-actions .btn { width: auto; min-height: 44px; padding: var(--space-8) var(--space-12); }
-#screen-invited-creators button[aria-pressed="true"] { background: var(--ink); color: var(--on-ink); }
+.umc-directory-actions .btn { flex: 1 1 auto; width: auto; font-size: 14px; background: var(--bg); }
+#invited-followup-notice { margin-bottom: var(--space-12); }
