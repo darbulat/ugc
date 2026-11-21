@@ -137,8 +137,11 @@ def open_workspace(page, monkeypatch, *, payment_state="paid"):
     monkeypatch.setenv("USE_REDIS_STORAGE", "false")
     card, activity, transfers = snapshot()
 
-    async def get_card(self, order_id):
-        return deepcopy(card)
+    async def get_card(self, order_id, *, include_responses=True):
+        result = deepcopy(card)
+        if not include_responses:
+            result.pop("responses_list")
+        return result
 
     async def get_activity(self, order_id, **kwargs):
         return dict(
@@ -196,8 +199,12 @@ def open_workspace(page, monkeypatch, *, payment_state="paid"):
         )
 
     page.route("**/*", bridge)
-    page.goto(f"{BASE}/admin/orders/{ORDER_ID}")
+    response = page.goto(f"{BASE}/admin/orders/{ORDER_ID}")
+    assert response is not None and response.ok
+    assert "data-creator-row" not in response.text()
+    assert "Загружаем отклики…" in response.text()
     expect(page.locator("#order-transferred-value")).to_have_text("15")
+    assert requests.count(f"/admin/orders/{ORDER_ID}/offer-activity") == 1
     return activity, requests, transfers
 
 

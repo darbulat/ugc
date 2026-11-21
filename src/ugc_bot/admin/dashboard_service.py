@@ -57,6 +57,7 @@ from ugc_bot.admin.order_progress import (
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
 from ugc_bot.admin.order_summary import (
     active_pick_reasons,
+    financial_positions,
     latest_order_activity,
     manager_contact,
     manager_display_name,
@@ -217,6 +218,41 @@ class AdminDashboardService:
         self._referral_income_service = referral_income_service
         self._offer_dispatch_service = offer_dispatch_service
 
+    async def get_dashboard_goals(self) -> dict[str, int]:
+        """Read the all-time goals shown at the top of every period."""
+        async with self._session_factory() as session:
+            return await self._read_dashboard_goals(session, {})
+
+    async def _read_dashboard_goals(
+        self, session: AsyncSession, timings: dict[str, float]
+    ) -> dict[str, int]:
+        t0 = time.perf_counter()
+        picked = await count_picked_creators(session)
+        timings["picked_creators"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        completed = await count_completed_creators(session)
+        timings["completed_creators"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        responded = await session.scalar(
+            select(func.count())
+            .select_from(BloggerProfileModel)
+            .join(UserModel, UserModel.user_id == BloggerProfileModel.user_id)
+            .where(creator_base_filter("responded", "all", self._timezone))
+        )
+        timings["responded_creators"] = (time.perf_counter() - t0) * 1000
+        t0 = time.perf_counter()
+        managers = await count_managers(session)
+        timings["managers"] = (time.perf_counter() - t0) * 1000
+        return {
+            "picked_creators_count": picked,
+            "picked_creators_target": CREATOR_GOAL_TARGET,
+            "completed_creators_count": completed,
+            "completed_creators_target": CREATOR_GOAL_TARGET,
+            "responded_creators_count": int(responded or 0),
+            "managers_count": managers,
+            "managers_target": MANAGER_GOAL_TARGET,
+        }
+
     async def get_dashboard(
         self,
         period: PeriodKey,
@@ -227,6 +263,8 @@ class AdminDashboardService:
         referrers_filter: str | None = None,
         include_timings: bool = False,
         include_referrers: bool = True,
+        *,
+        goals: dict[str, int] | None = None,
     ) -> dict:
         """Return dashboard cards and delayed orders list."""
         total_start = time.perf_counter()
@@ -265,12 +303,8 @@ class AdminDashboardService:
             t0 = time.perf_counter()
             creators_by_city = await self._get_creators_by_city(session)
             timings["creators_by_city"] = (time.perf_counter() - t0) * 1000
-            t0 = time.perf_counter()
-            picked_creators_count = await count_picked_creators(session)
-            timings["picked_creators"] = (time.perf_counter() - t0) * 1000
-            t0 = time.perf_counter()
-            completed_creators_count = await count_completed_creators(session)
-            timings["completed_creators"] = (time.perf_counter() - t0) * 1000
+            if goals is None:
+                goals = await self._read_dashboard_goals(session, timings)
             creators = await creator_metrics(
                 session, window.current_start, window.current_end
             )
@@ -303,19 +337,6 @@ class AdminDashboardService:
             timings["creator_social_summary"] = (
                 time.perf_counter() - t0
             ) * 1000
-            t0 = time.perf_counter()
-            responded_creators_count = await session.scalar(
-                select(func.count())
-                .select_from(BloggerProfileModel)
-                .join(
-                    UserModel, UserModel.user_id == BloggerProfileModel.user_id
-                )
-                .where(creator_base_filter("responded", "all", self._timezone))
-            )
-            timings["responded_creators"] = (time.perf_counter() - t0) * 1000
-            t0 = time.perf_counter()
-            managers_count = await count_managers(session)
-            timings["managers"] = (time.perf_counter() - t0) * 1000
         referral_data = {}
         if include_referrers:
             page = max(1, referrers_page)
@@ -437,13 +458,7 @@ class AdminDashboardService:
                 else 0.0
             ),
             "creators_by_city": creators_by_city,
-            "picked_creators_count": picked_creators_count,
-            "picked_creators_target": CREATOR_GOAL_TARGET,
-            "completed_creators_count": completed_creators_count,
-            "completed_creators_target": CREATOR_GOAL_TARGET,
-            "responded_creators_count": int(responded_creators_count or 0),
-            "managers_count": managers_count,
-            "managers_target": MANAGER_GOAL_TARGET,
+            **goals,
             "creator_metrics": creators,
             "creator_social_summary": social_summary,
             "cohort_metrics": cohorts,
@@ -829,10 +844,14 @@ class AdminDashboardService:
         async with self._session_factory() as session:
             return await transfer_activity(session, order_id)
 
-    async def get_order_card(self, order_id: UUID) -> dict | None:
+    async def get_order_card(
+        self, order_id: UUID, *, include_responses: bool = True
+    ) -> dict | None:
         """Return detailed order card data for a single order."""
         async with self._session_factory() as session:
-            return await self._get_order_card(session, order_id)
+            return await self._get_order_card(
+                session, order_id, include_responses=include_responses
+            )
 
     async def get_order_offer_activity(self, order_id: UUID) -> dict | None:
         async with self._session_factory() as session:
@@ -2173,7 +2192,7 @@ class AdminDashboardService:
         ]
 
     async def _get_order_card(
-        self, session: AsyncSession, order_id: UUID
+        self, session: AsyncSession, order_id: UUID, *, include_responses: bool
     ) -> dict | None:
         """Fetch detailed order card information."""
         responses = self._order_responses_subquery()
@@ -2270,13 +2289,27 @@ class AdminDashboardService:
             payment_status,
             dispatch_paused,
         ) = row
-        from ugc_bot.admin.order_creators import load_order_responses
-
-        responses_list, financial_picked = await load_order_responses(
-            session, order
+        financial_selection = (
+            order.financial_version is not None and not order.complimentary
         )
-        if financial_picked is not None:
-            responses_count = financial_picked
+        responses_list = []
+        if include_responses:
+            from ugc_bot.admin.order_creators import load_order_responses
+
+            responses_list, financial_picked = await load_order_responses(
+                session, order
+            )
+            if financial_picked is not None:
+                responses_count = financial_picked
+        elif financial_selection:
+            responses_count = (
+                await session.scalar(
+                    select(func.count()).select_from(
+                        financial_positions([order_id]).subquery()
+                    )
+                )
+                or 0
+            )
         manager_rows = (
             await session.execute(order_managers_query([order_id]))
         ).all()
@@ -2292,8 +2325,7 @@ class AdminDashboardService:
         )
         manual_count = 0
         if (
-            order.financial_version is not None
-            and not order.complimentary
+            financial_selection
             and session.bind is not None
             and session.bind.dialect.name == "postgresql"
             and await session.scalar(select(staff_consent_available()))
@@ -2316,8 +2348,7 @@ class AdminDashboardService:
         card: dict[str, Any] = {
             "order_id": str(order.order_id),
             "manual_creator_count": manual_count,
-            "financial_selection": order.financial_version is not None
-            and not order.complimentary,
+            "financial_selection": financial_selection,
             "can_delete": deletion_blocker is None,
             "deletion_blocker": deletion_blocker,
             "is_test": bool(is_test),
@@ -2378,9 +2409,10 @@ class AdminDashboardService:
             "status_label": status_label,
             "status_age_hours": self._status_age_hours(now, order),
             "has_problem": open_count > 0,
-            "responses_list": responses_list,
             "description": order.offer_text,
         }
+        if include_responses:
+            card["responses_list"] = responses_list
         if (
             order.status
             in (

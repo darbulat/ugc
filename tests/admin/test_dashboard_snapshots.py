@@ -105,6 +105,29 @@ async def test_concurrent_visitors_share_refresh_even_if_one_leaves(cache):
 
 
 @pytest.mark.asyncio
+async def test_concurrent_visitors_share_goals_with_the_full_refresh(cache):
+    store = DashboardSnapshots(cache)
+    started, finish = asyncio.Event(), asyncio.Event()
+    goals = {"picked_creators_count": 37}
+
+    async def calculate():
+        started.set()
+        await finish.wait()
+        return goals
+
+    source = AsyncMock(side_effect=calculate)
+    first = asyncio.create_task(store.goals(source))
+    await started.wait()
+    second = asyncio.create_task(store.goals(source))
+    await asyncio.sleep(0)
+    finish.set()
+    assert await asyncio.gather(first, second) == [goals, goals]
+    assert store.recent_goals() == goals
+    assert await store.read(KEY) is None
+    source.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_failed_refresh_keeps_last_good_values_and_allows_retry(cache):
     saved = snapshot(days_old=1)
     cache.values[f"dashboard-snapshot:v1:{KEY}"] = serialize_admin_payload(

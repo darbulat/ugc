@@ -1,0 +1,25 @@
+  {% set creator_target = payload.get('completed_creators_target', 1000) %}
+  <section class="section card dashboard-goal" id="dashboard-goals" aria-label="Цели дашборда">
+    {% for key, label, target in [
+      ('completed_creators', 'Завершили заказ', creator_target),
+      ('picked_creators', 'Получили назначение', creator_target),
+      ('responded_creators', 'Откликнулись на оффер', creator_target),
+      ('managers', 'Менеджеры', payload.get('managers_target', 100))
+    ] %}
+    {% set total = payload.get(key ~ '_count', 0) %}
+    {% set progress = [total, target]|min %}
+    <div class="dashboard-goal__item">
+      <div class="dashboard-goal__reading">
+        <h2 class="dashboard-goal__label" id="goal-{{ key }}">{{ label }}</h2>
+        <span class="dashboard-goal__values">
+          <strong>{{ '{:,}'.format(total).replace(',', ' ') }}</strong>
+          из {{ '{:,}'.format(target).replace(',', ' ') }}
+        </span>
+      </div>
+      <div class="progress-bar__track" role="progressbar" aria-labelledby="goal-{{ key }}"
+           aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="{{ target }}">
+        <div class="progress-bar__fill" style="width: {{ (progress * 100 / target)|round(1) }}%;"></div>
+      </div>
+    </div>
+    {% endfor %}
+  </section>

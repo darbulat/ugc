@@ -37,6 +37,7 @@ from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     AuditLogModel,
     ComplaintModel,
+    ItemAssignmentModel,
     ManagerOrderModel,
     OfferDispatchModel,
     OrderItemModel,
@@ -266,6 +267,71 @@ async def test_dashboard_average_check_uses_paid_totals_by_currency(worklist):
             "average_check": "7.00",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_order_card_summary_preserves_financial_positions(worklist):
+    _, engine, ids = worklist
+    order_id = ids["Financial example"]
+    now = datetime.now(timezone.utc)
+    with Session(engine) as session, session.begin():
+        owner = session.get(OrderModel, order_id).advertiser_id
+        creator = session.scalar(
+            select(UserModel.user_id).where(UserModel.user_id != owner)
+        )
+        item = OrderItemModel(
+            order_id=order_id,
+            ordinal=1,
+            currency="RUB",
+            selection_minor=100,
+            accompaniment_minor=0,
+            policy_version="v1",
+            selection_due_at=now + timedelta(days=7),
+            captured_at=now,
+            quote_key="test",
+            quote_payload={},
+        )
+        session.add(item)
+        session.flush()
+        session.add_all(
+            ItemAssignmentModel(
+                paid_item_id=item.paid_item_id,
+                creator_id=creator,
+                version=version,
+                actor_id=owner,
+                valid_from=now - timedelta(days=1) if version == 1 else now,
+                valid_to=now if version == 1 else None,
+                reason="Synthetic assignment",
+            )
+            for version in (1, 2)
+        )
+
+    database = create_async_engine(
+        engine.url.set(drivername="sqlite+aiosqlite")
+    )
+    service = AdminDashboardService(
+        async_sessionmaker(database), "UTC", DelayThresholds(3, 24, 48, 7)
+    )
+    try:
+        detailed = await service.get_order_card(order_id)
+        summary = await service.get_order_card(
+            order_id, include_responses=False
+        )
+    finally:
+        await database.dispose()
+
+    assert detailed is not None and summary is not None
+    assert summary["picked_count"] == 1
+    assert len(detailed["responses_list"]) == 1
+    assert "responses_list" not in summary
+    for key in (
+        "picked_count",
+        "remaining_count",
+        "progress",
+        "status_label",
+        "attention_reasons",
+    ):
+        assert summary[key] == detailed[key]
 
 
 @pytest.mark.asyncio

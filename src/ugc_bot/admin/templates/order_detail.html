@@ -99,15 +99,14 @@
 
     <section class="card order-detail__section" aria-labelledby="order-offer-heading">
       <h2 id="order-offer-heading">Креаторы, отклики и резерв</h2>
-      <div id="order-offer-activity"
+      <div id="order-offer-activity" aria-busy="true"
            data-url="{{ request.url_for('admin_order_offer_activity', order_id=order.order_id).include_query_params(return_to=back_url) }}">
         <div class="order-detail__stats">
           <article><h3>Отправлено</h3><strong>{{ order.dispatched_count|default(0) }}</strong></article>
           <article><h3>Согласились</h3><strong>{{ order.accepted_count|default(0) }}</strong></article>
         </div>
-        {% set order_id = order.order_id %}{% include 'order_creators.html' %}
       </div>
-      <small class="muted" id="order-offer-refresh-status" role="status"></small>
+      <small class="muted" id="order-offer-refresh-status" role="status">Загружаем отклики…</small>
     </section>
 
     {% if (browser_payment and browser_payment.state != 'paid') or (browser_payment_message and not browser_payment) %}
