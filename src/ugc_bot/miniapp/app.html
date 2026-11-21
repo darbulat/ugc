@@ -351,14 +351,29 @@
     <button type="button" class="btn btn-secondary" id="mgr-orders-back" data-umc-back>Назад</button>
   </div>
 
-  <div id="screen-invited-creators" class="screen" data-umc-section="lilac">
+  <div id="screen-invited-creators" class="screen umc-directory" data-umc-section="lilac">
     <h1 id="invited-creators-title">Моя база креаторов</h1>
-    <form id="invited-search-form" role="search">
-      <label for="invited-search" id="invited-search-label">Имя, ник или город</label>
-      <input id="invited-search" type="search" maxlength="120" autocomplete="off" enterkeyhint="search">
-    </form>
-    <label class="umc-directory-filter"><input type="checkbox" id="invited-bot-filter"> <span id="invited-bot-label">Бот недоступен</span></label>
-    <p id="invited-creators-status" class="hint" role="status"></p>
+    <div id="invited-directory-toolbar" class="umc-directory-toolbar">
+      <form id="invited-search-form" role="search">
+        <label for="invited-search" id="invited-search-label">Имя, ник или город</label>
+        <input id="invited-search" type="search" maxlength="120" autocomplete="off" enterkeyhint="search">
+      </form>
+      <select id="invited-instagram-filter" hidden>
+        <option value="all"></option>
+        <option value="verified"></option>
+        <option value="unverified"></option>
+      </select>
+      <div class="umc-directory-filters">
+        <label class="umc-directory-filter"><input type="checkbox" id="invited-bot-filter"> <span id="invited-bot-label">Бот недоступен</span></label>
+        <button type="button" class="btn btn-secondary" id="invited-followups" aria-pressed="false" hidden></button>
+      </div>
+    </div>
+    <div class="umc-directory-message">
+      <p id="invited-creators-status" class="hint" role="status"></p>
+      <button type="button" class="btn" id="invited-referral" hidden></button>
+      <button type="button" class="btn btn-secondary" id="invited-reset" hidden></button>
+    </div>
+    <p id="invited-followup-notice" class="success umc-directory-detail" role="status"></p>
     <ul id="invited-creators-list" class="umc-directory-list"></ul>
     <div class="pagination-btns">
       <button type="button" class="btn btn-secondary" id="invited-prev" hidden>← Назад</button>
@@ -367,10 +382,10 @@
     <button type="button" class="btn btn-secondary" id="invited-back" data-umc-back>К кабинету менеджера</button>
   </div>
 
-  <div id="screen-invited-creator-card" class="screen" data-umc-section="lilac">
+  <div id="screen-invited-creator-card" class="screen umc-directory" data-umc-section="lilac">
     <h1 id="invited-creator-title">Креатор</h1>
     <p id="invited-creator-status" class="hint" role="status"></p>
-    <div id="invited-creator-details"></div>
+    <div id="invited-creator-details" class="umc-directory-card"></div>
     <button type="button" class="btn btn-secondary" id="invited-card-back" data-umc-back>К списку</button>
   </div>
 
