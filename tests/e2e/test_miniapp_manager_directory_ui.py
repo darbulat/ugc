@@ -273,6 +273,39 @@ def test_manager_instagram_queue_filters_and_schedules_contact(
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+def test_followup_refreshes_queue_if_manager_returns_before_save(
+    page, platform
+):
+    network = ManagerDirectoryNetwork()
+    errors = open_app(
+        page, network, platform, query="?view=manager&section=creators"
+    )
+    pending = []
+    followup = f"{PATH}/{ACTIVE['creator_id']}/followup"
+    page.route(f"**{followup}", lambda route: pending.append(route))
+
+    listing = page.locator("#screen-invited-creators")
+    listing.get_by_role("button", name="Нужно связаться: 1").click()
+    creator = listing.get_by_role("button", name="Мария", exact=True)
+    creator.click()
+    card = page.locator("#screen-invited-creator-card")
+    with page.expect_request(lambda request: request.url.endswith(followup)):
+        card.get_by_role("button", name="Написал", exact=True).click()
+    card.get_by_role("button", name="К списку").click()
+    expect(creator).to_be_visible()
+
+    network.route(pending.pop())
+    expect(
+        listing.get_by_role("button", name="Нужно связаться: 0")
+    ).to_have_attribute("aria-pressed", "true")
+    expect(listing.locator("#invited-followup-notice")).to_contain_text(
+        "25 нояб."
+    )
+    expect(creator).to_have_count(0)
+    assert not errors
+
+
+@pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize("approved", [True, False])
 def test_manager_notification_opens_only_the_approved_managers_base(
     page, platform, approved

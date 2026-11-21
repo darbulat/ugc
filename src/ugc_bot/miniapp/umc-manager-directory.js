@@ -76,6 +76,8 @@
   var searchTimer;
 
   function byId(id) { return document.getElementById(id); }
+  prepareLayout();
+  var toolbar = byId('invited-directory-toolbar');
   var searchInput = byId('invited-search');
   var botFilter = byId('invited-bot-filter');
   var instagramSelect = byId('invited-instagram-filter');
@@ -85,6 +87,41 @@
   var instagramFilter = 'all';
   function words() { return copy[(window._me || {}).locale] || copy.ru; }
   function setText(id, text) { byId(id).textContent = text; }
+
+  function prepareLayout() {
+    // A rolling release can serve the template and this module from different replicas.
+    byId(listScreen).classList.add('umc-directory');
+    byId(cardScreen).classList.add('umc-directory');
+    byId('invited-creator-details').classList.add('umc-directory-card');
+
+    var form = byId('invited-search-form');
+    var filters = element('div', '', 'umc-directory-toolbar');
+    filters.id = 'invited-directory-toolbar';
+    filters.innerHTML = `
+      <select id="invited-instagram-filter" hidden>
+        <option value="all"></option>
+        <option value="verified"></option>
+        <option value="unverified"></option>
+      </select>
+      <div class="umc-directory-filters">
+        <button type="button" class="btn btn-secondary" id="invited-followups" aria-pressed="false" hidden></button>
+      </div>`;
+    form.before(filters);
+    filters.prepend(form);
+    filters.querySelector('.umc-directory-filters').prepend(byId('invited-bot-filter').closest('label'));
+
+    var status = byId('invited-creators-status');
+    var message = element('div', '', 'umc-directory-message');
+    message.innerHTML = `
+      <button type="button" class="btn" id="invited-referral" hidden></button>
+      <button type="button" class="btn btn-secondary" id="invited-reset" hidden></button>`;
+    status.before(message);
+    message.prepend(status);
+    var notice = element('p', '', 'success umc-directory-detail');
+    notice.id = 'invited-followup-notice';
+    notice.setAttribute('role', 'status');
+    message.after(notice);
+  }
 
   function localize() {
     var lang = words();
@@ -190,29 +227,33 @@
       button.type = 'button';
       button.addEventListener('click', function () {
         if (!activeRequest(version, screen)) return;
+        var saveContext = context;
         disableActions(true);
         feedback.textContent = '';
-        context.request(path + '/' + encodeURIComponent(creator.creator_id) + '/followup', {
+        saveContext.request(path + '/' + encodeURIComponent(creator.creator_id) + '/followup', {
           action: action
         }).then(function (result) {
-          if (!activeRequest(version, screen)) return;
-          var message = scheduledText(result.remind_at, lang);
-          if (screen === cardScreen) {
-            schedule.textContent = message;
+          if (context !== saveContext || !saveContext.isCurrent()) return;
+          if (screen === cardScreen && activeRequest(version, cardScreen)) {
+            schedule.textContent = scheduledText(result.remind_at, lang);
             disableActions(false);
-          } else if (instagramFilter === 'due') {
+            return;
+          }
+          // The manager may have returned to the list before the save completed.
+          if (!byId(listScreen).classList.contains('active')) return;
+          if (instagramFilter === 'due') {
             page = 0;
-            showList(message);
+            showList(scheduledText(result.remind_at, lang));
           } else {
             showList();
           }
         }).catch(function (error) {
-          if (!activeRequest(version, screen)) return;
-          if (error.status === 404) {
-            if (screen === cardScreen) showCard(creator.creator_id);
-            else showList();
+          if (error.status === 404 && context === saveContext && saveContext.isCurrent()) {
+            if (screen === cardScreen && activeRequest(version, cardScreen)) showCard(creator.creator_id);
+            else if (byId(listScreen).classList.contains('active')) showList();
             return;
           }
+          if (!activeRequest(version, screen)) return;
           feedback.textContent = lang.saveError;
           disableActions(false);
         });
@@ -244,7 +285,6 @@
     var filtered = botFilter.checked;
     var query = searchInput.value.trim();
     var instagram = instagramFilter;
-    var toolbar = byId('invited-directory-toolbar');
     list.replaceChildren();
     byId('invited-prev').hidden = true;
     byId('invited-next').hidden = true;
