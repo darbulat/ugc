@@ -1,5 +1,8 @@
 """Tests for start and role handlers."""
 
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
 import pytest
 
 from tests.helpers.fakes import (
@@ -33,6 +36,7 @@ from ugc_bot.bot.telegram.handlers.start import (
     support_callback,
 )
 from ugc_bot.bot.texts.defaults import DEFAULT_TEXTS
+from ugc_bot.domain.entities import Country
 from ugc_bot.domain.enums import MessengerType
 
 _TEXTS_RU = DEFAULT_TEXTS["ru"]
@@ -740,3 +744,146 @@ async def test_country_selected_ignores_if_country_already_set(
     assert saved.country == "ru"  # country unchanged
     assert len(client.sent_text) == 0
     assert len(client.edited_reply_markups) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "destination", ["business", "blogger", "manager", "partner"]
+)
+@pytest.mark.parametrize("country_saved", [False, True])
+async def test_website_start_reaches_selected_destination(
+    destination,
+    country_saved,
+    user_repo,
+    config,
+    bot_texts_service,
+    event_adapter,
+):
+    user = FakeUser(99, "synthetic_entry", "Synthetic")
+    service = UserRoleService(user_repo=user_repo)
+    if country_saved:
+        await service.set_user("99", MessengerType.TELEGRAM, "")
+        await service.set_country("99", MessengerType.TELEGRAM, "ru")
+
+    country = Country("ru", "Россия", "RUB", "₽")
+    countries = SimpleNamespace(
+        list_enabled=AsyncMock(return_value=[country]),
+        get_by_code=AsyncMock(return_value=country),
+    )
+    profile = SimpleNamespace(
+        get_advertiser_profile=AsyncMock(
+            return_value=object() if country_saved else None
+        ),
+        get_blogger_profile=AsyncMock(
+            return_value=object() if country_saved else None
+        ),
+    )
+    manager = SimpleNamespace(
+        open=AsyncMock(
+            return_value={
+                "state": "draft",
+                "instagram": None,
+                "instagram_verified_at": None,
+            }
+        )
+    )
+    config.webhook.webhook_base_url = "https://bot.example.test"
+    state = FakeFSMContext()
+    client = FakeMessengerClient()
+    message = FakeMessage(text=f"/start {destination}", user=user)
+    options = dict(
+        state=state,
+        user_role_service=service,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        country_repo=countries,
+        profile_service=profile,
+        manager_applications=manager,
+        messenger_client=client,
+        event_adapter=event_adapter,
+    )
+    await start_command(
+        message, referral_service=FakeReferralService(), **options
+    )
+    if not country_saved:
+        country_prompt = client.sent_text.pop()
+        assert (
+            country_prompt["keyboard"].rows[0][0].callback_data == "country:ru"
+        )
+        manager.open.assert_not_awaited()
+        callback = FakeCallback("country:ru", user=user, message=message)
+        await country_selected(callback, **options)
+        sent = len(client.sent_text), len(message.answers)
+        await country_selected(callback, **options)
+        assert (len(client.sent_text), len(message.answers)) == sent
+
+    saved = await service.get_user("99", MessengerType.TELEGRAM)
+    assert saved.country == "ru"
+    assert "start_destination" not in (await state.get_data())
+    if destination == "manager":
+        assert not client.sent_text
+        assert "Работа менеджера" in message.answers[-1][0]
+        manager.open.assert_awaited_once_with(saved.user_id)
+        return
+
+    manager.open.assert_not_awaited()
+    assert len(client.sent_text) == 1
+    buttons = [
+        button for row in client.sent_text[0]["keyboard"].rows for button in row
+    ]
+    if destination == "partner":
+        assert buttons[0].web_app_url.endswith("?view=partner")
+    elif country_saved:
+        role = "advertiser" if destination == "business" else "blogger"
+        assert any(
+            button.callback_data == f"profile:menu:orders:{role}"
+            for button in buttons
+        )
+        if destination == "business":
+            assert any(
+                button.callback_data == "profile:menu:order"
+                for button in buttons
+            )
+    else:
+        role = "advertiser" if destination == "business" else "blogger"
+        assert any(
+            button.web_app_url and f"view=register-{role}" in button.web_app_url
+            for button in buttons
+        )
+    assert buttons[-1].callback_data == "nav:home"
+
+
+@pytest.mark.asyncio
+async def test_plain_start_clears_pending_website_destination(
+    user_repo, config, bot_texts_service, event_adapter
+):
+    country = Country("ru", "Россия", "RUB", "₽")
+    countries = SimpleNamespace(
+        list_enabled=AsyncMock(return_value=[country]),
+        get_by_code=AsyncMock(return_value=country),
+    )
+    user = FakeUser(99, "synthetic_entry", "Synthetic")
+    client = FakeMessengerClient()
+    state = FakeFSMContext()
+    roles = UserRoleService(user_repo=user_repo)
+    options = dict(
+        state=state,
+        user_role_service=roles,
+        config=config,
+        bot_texts_service=bot_texts_service,
+        country_repo=countries,
+        messenger_client=client,
+        event_adapter=event_adapter,
+    )
+    for text in ("/start partner", "/start"):
+        message = FakeMessage(text=text, user=user)
+        await start_command(
+            message, referral_service=FakeReferralService(), **options
+        )
+    await country_selected(
+        FakeCallback("country:ru", user=user, message=message), **options
+    )
+    assert (
+        client.sent_text[-1]["keyboard"].rows[0][0].callback_data
+        == "role:creator"
+    )

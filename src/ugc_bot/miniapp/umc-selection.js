@@ -22,6 +22,44 @@
   var paymentTogether={ru:'Подбор и выбранное сопровождение оплачиваются вместе в одном счёте.',en:'Creator selection and chosen management are paid together in one invoice.',kk:'Іріктеу мен таңдалған сүйемелдеу бір шотпен бірге төленеді.',be:'Падбор і выбранае суправаджэнне аплачваюцца разам у адным рахунку.',uz:'Tanlov va tanlangan hamrohlik bitta hisobda birga to‘lanadi.'};
   Object.keys(paymentTogether).forEach(function(locale){copy[locale].paymentTogether=paymentTogether[locale];});
   Object.keys(clientCopy).forEach(function(locale){Object.assign(copy[locale],clientCopy[locale]);});
+  var fieldHints = {
+    ru: {
+      requiredFields: 'Поля со звёздочкой обязательны.',
+      productHint: 'Например, https://example.com/product. Подойдёт страница товара или сайта проекта.',
+      briefExample: 'Пример: вертикальный ролик на 30 секунд с распаковкой и демонстрацией товара.',
+      dueHint: 'Выберите будущую дату, к которой нужен подбор авторов.',
+      contactHint: 'Укажите Telegram, телефон или email для связи по заказу.',
+    },
+    en: {
+      requiredFields: 'Fields marked with an asterisk are required.',
+      productHint: 'For example, https://example.com/product. Link to the product or project website.',
+      briefExample: 'Example: a 30-second vertical video showing the unboxing and the product in use.',
+      dueHint: 'Choose a future date by which you need creators selected.',
+      contactHint: 'Enter a Telegram handle, phone number or email for this order.',
+    },
+    kk: {
+      requiredFields: 'Жұлдызшамен белгіленген өрістер міндетті.',
+      productHint: 'Мысалы, https://example.com/product. Өнім бетінің немесе жоба сайтының сілтемесін енгізіңіз.',
+      briefExample: 'Мысал: өнімді қораптан шығарып, қолдануды көрсететін 30 секундтық тік бейне.',
+      dueHint: 'Авторларды іріктеу аяқталуы тиіс алдағы күнді таңдаңыз.',
+      contactHint: 'Тапсырыс бойынша байланысу үшін Telegram, телефон немесе email көрсетіңіз.',
+    },
+    be: {
+      requiredFields: 'Палі з зорачкай абавязковыя.',
+      productHint: 'Напрыклад, https://example.com/product. Падыдзе спасылка на тавар або сайт праекта.',
+      briefExample: 'Прыклад: вертыкальны ролік на 30 секунд з распакоўкай і дэманстрацыяй тавару.',
+      dueHint: 'Выберыце будучую дату, да якой трэба падабраць аўтараў.',
+      contactHint: 'Пазначце Telegram, тэлефон або email для сувязі па заказе.',
+    },
+    uz: {
+      requiredFields: 'Yulduzcha bilan belgilangan maydonlar majburiy.',
+      productHint: 'Masalan, https://example.com/product. Mahsulot yoki loyiha sayti havolasini kiriting.',
+      briefExample: 'Misol: mahsulotni qutidan ochish va ishlatishni ko‘rsatadigan 30 soniyalik vertikal video.',
+      dueHint: 'Mualliflarni tanlash yakunlanishi kerak bo‘lgan kelgusi sanani tanlang.',
+      contactHint: 'Buyurtma bo‘yicha aloqa uchun Telegram, telefon yoki email kiriting.',
+    },
+  };
+  Object.keys(fieldHints).forEach(function(locale) { Object.assign(copy[locale], fieldHints[locale]); });
   var state = { busy:false, policies:[], pending:null, pendingEntry:null, completedEntry:null, result:null, order:null, intakeBack:'screen-advertiser-dashboard', selectionBack:'screen-advertiser-dashboard', opened:false };
   var context=null,owner=null,requestedIntake=null;
   function binding(){if(!context)context=bridge.createRequestContext();return context;}
@@ -44,12 +82,16 @@
   function money(value, currency) { var raw=String(value); if(!/^\d+$/.test(raw) || (typeof value==='number' && !Number.isSafeInteger(value))) return words().unknown; raw=raw.padStart(3,'0'); return raw.slice(0,-2).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0') + ',' + raw.slice(-2) + '\u00a0' + (currency==='RUB' && (window._me || {}).locale==='ru' ? 'руб.' : currency); }
   function date(value) { var d=new Date(value); return value && !isNaN(d.getTime()) ? d.toISOString().replace('T',' ').slice(0,16)+' UTC' : words().unknown; }
   function localize() {
-    document.querySelectorAll('[data-intake-copy]').forEach(function(el) { el.textContent=words()[el.dataset.intakeCopy] || ''; });
+    document.querySelectorAll('[data-intake-copy]').forEach(function(el) {
+      var field = el.htmlFor && id(el.htmlFor), label = words()[el.dataset.intakeCopy] || '';
+      el.textContent = label + (field && field.required ? ' *' : '');
+    });
+    text('intake-brief-hint', words().briefHint + ' ' + words().briefExample);
     var entry=id('btn-show-create-order'); if(entry) entry.textContent=words().entry;freshDraft.textContent=submittedWords()[1];
     document.querySelectorAll('[data-selection-open]').forEach(function(el) { el.textContent=words().viewSelection; });
     dueLabel(); targetLocalize();var hints={ru:'до 5 МБ (5 000 000 байт)',en:'up to 5 MB (5 000 000 bytes)',kk:'5 МБ дейін (5 000 000 байт)',be:'да 5 МБ (5 000 000 байт)',uz:'5 MB gacha (5 000 000 bayt)'};text('intake-image-hint','JPEG, 1080 × 1080 px, '+(hints[(window._me||{}).locale]||hints.en));
   }
-  function dueLabel() { var d=new Date(id('intake-due').value || Date.now()); var offset=-d.getTimezoneOffset(), sign=offset>=0?'+':'-'; var zone=Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; text('intake-due-label',words().due+' ('+zone+', UTC'+sign+String(Math.floor(Math.abs(offset)/60)).padStart(2,'0')+':'+String(Math.abs(offset)%60).padStart(2,'0')+')'); }
+  function dueLabel() { var d=new Date(id('intake-due').value || Date.now()); var offset=-d.getTimezoneOffset(), sign=offset>=0?'+':'-'; var zone=Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; text('intake-due-label',words().due+' ('+zone+', UTC'+sign+String(Math.floor(Math.abs(offset)/60)).padStart(2,'0')+':'+String(Math.abs(offset)%60).padStart(2,'0')+') *'); }
   function row(parent, label, value, valueId, minor) { var line=node('div'), dt=node('dt',label), dd=node('dd',value); if(valueId) dd.id=valueId; if(minor != null) dd.dataset.minor=String(minor); line.append(dt,dd); parent.appendChild(line); }
   function link(parent, value, label) { var url=safeUrl(value), el=node(url?'a':'span',url?(label || value):value); if(url) { el.href=url; el.target='_blank'; el.rel='noopener noreferrer'; } parent.appendChild(el); }
   var targetLabels={ru:['Фильтры авторов','Подписчиков от','Подписчиков до','Возраст от','Возраст до','Пол автора','Любой','Мужской','Женский'],en:['Creator filters','Followers from','Followers to','Age from','Age to','Creator gender','Any','Male','Female'],kk:['Автор сүзгілері','Жазылушылар саны бастап','Жазылушылар саны дейін','Жасы бастап','Жасы дейін','Автор жынысы','Кез келген','Ер','Әйел'],be:['Фільтры аўтараў','Падпісчыкі ад','Падпісчыкі да','Узрост ад','Узрост да','Пол аўтара','Любы','Мужчынскі','Жаночы'],uz:['Muallif filtrlari','Obunachilar kamida','Obunachilar ko‘pi bilan','Yosh kamida','Yosh ko‘pi bilan','Muallif jinsi','Istalgan','Erkak','Ayol']};
@@ -74,7 +116,7 @@
       platforms.appendChild(label);
     });
     box.appendChild(platforms);
-    var formatLabel=node('label'),formatTitle=node('span'),format=document.createElement('select');formatTitle.dataset.targetCopy='13';format.id='intake-order-type';['ugc_only','ugc_plus_placement','stories'].forEach(function(value,index){var option=node('option');option.value=value;if(value==='stories')option.textContent=({ru:'Сторис',en:'Stories',kk:'Сторис',be:'Сторыс',uz:'Stories'})[(window._me||{}).locale]||'Stories';else option.dataset.targetCopy=String(14+index);format.appendChild(option);});formatLabel.append(formatTitle,format);box.appendChild(formatLabel);id('intake-contact').insertAdjacentElement('afterend',box);targetLocalize();}
+    var formatLabel=node('label'),formatTitle=node('span'),format=document.createElement('select');formatTitle.dataset.targetCopy='13';format.id='intake-order-type';['ugc_only','ugc_plus_placement','stories'].forEach(function(value,index){var option=node('option');option.value=value;if(value==='stories')option.textContent=({ru:'Сторис',en:'Stories',kk:'Сторис',be:'Сторыс',uz:'Stories'})[(window._me||{}).locale]||'Stories';else option.dataset.targetCopy=String(14+index);format.appendChild(option);});formatLabel.append(formatTitle,format);box.appendChild(formatLabel);id('intake-contact-hint').insertAdjacentElement('afterend',box);targetLocalize();}
   targetControls();
   function selectedPolicy() { return state.policies.find(function(p) { return p.version===id('intake-policy').value; }); }
   function selectedPositions() { if(document.querySelector('input[name="intake-mode"]:checked').value==='self_service') return []; if(id('intake-all-manager').checked) return null; return Array.from(id('intake-position-options').querySelectorAll('input:checked')).map(function(el) { return Number(el.value); }); }

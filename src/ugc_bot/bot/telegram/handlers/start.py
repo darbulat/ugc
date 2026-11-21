@@ -3,7 +3,7 @@
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InaccessibleMessage, Message
 
 from ugc_bot.application.errors import UserNotFoundError
 from ugc_bot.application.messenger.dto import (
@@ -23,6 +23,12 @@ from ugc_bot.application.services.referral_service import ReferralService
 from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.partner_entry import CALLBACK_PARTNER_OPEN
 from ugc_bot.bot.telegram.filters import TextEqualsKey
+from ugc_bot.bot.telegram.handlers.advertiser_registration import (
+    _choose_advertiser_role_impl,
+)
+from ugc_bot.bot.telegram.handlers.blogger_registration import (
+    _choose_creator_role_impl,
+)
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_CHANGE_COUNTRY_PREFIX,
     CALLBACK_CHANGE_ROLE,
@@ -38,13 +44,17 @@ from ugc_bot.bot.telegram.handlers.keyboards import (
     miniapp_open_inline_keyboard,
     role_inline_keyboard,
 )
+from ugc_bot.bot.telegram.handlers.manager_application import show_manager_entry
 from ugc_bot.bot.telegram.handlers.utils import resolve_messenger_dependencies
+from ugc_bot.bot.telegram.navigation import NavigationClient
 from ugc_bot.bot.telegram.partner_entry import send_telegram_partner_entry
 from ugc_bot.config import AppConfig
+from ugc_bot.domain.entities import User
 from ugc_bot.domain.enums import UserStatus
 from ugc_bot.infrastructure.messenger.telegram.state import AiogramStateStore
 
 router = Router()
+START_DESTINATIONS = frozenset({"business", "blogger", "manager", "partner"})
 
 
 @router.message(Command("partner"))
@@ -165,8 +175,11 @@ async def start_command(
     event_adapter: MessengerEventAdapter | None = None,
     creator_invite_service=None,
     manager_applications=None,
+    profile_service: ProfileService | None = None,
+    partner_view_service=None,
+    transaction_manager=None,
 ) -> None:
-    """Handle the /start command. Clears FSM so user always sees role."""
+    """Open a website destination or the standard /start menu."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         message, messenger_client, event_adapter
     )
@@ -206,19 +219,17 @@ async def start_command(
     ).strip() or "Выберите вашу страну:"
     countries = await country_repo.list_enabled() if country_repo else []
     payload = (message.text or "").split(maxsplit=1)
-    invite = (
-        payload[1]
-        if len(payload) == 2 and payload[1].startswith("oi_")
-        else None
-    )
-    if invite and (
+    argument = payload[1] if len(payload) == 2 else ""
+    invite = argument if argument.startswith("oi_") else None
+    destination = argument if argument in START_DESTINATIONS else None
+    if (invite or destination) and (
         message.from_user is None or message.chat.id != message.from_user.id
     ):
         return
     role_kb = role_inline_keyboard(
         texts, include_manager=manager_applications is not None
     )
-    await _start_command(
+    user = await _start_command(
         incoming=incoming,
         state_store=AiogramStateStore(state),
         messenger_client=messenger_client,
@@ -229,7 +240,27 @@ async def start_command(
         country_prompt=country_prompt,
         country_kb=country_inline_keyboard(countries),
         tg_language_code=tg_lang,
+        destination=destination,
     )
+    if user is not None and not await _open_start_destination(
+        destination,
+        user,
+        incoming,
+        message,
+        state,
+        config,
+        bot_texts_service,
+        locale,
+        messenger_client,
+        user_role_service,
+        profile_service,
+        manager_applications,
+        partner_view_service,
+        transaction_manager,
+    ):
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id, text=start_text, keyboard=role_kb
+        )
 
     if invite and creator_invite_service is not None:
         from ugc_bot.bot.telegram.handlers.creator_invites import show_invite
@@ -249,10 +280,13 @@ async def country_selected(
     country_repo: CountryRepository | None = None,
     user_locale: str = "ru",
     manager_applications=None,
+    profile_service: ProfileService | None = None,
+    partner_view_service=None,
+    transaction_manager=None,
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
 ) -> None:
-    """Handle country selection callback — save country, show role keyboard."""
+    """Save the country and resume the pending website destination."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
         callback, messenger_client, event_adapter
     )
@@ -271,7 +305,7 @@ async def country_selected(
         country = await country_repo.get_by_code(country_code)
         if country is None:
             return
-    await user_role_service.set_country(
+    user = await user_role_service.set_country(
         external_id=incoming.user.external_id,
         messenger_type=incoming.user.messenger_type,
         country_code=country_code,
@@ -282,7 +316,26 @@ async def country_selected(
             message_id=incoming.message_id,
             keyboard=None,
         )
+    destination = (await state.get_data()).get("start_destination")
+    await state.clear()
     locale = user_locale
+    if await _open_start_destination(
+        destination,
+        user,
+        incoming,
+        callback.message,
+        state,
+        config,
+        bot_texts_service,
+        locale,
+        messenger_client,
+        user_role_service,
+        profile_service,
+        manager_applications,
+        partner_view_service,
+        transaction_manager,
+    ):
+        return
     start_text = (
         (await bot_texts_service.get("start_message", locale)).strip()
         or (config.market.start_text or "").strip()
@@ -297,7 +350,6 @@ async def country_selected(
         ["btn_creator", "btn_advertiser", "btn_support", "btn_partner_program"],
         locale,
     )
-    await AiogramStateStore(state).clear()
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,
@@ -305,6 +357,80 @@ async def country_selected(
             texts, include_manager=manager_applications is not None
         ),
     )
+
+
+async def _open_start_destination(
+    destination: str | None,
+    user: User,
+    incoming: IncomingMessage | IncomingCallback,
+    message: Message | InaccessibleMessage | None,
+    state: FSMContext,
+    config: AppConfig,
+    bot_texts_service: BotTextsService,
+    locale: str,
+    messenger_client: MessengerClient,
+    user_role_service: UserRoleService,
+    profile_service: ProfileService | None,
+    manager_applications,
+    partner_view_service,
+    transaction_manager,
+) -> bool:
+    if (
+        destination is None
+        or user.status != UserStatus.ACTIVE
+        or incoming.chat_id != incoming.user.external_id
+    ):
+        return False
+    if destination == "manager":
+        if message is None or isinstance(message, InaccessibleMessage):
+            return False
+        return await show_manager_entry(
+            message, state, user, config, manager_applications
+        )
+    if destination == "partner":
+        await send_telegram_partner_entry(
+            incoming,
+            messenger_client,
+            config,
+            locale,
+            user_role_service,
+            partner_view_service,
+            transaction_manager,
+            bot_texts_service,
+        )
+        return True
+    if profile_service is None or destination not in {"business", "blogger"}:
+        return False
+
+    client = NavigationClient(
+        messenger_client,
+        incoming.chat_id,
+        {"btn_main_menu": await bot_texts_service.get("btn_main_menu", locale)},
+        "advertiser" if destination == "business" else "blogger",
+    )
+    role_args = (
+        incoming,
+        state,
+        user_role_service,
+        profile_service,
+        bot_texts_service,
+        client,
+        locale,
+    )
+    miniapp_base_url = config.webhook.webhook_base_url or ""
+    if destination == "business":
+        await _choose_advertiser_role_impl(
+            *role_args, miniapp_base_url=miniapp_base_url
+        )
+    else:
+        await _choose_creator_role_impl(
+            *role_args,
+            miniapp_base_url=miniapp_base_url,
+            support_url=build_support_telegram_url(
+                config.market.support_contact or ""
+            ),
+        )
+    return True
 
 
 @router.callback_query(lambda c: c.data.startswith(CALLBACK_LANG_PREFIX))
@@ -696,10 +822,11 @@ async def _start_command(
     country_kb: Keyboard | None = None,
     tg_language_code: str | None = None,
     max_chat_id: str | None = None,
-) -> None:
-    """Handle the /start command. Clears FSM so /start always shows role."""
+    destination: str | None = None,
+) -> User | None:
+    """Prepare the account and return it when a website destination can open."""
     if not incoming.user.external_id:
-        return
+        return None
     await state_store.clear()
     user = await user_role_service.get_user(
         external_id=incoming.user.external_id,
@@ -733,20 +860,24 @@ async def _start_command(
             messenger_type=incoming.user.messenger_type,
             language_code=tg_language_code,
         )
-    # Step 1: Country
     if user.country is None and country_kb is not None and country_kb.rows:
+        if destination is not None:
+            await state_store.update_data(start_destination=destination)
         await messenger_client.send_text(
             chat_id=incoming.chat_id,
             text=country_prompt,
             keyboard=country_kb,
         )
-        return
-    # Step 3: Role
+        return None
+    if destination is not None:
+        return user
     await messenger_client.send_text(
         chat_id=incoming.chat_id,
         text=start_text,
         keyboard=role_kb,
     )
+
+    return None
 
 
 async def _change_role_button(

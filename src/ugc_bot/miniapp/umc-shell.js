@@ -497,6 +497,21 @@
     bridge.showScreen(screen.id);
     load();
   }
+  function afterVerification(add) {
+    var me = window._me, profile = me && me.blogger_profile;
+    if (!me || !me.has_blogger_profile || !profile || !profile.confirmed || !profile.agreement_confirmed) return false;
+    state.offered = true;
+    state.returnScreen = 'screen-blogger-dashboard';
+    if (add) {
+      localize(); clearMessages();
+      bridge.showScreen(screen.id);
+      load();
+    } else {
+      bridge.showScreen(state.returnScreen);
+    }
+    return true;
+  }
+  window.UMCCreatorSocials = {afterVerification: afterVerification};
   function remove(account) {
     if (state.busy || !verified() || account.platform === 'instagram') return;
     clearMessages(); busy(true, copy().removing);

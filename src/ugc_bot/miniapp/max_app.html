@@ -513,11 +513,13 @@
     <p id="intake-paused" class="umc-selection-notice" hidden></p>
     <p id="intake-empty" class="hint" hidden></p>
     <form id="form-umc-intake" hidden>
+      <p class="hint" data-intake-copy="requiredFields"></p>
       <label for="intake-policy" data-intake-copy="policy"></label>
       <select id="intake-policy" required></select>
       <div id="intake-terms" class="umc-selection-terms" hidden></div>
       <label for="intake-product" data-intake-copy="product"></label>
-      <input id="intake-product" type="url" required maxlength="2048">
+      <input id="intake-product" type="url" required maxlength="2048" aria-describedby="intake-product-hint">
+      <p id="intake-product-hint" class="hint umc-field-hint" data-intake-copy="productHint"></p>
       <label for="intake-brief" data-intake-copy="brief"></label>
       <textarea id="intake-brief" required maxlength="4000" aria-describedby="intake-brief-hint"></textarea>
       <p id="intake-brief-hint" class="hint umc-field-hint" data-intake-copy="briefHint"></p>
@@ -532,12 +534,14 @@
       <button id="intake-image-remove" type="button" class="btn btn-secondary" data-intake-copy="removeImage" hidden></button>
       <p id="intake-image-error" role="alert" class="error"></p>
       <label for="intake-honorarium" data-intake-copy="honorarium"></label>
-      <input id="intake-honorarium" type="number" required min="0" step="0.01" max="9999999999.99" inputmode="decimal">
-      <p class="hint" data-intake-copy="direct"></p>
+      <input id="intake-honorarium" type="number" required min="0" step="0.01" max="9999999999.99" inputmode="decimal" aria-describedby="intake-honorarium-hint">
+      <p id="intake-honorarium-hint" class="hint" data-intake-copy="direct"></p>
       <label for="intake-due" id="intake-due-label"></label>
-      <input id="intake-due" type="datetime-local" required>
+      <input id="intake-due" type="datetime-local" required aria-describedby="intake-due-hint">
+      <p id="intake-due-hint" class="hint umc-field-hint" data-intake-copy="dueHint"></p>
       <label for="intake-contact" data-intake-copy="contact"></label>
-      <input id="intake-contact" required maxlength="500" autocomplete="off">
+      <input id="intake-contact" required maxlength="500" autocomplete="off" aria-describedby="intake-contact-hint">
+      <p id="intake-contact-hint" class="hint umc-field-hint" data-intake-copy="contactHint"></p>
       <fieldset class="umc-selection-modes">
         <legend data-intake-copy="mode"></legend>
         <label><input type="radio" name="intake-mode" value="self_service" checked><span data-intake-copy="self"></span></label>

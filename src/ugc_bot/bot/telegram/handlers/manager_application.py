@@ -156,7 +156,6 @@ async def show(message, row, config):
     )
 
 
-@router.message(CommandStart(deep_link=True, magic=F.args == "manager"))
 @router.message(Command("manager"))
 async def open_manager_application(
     message, state, user_role_service, config, manager_applications=None
@@ -165,23 +164,15 @@ async def open_manager_application(
         return
     user = await _user(user_role_service, message.from_user.id)
     if (
-        user is not None
-        and getattr(user, "admin", False)
-        and user.status == UserStatus.ACTIVE
-    ):
-        await state.clear()
-        await show_workspace(
-            message,
-            config,
-            "Кабинет менеджера открыт.",
-            can_review=manager_applications is not None,
+        manager_applications is not None
+        and not _active_admin(user)
+        and (
+            user is None
+            or (
+                message.from_user.username
+                and user.telegram != message.from_user.username
+            )
         )
-        return
-    if manager_applications is None:
-        return
-    if user is None or (
-        message.from_user.username
-        and user.telegram != message.from_user.username
     ):
         user = await user_role_service.set_user(
             external_id=str(message.from_user.id),
@@ -189,9 +180,41 @@ async def open_manager_application(
             username=user.username if user else "",
             telegram_username=message.from_user.username,
         )
-    await show_application(
-        message, state, await manager_applications.open(user.user_id), config
+    if user is not None:
+        await show_manager_entry(
+            message, state, user, config, manager_applications
+        )
+
+
+def _active_admin(user):
+    return (
+        user is not None
+        and getattr(user, "admin", False)
+        and user.status == UserStatus.ACTIVE
     )
+
+
+async def show_manager_entry(
+    message, state, user, config, manager_applications
+):
+    if _active_admin(user):
+        await state.clear()
+        await show_workspace(
+            message,
+            config,
+            "Кабинет менеджера открыт.",
+            can_review=manager_applications is not None,
+        )
+    elif manager_applications is not None:
+        await show_application(
+            message,
+            state,
+            await manager_applications.open(user.user_id),
+            config,
+        )
+    else:
+        return False
+    return True
 
 
 async def show_application(message, state, row, config):

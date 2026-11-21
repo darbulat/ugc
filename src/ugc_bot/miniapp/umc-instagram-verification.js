@@ -4,11 +4,11 @@
   var bridge = window.__umcAppBridge, screen = document.getElementById('screen-instagram-verification');
   if (!bridge || !screen) return;
   var copies = {
-    ru: {waiting: 'Ожидаем подтверждения в Instagram…', confirmed: 'Instagram подтверждён', ready: 'Профиль креатора готов. Теперь вы можете получать предложения.', agreement: 'Для завершения регистрации подтвердите условия в личном кабинете.', check: 'Проверить статус', cabinet: 'В личный кабинет', error: 'Не удалось обновить статус. Попробуем ещё раз или нажмите «Проверить статус».', expired: 'Срок действия кода истёк. Вернитесь в кабинет, чтобы получить новый код.', session: 'Откройте Mini App заново, чтобы проверить свой профиль.'},
-    en: {waiting: 'Waiting for Instagram confirmation…', confirmed: 'Instagram verified', ready: 'Your creator profile is ready. You can now receive offers.', agreement: 'Accept the terms in your account to complete registration.', check: 'Check status', cabinet: 'Go to my account', error: 'Could not refresh the status. We will retry, or you can select “Check status”.', expired: 'The code has expired. Return to your account to get a new code.', session: 'Reopen the Mini App to check your profile.'},
-    kk: {waiting: 'Instagram растауын күтіп жатырмыз…', confirmed: 'Instagram расталды', ready: 'Креатор профилі дайын. Енді ұсыныстар ала аласыз.', agreement: 'Тіркелуді аяқтау үшін жеке кабинетте шарттарды қабылдаңыз.', check: 'Күйді тексеру', cabinet: 'Жеке кабинетке', error: 'Күйді жаңарту мүмкін болмады. Қайта тексереміз немесе «Күйді тексеру» түймесін басыңыз.', expired: 'Кодтың мерзімі аяқталды. Жаңа код алу үшін кабинетке оралыңыз.', session: 'Профильді тексеру үшін Mini App-ты қайта ашыңыз.'},
-    be: {waiting: 'Чакаем пацвярджэння Instagram…', confirmed: 'Instagram пацверджаны', ready: 'Профіль крэатара гатовы. Цяпер вы можаце атрымліваць прапановы.', agreement: 'Для завяршэння рэгістрацыі прыміце ўмовы ў асабістым кабінеце.', check: 'Праверыць статус', cabinet: 'У асабісты кабінет', error: 'Не ўдалося абнавіць статус. Паўторым праверку або націсніце «Праверыць статус».', expired: 'Тэрмін дзеяння кода скончыўся. Вярніцеся ў кабінет па новы код.', session: 'Адкрыйце Mini App нанова, каб праверыць профіль.'},
-    uz: {waiting: 'Instagram tasdiqlanishini kutyapmiz…', confirmed: 'Instagram tasdiqlandi', ready: 'Kreator profili tayyor. Endi takliflarni olishingiz mumkin.', agreement: 'Ro‘yxatdan o‘tishni yakunlash uchun shaxsiy kabinetda shartlarni qabul qiling.', check: 'Holatni tekshirish', cabinet: 'Shaxsiy kabinetga', error: 'Holat yangilanmadi. Qayta tekshiramiz yoki “Holatni tekshirish” tugmasini bosing.', expired: 'Kod muddati tugadi. Yangi kod olish uchun kabinetga qayting.', session: 'Profilni tekshirish uchun Mini Appni qayta oching.'}
+    ru: {addSocials: 'Добавить соцсети', waiting: 'Ожидаем подтверждения в Instagram…', confirmed: 'Instagram подтверждён', ready: 'Профиль креатора готов. Теперь вы можете получать предложения.', agreement: 'Для завершения регистрации подтвердите условия в личном кабинете.', check: 'Проверить статус', cabinet: 'В личный кабинет', error: 'Не удалось обновить статус. Попробуем ещё раз или нажмите «Проверить статус».', expired: 'Срок действия кода истёк. Вернитесь в кабинет, чтобы получить новый код.', session: 'Откройте Mini App заново, чтобы проверить свой профиль.'},
+    en: {addSocials: 'Add social accounts', waiting: 'Waiting for Instagram confirmation…', confirmed: 'Instagram verified', ready: 'Your creator profile is ready. You can now receive offers.', agreement: 'Accept the terms in your account to complete registration.', check: 'Check status', cabinet: 'Go to my account', error: 'Could not refresh the status. We will retry, or you can select “Check status”.', expired: 'The code has expired. Return to your account to get a new code.', session: 'Reopen the Mini App to check your profile.'},
+    kk: {addSocials: 'Әлеуметтік желілерді қосу', waiting: 'Instagram растауын күтіп жатырмыз…', confirmed: 'Instagram расталды', ready: 'Креатор профилі дайын. Енді ұсыныстар ала аласыз.', agreement: 'Тіркелуді аяқтау үшін жеке кабинетте шарттарды қабылдаңыз.', check: 'Күйді тексеру', cabinet: 'Жеке кабинетке', error: 'Күйді жаңарту мүмкін болмады. Қайта тексереміз немесе «Күйді тексеру» түймесін басыңыз.', expired: 'Кодтың мерзімі аяқталды. Жаңа код алу үшін кабинетке оралыңыз.', session: 'Профильді тексеру үшін Mini App-ты қайта ашыңыз.'},
+    be: {addSocials: 'Дадаць сацсеткі', waiting: 'Чакаем пацвярджэння Instagram…', confirmed: 'Instagram пацверджаны', ready: 'Профіль крэатара гатовы. Цяпер вы можаце атрымліваць прапановы.', agreement: 'Для завяршэння рэгістрацыі прыміце ўмовы ў асабістым кабінеце.', check: 'Праверыць статус', cabinet: 'У асабісты кабінет', error: 'Не ўдалося абнавіць статус. Паўторым праверку або націсніце «Праверыць статус».', expired: 'Тэрмін дзеяння кода скончыўся. Вярніцеся ў кабінет па новы код.', session: 'Адкрыйце Mini App нанова, каб праверыць профіль.'},
+    uz: {addSocials: 'Ijtimoiy tarmoqlarni qo‘shish', waiting: 'Instagram tasdiqlanishini kutyapmiz…', confirmed: 'Instagram tasdiqlandi', ready: 'Kreator profili tayyor. Endi takliflarni olishingiz mumkin.', agreement: 'Ro‘yxatdan o‘tishni yakunlash uchun shaxsiy kabinetda shartlarni qabul qiling.', check: 'Holatni tekshirish', cabinet: 'Shaxsiy kabinetga', error: 'Holat yangilanmadi. Qayta tekshiramiz yoki “Holatni tekshirish” tugmasini bosing.', expired: 'Kod muddati tugadi. Yangi kod olish uchun kabinetga qayting.', session: 'Profilni tekshirish uchun Mini Appni qayta oching.'}
   };
   function words() { return copies[(window._me || {}).locale] || copies.ru; }
   function accountLabel(value) {
@@ -23,7 +23,9 @@
   var detail = node('p', 'instagram-verification-detail');
   var done = node('button', 'btn-instagram-verification-done', 'btn');
   done.type = 'button'; done.dataset.umcPrimary = '20';
-  result.append(title, account, detail, done); screen.insertBefore(result, screen.querySelector('#instagram-verification-instruction'));
+  var addSocials = node('button', 'btn-instagram-add-socials', 'btn');
+  addSocials.type = 'button'; addSocials.dataset.umcPrimary = '30'; addSocials.hidden = true;
+  result.append(title, account, detail, addSocials, done); screen.insertBefore(result, screen.querySelector('#instagram-verification-instruction'));
   var status = node('p', 'instagram-verification-status', 'hint');
   status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   var check = node('button', 'btn-instagram-verification-check', 'btn btn-secondary'); check.type = 'button';
@@ -69,6 +71,8 @@
         account.textContent = accountLabel(data.instagram_url);
         detail.textContent = data.agreement_confirmed ? words().ready : words().agreement;
         done.textContent = words().cabinet;
+        addSocials.textContent = words().addSocials;
+        addSocials.hidden = !data.agreement_confirmed || !window.UMCCreatorSocials;
         pending.forEach(function (el) { el.hidden = true; }); clearCode();
       } else {
         status.textContent = Date.now() >= expires ? words().expired : words().waiting;
@@ -97,10 +101,14 @@
     if (visible()) refresh(); else { clearTimer(); if (request && request.controller) request.controller.abort(); }
   }
   check.addEventListener('click', refresh);
-  done.addEventListener('click', function () {
+  function finish(add) {
     if (!bound || !bound.isCurrent()) { invalid(); return; }
+    if (!complete) return;
+    if (window.UMCCreatorSocials && window.UMCCreatorSocials.afterVerification(add)) return;
     bridge.showScreen('screen-blogger-dashboard');
-  });
+  }
+  addSocials.addEventListener('click', function () { if (!addSocials.hidden) finish(true); });
+  done.addEventListener('click', function () { finish(false); });
   document.addEventListener('umc:screen-change', function (event) { if (event.detail.screen !== screen.id && bound) end(); });
   document.addEventListener('visibilitychange', resume); window.addEventListener('focus', resume);
   window.addEventListener('pagehide', function () { clearTimer(); if (request && request.controller) request.controller.abort(); });

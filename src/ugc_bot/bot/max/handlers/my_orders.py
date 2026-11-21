@@ -13,6 +13,10 @@ from ugc_bot.application.messenger.dto import (
     Keyboard,
     KeyboardKind,
 )
+from ugc_bot.application.services.client_order_view_service import (
+    ClientOrderViewService,
+)
+from ugc_bot.bot.customer_intake import principal_for
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.telegram.handlers.keyboards import (
     CALLBACK_PROFILE_AGREE,
@@ -75,6 +79,7 @@ async def _send_advertiser_orders(
     order_texts: dict,
     currency_symbol: str,
     locale: str,
+    payment_view: ClientOrderViewService | None = None,
 ) -> None:
     """Render and send advertiser order list (page 1) without pay buttons."""
     orders = sorted(
@@ -90,6 +95,9 @@ async def _send_advertiser_orders(
             currency_map=currency_map,
             default_currency_symbol=currency_symbol,
             texts=order_texts,
+            locale=locale,
+            payment_view=payment_view,
+            principal=principal_for(incoming, user_id),
         )
         keyboard_without_pay = _strip_pay_buttons(keyboard)
         await messenger_client.send_text(
@@ -239,6 +247,7 @@ async def _send_my_orders_content(
             order_texts,
             currency_symbol,
             locale,
+            payment_view=deps.get("client_order_view_service"),
         )
 
     if blogger is not None:
@@ -442,6 +451,9 @@ async def paginate_orders(
             currency_map=currency_map,
             default_currency_symbol=config.market.currency_symbol,
             texts=order_texts,
+            locale=locale,
+            payment_view=deps.get("client_order_view_service"),
+            principal=principal_for(incoming, user.user_id),
         )
         keyboard_to_edit = _strip_pay_buttons(keyboard)
 

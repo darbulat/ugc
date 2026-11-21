@@ -1,9 +1,14 @@
 """Current owner authorization precedes every order-list snapshot."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from uuid import UUID
 
 from ugc_bot.application.client_order_view_ports import (
     ClientOrderViewRepository,
+)
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
 )
 from ugc_bot.application.services.customer_workflow_common import (
     CustomerWorkflowService,
@@ -34,3 +39,21 @@ class ClientOrderViewService(CustomerWorkflowService):
             return await self.views.page(
                 actor_id, page, limit, status, session=session
             )
+
+    async def payment_states(
+        self,
+        principal: AuthenticatedMessengerPrincipal,
+        order_ids: Sequence[UUID],
+    ) -> dict[UUID, str]:
+        """Read existing payment facts for the customer's visible orders."""
+        async with self.transactions.transaction() as session:
+            await self.authorize(principal.user_id, principal, session=session)
+            states = {}
+            for order_id in order_ids:
+                await self.require_order(
+                    principal.user_id, order_id, session=session
+                )
+                states[order_id] = await self.repository.payment_state(
+                    order_id, session=session
+                )
+            return states

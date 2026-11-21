@@ -1,6 +1,9 @@
 """Tests for my orders handler."""
 
+from dataclasses import replace
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -18,6 +21,9 @@ from tests.helpers.fakes import (
     FakeUser,
 )
 from tests.helpers.services import build_order_service, build_profile_service
+from ugc_bot.application.native_principal_ports import (
+    AuthenticatedMessengerPrincipal,
+)
 from ugc_bot.application.services.offer_response_service import (
     OfferResponseService,
 )
@@ -32,6 +38,7 @@ from ugc_bot.bot.telegram.handlers.my_orders import (
     _format_price,
     _format_price_and_barter,
     _render_blogger_orders_page,
+    _render_page,
     paginate_orders,
     show_my_orders,
     show_my_orders_from_profile_callback,
@@ -2699,3 +2706,47 @@ async def test_my_orders_uses_order_currency_not_user_currency(
     )
     assert "5 000 ₽" in answer_text
     assert "$" not in answer_text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status, payment, complimentary, label",
+    [
+        (OrderStatus.NEW, "unpaid", False, "Ожидает оплаты"),
+        (OrderStatus.NEW, "processing", False, "Проверяем оплату"),
+        (OrderStatus.ACTIVE, "paid", False, "Оплачено"),
+        (OrderStatus.ACTIVE, None, True, "Оплата не требуется"),
+    ],
+)
+async def test_customer_order_list_displays_payment_separately(
+    order_repo, status, payment, complimentary, label
+):
+    owner = uuid4()
+    order = await create_test_order(order_repo, owner, status=status)
+    order = replace(order, complimentary=complimentary)
+    responses = SimpleNamespace(count_by_order=AsyncMock(return_value=0))
+    view = SimpleNamespace(
+        payment_states=AsyncMock(return_value={order.order_id: payment})
+    )
+    principal = AuthenticatedMessengerPrincipal(owner, "telegram", "101")
+    text, keyboard = await _render_page(
+        [order],
+        1,
+        responses,
+        texts=_TEXTS_RU,
+        payment_view=view,
+        principal=principal,
+    )
+    order_label = "Создан" if status == OrderStatus.NEW else "Активен"
+    assert f"Статус: {order_label}\n{label}" in text
+    if complimentary:
+        view.payment_states.assert_not_awaited()
+    else:
+        view.payment_states.assert_awaited_once_with(
+            principal, [order.order_id]
+        )
+    assert any(
+        button.callback_data and button.callback_data.startswith("pay_order:")
+        for row in keyboard.rows
+        for button in row
+    ) == (status == OrderStatus.NEW)
