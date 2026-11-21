@@ -181,6 +181,20 @@ async def reserve(
     return candidates[0][1].telegram_id
 
 
+async def cancel_if_payment_started(
+    session: AsyncSession, order_id: UUID, at: datetime
+) -> bool:
+    # The reservation is durable before transport I/O. Re-read payment facts
+    # in a fresh transaction to cover payments committed after it.
+    state = await SqlAlchemyCustomerWorkflowRepository().payment_state(
+        order_id, session=session
+    )
+    if state == "unpaid":
+        return False
+    await finish(session, order_id, at, "payment_started", None)
+    return True
+
+
 async def finish(
     session: AsyncSession,
     order_id: UUID,
