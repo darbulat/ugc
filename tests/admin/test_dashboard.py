@@ -1,5 +1,6 @@
 """Tests for admin dashboard routes."""
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 from ugc_bot.admin.app import create_admin_app
 from ugc_bot.admin.auth import AdminAuth
@@ -156,6 +158,10 @@ def test_dashboard_goals_fragment_returns_only_authenticated_counts(
     counts.assert_not_awaited()
 
     auth.return_value = True
+    counts.side_effect = [TimeoutError, counts.return_value]
+    failed = client.get(path, headers=headers)
+    assert failed.status_code == 503
+    assert failed.headers["cache-control"] == "private, no-store"
     response = client.get(path, headers=headers)
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store"
@@ -167,8 +173,70 @@ def test_dashboard_goals_fragment_returns_only_authenticated_counts(
         "9",
     ]
     assert "data-dashboard-content" not in response.text
-    counts.assert_awaited_once()
+    assert counts.await_count == 2
     AdminDashboardService.get_dashboard.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_period_fails", [False, True])
+async def test_dashboard_startup_warms_common_periods(
+    monkeypatch, first_period_fails
+):
+    monkeypatch.setenv("USE_REDIS_STORAGE", "true")
+    monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:1/0")
+    monkeypatch.setenv("ADMIN_DASHBOARD_TIMEZONE", "UTC")
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={},
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    today = "dashboard-snapshot:v1:UTC:today"
+    month = "dashboard-snapshot:v1:UTC:30d"
+    goals = {"completed_creators_count": 37}
+    saved = {}
+    warmed = asyncio.Event()
+
+    async def save(key, value, _ttl):
+        saved[key] = value
+        if key == "dashboard:snapshot-fresh:v1:UTC:30d":
+            warmed.set()
+
+    async def dashboard(period, **kwargs):
+        if period == "today" and first_period_fails:
+            raise SQLAlchemyError("Temporary synthetic query failure")
+        if period == "30d":
+            assert (today in saved) == (not first_period_fails)
+        return {"period": period, **kwargs["goals"]}
+
+    dashboard_mock = AsyncMock(side_effect=dashboard)
+    goal_mock = AsyncMock(return_value=goals)
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard", dashboard_mock)
+    monkeypatch.setattr(AdminDashboardService, "get_dashboard_goals", goal_mock)
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_worklist_attention_counts",
+        AsyncMock(return_value={}),
+    )
+    store = client.app.state.dashboard_snapshots
+    store.cache = SimpleNamespace(
+        get=AsyncMock(side_effect=saved.get),
+        set=AsyncMock(side_effect=save),
+    )
+    async with client.app.router.lifespan_context(client.app):
+        await asyncio.wait_for(warmed.wait(), timeout=3)
+        assert month in saved
+        assert (await store.read("UTC:30d"))["payload"] == {
+            "period": "30d",
+            **goals,
+        }
+    assert [call.args[0] for call in dashboard_mock.await_args_list] == [
+        "today",
+        "30d",
+    ]
+    goal_mock.assert_awaited_once()
 
 
 @pytest.mark.parametrize("days_old", [0, 1])
