@@ -19,6 +19,7 @@ from tests.helpers.fakes import (
     FakeMessage,
     FakeUser,
 )
+from tests.postgres_financial.test_order_intake import command, service
 from tests.postgres_financial.test_order_intake import intake_env as _intake_env
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -29,6 +30,9 @@ from ugc_bot.application.notice_delivery_ports import (
 )
 from ugc_bot.application.services.customer_workflow_delivery import (
     CustomerWorkflowDelivery,
+)
+from ugc_bot.application.services.financial_policy_service import (
+    FinancialPolicyService,
 )
 from ugc_bot.bot.customer_actions import PAYMENT_SUPPORT_PREFIX, SUPPORT_REASON
 from ugc_bot.bot.telegram.handlers.order_creation import (
@@ -41,6 +45,7 @@ from ugc_bot.container.customer_workflow_factory import (
 )
 from ugc_bot.domain.customer_workflows import ServiceLeadInput, SupportInput
 from ugc_bot.domain.enums import PaymentStatus
+from ugc_bot.infrastructure.db.browser_checkout_models import BROWSER_ATTEMPTS
 from ugc_bot.infrastructure.db.customer_workflow_models import (
     INTENTS,
     JOBS,
@@ -56,6 +61,9 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
 from ugc_bot.infrastructure.db.repositories.customer_workflows import (
     SqlAlchemyCustomerWorkflowRepository,
+)
+from ugc_bot.infrastructure.db.repositories.financial_capture import (
+    SqlAlchemyFinancialCaptureRepository,
 )
 from ugc_bot.infrastructure.db.repositories.order_summary import (
     SqlOrderSummary,
@@ -685,11 +693,29 @@ async def test_order_list_payment_states_use_owned_payment_facts(intake_env):
     principal = AuthenticatedMessengerPrincipal(
         owner.user_id, "telegram", owner.telegram_id
     )
-    awaiting, processing, paid = [await order(env) for _ in range(3)]
+    (
+        awaiting,
+        processing,
+        failed,
+        paid,
+        browser,
+        browser_failed,
+        complimentary,
+    ) = [await order(env) for _ in range(7)]
+    invoice = await service(env).create(command(env))
+    async with env["container"].transaction_manager.transaction() as session:
+        capture = SqlAlchemyFinancialCaptureRepository(
+            FinancialPolicyService(env["config"].financial)
+        )
+        await capture.issue(
+            invoice.order_id, owner.user_id, "synthetic", session=session
+        )
     with Session(env["pg"]) as db, db.begin():
         for row, status in (
             (processing, PaymentStatus.PENDING),
+            (failed, PaymentStatus.FAILED),
             (paid, PaymentStatus.PAID),
+            (browser, PaymentStatus.FAILED),
         ):
             db.add(
                 PaymentModel(
@@ -701,13 +727,51 @@ async def test_order_list_payment_states_use_owned_payment_facts(intake_env):
                     currency="RUB",
                 )
             )
-    assert await view.payment_states(
-        principal, [awaiting.order_id, processing.order_id, paid.order_id]
-    ) == {
+        for row, state in ((browser, "review"), (browser_failed, "failed")):
+            db.execute(
+                BROWSER_ATTEMPTS.insert().values(
+                    attempt_id=uuid4(),
+                    order_id=row.order_id,
+                    client_id=owner.user_id,
+                    shop_id="synthetic",
+                    test_mode=True,
+                    amount_minor=100,
+                    state=state,
+                    created_at=env["clock"].at,
+                    expires_at=env["clock"].at + timedelta(minutes=15),
+                )
+            )
+        db.execute(
+            update(OrderModel)
+            .where(OrderModel.order_id == complimentary.order_id)
+            .values(complimentary=True)
+        )
+    expected = {
         awaiting.order_id: "unpaid",
+        invoice.order_id: "unpaid",
         processing.order_id: "processing",
+        failed.order_id: "failed",
         paid.order_id: "paid",
+        browser.order_id: "processing",
+        browser_failed.order_id: "failed",
     }
+    assert await view.payment_states(principal, list(expected)) == expected
+    page = await view.list(owner.user_id, principal=principal)
+    assert {
+        row["order_id"]: row["payment_state"] for row in page["orders"]
+    } == {
+        str(order_id): state
+        for order_id, state in (
+            expected | {complimentary.order_id: "complimentary"}
+        ).items()
+    }
+    async with env["container"].transaction_manager.transaction() as session:
+        assert (
+            await SqlAlchemyCustomerWorkflowRepository().payment_state(
+                failed.order_id, session=session
+            )
+            == "unpaid"
+        )
     with pytest.raises(PermissionError, match="customer_order_forbidden"):
         await view.payment_states(principal, [awaiting.order_id, uuid4()])
 

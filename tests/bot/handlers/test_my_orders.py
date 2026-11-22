@@ -2714,6 +2714,7 @@ async def test_my_orders_uses_order_currency_not_user_currency(
     [
         (OrderStatus.NEW, "unpaid", False, "Ожидает оплаты"),
         (OrderStatus.NEW, "processing", False, "Проверяем оплату"),
+        (OrderStatus.NEW, "failed", False, "Оплата не прошла"),
         (OrderStatus.ACTIVE, "paid", False, "Оплачено"),
         (OrderStatus.ACTIVE, None, True, "Оплата не требуется"),
     ],

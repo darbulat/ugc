@@ -5,6 +5,10 @@ from uuid import UUID
 
 
 class ClientOrderViewRepository(Protocol):
+    async def payment_state(
+        self, order_id: UUID, *, session: object
+    ) -> str: ...
+
     async def page(
         self,
         owner_id: UUID,

@@ -554,15 +554,16 @@ def test_closed_legacy_order_keeps_manager_rating_visible(page, platform):
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
 @pytest.mark.parametrize(
-    "payment_state, label",
+    "payment_state, label, action",
     [
-        ("unpaid", "Ожидает оплаты"),
-        ("pending", "Ожидает оплаты"),
-        ("failed", "Оплата не прошла"),
+        ("unpaid", "Ожидает оплаты", "Продолжить оформление"),
+        ("failed", "Оплата не прошла", "Продолжить оформление"),
+        ("paid", "Оплачено", "Открыть заказ"),
+        ("complimentary", "Оплата не требуется", "Открыть заказ"),
     ],
 )
-def test_unpaid_order_offers_payment_continuation(
-    page, platform, payment_state, label
+def test_order_payment_label_and_action(
+    page, platform, payment_state, label, action
 ):
     network = CustomerNetwork()
     network.orders = [
@@ -579,26 +580,34 @@ def test_unpaid_order_offers_payment_continuation(
     card = page.locator(f'[data-order-id="{ORDER}"]')
     expect(card.get_by_text("Создан", exact=True)).to_be_visible()
     expect(card.get_by_text(label, exact=True)).to_be_visible()
-    expect(
-        card.get_by_role("button", name="Продолжить оформление")
-    ).to_be_visible()
+    expect(card.get_by_role("button", name=action, exact=True)).to_be_visible()
+    if action == "Открыть заказ":
+        expect(
+            card.get_by_role("button", name="Продолжить оформление")
+        ).to_have_count(0)
     if payment_state != "unpaid":
         expect(card).not_to_contain_text(payment_state)
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
+@pytest.mark.parametrize("payment_state", ["processing", "pending"])
 @pytest.mark.parametrize(
-    "locale,awaiting,continue_order",
+    "locale,checking,open_order,continue_order",
     [
-        ("ru", "Ожидает оплаты", "Продолжить оформление"),
-        ("en", "Awaiting payment", "Continue your order"),
-        ("kk", "Төлем күтілуде", "Тапсырысты жалғастыру"),
-        ("be", "Чакае аплаты", "Працягнуць афармленне"),
-        ("uz", "To‘lov kutilmoqda", "Buyurtmani davom ettirish"),
+        ("ru", "Проверяем оплату", "Открыть заказ", "Продолжить оформление"),
+        ("en", "Checking payment", "Open order", "Continue your order"),
+        ("kk", "Төлем тексерілуде", "Тапсырысты ашу", "Тапсырысты жалғастыру"),
+        ("be", "Правяраем аплату", "Адкрыць заказ", "Працягнуць афармленне"),
+        (
+            "uz",
+            "To‘lov tekshirilmoqda",
+            "Buyurtmani ochish",
+            "Buyurtmani davom ettirish",
+        ),
     ],
 )
-def test_pending_payment_is_localized(
-    page, platform, locale, awaiting, continue_order
+def test_processing_payment_is_localized_without_continuation(
+    page, platform, payment_state, locale, checking, open_order, continue_order
 ):
     network = CustomerNetwork()
     network.locale = locale
@@ -607,17 +616,17 @@ def test_pending_payment_is_localized(
             "order_id": ORDER,
             "public_title": "New order",
             "status": "new",
-            "payment_state": "pending",
+            "payment_state": payment_state,
             "created_at": "2026-10-30T10:00:00Z",
             "financial_version": "v1",
         }
     ]
     open_app(page, network, platform, init_data=SIGNED, query="?screen=orders")
     card = page.locator(f'[data-order-id="{ORDER}"]')
-    expect(card).to_contain_text(awaiting)
-    expect(card.get_by_role("button", name=continue_order)).to_be_visible()
-    expect(card.get_by_text(awaiting, exact=True)).to_have_count(1)
-    expect(card).not_to_contain_text("pending")
+    expect(card.get_by_text(checking, exact=True)).to_be_visible()
+    expect(card.get_by_role("button", name=open_order)).to_be_visible()
+    expect(card.get_by_role("button", name=continue_order)).to_have_count(0)
+    expect(card).not_to_contain_text(payment_state)
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
