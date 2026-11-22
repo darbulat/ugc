@@ -5,6 +5,7 @@ const dates = new Intl.DateTimeFormat("ru-RU", {
   day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
 });
 const retry = document.querySelector("#dashboard-retry");
+let goalsRequest;
 
 function loadScript(url, timeout = 10000) {
   return new Promise((resolve, reject) => {
@@ -34,7 +35,9 @@ async function loadGoals() {
   const template = document.createElement("template");
   template.innerHTML = await response.text();
   const goals = template.content.firstElementChild;
-  if (goals?.matches("#dashboard-goals")) panel.replaceChildren(goals);
+  if (goals?.matches("#dashboard-goals") && !panel.querySelector("[data-dashboard-content]")) {
+    panel.replaceChildren(goals);
+  }
 }
 
 async function loadDashboard() {
@@ -50,8 +53,8 @@ async function loadDashboard() {
   const cancel = () => controller.abort();
   window.addEventListener("pagehide", cancel, {once: true});
   try {
-    if (!previous && !panel.querySelector("#dashboard-goals")) {
-      await loadGoals().catch(() => {});
+    if (!previous && !goalsRequest && !panel.querySelector("#dashboard-goals")) {
+      goalsRequest = loadGoals().catch(() => {}).finally(() => { goalsRequest = undefined; });
     }
     const response = await fetch(window.location.href, {
       headers: {"X-Dashboard-Content": "1"},

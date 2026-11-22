@@ -80,33 +80,30 @@ def test_dashboard_loads(admin_server: str, page) -> None:
 
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
-@pytest.mark.parametrize("goals_available", [True, False])
+@pytest.mark.parametrize("goals_response", ["early", "unavailable", "late"])
 def test_dashboard_opens_while_metrics_load_and_retries(
-    admin_server, page, goals_available
+    admin_server, page, goals_response
 ):
-    """Navigation works before metrics arrive, including after a failed load."""
+    """Cold requests start together and a late preview preserves full data."""
     from playwright.sync_api import expect
 
     _login(page, admin_server)
     requests = []
+    goal_requests = []
     errors = []
     page.on("pageerror", lambda error: errors.append(str(error)))
 
     def full_fragment(request):
         return request.headers.get("x-dashboard-content") == "1"
 
+    def goals_fragment(request):
+        return request.headers.get("x-dashboard-content") == "goals"
+
     def hold_metrics(route):
         if full_fragment(route.request):
             requests.append(route)
-        elif route.request.headers.get("x-dashboard-content") == "goals":
-            route.fulfill(
-                status=200 if goals_available else 503,
-                content_type="text/html",
-                body=(
-                    '<section id="dashboard-goals">'
-                    "Завершили заказ: 36</section>"
-                ),
-            )
+        elif goals_fragment(route.request):
+            goal_requests.append(route)
         else:
             # Force an empty snapshot even after other tests populate Redis.
             response = route.fetch()
@@ -120,7 +117,10 @@ def test_dashboard_opens_while_metrics_load_and_retries(
             route.fulfill(response=response, body=html)
 
     page.route("**/admin/dashboard?period=30d", hold_metrics)
-    with page.expect_request(full_fragment):
+    with (
+        page.expect_request(goals_fragment),
+        page.expect_request(full_fragment, timeout=2500),
+    ):
         response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
     assert response is not None and response.ok
     expect(
@@ -132,15 +132,20 @@ def test_dashboard_opens_while_metrics_load_and_retries(
         "aria-busy", "true"
     )
     goals = page.locator("#dashboard-goals")
-    if goals_available:
+    early_html = '<section id="dashboard-goals">Завершили заказ: 36</section>'
+    assert len(goal_requests) == 1
+    if goals_response == "early":
+        goal_requests[0].fulfill(content_type="text/html", body=early_html)
         expect(goals).to_have_text("Завершили заказ: 36")
     else:
+        if goals_response == "unavailable":
+            goal_requests[0].fulfill(status=503, body="Temporarily unavailable")
         expect(goals).to_have_count(0)
     assert len(requests) == 1
     requests[0].fulfill(status=503, body="Temporarily unavailable")
     retry = page.get_by_role("button", name="Повторить обновление")
     expect(retry).to_be_visible()
-    if goals_available:
+    if goals_response == "early":
         expect(goals).to_have_text("Завершили заказ: 36")
     with page.expect_request(full_fragment):
         retry.click()
@@ -152,6 +157,19 @@ def test_dashboard_opens_while_metrics_load_and_retries(
         '<section id="dashboard-goals">Завершили заказ: 37</section></div>',
     )
     expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
+    if goals_response == "late":
+        assert len(goal_requests) == 1
+        goal_requests[0].fulfill(
+            content_type="text/html",
+            body=early_html,
+            headers={"Server-Timing": "late-goals;dur=0"},
+        )
+        page.wait_for_function(
+            """performance.getEntriesByType('resource').some(
+              entry => entry.serverTiming.some(t => t.name === 'late-goals'))"""
+        )
+        expect(goals).to_have_text("Завершили заказ: 37")
+        expect(page.locator("[data-dashboard-content]")).to_have_count(1)
     expect(page.locator("#dashboard-panel")).to_have_attribute(
         "aria-busy", "false"
     )
@@ -273,6 +291,9 @@ def test_dashboard_attention_layout(admin_server: str, page) -> None:
     page.set_viewport_size({"width": 1440, "height": 900})
     response = page.goto(f"{admin_server}/admin/dashboard?period=7d")
     assert response is not None and response.ok
+    expect(page.locator("#dashboard-panel")).to_have_attribute(
+        "aria-busy", "false"
+    )
 
     attention = page.get_by_role("region", name="Требует внимания")
     cards = attention.locator(".attention-queues > .attention-queue")
@@ -292,6 +313,9 @@ def test_dashboard_attention_layout(admin_server: str, page) -> None:
         card.locator("summary").click()
         assert card.get_attribute("open") is None
     page.reload()
+    expect(page.locator("#dashboard-panel")).to_have_attribute(
+        "aria-busy", "false"
+    )
     for index in (0, 1):
         assert cards.nth(index).get_attribute("open") is not None
 
