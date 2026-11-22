@@ -198,6 +198,14 @@ class DiscoveryClient:
                 outcome = "credentials"
             elif code == 100 and subcode == 33:
                 outcome = "unavailable"
+            elif (
+                response.status_code == 400
+                and code == 110
+                and subcode == 2207013
+                and diagnostic.transient is False
+            ):
+                # This handle cannot be read through Business Discovery.
+                outcome = "unavailable"
             else:
                 outcome = "invalid_request"
             return DiscoveryResult(

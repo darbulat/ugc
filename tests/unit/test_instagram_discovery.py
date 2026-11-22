@@ -167,6 +167,54 @@ async def test_provider_errors_are_not_retried(error, outcome):
 
 
 @pytest.mark.parametrize(
+    "status,changes,outcome",
+    [
+        (400, {}, "unavailable"),
+        (400, {"code": 110, "error_subcode": 2207014}, "invalid_request"),
+        (400, {"code": 110, "error_subcode": None}, "invalid_request"),
+        (400, {"code": 100}, "invalid_request"),
+        (400, {"code": "110"}, "invalid_request"),
+        (400, {"error_subcode": "2207013"}, "invalid_request"),
+        (400, {"is_transient": True}, "invalid_request"),
+        (400, {"is_transient": None}, "invalid_request"),
+        (400, {"is_transient": 0}, "invalid_request"),
+        (400, {"code": 190}, "credentials"),
+        (400, {"code": 200}, "credentials"),
+        (400, {"code": 10}, "credentials"),
+        (400, {"code": 4}, "rate_limit"),
+        (200, {}, "invalid_request"),
+        (401, {}, "invalid_request"),
+        (403, {}, "invalid_request"),
+        (429, {}, "invalid_request"),
+        (500, {}, "invalid_request"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_only_exact_nontransient_profile_error_is_skippable(
+    status, changes, outcome
+):
+    error = {
+        "code": 110,
+        "error_subcode": 2207013,
+        "is_transient": False,
+        "message": "test-secret",
+        "error_user_msg": "test-secret",
+        **changes,
+    }
+    handler = AsyncMock(
+        return_value=httpx.Response(status, json={"error": error})
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        result = await DiscoveryClient(http, credential()).fetch("creator")
+    assert result.outcome == outcome
+    assert result.profile is None
+    assert handler.call_count == 1
+    assert "test-secret" not in repr(result)
+
+
+@pytest.mark.parametrize(
     "body",
     [
         {"business_discovery": {"id": "invalid", "username": "creator"}},
@@ -399,7 +447,17 @@ def test_credential_requires_exact_expiry_binding_and_private_file(tmp_path):
 
 @pytest.mark.parametrize(
     "outcome,usage,expected",
-    [("success", 0, 150), ("rate_limit", 0, 1), ("success", 50, 1)],
+    [
+        ("success", 0, 150),
+        ("unavailable", 0, 150),
+        ("unavailable", 50, 1),
+        ("rate_limit", 0, 1),
+        ("success", 50, 1),
+        ("credentials", 0, 1),
+        ("invalid_request", 0, 1),
+        ("network", 0, 1),
+        ("provider_error", 0, 1),
+    ],
 )
 @pytest.mark.asyncio
 async def test_batch_hard_cap_spacing_and_global_stop(outcome, usage, expected):

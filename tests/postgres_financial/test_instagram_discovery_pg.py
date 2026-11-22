@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import os
 from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import httpx
@@ -339,6 +340,163 @@ async def test_scheduled_http_to_matching_on_migrated_database(discovery_db):
         counts = (await reader.get_audience_counts([owner]))[owner]
         assert (counts.followers_count, counts.media_count) == (140, 0)
         assert await repo.claim(NOW + timedelta(hours=1)) is None
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_unreadable_profile_keeps_data_and_does_not_stop_next_target(
+    discovery_db,
+):
+    context = str(uuid4())
+    unreadable = seed(discovery_db, context, age=2)
+    readable = seed(discovery_db, context)
+    owners = [unreadable, readable]
+    observed = NOW - timedelta(days=15)
+    with discovery_db.begin() as conn:
+        profiles = (
+            conn.execute(sa.select(P.__table__).where(P.user_id.in_(owners)))
+            .mappings()
+            .all()
+        )
+        handles = {
+            row["user_id"]: row["instagram_username"] for row in profiles
+        }
+        profile = next(row for row in profiles if row["user_id"] == unreadable)
+        conn.execute(
+            D.insert().values(
+                user_id=unreadable,
+                observed_meta_id=profile["instagram_user_id"],
+                identity_context=context,
+                username=handles[unreadable],
+                discovery_object_id="123",
+                discovery_context="discovery:test",
+                followers_count=90,
+                followers_observed_at=observed,
+                media_count=7,
+                media_observed_at=observed,
+                details={
+                    "name": {
+                        "value": "Known",
+                        "observed_at": observed.isoformat(),
+                    }
+                },
+                observed_at=observed,
+                attempt_meta_id=profile["instagram_user_id"],
+                attempt_profile_url=profile["instagram_url"],
+                attempt_id=uuid4(),
+                attempted_at=observed,
+                next_attempt_at=NOW,
+                last_outcome="success",
+            )
+        )
+        old = (
+            conn.execute(sa.select(D).where(D.c.user_id == unreadable))
+            .mappings()
+            .one()
+        )
+        health = (
+            conn.execute(sa.select(H).where(H.c.user_id.in_(owners)))
+            .mappings()
+            .all()
+        )
+        notices = conn.scalar(sa.select(sa.func.count()).select_from(NOTICES))
+    calls = []
+
+    def handler(request):
+        handle = (
+            request.url.params["fields"].split("username(")[1].split(")")[0]
+        )
+        calls.append(handle)
+        if handle == handles[unreadable]:
+            return httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "code": 110,
+                        "error_subcode": 2207013,
+                        "is_transient": False,
+                    }
+                },
+            )
+        return httpx.Response(
+            200,
+            json={
+                "business_discovery": {
+                    "id": "234",
+                    "username": handle,
+                    "followers_count": 140,
+                    "media_count": 0,
+                }
+            },
+        )
+
+    engine, sessions = async_sessions(discovery_db)
+    repo = DiscoveryRepository(sessions, context)
+    sleep = AsyncMock()
+    try:
+        assert await repo.claim(NOW - timedelta(minutes=1)) is None
+        lease = await repo.claim(NOW)
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(handler)
+        ) as http:
+            result = await scheduled_batch(
+                repo,
+                lease,
+                DiscoveryClient(http, credential()),
+                now=lambda: NOW,
+                sleep=sleep,
+            )
+        assert result == "success"
+        assert calls == [handles[unreadable], handles[readable]]
+        assert [call.args for call in sleep.await_args_list] == [(60,), (60,)]
+        with discovery_db.connect() as conn:
+            current = (
+                conn.execute(sa.select(D).where(D.c.user_id == unreadable))
+                .mappings()
+                .one()
+            )
+            assert current["last_outcome"] == "unavailable"
+            assert current["next_attempt_at"] == NOW + timedelta(days=14)
+            changed = {
+                "attempt_id",
+                "attempted_at",
+                "next_attempt_at",
+                "last_outcome",
+            }
+            assert {
+                key: value
+                for key, value in current.items()
+                if key not in changed
+            } == {
+                key: value for key, value in old.items() if key not in changed
+            }
+            control = conn.execute(sa.select(C)).mappings().one()
+            assert control["requests_used"] == 2
+            assert control["next_run_at"] == NOW + timedelta(days=1)
+            assert control["lease_id"] is None
+            assert control["last_outcome"] == "success"
+            assert (
+                conn.execute(
+                    sa.select(P.__table__).where(P.user_id.in_(owners))
+                )
+                .mappings()
+                .all()
+                == profiles
+            )
+            assert (
+                conn.execute(sa.select(H).where(H.c.user_id.in_(owners)))
+                .mappings()
+                .all()
+                == health
+            )
+            assert (
+                conn.scalar(sa.select(sa.func.count()).select_from(NOTICES))
+                == notices
+            )
+        reader = SqlAlchemyInstagramStatsRepository(sessions, True, context)
+        counts = (await reader.get_audience_counts([readable]))[readable]
+        assert (counts.followers_count, counts.media_count) == (140, 0)
     finally:
         await engine.dispose()
 
