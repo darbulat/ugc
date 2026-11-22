@@ -53,7 +53,7 @@ class ClientOrderViewService(CustomerWorkflowService):
                 await self.require_order(
                     principal.user_id, order_id, session=session
                 )
-                states[order_id] = await self.repository.payment_state(
+                states[order_id] = await self.views.payment_state(
                     order_id, session=session
                 )
             return states

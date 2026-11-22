@@ -9,6 +9,7 @@ from uuid import UUID, uuid4, uuid5
 from sqlalchemy import (
     String,
     and_,
+    case,
     cast,
     exists,
     func,
@@ -30,6 +31,7 @@ from ugc_bot.application.order_summary_admin_text import (
 )
 from ugc_bot.domain.enums import AuditAction, OrderStatus, PaymentStatus
 from ugc_bot.infrastructure.db.browser_checkout_models import (
+    BROWSER_ATTEMPTS,
     browser_payment_active,
 )
 from ugc_bot.infrastructure.db.checkout_models import (
@@ -110,42 +112,56 @@ class SqlAlchemyCustomerWorkflowRepository:
         )
 
     async def payment_state(self, order_id: UUID, *, session: object) -> str:
-        db = _session(session)
-        payments = (
-            await db.scalars(
-                select(PaymentModel).where(PaymentModel.order_id == order_id)
+        """Keep failed attempts eligible for unpaid-order workflows."""
+        state = await self.order_list_payment_state(order_id, session=session)
+        return "unpaid" if state == "failed" else state
+
+    async def order_list_payment_state(
+        self, order_id: UUID, *, session: object
+    ) -> str:
+        """Classify saved payment facts for display in the customer's list."""
+        payment = exists().where(PaymentModel.order_id == order_id)
+        paid = payment.where(
+            or_(
+                PaymentModel.status == PaymentStatus.PAID,
+                PaymentModel.paid_at.is_not(None),
+                PaymentModel.captured_minor > 0,
             )
-        ).all()
-        if any(
-            p.status == PaymentStatus.PAID
-            or p.paid_at is not None
-            or (p.captured_minor or 0) > 0
-            for p in payments
-        ):
-            return "paid"
-        if await db.scalar(
-            select(
-                exists().where(
-                    AUTHORIZATIONS.c.order_id == order_id,
-                    ~exists().where(
-                        REVIEWS.c.authorization_id
-                        == AUTHORIZATIONS.c.authorization_id
-                    ),
-                )
-                | exists().where(INBOX.c.order_id == order_id)
-                | browser_payment_active(order_id)
+        )
+        # Issuance of a native invoice does not start a payment attempt.
+        invoice_only = and_(
+            PaymentModel.financial_version.is_not(None),
+            PaymentModel.provider == PROVIDER,
+            PaymentModel.external_id == f"intent:{order_id}",
+        )
+        pending = payment.where(
+            PaymentModel.status == PaymentStatus.PENDING, ~invoice_only
+        )
+        processing = (
+            exists().where(
+                AUTHORIZATIONS.c.order_id == order_id,
+                ~exists().where(
+                    REVIEWS.c.authorization_id
+                    == AUTHORIZATIONS.c.authorization_id
+                ),
             )
-        ) or any(
-            p.status == PaymentStatus.PENDING
-            and not (
-                p.financial_version is not None
-                and p.provider == PROVIDER
-                and p.external_id == f"intent:{order_id}"
-            )
-            for p in payments
-        ):
-            return "processing"
-        return "unpaid"
+            | exists().where(INBOX.c.order_id == order_id)
+            | browser_payment_active(order_id)
+            | pending
+        )
+        failed = payment.where(
+            PaymentModel.status == PaymentStatus.FAILED
+        ) | exists().where(
+            BROWSER_ATTEMPTS.c.order_id == order_id,
+            BROWSER_ATTEMPTS.c.state == "failed",
+        )
+        state = case(
+            (paid, "paid"),
+            (processing, "processing"),
+            (failed, "failed"),
+            else_="unpaid",
+        )
+        return (await _session(session).execute(select(state))).scalar_one()
 
     async def customer_cancelled_orders(
         self, order_ids: list[UUID], *, session: object

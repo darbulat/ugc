@@ -1,8 +1,10 @@
 """Bounded, owner-scoped order pages read saved payment and position facts."""
 
+from uuid import UUID
+
 from sqlalchemy import func, select
 
-from ugc_bot.domain.enums import InteractionStatus, PaymentStatus
+from ugc_bot.domain.enums import InteractionStatus
 from ugc_bot.domain.order_display import public_order_number
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
 from ugc_bot.infrastructure.db.models import (
@@ -10,15 +12,23 @@ from ugc_bot.infrastructure.db.models import (
     ItemAssignmentModel,
     OrderItemModel,
     OrderModel,
-    PaymentModel,
 )
 from ugc_bot.infrastructure.db.repositories.creator_transfers import (
     delivered_count,
+)
+from ugc_bot.infrastructure.db.repositories.customer_workflows import (
+    SqlAlchemyCustomerWorkflowRepository,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
 
 class SqlAlchemyClientOrderViewRepository:
+    async def payment_state(self, order_id: UUID, *, session: object) -> str:
+        workflow = SqlAlchemyCustomerWorkflowRepository()
+        return await workflow.order_list_payment_state(
+            order_id, session=session
+        )
+
     async def _progress(self, order, session):
         db = _session(session)
         if order.financial_version and not order.complimentary:
@@ -78,11 +88,10 @@ class SqlAlchemyClientOrderViewRepository:
 
     async def _summary(self, order, session):
         db = _session(session)
-        payment = await db.scalar(
-            select(PaymentModel.status)
-            .where(PaymentModel.order_id == order.order_id)
-            .order_by(PaymentModel.created_at.desc(), PaymentModel.payment_id)
-            .limit(1)
+        payment = (
+            "complimentary"
+            if order.complimentary
+            else await self.payment_state(order.order_id, session=db)
         )
         totals = (
             await db.execute(
@@ -123,13 +132,7 @@ class SqlAlchemyClientOrderViewRepository:
             "bloggers_needed": order.bloggers_needed,
             "deadlines": order.deadlines,
             "selection_due_at": totals[2].isoformat() if totals[2] else None,
-            "payment_state": "complimentary"
-            if order.complimentary
-            else (
-                "paid"
-                if payment == PaymentStatus.PAID
-                else str(payment or "unpaid")
-            ),
+            "payment_state": payment,
             "progress": progress,
             "selection_base_minor": totals[0],
             "accompaniment_minor": totals[1],

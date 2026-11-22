@@ -60,12 +60,49 @@
     },
   };
   Object.keys(fieldHints).forEach(function(locale) { Object.assign(copy[locale], fieldHints[locale]); });
+  var requiredMessagesRu = {
+    'intake-policy': 'Выберите условия заказа.',
+    'intake-product': 'Укажите ссылку на товар или сайт проекта.',
+    'intake-brief': 'Опишите задание для авторов.',
+    'intake-count': 'Укажите количество авторов.',
+    'intake-honorarium': 'Укажите гонорар одному автору.',
+    'intake-due': 'Укажите срок подбора авторов.',
+    'intake-contact': 'Укажите контакт для связи по заказу.',
+  };
   var state = { busy:false, policies:[], pending:null, pendingEntry:null, completedEntry:null, result:null, order:null, intakeBack:'screen-advertiser-dashboard', selectionBack:'screen-advertiser-dashboard', opened:false };
   var context=null,owner=null,requestedIntake=null;
   function binding(){if(!context)context=bridge.createRequestContext();return context;}
   function id(name) { return document.getElementById(name); }
   function words() { return copy[(window._me || {}).locale] || copy.ru; }
   function node(tag, content, className) { var el=document.createElement(tag); el.textContent=content == null ? '' : String(content); if(className) el.className=className; return el; }
+  var intakeForm = id('form-umc-intake');
+  var requiredError = node('p', '', 'error');
+  var requiredField = null;
+  requiredError.id = 'intake-required-error';
+  requiredError.setAttribute('role', 'alert');
+  function clearRequiredError() {
+    if (!requiredField) return;
+    requiredField.removeAttribute('aria-errormessage');
+    requiredError.remove();
+    requiredError.textContent = '';
+    requiredField = null;
+  }
+  intakeForm.addEventListener('invalid', function(event) {
+    var field = event.target;
+    var message = words() === copy.ru && field.validity.valueMissing
+      ? requiredMessagesRu[field.id] : null;
+    if (message) event.preventDefault();
+    var firstInvalid = intakeForm.querySelector('input:invalid, select:invalid, textarea:invalid');
+    if (field !== firstInvalid) return;
+    clearRequiredError();
+    if (!message) return;
+    requiredField = field;
+    field.setAttribute('aria-errormessage', requiredError.id);
+    field.after(requiredError);
+    requiredError.textContent = message;
+    field.focus();
+  }, true);
+  intakeForm.addEventListener('reset', clearRequiredError);
   var submittedCopy={ru:['Этот черновик уже отправлен. Откройте заказ в списке или начните новый.','Использовать как новый заказ'],en:['This draft was already submitted. Open your order list or start a new order.','Use as a new order'],kk:['Бұл жоба жіберілген. Тапсырыстар тізімін ашыңыз немесе жаңасын бастаңыз.','Жаңа тапсырыс бастау'],be:['Гэты чарнавік ужо адпраўлены. Адкрыйце спіс заказаў або пачніце новы.','Пачаць новы заказ'],uz:['Bu qoralama yuborilgan. Buyurtmalar ro‘yxatini oching yoki yangisini boshlang.','Yangi buyurtma boshlash']};
   var freshDraft=node('button','','btn btn-secondary');freshDraft.type='button';freshDraft.id='btn-intake-fresh';freshDraft.hidden=true;id('intake-error').after(freshDraft);
   function submittedWords(){return submittedCopy[(window._me||{}).locale]||submittedCopy.en;}
@@ -230,6 +267,7 @@
     }).finally(function() { if(ctx.isCurrent()){text('intake-loading',''); busy(false,intake);} });
   }
   function loadPolicies() {
+    clearRequiredError();
     if(state.busy) return; localize(); text('intake-error',''); text('intake-loading',words().loading); busy(true,intake);
     if(!state.result) { id('form-umc-intake').hidden=true; id('intake-uncertain').hidden=true; }
     var ctx=binding(),owner;
@@ -310,8 +348,21 @@
   id('btn-intake-refresh').addEventListener('click',loadPolicies);
   id('btn-intake-back').addEventListener('click',function() { if(!state.busy) bridge.showScreen(state.intakeBack); });
   id('btn-intake-selection').addEventListener('click',function() { if(state.result) openSelection(state.result.order_id); });
-  id('form-umc-intake').addEventListener('input',function() { text('intake-error',''); dueLabel(); preview(); });
-  id('form-umc-intake').addEventListener('change',preview);
+  function clearFilledRequiredField(event) {
+    if (event.target === requiredField && !requiredField.validity.valueMissing) {
+      clearRequiredError();
+    }
+  }
+  intakeForm.addEventListener('input', function(event) {
+    clearFilledRequiredField(event);
+    text('intake-error', '');
+    dueLabel();
+    preview();
+  });
+  intakeForm.addEventListener('change', function(event) {
+    clearFilledRequiredField(event);
+    preview();
+  });
   function positionCount(){return Number(id('intake-count').value);}
   function positionOptions(){var parent=id('intake-position-options'),selected=Array.from(parent.querySelectorAll('input:checked')).map(function(n){return n.value;});parent.replaceChildren();var count=positionCount();if(!Number.isInteger(count)||count<10||count>200)return;for(var ordinal=1;ordinal<=count;ordinal++){var label=node('label'),checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id='intake-position-'+ordinal;checkbox.value=String(ordinal);checkbox.checked=selected.includes(checkbox.value);label.append(checkbox,node('span',ordinal));parent.appendChild(label);}}
   id('intake-count').addEventListener('input',function(){positionOptions();preview();});
