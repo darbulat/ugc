@@ -849,7 +849,6 @@ async def _refresh_dashboard_snapshot(
     period_date: str,
     *,
     include_timings: bool = False,
-    prewarm: bool = False,
 ):
     async def calculate(previous):
         if previous is not None:
@@ -859,8 +858,8 @@ async def _refresh_dashboard_snapshot(
                 ),
                 "counts_at": datetime.now(timezone.utc).isoformat(),
             }
-        goals = None if include_timings else snapshots.recent_goals()
-        if prewarm and goals is None:
+        goals = None
+        if not include_timings:
             with suppress(TimeoutError, SQLAlchemyError):
                 goals = await snapshots.goals(
                     dashboard_service.get_dashboard_goals
@@ -2050,7 +2049,7 @@ def _register_dashboard_routes(
             date = datetime.now(dashboard_service._timezone).date().isoformat()
             try:
                 await _refresh_dashboard_snapshot(
-                    snapshots, dashboard_service, period, date, prewarm=True
+                    snapshots, dashboard_service, period, date
                 )
             except (TimeoutError, SQLAlchemyError):
                 continue

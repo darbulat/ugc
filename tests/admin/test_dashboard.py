@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import SQLAlchemyError
 
 from ugc_bot.admin.app import create_admin_app
@@ -58,6 +59,9 @@ def _build_admin_client(
         AdminDashboardService,
         "get_dashboard",
         AsyncMock(return_value=dashboard_payload),
+    )
+    monkeypatch.setattr(
+        AdminDashboardService, "get_dashboard_goals", AsyncMock(return_value={})
     )
     monkeypatch.setattr(
         AdminDashboardService,
@@ -175,6 +179,93 @@ def test_dashboard_goals_fragment_returns_only_authenticated_counts(
     assert "data-dashboard-content" not in response.text
     assert counts.await_count == 2
     AdminDashboardService.get_dashboard.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("first_fragment", "goals_fail"),
+    [("goals", False), ("1", False), ("1", True)],
+)
+async def test_dashboard_fragments_share_cold_goals(
+    monkeypatch, first_fragment, goals_fail
+):
+    monkeypatch.setenv("USE_REDIS_STORAGE", "false")
+    counts = {"completed_creators_count": 37}
+    client = _build_admin_client(
+        monkeypatch,
+        dashboard_payload={
+            "registrations": {
+                "creators": {"count": 0},
+                "advertisers": {"count": 0},
+            },
+            "problems": {"open_complaints": 0},
+            **counts,
+        },
+        creators=[],
+        advertisers=[],
+        orders=[],
+        order_card={},
+    )
+    started, joined, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    store = client.app.state.dashboard_snapshots
+    share_goals = store.goals
+
+    async def observe_goals(calculate):
+        if started.is_set():
+            joined.set()
+        return await share_goals(calculate)
+
+    async def get_goals():
+        started.set()
+        await release.wait()
+        if goals_fail:
+            raise TimeoutError
+        return counts
+
+    goals_mock = AsyncMock(side_effect=get_goals)
+    monkeypatch.setattr(store, "goals", observe_goals)
+    monkeypatch.setattr(
+        AdminDashboardService, "get_dashboard_goals", goals_mock
+    )
+    monkeypatch.setattr(
+        AdminDashboardService,
+        "get_worklist_attention_counts",
+        AsyncMock(return_value={}),
+    )
+    other = "1" if first_fragment == "goals" else "goals"
+    async with (
+        client.app.router.lifespan_context(client.app),
+        AsyncClient(
+            transport=ASGITransport(app=client.app),
+            base_url="http://testserver",
+        ) as browser,
+        asyncio.TaskGroup() as group,
+    ):
+        first = group.create_task(
+            browser.get(
+                "/admin/dashboard",
+                headers={"X-Dashboard-Content": first_fragment},
+            )
+        )
+        await asyncio.wait_for(started.wait(), timeout=2)
+        second = group.create_task(
+            browser.get(
+                "/admin/dashboard", headers={"X-Dashboard-Content": other}
+            )
+        )
+        await asyncio.wait_for(joined.wait(), timeout=2)
+        AdminDashboardService.get_dashboard.assert_not_awaited()
+        release.set()
+
+    results = {first_fragment: first.result(), other: second.result()}
+    assert results["1"].status_code == 200
+    assert "data-dashboard-content" in results["1"].text
+    assert "<strong>37</strong>" in results["1"].text
+    assert results["goals"].status_code == (503 if goals_fail else 200)
+    goals_mock.assert_awaited_once()
+    assert AdminDashboardService.get_dashboard.await_args.kwargs["goals"] == (
+        None if goals_fail else counts
+    )
 
 
 @pytest.mark.asyncio
