@@ -32,6 +32,11 @@ services:
 
   admin_test:
     build: *app-build
+    networks:
+      default:
+        aliases:
+          # Chromium rejects cookies on hostnames containing an underscore.
+          - admin-test
     environment:
       BOT_TOKEN: test-token
       DATABASE_URL: postgresql+psycopg://ugc:ugc@db_test:5432/ugc_test
@@ -117,7 +122,7 @@ services:
       dockerfile: Dockerfile.e2e
     environment:
       E2E_TEST_ONLY: "1"
-      E2E_BASE_URL: http://admin_test:8001
+      E2E_BASE_URL: http://admin-test:8001
     depends_on:
       admin_test:
         condition: service_healthy
@@ -131,7 +136,7 @@ services:
       dockerfile: Dockerfile.e2e
     environment:
       E2E_TEST_ONLY: "1"
-      E2E_BASE_URL: http://admin_test:8001
+      E2E_BASE_URL: http://admin-test:8001
       TELEGRAM_E2E_BOT_TOKEN: ${TELEGRAM_E2E_BOT_TOKEN:-}
       TELEGRAM_E2E_BOT_USERNAME: ${TELEGRAM_E2E_BOT_USERNAME:-}
       TELEGRAM_E2E_API_ID: ${TELEGRAM_E2E_API_ID:-}
