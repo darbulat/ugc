@@ -144,6 +144,7 @@ def require_synthetic_e2e(env: Mapping[str, str]) -> None:
                 "localhost",
                 "127.0.0.1",
                 "::1",
+                "admin-test",
                 "admin_test",
                 "miniapp_test",
                 "testserver",

@@ -1,5 +1,6 @@
 """E2E tests for Admin UI with Playwright."""
 
+import json
 import os
 import re
 
@@ -70,12 +71,27 @@ def test_login_invalid_credentials(admin_server: str, page) -> None:
 @pytest.mark.e2e
 @pytest.mark.timeout(30)
 def test_dashboard_loads(admin_server: str, page) -> None:
-    """After login, admin index or dashboard loads."""
+    """After login, the authenticated dashboard loads."""
+    from playwright.sync_api import expect
+
     _login(page, admin_server)
     page.wait_for_url(lambda url: "login" not in url, timeout=5000)
-    page.goto(f"{admin_server}/admin/")
-    page.wait_for_load_state("networkidle")
-    assert page.url.rstrip("/").endswith("/admin") or "/admin/" in page.url
+    page.goto(f"{admin_server}/admin/dashboard")
+    expect(
+        page.get_by_role("heading", name="Дашборд", exact=True)
+    ).to_be_visible()
+
+
+def _seed_dashboard_panel(page, html: str) -> None:
+    # The document becomes interactive before its deferred loader runs.
+    # Keep real navigation so Chromium knows the page's network address space.
+    page.add_init_script(
+        f"""document.addEventListener("readystatechange", () => {{
+          if (document.readyState !== "interactive") return;
+          const panel = document.querySelector("#dashboard-panel");
+          if (panel) panel.innerHTML = {json.dumps(html)};
+        }});"""
+    )
 
 
 @pytest.mark.e2e
@@ -105,20 +121,12 @@ def test_dashboard_opens_while_metrics_load_and_retries(
         elif goals_fragment(route.request):
             goal_requests.append(route)
         else:
-            # Force an empty snapshot even after other tests populate Redis.
-            response = route.fetch()
-            html = re.sub(
-                r'<div id="dashboard-panel"[^>]*>.*?(?=<script defer)',
-                '<div id="dashboard-panel" aria-busy="true"></div>',
-                response.text(),
-                count=1,
-                flags=re.DOTALL,
-            )
-            route.fulfill(response=response, body=html)
+            route.continue_()
 
+    _seed_dashboard_panel(page, "")
     page.route("**/admin/dashboard?period=30d", hold_metrics)
     with (
-        page.expect_request(goals_fragment),
+        page.expect_request(goals_fragment, timeout=2500),
         page.expect_request(full_fragment, timeout=2500),
     ):
         response = page.goto(f"{admin_server}/admin/dashboard?period=30d")
@@ -183,8 +191,6 @@ def test_dashboard_saved_snapshot_remains_visible_during_refresh(
     admin_server, page
 ):
     """Old figures survive a failed refresh and are replaced after retry."""
-    import re
-
     from playwright.sync_api import expect
 
     _login(page, admin_server)
@@ -201,16 +207,10 @@ def test_dashboard_saved_snapshot_remains_visible_during_refresh(
     def saved_page(route):
         if route.request.headers.get("x-dashboard-content") == "1":
             requests.append(route)
-            return
-        response = route.fetch()
-        body = re.sub(
-            r'<div id="dashboard-panel".*?(?=<script defer)',
-            '<div id="dashboard-panel" aria-busy="true">' + old + "</div>",
-            response.text(),
-            flags=re.DOTALL,
-        )
-        route.fulfill(response=response, body=body)
+        else:
+            route.continue_()
 
+    _seed_dashboard_panel(page, old)
     page.route("**/admin/dashboard?period=7d", saved_page)
     page.goto(f"{admin_server}/admin/dashboard?period=7d")
     expect(page.locator("#dashboard-goals")).to_have_text("Завершили заказ: 37")
