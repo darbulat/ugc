@@ -230,6 +230,7 @@ class Container:
             self._transaction_manager,
             bot,
             max_session=max_session,
+            instagram_offer_check=self.build_instagram_offer_contact_check(),
         )
 
     def build_campaign_digest(self, bot: "Bot", *, max_session=None):
@@ -372,6 +373,20 @@ class Container:
     def build_instagram_api_client(self):
         """Create Instagram Graph API client if configured."""
         return infrastructure_factory.build_instagram_api_client(self._config)
+
+    def build_instagram_offer_contact_check(self):
+        from ugc_bot.container.instagram_maintenance_factory import (
+            build_offer_contact_check,
+        )
+
+        if not self._config.instagram.instagram_profile_maintenance_enabled:
+            return None
+        return build_offer_contact_check(
+            self._config,
+            self.build_repos(),
+            self._transaction_manager,
+            self.build_instagram_api_client(),
+        )
 
     def build_referral_reconciliation_deps(self) -> dict:
         """Deps for referral reconciliation scheduler."""

@@ -18,19 +18,26 @@ from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.enums import InteractionStatus, OrderStatus, UserStatus
 from ugc_bot.domain.instagram_maintenance import (
+    CONTACT_CHECK_FRESHNESS,
+    FAILURE_SPACING,
     REFRESH_CALLBACK,
     next_failure_count,
     next_profile_notice_at,
 )
 from ugc_bot.domain.social import SocialPlatform, normalize_social_url
+from ugc_bot.infrastructure.db.creator_transfer_models import TRANSFERS
 from ugc_bot.infrastructure.db.instagram_maintenance_models import (
     HEALTH,
     NOTICES,
     OBSERVATIONS,
+    OFFER_CHECKS,
+    instagram_available,
 )
 from ugc_bot.infrastructure.db.models import (
+    BloggerProfileModel,
     InteractionModel,
     ItemAssignmentModel,
+    OfferDispatchModel,
     OrderItemModel,
     OrderModel,
     UserModel,
@@ -38,6 +45,7 @@ from ugc_bot.infrastructure.db.models import (
 from ugc_bot.infrastructure.db.repositories.profiles import (
     SqlAlchemyBloggerProfileRepository,
 )
+from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 from ugc_bot.infrastructure.db.social_models import SocialAccountModel
 
 
@@ -79,6 +87,192 @@ class SqlAlchemyInstagramMaintenanceRepository:
         if not identity_context.strip():
             raise ValueError("instagram_identity_context_required")
         self.profiles, self.context = profiles, identity_context.strip()
+
+    async def claim_offer_checks(
+        self,
+        at: datetime,
+        limit: int,
+        *,
+        session: object,
+        order_id: UUID | None = None,
+        creator_id: UUID | None = None,
+    ) -> list[BloggerProfile]:
+        db = _db(session)
+        profile = BloggerProfileModel.__table__
+        offers = self._offers_before_contact(profile.c.user_id, at, order_id)
+        same_identity = sa.and_(
+            HEALTH.c.user_id == profile.c.user_id,
+            HEALTH.c.meta_id == profile.c.instagram_user_id,
+            HEALTH.c.identity_context == self.context,
+        )
+        newer_than = at - CONTACT_CHECK_FRESHNESS
+        fresh = sa.and_(
+            HEALTH.c.status == "healthy",
+            HEALTH.c.last_success_at >= newer_than,
+            HEALTH.c.handle == profile.c.instagram_username,
+        )
+        recheck_later = sa.or_(
+            sa.and_(
+                HEALTH.c.status == "suspect",
+                HEALTH.c.last_failure_at > at - FAILURE_SPACING,
+            ),
+            sa.and_(
+                HEALTH.c.status == "review", HEALTH.c.checked_at >= newer_than
+            ),
+        )
+        eligible = (
+            sa.select(profile.c.user_id, profile.c.instagram_user_id)
+            .join(UserModel, UserModel.user_id == profile.c.user_id)
+            .outerjoin(HEALTH, same_identity)
+            .outerjoin(
+                OFFER_CHECKS,
+                sa.and_(
+                    OFFER_CHECKS.c.user_id == profile.c.user_id,
+                    OFFER_CHECKS.c.meta_id == profile.c.instagram_user_id,
+                ),
+            )
+            .where(
+                UserModel.status == UserStatus.ACTIVE,
+                profile.c.confirmed.is_(True),
+                sa.func.nullif(
+                    sa.func.trim(profile.c.instagram_user_id), ""
+                ).is_not(None),
+                offers,
+                fresh.is_not(True),
+                recheck_later.is_not(True),
+                (OFFER_CHECKS.c.retry_at > at).is_not(True),
+            )
+            .order_by(
+                HEALTH.c.checked_at.asc().nulls_first(), profile.c.user_id
+            )
+            .limit(limit)
+        )
+        if creator_id is not None:
+            eligible = eligible.where(profile.c.user_id == creator_id)
+        targets = (await db.execute(eligible)).all()
+        claimed = []
+        # Use the same order for upserts across competing workers.
+        for user_id, meta_id in sorted(targets, key=lambda row: row.user_id):
+            attempt = insert(OFFER_CHECKS).values(
+                user_id=user_id,
+                meta_id=meta_id,
+                retry_at=at + timedelta(minutes=15),
+            )
+            acquired = await db.scalar(
+                attempt.on_conflict_do_update(
+                    index_elements=[OFFER_CHECKS.c.user_id],
+                    set_={
+                        "meta_id": attempt.excluded.meta_id,
+                        "retry_at": attempt.excluded.retry_at,
+                    },
+                    where=sa.or_(
+                        OFFER_CHECKS.c.retry_at <= at,
+                        OFFER_CHECKS.c.meta_id != meta_id,
+                    ),
+                ).returning(OFFER_CHECKS.c.user_id)
+            )
+            if acquired is not None:
+                current = await self.profiles.get_by_user_id(
+                    user_id, session=db
+                )
+                if (
+                    current
+                    and current.confirmed
+                    and current.instagram_user_id == meta_id
+                ):
+                    claimed.append(current)
+        return claimed
+
+    @staticmethod
+    def _offers_before_contact(creator_id, at, order_id):
+        offer = OfferDispatchModel.__table__
+        order = OrderModel.__table__
+        delivered = sa.or_(
+            sa.exists()
+            .where(
+                ACCEPTED.c.order_id == order.c.order_id,
+                ACCEPTED.c.creator_id == creator_id,
+            )
+            .correlate(order, BloggerProfileModel.__table__),
+            sa.exists()
+            .where(
+                TRANSFERS.c.order_id == order.c.order_id,
+                TRANSFERS.c.creator_id == creator_id,
+                TRANSFERS.c.state.in_(("sent", "sending", "unknown")),
+            )
+            .correlate(order, BloggerProfileModel.__table__),
+            sa.exists()
+            .where(
+                InteractionModel.order_id == order.c.order_id,
+                InteractionModel.blogger_id == creator_id,
+                InteractionModel.status != InteractionStatus.DELETED,
+            )
+            .correlate(order, BloggerProfileModel.__table__),
+        )
+        eligible = (
+            sa.select(offer.c.order_id)
+            .select_from(
+                offer.join(order, offer.c.order_id == order.c.order_id)
+            )
+            .where(
+                offer.c.blogger_id == creator_id,
+                offer.c.accepted.is_(True),
+                ~delivered,
+            )
+            .correlate(BloggerProfileModel.__table__)
+        )
+        if order_id is not None:
+            return eligible.where(
+                order.c.order_id == order_id,
+                order.c.status.in_((OrderStatus.ACTIVE, OrderStatus.CLOSED)),
+            ).exists()
+        return eligible.where(
+            sa.or_(
+                order.c.status == OrderStatus.ACTIVE,
+                sa.and_(
+                    order.c.status == OrderStatus.CLOSED,
+                    sa.or_(
+                        order.c.offer_reserve_until > at,
+                        offer.c.updated_at >= at - CONTACT_CHECK_FRESHNESS,
+                    ),
+                ),
+            )
+        ).exists()
+
+    async def contact_under_review(
+        self, order_id: UUID, creator_id: UUID, *, session: object
+    ) -> bool:
+        profile = BloggerProfileModel.__table__
+        return bool(
+            await _db(session).scalar(
+                sa.select(
+                    sa.exists().where(
+                        profile.c.user_id == creator_id,
+                        ~instagram_available(profile),
+                        sa.exists().where(
+                            OfferDispatchModel.order_id == order_id,
+                            OfferDispatchModel.blogger_id == creator_id,
+                            OfferDispatchModel.accepted.is_(True),
+                        ),
+                    )
+                )
+            )
+        )
+
+    async def recent_provider_success(
+        self, since: datetime, *, session: object
+    ) -> bool:
+        return bool(
+            await _db(session).scalar(
+                sa.select(
+                    sa.exists().where(
+                        HEALTH.c.identity_context == self.context,
+                        HEALTH.c.status == "healthy",
+                        HEALTH.c.last_success_at >= since,
+                    )
+                )
+            )
+        )
 
     async def _lock_profile(self, user_id: UUID, db: AsyncSession):
         # Same lock order as canonical profile writers and ownership proofs.

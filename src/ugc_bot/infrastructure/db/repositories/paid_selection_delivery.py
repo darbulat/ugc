@@ -66,6 +66,22 @@ from ugc_bot.infrastructure.db.selection_delivery_models import (
 
 
 class SqlAlchemyPaidSelectionDeliveryRepository:
+    def __init__(self, *, hold_instagram_reviews: bool = False):
+        self.hold_instagram_reviews = hold_instagram_reviews
+
+    async def contact_offer(self, job_id, *, session):
+        row = (
+            await _session(session).execute(
+                select(INTERESTS.c.order_id, INTERESTS.c.creator_id)
+                .join(JOBS, JOBS.c.interest_id == INTERESTS.c.interest_id)
+                .where(
+                    JOBS.c.job_id == job_id,
+                    JOBS.c.state.in_(("ready", "manual_ready")),
+                )
+            )
+        ).one_or_none()
+        return (row.order_id, row.creator_id) if row else None
+
     async def candidates(self, at, limit, *, session):
         if type(limit) is not int or not 1 <= limit <= 1000:
             raise ValueError("selection_delivery_limit_invalid")
@@ -80,6 +96,20 @@ class SqlAlchemyPaidSelectionDeliveryRepository:
             query = query.where(
                 ~exists().where(INVITES.c.interest_id == JOBS.c.interest_id)
             )
+        if self.hold_instagram_reviews:
+            pending_review = exists(
+                select(BloggerProfileModel.user_id)
+                .join(
+                    INTERESTS,
+                    INTERESTS.c.creator_id == BloggerProfileModel.user_id,
+                )
+                .where(
+                    INTERESTS.c.interest_id == JOBS.c.interest_id,
+                    ~instagram_available(BloggerProfileModel.__table__),
+                )
+                .correlate(JOBS)
+            )
+            query = query.where((JOBS.c.state != "ready") | ~pending_review)
         jobs = await db.scalars(
             query.order_by(JOBS.c.created_at, JOBS.c.job_id).limit(limit)
         )

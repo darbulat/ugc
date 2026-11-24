@@ -130,6 +130,7 @@ def creator_workspace(
                 group="selected",
                 current_contact=None,
                 search_contact=None,
+                instagram_status=None,
             )
         return rows[key]
 
@@ -147,6 +148,9 @@ def creator_workspace(
             work=WORK_LABELS.get(response.get("work_state")),
             video=response.get("ugc_video_url"),
             group="selected" if response.get("in_offer") else "reserve",
+            instagram_status=response.get("instagram_status")
+            if response.get("accepted") is True
+            else None,
         )
     for refusal in (activity or {}).get("refused", []):
         row = row_for(refusal["creator_id"])
@@ -168,7 +172,8 @@ def creator_workspace(
             state=state,
             can_send=bool(transfers["can_send"])
             and state in (None, "failed")
-            and not row["in_offer"],
+            and not row["in_offer"]
+            and row["instagram_status"] != "review",
         )
         if candidate["source"] == "Новая цена":
             row.update(

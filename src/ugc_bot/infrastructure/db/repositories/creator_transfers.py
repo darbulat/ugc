@@ -9,6 +9,10 @@ from ugc_bot.domain.creator_invites import instagram_handle
 from ugc_bot.domain.enums import OrderStatus, UserStatus
 from ugc_bot.domain.financial import utc
 from ugc_bot.infrastructure.db.creator_transfer_models import TRANSFERS
+from ugc_bot.infrastructure.db.instagram_maintenance_models import (
+    HEALTH,
+    instagram_available,
+)
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     ItemAssignmentModel,
@@ -323,7 +327,6 @@ class SqlCreatorTransfers:
             and not offer.in_offer
             and interest
             and interest["instagram_user_id"] == profile.instagram_user_id
-            and interest["instagram_url"] == profile.instagram_url
         )
         counteroffer = bool(
             offer
@@ -332,6 +335,28 @@ class SqlCreatorTransfers:
         )
         if not reserve and not counteroffer:
             raise ValueError("transfer_candidate_required")
+        if reserve:
+            available = await db.scalar(
+                select(BloggerProfileModel.user_id).where(
+                    BloggerProfileModel.user_id == creator_id,
+                    instagram_available(BloggerProfileModel.__table__),
+                )
+            )
+            if available is None:
+                raise ValueError("transfer_instagram_review_required")
+            if interest and interest["instagram_url"] != profile.instagram_url:
+                observed = await db.scalar(
+                    select(HEALTH.c.handle).where(
+                        HEALTH.c.user_id == creator_id,
+                        HEALTH.c.meta_id == profile.instagram_user_id,
+                        HEALTH.c.status == "healthy",
+                        HEALTH.c.last_success_at >= interest["confirmed_at"],
+                    )
+                )
+                if observed is None or observed != instagram_handle(
+                    profile.instagram_url
+                ):
+                    raise ValueError("transfer_candidate_required")
         try:
             handle = instagram_handle(profile.instagram_url)
         except ValueError as exc:

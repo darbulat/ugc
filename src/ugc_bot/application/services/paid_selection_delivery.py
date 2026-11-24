@@ -21,6 +21,9 @@ from ugc_bot.application.paid_selection_delivery_ports import (
     SelectionDeliveryOutcome,
 )
 from ugc_bot.application.ports import TransactionManager
+from ugc_bot.application.services.instagram_profile_maintenance import (
+    InstagramOfferContactCheck,
+)
 from ugc_bot.domain.financial import utc
 from ugc_bot.infrastructure.db.creator_invite_models import MANUAL_READY
 
@@ -101,6 +104,7 @@ class PaidSelectionDelivery:
     transport: NoticeReceiptTransport | None
     clock: Clock
     lease_seconds: int = 120
+    instagram_offer_check: InstagramOfferContactCheck | None = None
 
     def _now(self):
         return utc(self.clock.now())
@@ -180,11 +184,25 @@ class PaidSelectionDelivery:
             replace(job, state="unknown"), session=session
         )
 
+    async def _contact_available(self, job_id: UUID) -> bool:
+        if self.instagram_offer_check is None:
+            return True
+        async with self.transactions.transaction() as session:
+            contact = await self.repository.contact_offer(
+                job_id, session=session
+            )
+        return (
+            contact is None
+            or await self.instagram_offer_check.before_contact(*contact)
+        )
+
     async def prepare(
         self, job_id: UUID, *, card_request=False
     ) -> SelectionDeliveryAttempt | None:
         if type(self.lease_seconds) is not int or self.lease_seconds < 1:
             raise ValueError("selection_delivery_lease_invalid")
+        if not await self._contact_available(job_id):
+            return None
         async with self.transactions.transaction() as session:
             source, invalid = await self._source(job_id, session)
             job = await self.repository.job(job_id, session=session)
@@ -194,7 +212,10 @@ class PaidSelectionDelivery:
                 if job.lease_until is None or job.lease_until <= self._now():
                     await self._recover(job, session)
                 return None
-            if job.state != (MANUAL_READY if card_request else "ready"):
+            if job.state != (MANUAL_READY if card_request else "ready") or (
+                self.instagram_offer_check is not None
+                and invalid == "selection_instagram_review_required"
+            ):
                 return None
             if source is not None and not invalid:
                 try:

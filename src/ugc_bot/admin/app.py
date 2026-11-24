@@ -4496,7 +4496,12 @@ def create_admin_app() -> FastAPI:
         )
 
     register_creator_transfers(
-        app, auth, _require_action_token, config, container.transaction_manager
+        app,
+        auth,
+        _require_action_token,
+        config,
+        container.transaction_manager,
+        instagram_offer_check=container.build_instagram_offer_contact_check(),
     )
     register_managers(app, auth, engine, templates, _require_action_token)
     register_order_review(app, auth, engine, templates, _require_action_token)

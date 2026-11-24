@@ -1068,7 +1068,9 @@ async def _send_contact_immediately(
     into the order.
     """
     user = await user_role_service.get_user_by_id(blogger_id)
-    profile = await profile_service.get_blogger_profile(blogger_id)
+    profile = await profile_service.get_blogger_profile(
+        blogger_id, contact_order_id=order.order_id
+    )
     if user is None or profile is None:
         logger.warning(
             "Cannot send contact: user or profile not found",

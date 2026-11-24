@@ -24,6 +24,24 @@ class ProfileNotice:
 
 
 class InstagramMaintenanceRepository(Protocol):
+    async def claim_offer_checks(
+        self,
+        at: datetime,
+        limit: int,
+        *,
+        session: object,
+        order_id: UUID | None = None,
+        creator_id: UUID | None = None,
+    ) -> list[BloggerProfile]: ...
+
+    async def contact_under_review(
+        self, order_id: UUID, creator_id: UUID, *, session: object
+    ) -> bool: ...
+
+    async def recent_provider_success(
+        self, since: datetime, *, session: object
+    ) -> bool: ...
+
     async def observe(
         self,
         profile: BloggerProfile,

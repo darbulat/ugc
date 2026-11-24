@@ -158,6 +158,7 @@ from ugc_bot.container.customer_workflow_factory import build_customer_workflows
 from ugc_bot.container.debt_recovery_factory import build_debt_recovery
 from ugc_bot.container.financial_review_factory import build_financial_review
 from ugc_bot.container.instagram_maintenance_factory import (
+    build_offer_contact_check,
     build_profile_maintenance,
 )
 from ugc_bot.container.manual_grant_factory import build_manual_grants
@@ -945,6 +946,9 @@ def build_bot_services(
             blogger_repo=repos["blogger_repo"],
             advertiser_repo=repos["advertiser_repo"],
             transaction_manager=transaction_manager,
+            instagram_offer_check=build_offer_contact_check(
+                config, repos, transaction_manager, instagram_api_client
+            ),
         ),
         "complaint_service": ComplaintService(
             complaint_repo=repos["complaint_repo"],

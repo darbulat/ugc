@@ -4,12 +4,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
-from sqlalchemy import func, select, union, union_all
+from sqlalchemy import and_, case, func, or_, select, union, union_all
 from sqlalchemy.sql import ColumnElement
 
 from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.social import SocialPlatform
 from ugc_bot.infrastructure.db.collaboration_models import CollaborationModel
+from ugc_bot.infrastructure.db.instagram_maintenance_models import HEALTH
 from ugc_bot.infrastructure.db.manager_application_models import APPLICATIONS
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
@@ -263,6 +264,8 @@ def safe_order_link(value: str | None) -> str | None:
 async def order_creator_contacts(session, creator_ids):
     if not creator_ids:
         return {}
+    if session.get_bind().dialect.name == "postgresql":
+        return await _postgres_creator_contacts(session, creator_ids)
     social_url = (
         select(SocialAccountModel.url)
         .where(
@@ -272,25 +275,12 @@ async def order_creator_contacts(session, creator_ids):
         .correlate(UserModel)
         .scalar_subquery()
     )
-    instagram = (
-        func.coalesce(
-            social_url,
-            (
-                select(BloggerProfileModel.instagram_url)
-                .where(BloggerProfileModel.user_id == UserModel.user_id)
-                .correlate(UserModel)
-                .scalar_subquery()
-            ),
-        )
-        if session.get_bind().dialect.name == "postgresql"
-        else social_url
-    )
     rows = await session.execute(
         select(
             UserModel.user_id,
             UserModel.username,
             UserModel.telegram,
-            instagram.label("instagram"),
+            social_url.label("instagram"),
         ).where(UserModel.user_id.in_(creator_ids))
     )
     return {
@@ -298,6 +288,76 @@ async def order_creator_contacts(session, creator_ids):
             "name": row.username or row.telegram,
             "telegram": row.telegram,
             "instagram": row.instagram,
+        }
+        for row in rows.all()
+    }
+
+
+async def _postgres_creator_contacts(session, creator_ids):
+    profile, social = BloggerProfileModel, SocialAccountModel
+    same_verified_id = and_(
+        profile.confirmed.is_(True),
+        social.verified.is_(True),
+        social.external_id == func.nullif(profile.instagram_user_id, ""),
+    )
+    newer_handle = and_(
+        same_verified_id,
+        func.lower(social.handle) != func.lower(profile.instagram_username),
+        or_(
+            profile.instagram_stats_fetched_at > social.metrics_fetched_at,
+            and_(
+                HEALTH.c.status == "healthy",
+                HEALTH.c.handle == profile.instagram_username,
+                HEALTH.c.last_success_at > social.verification_observed_at,
+            ),
+        ),
+    )
+    rows = await session.execute(
+        select(
+            UserModel.user_id,
+            UserModel.username,
+            UserModel.telegram,
+            case(
+                (newer_handle, profile.instagram_url),
+                else_=func.coalesce(social.url, profile.instagram_url),
+            ).label("instagram"),
+            case(
+                (HEALTH.c.status == "review", "review"),
+                (HEALTH.c.status == "suspect", "suspect"),
+                (newer_handle, "renamed"),
+                (
+                    and_(
+                        same_verified_id,
+                        func.lower(social.handle)
+                        != func.lower(profile.instagram_username),
+                    ),
+                    "mismatch",
+                ),
+            ).label("instagram_status"),
+        )
+        .outerjoin(profile, profile.user_id == UserModel.user_id)
+        .outerjoin(
+            social,
+            and_(
+                social.user_id == UserModel.user_id,
+                social.platform == SocialPlatform.INSTAGRAM,
+            ),
+        )
+        .outerjoin(
+            HEALTH,
+            and_(
+                HEALTH.c.user_id == UserModel.user_id,
+                HEALTH.c.meta_id == profile.instagram_user_id,
+            ),
+        )
+        .where(UserModel.user_id.in_(creator_ids))
+    )
+    return {
+        str(row.user_id): {
+            "name": row.username or row.telegram,
+            "telegram": row.telegram,
+            "instagram": row.instagram,
+            "instagram_status": row.instagram_status,
         }
         for row in rows.all()
     }

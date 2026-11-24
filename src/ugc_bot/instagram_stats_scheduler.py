@@ -55,6 +55,17 @@ async def run_loop(
         )
 
 
+async def _check_confirmed_offers(checker) -> None:
+    while True:
+        try:
+            await checker.run_once()
+        except Exception as exc:
+            logger.error(
+                "Instagram offer check batch failed (%s)", type(exc).__name__
+            )
+        await asyncio.sleep(60)
+
+
 def main() -> None:  # pragma: no cover - entry point, not unit-tested
     """Start Instagram stats update scheduler loop."""
     config = load_config()
@@ -115,7 +126,11 @@ def main() -> None:  # pragma: no cover - entry point, not unit-tested
         interval = deps["interval_seconds"]
 
         try:
-            await run_loop(service, interval_seconds=interval)
+            checker = container.build_instagram_offer_contact_check()
+            async with asyncio.TaskGroup() as tasks:
+                tasks.create_task(run_loop(service, interval_seconds=interval))
+                if checker is not None:
+                    tasks.create_task(_check_confirmed_offers(checker))
         finally:
             tg_session = getattr(bot, "session", None)
             if tg_session is not None:

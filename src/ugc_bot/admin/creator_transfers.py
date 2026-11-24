@@ -51,6 +51,9 @@ ERRORS = {
     "transfer_creator_unavailable": (
         "Нужен активный автор с подтверждённым Instagram."
     ),
+    "transfer_instagram_review_required": (
+        "Instagram требует проверки. Контакт пока нельзя отправить."
+    ),
     "transfer_customer_unavailable": "Telegram заказчицы сейчас недоступен.",
     "transfer_history_unavailable": "История передач пока недоступна.",
     "transfer_candidate_required": (
@@ -128,7 +131,13 @@ async def transfer_activity(db, order_id):
 
 
 def register_creator_transfers(
-    app, auth, require_action_token, config, transactions
+    app,
+    auth,
+    require_action_token,
+    config,
+    transactions,
+    *,
+    instagram_offer_check=None,
 ):
     app.state.creator_transfers_enabled = bool(
         transactions
@@ -150,6 +159,13 @@ def register_creator_transfers(
         ):
             raise HTTPException(503, "Ручная отправка сейчас недоступна.")
         try:
+            if (
+                instagram_offer_check is not None
+                and not await instagram_offer_check.before_contact(
+                    order_id, creator_id
+                )
+            ):
+                raise ValueError("transfer_instagram_review_required")
             async with Bot(token=config.bot.bot_token).context() as bot:
                 service = CreatorTransferService(
                     SqlCreatorTransfers(),
