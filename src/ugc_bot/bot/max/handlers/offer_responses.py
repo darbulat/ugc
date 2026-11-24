@@ -29,6 +29,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.creator_offer_card_flow import (
     CreatorOfferCardFlow,
     prompt_offer_price,
+    send_legacy_offer_confirmation,
 )
 from ugc_bot.bot.max.router import MaxRouter
 from ugc_bot.bot.selection_response import selection_response_message_key
@@ -524,6 +525,9 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
         )
         return
 
+    dispatch: OfferDispatchService | None = deps.get("offer_dispatch_service")
+    if dispatch is not None:
+        await dispatch.record_response_started(order_id, user.user_id)
     await messenger_client.answer_callback(
         callback_id=incoming.callback_id,
         text="",
@@ -533,44 +537,8 @@ async def handle_offer_response(incoming: IncomingCallback, deps: dict) -> None:
             messenger_client, incoming.chat_id, incoming.message_id
         )
 
-    if order.brief_link:
-        brief_label = await bot_texts_service.get(
-            "msg_offer_brief_link", locale
-        )
-        await messenger_client.send_text(
-            chat_id=incoming.chat_id,
-            text=f"{brief_label}\n{order.brief_link}",
-        )
-
-    confirm_text = await bot_texts_service.get(
-        "msg_offer_confirm_response", locale
-    )
-    if order.offer_reserve_until is not None:
-        confirm_text = reserve_notice(order.offer_reserve_until, locale)
-    btn_texts = await bot_texts_service.get_many(
-        ["btn_offer_confirm", "btn_offer_cancel"], locale
-    )
-    keyboard = Keyboard(
-        kind=KeyboardKind.INLINE,
-        rows=[
-            [
-                Button(
-                    text=btn_texts.get("btn_offer_confirm", "Готов"),
-                    callback_data=f"offer_confirm:{order_id}",
-                )
-            ],
-            [
-                Button(
-                    text=btn_texts.get("btn_offer_cancel", "Отмена"),
-                    callback_data=f"offer_cancel:{order_id}",
-                )
-            ],
-        ],
-    )
-    await messenger_client.send_text(
-        chat_id=incoming.chat_id,
-        text=confirm_text,
-        keyboard=keyboard,
+    await send_legacy_offer_confirmation(
+        messenger_client, bot_texts_service, locale, incoming.chat_id, order
     )
 
 

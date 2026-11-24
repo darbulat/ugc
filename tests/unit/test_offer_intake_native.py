@@ -166,6 +166,7 @@ async def test_legacy_reserve_confirmation_discloses_no_guaranteed_place(
     env = native_offer
     orders = InMemoryOrderRepository()
     await orders.save(env.order)
+    dispatch = AsyncMock(spec=OfferDispatchService)
     if channel == MessengerType.TELEGRAM:
         await telegram_handlers.handle_offer_response(
             FakeCallback(
@@ -182,6 +183,7 @@ async def test_legacy_reserve_confirmation_discloses_no_guaranteed_place(
             bot_texts_service,
             messenger_client=messenger_client,
             event_adapter=event_adapter,
+            offer_dispatch_service=dispatch,
         )
     else:
         await max_handlers.handle_offer_response(
@@ -197,11 +199,15 @@ async def test_legacy_reserve_confirmation_discloses_no_guaranteed_place(
                 user_role_service=env.users,
                 profile_service=env.profiles,
                 order_repo=orders,
+                offer_dispatch_service=dispatch,
                 offer_response_rate_limiter=env.limiter,
                 bot_texts_service=bot_texts_service,
                 config=config,
             ),
         )
+    dispatch.record_response_started.assert_awaited_once_with(
+        env.order.order_id, env.user.user_id
+    )
     confirmation = messenger_client.sent_text[-1]
     assert "Основной состав набран" in confirmation["text"]
     assert "Участие не гарантировано" in confirmation["text"]

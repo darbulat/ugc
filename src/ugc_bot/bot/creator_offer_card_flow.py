@@ -47,13 +47,58 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot.selection_response import selection_response_message_key
 from ugc_bot.domain.entities import Order, User
 from ugc_bot.domain.enums import MessengerType, UserStatus
-from ugc_bot.domain.offer_intake import intake_open
+from ugc_bot.domain.offer_intake import intake_open, reserve_notice
 
 logger = logging.getLogger(__name__)
 
 
 class ResponseRateLimiter(Protocol):
     async def allow_async(self, key: str) -> bool: ...
+
+
+async def send_legacy_offer_confirmation(
+    messenger: MessengerClient,
+    texts: BotTextsService,
+    locale: str,
+    chat_id: str,
+    order: Order,
+) -> None:
+    """Send the brief and confirmation for an older offer message."""
+    if order.brief_link:
+        brief_label = await texts.get("msg_offer_brief_link", locale)
+        await messenger.send_text(
+            chat_id=chat_id,
+            text=f"{brief_label}\n{order.brief_link}",
+        )
+
+    confirm_text = await texts.get("msg_offer_confirm_response", locale)
+    if order.offer_reserve_until is not None:
+        confirm_text = reserve_notice(order.offer_reserve_until, locale)
+    btn_texts = await texts.get_many(
+        ["btn_offer_confirm", "btn_offer_cancel"], locale
+    )
+    keyboard = Keyboard(
+        kind=KeyboardKind.INLINE,
+        rows=[
+            [
+                Button(
+                    text=btn_texts.get("btn_offer_confirm", "Готов"),
+                    callback_data=f"offer_confirm:{order.order_id}",
+                )
+            ],
+            [
+                Button(
+                    text=btn_texts.get("btn_offer_cancel", "Отмена"),
+                    callback_data=f"offer_cancel:{order.order_id}",
+                )
+            ],
+        ],
+    )
+    await messenger.send_text(
+        chat_id=chat_id,
+        text=confirm_text,
+        keyboard=keyboard,
+    )
 
 
 async def prompt_offer_price(
@@ -251,6 +296,10 @@ class CreatorOfferCardFlow:
             order.status, order.dispatch_stopped, order.offer_reserve_until
         ):
             return render_public_offer(order, self.locale, "closed")
+        if action == "confirm":
+            await self.dispatch.record_response_started(
+                order.order_id, user.user_id
+            )
         if action == "s_price" and order.price > 0 and self.start_price_entry:
             await self.start_price_entry(order.order_id)
             await self._answer(incoming)

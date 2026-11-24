@@ -64,6 +64,7 @@ async def load_order_offer_activity(
         select(
             OfferDispatchModel.blogger_id,
             sent.label("sent"),
+            OFFER_CHANNELS.c.response_started_at.is_not(None).label("started"),
             OfferDispatchModel.accepted,
             OfferDispatchModel.rejection_reason,
             OfferDispatchModel.desired_price,
@@ -84,6 +85,10 @@ async def load_order_offer_activity(
     responses = select(
         func.count().filter(offers.c.sent.is_(True)).label("sent"),
         func.count().filter(offers.c.accepted.is_(True)).label("accepted"),
+        func.count().filter(offers.c.started).label("started"),
+        func.count()
+        .filter(offers.c.started, offers.c.accepted.is_(True))
+        .label("confirmed_after_start"),
     ).subquery()
     audience = (
         select(
@@ -186,6 +191,8 @@ async def load_order_offer_activity(
         "failed": summary.failed if summary.audience_ready else None,
         "via_invite": summary.via_invite if summary.audience_ready else 0,
         "accepted": summary.accepted,
+        "started": summary.started,
+        "confirmed_after_start": summary.confirmed_after_start,
         "declined": len(refused),
         "currency": summary.currency,
         "dispatch_status": _dispatch_status(summary),

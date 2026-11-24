@@ -27,6 +27,24 @@ __all__ = ["capture_env", "delivery_env"]
 
 
 @pytest.mark.asyncio
+async def test_response_start_is_recorded_for_a_legacy_send(delivery_env):
+    env = delivery_env
+    dispatch = env["container"].build_offer_dispatch_service()
+    order_id, blogger_id = env["order"], env["other_creator"]
+    await dispatch.record_offer_sent(order_id, blogger_id)
+    await dispatch.record_response_started(order_id, blogger_id)
+    receipt = next(
+        row
+        for row in rows(env, "offer_channel_attribution")
+        if row["blogger_id"] == blogger_id
+    )
+    assert receipt["response_started_at"] is not None
+    assert receipt["telegram_sent_at"] is None
+    assert receipt["max_sent_at"] is None
+    assert receipt["response_at"] is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("lost_receipt", [False, True])
 async def test_paid_card_navigation_response_and_contact_delivery(
     delivery_env, lost_receipt
@@ -105,8 +123,23 @@ async def test_paid_card_navigation_response_and_contact_delivery(
             )
         )
 
+    def creator_receipt():
+        return next(
+            row
+            for row in rows(env, "offer_channel_attribution")
+            if row["blogger_id"] == creator.user_id
+        )
+
+    await dispatch.record_response_started(order.order_id, order.advertiser_id)
+    assert all(
+        row["blogger_id"] != order.advertiser_id
+        for row in rows(env, "offer_channel_attribution")
+    )
     for action in ("brief", "open", "safe", "open", "confirm"):
         assert await click(action) is None
+        assert (creator_receipt()["response_started_at"] is not None) == (
+            action == "confirm"
+        )
         current = provider.edit_message_caption.call_args.kwargs
         assert current["message_id"] == 321
         assert "synthetic_client" not in current["caption"]
@@ -115,7 +148,13 @@ async def test_paid_card_navigation_response_and_contact_delivery(
             for row in current["reply_markup"].inline_keyboard
             for button in row
         )
+    started_at = creator_receipt()["response_started_at"]
+    assert creator_receipt()["response_at"] is None
+    await asyncio.gather(click("confirm"), click("confirm"))
+    assert creator_receipt()["response_started_at"] == started_at
     await asyncio.gather(click("done"), click("done"))
+    assert creator_receipt()["response_started_at"] == started_at
+    assert creator_receipt()["response_at"] is not None
     provider.send_photo.assert_awaited_once()
     provider.send_message.assert_not_awaited()
     saved = provider.edit_message_caption.call_args.kwargs

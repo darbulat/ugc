@@ -199,6 +199,39 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
             )
             return True
 
+    async def record_response_started(
+        self, order_id: UUID, blogger_id: UUID
+    ) -> None:
+        async with _resolve_session(self.session_factory, None) as db:
+            insert = (
+                sqlite_insert
+                if db.get_bind().dialect.name == "sqlite"
+                else pg_insert
+            )
+            started = insert(OFFER_CHANNELS).from_select(
+                ("order_id", "blogger_id", "response_started_at"),
+                select(
+                    OfferDispatchModel.order_id,
+                    OfferDispatchModel.blogger_id,
+                    func.now(),
+                ).where(
+                    OfferDispatchModel.order_id == order_id,
+                    OfferDispatchModel.blogger_id == blogger_id,
+                    OfferDispatchModel.accepted.is_(None),
+                ),
+            )
+            start_column = OFFER_CHANNELS.c.response_started_at
+            await db.execute(
+                started.on_conflict_do_update(
+                    index_elements=(
+                        OFFER_CHANNELS.c.order_id,
+                        OFFER_CHANNELS.c.blogger_id,
+                    ),
+                    set_={start_column.key: started.excluded[start_column.key]},
+                    where=start_column.is_(None),
+                )
+            )
+
     async def record_response(
         self,
         order_id: UUID,
