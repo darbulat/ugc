@@ -20,5 +20,17 @@
       <strong>{{ activity.declined }}</strong>
     </article>
   </div>
+  <div class="order-detail__stats order-detail__delivery-stats">
+    <article>
+      <h3>Начали отклик</h3>
+      <strong>{{ activity.started }}</strong>
+      <small>С момента включения счётчика</small>
+    </article>
+    <article>
+      <h3>Подтвердили отклик</h3>
+      <strong>{{ activity.confirmed_after_start }}</strong>
+      <small>Из начавших отклик</small>
+    </article>
+  </div>
 </div>
 {% include 'order_creators.html' %}

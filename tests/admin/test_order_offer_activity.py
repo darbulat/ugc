@@ -24,6 +24,7 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
+from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
 from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
@@ -107,6 +108,13 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
         )
         db.flush()
         db.execute(
+            insert(OFFER_CHANNELS).values(
+                order_id=order,
+                blogger_id=counteroffer,
+                response_started_at=now,
+            )
+        )
+        db.execute(
             insert(INVITES).values(
                 id=uuid4(),
                 order_id=order,
@@ -135,6 +143,9 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
     assert old.headers["Cache-Control"] == "private, no-store"
     assert "<strong>—</strong>" in old.text
     assert "&lt;Креатор&gt;" in old.text and "3 000 ₽" in old.text
+    assert "<h3>Согласились</h3>\n      <strong>1</strong>" in old.text
+    assert "<h3>Начали отклик</h3>\n      <strong>1</strong>" in old.text
+    assert "<h3>Подтвердили отклик</h3>\n      <strong>0</strong>" in old.text
 
     with engine.begin() as db:
         db.execute(
@@ -180,6 +191,15 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
     with engine.begin() as db:
         db.execute(update(OrderModel).values(status=OrderStatus.CLOSED))
     assert "Рассылка остановлена" in client.get(path).text
+    with engine.begin() as db:
+        db.execute(
+            update(OfferDispatchModel)
+            .where(OfferDispatchModel.blogger_id == counteroffer)
+            .values(accepted=True)
+        )
+    confirmed = client.get(path).text
+    assert "<h3>Согласились</h3>\n      <strong>2</strong>" in confirmed
+    assert "<h3>Подтвердили отклик</h3>\n      <strong>1</strong>" in confirmed
     engine.dispose()
 
 

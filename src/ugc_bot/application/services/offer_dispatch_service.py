@@ -1,5 +1,6 @@
 """Service for dispatching offers to bloggers."""
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -45,6 +46,8 @@ from ugc_bot.domain.enums import (
 )
 from ugc_bot.domain.offer_intake import intake_open
 from ugc_bot.infrastructure.db.session import with_optional_tx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -672,6 +675,19 @@ class OfferDispatchService:
             )
 
         await with_optional_tx(self.transaction_manager, _run)
+
+    async def record_response_started(
+        self, order_id: UUID, blogger_id: UUID
+    ) -> None:
+        """Record analytics independently of the response flow."""
+        try:
+            await self.offer_dispatch_repo.record_response_started(
+                order_id, blogger_id
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to record offer response start (%s)", type(exc).__name__
+            )
 
     async def get_order_price_bounds(
         self,

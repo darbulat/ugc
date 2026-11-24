@@ -115,6 +115,8 @@ def snapshot():
         targeted=50,
         failed=8,
         accepted=16,
+        started=24,
+        confirmed_after_start=12,
         declined=7,
         via_invite=0,
         dispatch_status="Рассылка завершена",
@@ -222,6 +224,11 @@ def test_one_creator_table_preserves_filters_and_contacts_during_refresh(
         page.get_by_role("progressbar", name="Подобрано по плану")
     ).to_have_attribute("aria-valuetext", "10 из 10")
     expect(page.get_by_role("table")).to_have_count(1)
+    for title, count in (("Начали отклик", "24"), ("Подтвердили отклик", "12")):
+        card = page.locator("article").filter(
+            has=page.get_by_role("heading", name=title, exact=True)
+        )
+        expect(card.locator("strong")).to_have_text(count)
     expect(page.locator("[data-creator-row]")).to_have_count(23)
     expect(page.locator("#browser-payment")).to_have_count(0)
     expect(page.locator(".order-detail__badges")).to_contain_text("Оплачен")

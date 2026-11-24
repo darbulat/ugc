@@ -382,6 +382,12 @@ class OfferDispatchRepository(ABC):
         """Bind a delivered callback to a previously claimed recipient."""
         return False
 
+    async def record_response_started(
+        self, order_id: UUID, blogger_id: UUID
+    ) -> None:
+        """Remember the creator's first click on a sent offer."""
+        return
+
     @abstractmethod
     async def record_response(
         self,
