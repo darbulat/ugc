@@ -54,7 +54,13 @@ def test_reserve_migration_preserves_old_orders_and_refuses_deadline_loss(
             DATABASE_URL=engine.url.render_as_string(hide_password=False),
         )
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "upgrade",
+                "0148_offer_reserve_window",
+            ],
             env=env,
             text=True,
             capture_output=True,
@@ -78,7 +84,13 @@ def test_reserve_migration_preserves_old_orders_and_refuses_deadline_loss(
         assert values[full].status == "active"
         assert values[closed].status == "closed"
         result = subprocess.run(
-            [sys.executable, "-m", "alembic", "downgrade", "-1"],
+            [
+                sys.executable,
+                "-m",
+                "alembic",
+                "downgrade",
+                "0147_instagram_discovery",
+            ],
             env=env,
             text=True,
             capture_output=True,
