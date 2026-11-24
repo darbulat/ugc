@@ -261,6 +261,33 @@ async def test_order_preview_uses_newer_link_for_same_verified_identity(
 
 
 @pytest.mark.asyncio
+async def test_offer_check_retries_timeout_without_flagging_creator(runtime):
+    owner, _, _, service, tx, _, _ = runtime
+    order_id = await offer_for(tx, owner, accepted=True)
+    now = NOW
+    client = SimpleNamespace(
+        get_profile_by_id=AsyncMock(
+            side_effect=[
+                TimeoutError(),
+                InstagramProfileInfo(username="healthy_after_retry"),
+            ]
+        )
+    )
+    checker = InstagramOfferContactCheck(
+        service, client, SimpleNamespace(now=lambda: now)
+    )
+    assert await checker.before_contact(order_id, owner)
+    assert await rows(tx, HEALTH, owner) == []
+    assert await rows(tx, NOTICES, owner) == []
+    assert await checker.before_contact(order_id, owner)
+    assert client.get_profile_by_id.await_count == 1
+    now += timedelta(minutes=15)
+    assert await checker.before_contact(order_id, owner)
+    assert client.get_profile_by_id.await_count == 2
+    assert (await rows(tx, HEALTH, owner))[0]["status"] == "healthy"
+
+
+@pytest.mark.asyncio
 async def test_rename_preserves_metrics_proof_and_appends_history(runtime):
     owner, profile, repo, service, tx, profiles, sessions = runtime
     social = SqlAlchemySocialAccountRepository(sessions)
