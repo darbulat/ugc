@@ -869,7 +869,7 @@ def test_order_worklist_search_hide_and_restore(
     )
     activity = page.get_by_role("region", name="Креаторы, отклики и резерв")
     counters = activity.locator("article strong")
-    expect(counters).to_have_text(["2 из 4", "1", "1", "1"])
+    expect(counters).to_have_text(["2 из 4", "1", "1", "1", "0", "0"])
     expect(activity).to_contain_text("Авторов без результата отправки — 1")
     counteroffer = activity.get_by_role("row").filter(
         has_text="Автор со встречной ценой"
@@ -890,7 +890,9 @@ def test_order_worklist_search_hide_and_restore(
             )
         )
     engine.dispose()
-    expect(counters).to_have_text(["3 из 4", "1", "1", "2"], timeout=25_000)
+    expect(counters).to_have_text(
+        ["3 из 4", "1", "1", "2", "0", "0"], timeout=25_000
+    )
     expect(activity).to_contain_text("Рассылка завершена")
     expect(counteroffer).to_be_hidden()
     activity.get_by_label("Найти креатора").fill("")
