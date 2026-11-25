@@ -1,6 +1,7 @@
 """The paid offer flow keeps one creator message and one contact delivery."""
 
 import asyncio
+from itertools import count
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -112,10 +113,12 @@ async def test_paid_card_navigation_response_and_contact_delivery(
         "ru",
     )
 
-    async def click(action):
+    callback_ids = count()
+
+    async def click(action, callback_id=None):
         return await flow.handle(
             IncomingCallback(
-                callback_id=f"synthetic-{action}",
+                callback_id=callback_id or f"synthetic-{next(callback_ids)}",
                 chat_id=creator.telegram_id,
                 user=IncomingUser(creator.telegram_id, MessengerType.TELEGRAM),
                 message_id="321",
@@ -158,10 +161,16 @@ async def test_paid_card_navigation_response_and_contact_delivery(
     provider.send_photo.assert_awaited_once()
     provider.send_message.assert_not_awaited()
     saved = provider.edit_message_caption.call_args.kwargs
-    assert "Отклик сохранён" in saved["caption"]
-    assert saved["reply_markup"].inline_keyboard[0][0].url == (
+    assert "Отклик отправлен" in saved["caption"]
+    assert saved["reply_markup"].inline_keyboard[1][0].url == (
         "https://t.me/synthetic_client"
     )
+    await asyncio.gather(click("full", "duplicate"), click("full", "duplicate"))
+    displayed = provider.edit_message_caption.call_args.kwargs
+    assert "ТЗ и правила работы" in displayed["caption"]
+    actions = rows(env, "offer_card_action_events")
+    assert sum(row["action"] == "full" for row in actions) == 1
+    assert any(row["action"] == "brief" for row in actions)
     assert len(rows(env, "paid_selection_interests")) == 2
     assert len(rows(env, "paid_selection_delivery_jobs")) == 2
     original_send = env["bot"].send_message

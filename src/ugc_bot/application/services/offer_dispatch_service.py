@@ -676,6 +676,23 @@ class OfferDispatchService:
 
         await with_optional_tx(self.transaction_manager, _run)
 
+    async def record_card_action(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        callback_id: str,
+        action: str,
+    ) -> None:
+        try:
+            await self.offer_dispatch_repo.record_card_action(
+                order_id, blogger_id, channel, callback_id, action
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to record offer card action (%s)", type(exc).__name__
+            )
+
     async def record_response_started(
         self, order_id: UUID, blogger_id: UUID
     ) -> None:

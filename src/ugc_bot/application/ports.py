@@ -382,6 +382,17 @@ class OfferDispatchRepository(ABC):
         """Bind a delivered callback to a previously claimed recipient."""
         return False
 
+    async def record_card_action(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        callback_id: str,
+        action: str,
+    ) -> None:
+        """Record one verified provider callback for a sent card."""
+        return
+
     async def record_response_started(
         self, order_id: UUID, blogger_id: UUID
     ) -> None:

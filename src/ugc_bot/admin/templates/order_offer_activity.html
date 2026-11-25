@@ -14,6 +14,7 @@
     <article>
       <h3>Согласились</h3>
       <strong>{{ activity.accepted }}</strong>
+      {% if activity.reserved %}<small>Из них в резерве · {{ activity.reserved }}</small>{% endif %}
     </article>
     <article>
       <h3>Отказ / новая цена</h3>
@@ -30,6 +31,28 @@
       <h3>Подтвердили отклик</h3>
       <strong>{{ activity.confirmed_after_start }}</strong>
       <small>Из начавших отклик</small>
+    </article>
+  </div>
+  <div class="order-detail__stats order-detail__delivery-stats">
+    <article>
+      <h3>Было действие</h3>
+      <strong>{{ activity.sent_interacted }}</strong>
+      <small>Из получателей рассылки</small>
+    </article>
+    <article>
+      <h3>Действий не зафиксировано</h3>
+      <strong>{{ activity.sent_without_activity }}</strong>
+      <small>Факт прочтения неизвестен</small>
+    </article>
+    <article>
+      <h3>Нажали «Бриф» / «Полное ТЗ»</h3>
+      <strong>{{ activity.brief_opened }} / {{ activity.full_brief_opened }}</strong>
+      <small>Уникальные креаторы</small>
+    </article>
+    <article>
+      <h3>Открыли пропуск</h3>
+      <strong>{{ activity.skip_opened }}</strong>
+      <small>Уникальные креаторы · всего нажатий {{ activity.total_taps }}</small>
     </article>
   </div>
 </div>

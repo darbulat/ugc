@@ -24,7 +24,10 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
-from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    OFFER_CARD_ACTION_EVENTS,
+    OFFER_CHANNELS,
+)
 from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
@@ -44,6 +47,7 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
         "orders",
         "offer_dispatches",
         "offer_channel_attribution",
+        "offer_card_action_events",
         "order_creator_invites",
         "order_dispatch_controls",
         "order_dispatch_claims",
@@ -115,6 +119,20 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
             )
         )
         db.execute(
+            insert(OFFER_CARD_ACTION_EVENTS),
+            [
+                dict(
+                    channel="telegram",
+                    callback_digest=str(n),
+                    order_id=order,
+                    blogger_id=counteroffer,
+                    action=kind,
+                    occurred_at=now,
+                )
+                for n, kind in enumerate(("brief", "brief", "skip"))
+            ],
+        )
+        db.execute(
             insert(INVITES).values(
                 id=uuid4(),
                 order_id=order,
@@ -146,6 +164,10 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
     assert "<h3>Согласились</h3>\n      <strong>1</strong>" in old.text
     assert "<h3>Начали отклик</h3>\n      <strong>1</strong>" in old.text
     assert "<h3>Подтвердили отклик</h3>\n      <strong>0</strong>" in old.text
+
+    assert "<h3>Было действие</h3>\n      <strong>1</strong>" in old.text
+    assert "<strong>1 / 0</strong>" in old.text
+    assert "всего нажатий 3" in old.text
 
     with engine.begin() as db:
         db.execute(
