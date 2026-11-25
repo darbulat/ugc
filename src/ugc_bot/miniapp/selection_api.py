@@ -39,17 +39,8 @@ def create_selection_router(
                 order_id, principal.user_id, principal=principal
             )
             paused = not request.app.state.config.financial.core_enabled
-            intake = request.app.state.dispatcher.get("order_intake_service")
-            consultation = (
-                await intake.consultation_for_order(
-                    order_id, principal.user_id, principal=principal
-                )
-                if intake
-                else None
-            )
             return dict(
                 result,
-                **(consultation or {}),
                 writes_paused=paused,
                 public_number=public_order_number(order_id),
             )

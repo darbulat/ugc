@@ -765,6 +765,7 @@ def build_bot_services(
         "selection_view_service": SelectionViewService(
             repos["selection_view_repo"],
             transaction_manager,
+            public_base_url=config.webhook.webhook_base_url,
         )
         if repos.get("selection_view_repo") is not None
         else None,

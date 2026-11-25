@@ -5,11 +5,10 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import case, func, insert, select, text
+from sqlalchemy import func, insert, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from ugc_bot.application.errors import OrderGeographyUnavailableError
-from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.order_intake import (
     AccompanimentLead,
     IntakeClient,
@@ -18,16 +17,12 @@ from ugc_bot.domain.order_intake import (
     OrderIntakeResult,
 )
 from ugc_bot.domain.order_targeting import OrderTargeting
-from ugc_bot.infrastructure.db.consultation_models import (
-    CONSULTATIONS,
-    consultation_status,
-)
+from ugc_bot.infrastructure.db.consultation_models import CONSULTATIONS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
     BloggerProfileModel,
     CountryModel,
     FinancialPolicyVersionModel,
-    OrderModel,
     UserModel,
 )
 from ugc_bot.infrastructure.db.order_funnel_models import FUNNEL
@@ -268,35 +263,6 @@ class SqlAlchemyOrderIntakeRepository:
             row["payload_hash"],
             result_from_payload(row["result"], token),
         )
-
-    async def get_consultation(
-        self, order_id: UUID, client_id: UUID, *, session: object
-    ) -> tuple[UUID | None, str] | None:
-        row = (
-            await _session(session).execute(
-                select(
-                    case(
-                        (
-                            OrderModel.status.not_in(
-                                (OrderStatus.CLOSED, OrderStatus.DELETED)
-                            ),
-                            CONSULTATIONS.c.token,
-                        )
-                    ),
-                    consultation_status(CONSULTATIONS.c.order_id),
-                )
-                .select_from(CONSULTATIONS)
-                .join(
-                    OrderModel, OrderModel.order_id == CONSULTATIONS.c.order_id
-                )
-                .where(
-                    CONSULTATIONS.c.order_id == order_id,
-                    CONSULTATIONS.c.client_id == client_id,
-                    OrderModel.advertiser_id == client_id,
-                )
-            )
-        ).one_or_none()
-        return (row[0], row[1]) if row else None
 
     async def save(
         self,

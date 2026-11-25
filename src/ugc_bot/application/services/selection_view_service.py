@@ -8,12 +8,14 @@ from ugc_bot.application.native_principal_ports import (
 )
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.application.selection_view_ports import SelectionViewRepository
+from ugc_bot.domain.browser_checkout import consultation_payment_url
 
 
 @dataclass
 class SelectionViewService:
     repository: SelectionViewRepository
     transactions: TransactionManager
+    public_base_url: str = ""
 
     async def view(
         self,
@@ -29,6 +31,12 @@ class SelectionViewService:
             raise ValueError("financial_principal_changed")
         async with self.transactions.transaction() as session:
             await self.repository.begin_snapshot(session=session)
-            return await self.repository.view(
+            result = await self.repository.view(
                 order_id, actor_id, session=session, principal=principal
             )
+        token = result.pop("consultation_token", None)
+        if token is not None:
+            result["consultation_url"] = consultation_payment_url(
+                self.public_base_url, token
+            )
+        return result

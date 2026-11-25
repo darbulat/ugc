@@ -472,6 +472,17 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     )
     assert await checkout.run_once(order_id)
     assert (await checkout.buyer_view(token))["state"] == "paid"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mobile_app),
+        base_url="http://testserver",
+    ) as client:
+        paid_selection = await client.post(
+            f"{endpoint}/{order_id}/selection", json=signed
+        )
+    assert paid_selection.status_code == 200, paid_selection.text
+    assert paid_selection.json()["consultation_state"] == "paid"
+    assert "consultation_url" not in paid_selection.json()
+    assert "consultation_token" not in paid_selection.json()
     order = await env["repos"]["order_repo"].get_by_id(order_id)
     quote = await container.build_order_notice_details_service().for_order(
         order

@@ -19,7 +19,7 @@ from ugc_bot.application.services.financial_policy_service import (
 from ugc_bot.application.services.order_image_service import OrderImageService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.config import FinancialConfig
-from ugc_bot.domain.browser_checkout import CONSULTATION_PAYMENT_PATH
+from ugc_bot.domain.browser_checkout import consultation_payment_url
 from ugc_bot.domain.financial import utc
 from ugc_bot.domain.financial_policy_versions import (
     PILOT_POLICY_VERSION,
@@ -80,53 +80,9 @@ class OrderIntakeService:
         )
 
     def consultation_link(self, result: OrderIntakeResult) -> str | None:
-        return self._consultation_link(result.consultation_token)
-
-    def _consultation_link(self, token: UUID | None) -> str | None:
-        if not token or not self.consultation_public_base_url:
-            return None
-        return (
-            f"{self.consultation_public_base_url}{CONSULTATION_PAYMENT_PATH}"
-            f"#{token}"
+        return consultation_payment_url(
+            self.consultation_public_base_url, result.consultation_token
         )
-
-    async def consultation_for_order(
-        self,
-        order_id: UUID,
-        client_id: UUID,
-        *,
-        principal: AuthenticatedMessengerPrincipal,
-    ) -> dict | None:
-        async with self.transactions.transaction() as session:
-            client = await self.repository.lock_client(
-                client_id, session=session
-            )
-            require_current_principal(
-                principal,
-                client_id,
-                client.client_id if client else None,
-                client.telegram_id if client else None,
-                client.max_id if client else None,
-            )
-            if (
-                client is None
-                or client.status != "active"
-                or not client.is_advertiser
-            ):
-                return None
-            stored = await self.repository.get_consultation(
-                order_id, client_id, session=session
-            )
-        if stored is None:
-            return None
-        token, state = stored
-        return {
-            "consultation_minor": CONSULTATION_MINOR,
-            "consultation_state": state,
-            "consultation_url": self._consultation_link(token)
-            if state != "paid"
-            else None,
-        }
 
     async def eligible_policies(
         self,
