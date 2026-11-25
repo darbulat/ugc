@@ -96,6 +96,7 @@ class BotServices(TypedDict):
     client_followup_service: NotRequired[Any]
     client_order_view_service: NotRequired[Any]
     checkout_service: NotRequired[Any]
+    browser_checkout_service: NotRequired[Any]
     legacy_financial_case_service: Any
     metrics_collector: Any
     content_moderation_service: ContentModerationService

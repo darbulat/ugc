@@ -174,6 +174,7 @@ async def start_pay_order_link(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     checkout_service=None,
+    browser_checkout_service=None,
 ) -> None:
     """Handle t.me/bot?start=pay_ORDER_ID — send invoice for that order."""
     order_id = _parse_pay_order_id_from_start(message.text or "")
@@ -222,6 +223,7 @@ async def start_pay_order_link(
         checkout_service,
         config,
         locale,
+        browser_checkout=browser_checkout_service,
     ):
         return
     result = await payment_service.validate_order_for_invoice(
@@ -261,6 +263,7 @@ async def pay_order(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     checkout_service=None,
+    browser_checkout_service=None,
 ) -> None:
     """Send Telegram invoice for an order (email via payment form)."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -329,6 +332,7 @@ async def pay_order(
         checkout_service,
         config,
         locale,
+        browser_checkout=browser_checkout_service,
     ):
         return
     result = await payment_service.validate_order_for_invoice(
@@ -372,6 +376,7 @@ async def pay_order_callback(
     messenger_client: MessengerClient | None = None,
     event_adapter: MessengerEventAdapter | None = None,
     checkout_service=None,
+    browser_checkout_service=None,
 ) -> None:
     """Send Telegram invoice for an order from 'My orders' list button."""
     messenger_client, event_adapter = resolve_messenger_dependencies(
@@ -434,6 +439,7 @@ async def pay_order_callback(
         checkout_service,
         config,
         locale,
+        browser_checkout=browser_checkout_service,
     ):
         return
     result = await payment_service.validate_order_for_invoice(

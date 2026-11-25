@@ -113,11 +113,12 @@
       try{
         var raw=saved.raw,data=JSON.parse(raw||'null');
         if(data&&data.values){
-          // Build dependent controls before applying their saved checked states.
-          var savedCount=data.values['intake-count'],count=savedCount&&Number(savedCount.value);
-          if(Number.isInteger(count)&&count>=10&&count<=200)document.getElementById('intake-count').value=String(count);
-          if(window.UMCSelection)window.UMCSelection.rebuildPositions();
           fields().forEach(function(n){var v=data.values[fieldKey(n)];if(!v||typeof v.value!=='string')return;if(n.type==='radio'){if(v.value===n.value&&v.checked===true)n.checked=true;return;}if(n.tagName==='SELECT'&&!Array.from(n.options).some(function(o){return o.value===v.value;}))return;n.value=v.value;if(n.type==='checkbox'&&typeof v.checked==='boolean')n.checked=v.checked;});
+          var preset=document.getElementById('intake-count-preset'), previous=data.values['intake-count'];
+          if(!data.values['intake-count-preset']&&previous&&Number.isInteger(Number(previous.value))&&Number(previous.value)>=10&&Number(previous.value)<=200){
+            preset.value=Array.from(preset.options).some(function(option){return option.value===previous.value;})?previous.value:'custom';
+          }
+          document.getElementById('intake-city').dispatchEvent(new Event('input'));
           if(typeof data.flow==='string'&&/^[0-9a-f-]{32,36}$/i.test(data.flow))flow=data.flow;
           lastSnapshot=raw;draftGroup=validVersion(data.draft_group)?data.draft_group:validVersion(data.draft_id)?data.draft_id:operation();
           sources=Array.isArray(data.sources)?data.sources.filter(validVersion):[];
@@ -133,7 +134,7 @@
   stages.forEach(function(stage,index){var b=document.createElement('button');b.type='button';b.className='btn btn-secondary';b.addEventListener('click',function(){var input=document.getElementById(ids[index]);if(input){input.scrollIntoView({block:'center',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});input.focus();observe(stage);}});navigation.appendChild(b);});form.prepend(navigation);form.appendChild(status);localize();
   form.addEventListener('input',save);
   form.addEventListener('change',save);
-  form.addEventListener('focusin',function(e){var id=e.target.id||'';observe(id.indexOf('intake-min_')===0||id.indexOf('intake-max_')===0||id==='intake-gender'?'filters':id==='intake-policy'||id==='intake-all-manager'||id.indexOf('intake-position-')===0?'package':'brief');});
+  form.addEventListener('focusin',function(e){var id=e.target.id||'';observe(id.indexOf('intake-min_')===0||id.indexOf('intake-max_')===0||id==='intake-gender'?'filters':id==='intake-policy'||id==='intake-count'||id==='intake-count-preset'?'package':'brief');});
   document.addEventListener('umc:intake-policy-ready',function(e){bind();if(!binding||form.hidden)return;tracking=e.detail&&e.detail.tracking===true;restore(true);if(!flow)flow=operation();observe('opened');});
   function submitted(){bind();submittedBinding=binding;}
   form.addEventListener('submit',submitted,true);

@@ -2,10 +2,10 @@
 
 CUSTOMER_TEXTS = {
     "ru": {
-        "customer_consultation_offer": "Разбор запуска UGC · {amount} ₽\nДо 60 минут на ТЗ, подбор блогеров и план запуска.",
+        "customer_consultation_offer": "Консультация по UGC-кампании · {amount} ₽\nДо 60 минут со специалистом UMC. Разберём ТЗ для блогеров, составим план запуска кампании и наметим путь от просмотра контента до заявки. Определим, какие показатели отслеживать после запуска.",
         "customer_consultation_yes": "Добавить · {total} ₽",
         "customer_consultation_no": "Без консультации · {total} ₽",
-        "customer_consultation_line": "Разбор запуска UGC — {amount} ₽\n",
+        "customer_consultation_line": "Консультация по UGC-кампании — {amount} ₽\n",
         "customer_consultation_payment_note": "Подбор и консультация оплачиваются отдельными платежами.",
         "customer_consultation_pay": "Оплатить консультацию · {amount} ₽",
         "customer_consultation_pay_selection": "Оплатить подбор · {amount} ₽",

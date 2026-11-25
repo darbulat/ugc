@@ -1216,8 +1216,9 @@ async def test_new_canonical_brief_clears_previous_operation(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("opt_in", [False, True])
+@pytest.mark.parametrize("combined", [False, True])
 async def test_telegram_consultation_adds_one_choice_and_keeps_selection_price(
-    flow, opt_in
+    flow, opt_in, combined
 ):
     from ugc_bot.application.messenger.dto import IncomingCallback
     from ugc_bot.bot.telegram.handlers.order_creation import (
@@ -1245,8 +1246,10 @@ async def test_telegram_consultation_adds_one_choice_and_keeps_selection_price(
         tuple(IntakeItem(uuid4(), n, 50000, 120000) for n in range(1, 11)),
         uuid4(),
         consultation_minor=500000 if opt_in else 0,
+        combined_checkout=combined,
     )
-    intake.consultation_link = lambda _: "https://example.test/payment"
+    intake.consultation_link = lambda _: "https://example.test/consultation"
+    intake.checkout_link = lambda _: "https://example.test/payment"
     messenger.answer_callback = AsyncMock()
     await ask_platforms(incoming, state, messenger, intake)
     key = state._data["intake_operation_key"]
@@ -1295,6 +1298,16 @@ async def test_telegram_consultation_adds_one_choice_and_keeps_selection_price(
         f"Итого: {'22 000' if opt_in else '17 000'} ₽" in confirmation["text"]
     )
     buttons = confirmation["keyboard"].rows
-    assert "17 000 ₽" in buttons[0][0].text
-    assert (buttons[1][0].url == "https://example.test/payment") is opt_in
+    if combined:
+        amount = "22 000 ₽" if opt_in else "17 000 ₽"
+        assert amount in buttons[0][0].text
+        assert buttons[0][0].url == "https://example.test/payment"
+        assert buttons[0][0].callback_data is None
+        assert len(buttons) == 3
+        assert "отдельными платежами" not in confirmation["text"]
+    else:
+        assert "17 000 ₽" in buttons[0][0].text
+        assert (
+            buttons[1][0].url == "https://example.test/consultation"
+        ) is opt_in
     assert state.state is None

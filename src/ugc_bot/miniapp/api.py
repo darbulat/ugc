@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -1004,6 +1005,13 @@ async def register_advertiser(
         request, external_id, platform=body.platform
     )
     texts = await _get_validator_texts(request, locale)
+    site = (body.site_link or "").strip()
+    if (
+        site
+        and "://" not in site
+        and re.match(r"^[^\s/:@]+\.[^\s/:@]+(?:/|$)", site)
+    ):
+        body.site_link = f"https://{site}"
     err = _validate_advertiser_body(body, texts)
     if err:
         raise HTTPException(status_code=400, detail=err)

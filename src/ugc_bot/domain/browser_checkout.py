@@ -12,6 +12,12 @@ BROWSER_PROVIDER = "yookassa_browser"
 BROWSER_CAPTURE_SOURCE = "yookassa.payment.captured_at"
 
 
+def order_payment_url(public_base_url: str, token: UUID | None) -> str | None:
+    if token is None or not public_base_url:
+        return None
+    return f"{public_base_url}{BROWSER_PAGE_PATH}#{token}"
+
+
 def consultation_payment_url(
     public_base_url: str, token: UUID | None
 ) -> str | None:

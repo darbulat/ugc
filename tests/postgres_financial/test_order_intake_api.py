@@ -360,8 +360,13 @@ async def test_v1_own_order_list_exposes_real_policy_without_legacy_pay_action(
 
 
 @pytest.mark.asyncio
-async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
-    from datetime import UTC, datetime
+@pytest.mark.parametrize("combined", [False, True])
+async def test_consultation_selection_payment_and_targeted_delivery(
+    intake_env, combined, monkeypatch
+):
+    from datetime import UTC, datetime, timedelta
+    from importlib import import_module
+    from types import SimpleNamespace
     from unittest.mock import AsyncMock
     from urllib.parse import urlsplit
     from uuid import UUID
@@ -369,12 +374,22 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     from pydantic import SecretStr
     from sqlalchemy import select
 
+    from tests.helpers.correction_approval_pg import ApprovalRuntime
+    from ugc_bot.application.errors import OrderCreationError
     from ugc_bot.domain.browser_checkout import BrowserInvoice, BrowserPayment
+    from ugc_bot.domain.checkout import CheckoutActor
+    from ugc_bot.infrastructure.db.browser_checkout_models import (
+        BROWSER_ATTEMPTS,
+    )
     from ugc_bot.infrastructure.db.consultation_models import (
         CONSULTATION_ATTEMPTS,
     )
+    from ugc_bot.infrastructure.db.models import OutboxEventModel
     from ugc_bot.infrastructure.db.order_notice_models import (
         CONSULTATION_DELIVERIES,
+    )
+    from ugc_bot.infrastructure.db.repositories.entitlements import (
+        SqlAlchemyClientEntitlementRepository,
     )
 
     env = intake_env
@@ -385,11 +400,17 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     config.financial.yookassa_browser_shop_id = "123"
     config.financial.yookassa_browser_secret_key = SecretStr("synthetic")
     config.financial.yookassa_browser_test_mode = False
+    config.financial.combined_checkout_enabled = combined
+    config.bot.telegram_payment_account_id = "synthetic-telegram-account"
     other_admin = await create_test_user(
-        env["repos"]["user_repo"], external_id="1234567", admin=True
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        admin=True,
     )
     unrelated = await create_test_user(
-        env["repos"]["user_repo"], external_id="7654321", admin=True
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        admin=True,
     )
     allowed = frozenset((env["admin"].telegram_id, other_admin.telegram_id))
     config.admin.browser_paid_order_telegram_recipients = allowed
@@ -403,6 +424,8 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
         "accompaniment_ordinals": None,
         "consultation_requested": True,
     }
+    payload.pop("contact_reference")
+    link_key = "checkout_url" if combined else "consultation_url"
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=mobile_app),
         base_url="http://testserver",
@@ -419,12 +442,15 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
         assert result["total_minor"] == 1700000
         assert result["project_total_minor"] == 2200000
         assert result["consultation_minor"] == 500000
-        token = UUID(urlsplit(result["consultation_url"]).fragment)
+        assert result["combined_checkout"] is combined
+        if combined:
+            assert result["consultation_url"] is None
+        token = UUID(urlsplit(result[link_key]).fragment)
         selected = await client.post(
             f"{endpoint}/{result['order_id']}/selection", json=signed
         )
         assert selected.status_code == 200, selected.text
-        assert selected.json()["consultation_url"] == result["consultation_url"]
+        assert selected.json()[link_key] == result[link_key]
         assert (await client.post(endpoint, json=payload)).json() == result
         conflict = await client.post(
             endpoint, json=payload | {"consultation_requested": False}
@@ -434,7 +460,13 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     order_id = UUID(result["order_id"])
     receipt = scoped_rows(env, "order_intake_receipts", order_id)[0]
     assert str(token) not in str(receipt)
-    checkout = container.build_consultation_checkout()
+    lead = scoped_rows(env, "accompaniment_leads", order_id)[0]
+    assert lead["contact_reference"] == f"telegram:{env['user'].telegram_id}"
+    checkout = (
+        container.build_browser_checkout()
+        if combined
+        else container.build_consultation_checkout()
+    )
     invoice_id = f"in-{uuid4()}"
     hosted = "https://yookassa.ru/my/i/consultation"
     payment_id = str(uuid4())
@@ -442,32 +474,69 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     checkout.gateway = gateway
     with pytest.raises(LookupError):
         await checkout.buyer_view(uuid4())
-    assert await checkout.buyer_view(token) == {"state": "available"}
+    if combined:
+        with pytest.raises(LookupError):
+            await container.build_consultation_checkout().buyer_view(token)
+        assert len(scoped_rows(env, "browser_only_orders", order_id)) == 1
+    if combined:
+        owned_link = await checkout.view(
+            order_id, client_id=env["user"].user_id
+        )
+        foreign_link = await checkout.view(order_id, client_id=uuid4())
+        assert owned_link["url"] == result["checkout_url"]
+        assert foreign_link["url"] is None
+        assert await checkout.view(uuid4()) is None
+    assert (await checkout.buyer_view(token))["state"] == "available"
     gateway.observe.return_value = BrowserInvoice(invoice_id, "pending", hosted)
     await checkout.start(token, "buyer@example.test")
     attempt = gateway.observe.call_args.args[0]
+    amount_minor = 2200000 if combined else 500000
     assert attempt.request["payment_data"]["amount"] == {
-        "value": "5000.00",
+        "value": "22000.00" if combined else "5000.00",
         "currency": "RUB",
     }
     assert (
         attempt.request["payment_data"]["receipt"]["customer"]["email"]
         == "buyer@example.test"
     )
+    if combined:
+        assert [
+            line["amount"]["value"]
+            for line in attempt.request["payment_data"]["receipt"]["items"]
+        ] == ["5000.00", "12000.00", "5000.00"]
+        assert len(attempt.request["cart"]) == 3
     await checkout.start(token, "buyer@example.test")
     gateway.observe.assert_awaited_once()
     assert (await checkout.buyer_view(token))["url"] == hosted
-    with Session(env["pg"]) as db, db.begin():
-        db.execute(
-            update(CONSULTATION_ATTEMPTS)
-            .where(CONSULTATION_ATTEMPTS.c.order_id == order_id)
-            .values(next_check_at=datetime.now(UTC))
+    attempts = BROWSER_ATTEMPTS if combined else CONSULTATION_ATTEMPTS
+
+    def clear_cooldown():
+        with Session(env["pg"]) as db, db.begin():
+            db.execute(
+                update(attempts)
+                .where(attempts.c.order_id == order_id)
+                .values(next_check_at=datetime.now(UTC))
+            )
+
+    clear_cooldown()
+    if combined:
+        gateway.observe.return_value = BrowserInvoice(
+            invoice_id,
+            "paid",
+            payment=BrowserPayment(
+                invoice_id, payment_id, "123", 1700000, datetime.now(UTC)
+            ),
         )
+        assert await checkout.run_once(order_id)
+        assert (await checkout.buyer_view(token))["state"] == "review"
+        (unconfirmed,) = scoped_rows(env, "payments", order_id)
+        assert unconfirmed["captured_minor"] is None
+        clear_cooldown()
     gateway.observe.return_value = BrowserInvoice(
         invoice_id,
         "paid",
         payment=BrowserPayment(
-            invoice_id, payment_id, "123", 500000, datetime.now(UTC)
+            invoice_id, payment_id, "123", amount_minor, datetime.now(UTC)
         ),
     )
     assert await checkout.run_once(order_id)
@@ -489,13 +558,96 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     )
     assert quote["consultation_state"] == "paid"
     assert quote["total_minor"] == 1700000
-    await checkout.start(token, "buyer@example.test")
-    assert gateway.observe.await_count == 2
-    assert scoped_rows(env, "payments", order_id) == []
-    assert scoped_rows(env, "financial_obligations", order_id) == []
-    assert (
-        len(scoped_rows(env, "consultation_checkout_attempts", order_id)) == 1
-    )
+    if combined:
+        assert paid_selection.json()["checkout_paid"] is True
+        assert "checkout_url" not in paid_selection.json()
+        (payment,) = scoped_rows(env, "payments", order_id)
+        assert payment["captured_minor"] == 1700000
+        (attempt,) = scoped_rows(env, "browser_checkout_attempts", order_id)
+        assert attempt["amount_minor"] == 2200000
+        assert attempt["state"] == "paid"
+        assert (
+            scoped_rows(env, "consultation_checkout_attempts", order_id) == []
+        )
+        actor = CheckoutActor(
+            env["user"].user_id, "telegram", env["user"].telegram_id
+        )
+        status = await mobile_app.state.dispatcher["checkout_service"].status(
+            order_id, actor
+        )
+        assert status["capture_state"] == "confirmed"
+        async with container.transaction_manager.transaction() as db:
+            event = await db.scalar(
+                select(OutboxEventModel).where(
+                    OutboxEventModel.aggregate_id == str(order_id),
+                    OutboxEventModel.event_type
+                    == "financial.client_snapshot_requested",
+                )
+            )
+            facts = await SqlAlchemyClientEntitlementRepository().load_capture(
+                event, session=db
+            )
+            assert facts.payment_id == payment["payment_id"]
+        captured_at = attempt["captured_at"]
+        proof = BrowserPayment(
+            invoice_id, payment_id, "123", amount_minor, captured_at
+        )
+        async with container.transaction_manager.transaction() as db:
+            with pytest.raises(
+                OrderCreationError,
+                match="combined_consultation_allocation_mismatch",
+            ):
+                await checkout.repository.capture.capture_browser(
+                    order_id,
+                    actor.user_id,
+                    proof,
+                    session=db,
+                    consultation_minor=1,
+                )
+            with pytest.raises(
+                OrderCreationError, match="browser_capture_proof_required"
+            ):
+                from dataclasses import replace
+
+                await checkout.repository.capture.capture_browser(
+                    order_id,
+                    actor.user_id,
+                    replace(proof, amount_minor=1700000),
+                    session=db,
+                    consultation_minor=500000,
+                )
+        migration = import_module(
+            "ugc_bot.infrastructure.db.migrations.versions.0153_combined_checkout"
+        )
+        with env["pg"].connect() as db:
+            monkeypatch.setattr(migration.op, "get_bind", lambda: db)
+            with pytest.raises(RuntimeError, match="existing orders"):
+                migration.downgrade()
+        env["clock"].at = datetime.fromisoformat(
+            result["selection_due_at"]
+        ) + timedelta(seconds=1)
+        refund_order = SimpleNamespace(
+            order_id=order_id,
+            items=[
+                SimpleNamespace(paid_item_id=UUID(item["paid_item_id"]))
+                for item in result["items"]
+            ],
+        )
+        refunds = ApprovalRuntime(
+            env, {"order": refund_order, "client": env["user"].user_id}
+        )
+        requested = await refunds.execute(await refunds.request())
+        approved = await refunds.execute(refunds.review(requested))
+        assert approved.get("approval_id")
+    else:
+        await checkout.start(token, "buyer@example.test")
+        assert scoped_rows(env, "payments", order_id) == []
+        assert scoped_rows(env, "financial_obligations", order_id) == []
+        assert (
+            len(scoped_rows(env, "consultation_checkout_attempts", order_id))
+            == 1
+        )
+    assert gateway.observe.await_count == (3 if combined else 2)
 
     messenger = AsyncMock()
     worker = container.build_consultation_notice_delivery(messenger)
@@ -527,3 +679,136 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
         str(token) not in call.kwargs["text"]
         for call in messenger.send_text.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_city_lookup_requires_signed_buyer_session(intake_env):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    env = intake_env
+    mobile_app = app(env, env["container"])
+    resolver = AsyncMock(side_effect=[("Казань", "Татарстан", "ru"), None])
+    mobile_app.state.dispatcher["blogger_registration_service"] = (
+        SimpleNamespace(resolve_city_identity=resolver)
+    )
+    signed = body(env)["init_data"]
+    endpoint = "/miniapp/api/financial/orders/city"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mobile_app),
+        base_url="http://testserver",
+    ) as client:
+        denied = await client.post(
+            endpoint, json={"init_data": "invalid", "city": "Казань"}
+        )
+        assert denied.status_code == 401
+        resolver.assert_not_awaited()
+        found = await client.post(
+            endpoint, json={"init_data": signed, "city": " Казанб "}
+        )
+        assert found.status_code == 200
+        assert found.json() == {
+            "city": "Казань",
+            "region": "Татарстан",
+            "country": "ru",
+        }
+        resolver.assert_awaited_once_with("Казанб")
+        missing = await client.post(
+            endpoint, json={"init_data": signed, "city": "Неизвестный город"}
+        )
+        assert missing.status_code == 404
+        assert missing.json()["detail"] == "intake_city_not_found"
+
+
+@pytest.mark.asyncio
+async def test_checkout_gate_and_company_invoice_use_verified_contact(
+    intake_env,
+):
+    from datetime import datetime
+    from uuid import UUID
+
+    env = intake_env
+    env["config"].financial.combined_checkout_enabled = True
+    mobile_app = app(env, env["container"])
+    payload = body(env)
+    endpoint = "/miniapp/api/financial/orders"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mobile_app),
+        base_url="http://testserver",
+    ) as client:
+        policies = await client.post(
+            endpoint + "/policies", json={"init_data": payload["init_data"]}
+        )
+        assert policies.json()["writes_paused"] is True
+        blocked = await client.post(endpoint, json=payload)
+        assert blocked.status_code == 503
+        assert blocked.json()["detail"] == "combined_checkout_unavailable"
+
+        env["config"].financial.combined_checkout_enabled = False
+        response = await client.post(endpoint, json=payload)
+        assert response.status_code == 200, response.text
+        order_id = response.json()["order_id"]
+        request = {
+            "init_data": payload["init_data"],
+            "order_id": order_id,
+            "reason": "Please issue an invoice for this order",
+            "operation_key": f"invoice-{uuid4()}",
+        }
+        support_endpoint = "/miniapp/api/customer/support"
+        created = await client.post(support_endpoint, json=request)
+        assert created.status_code == 200, created.text
+        replay = await client.post(support_endpoint, json=request)
+        assert replay.status_code == 200
+        first, repeated = created.json(), replay.json()
+        assert datetime.fromisoformat(
+            first.pop("created_at")
+        ) == datetime.fromisoformat(repeated.pop("created_at"))
+        assert first == repeated
+    (stored,) = scoped_rows(env, "customer_requests", UUID(order_id))
+    assert (
+        stored["payload"]["contact_reference"]
+        == f"telegram:{env['user'].telegram_id}"
+    )
+
+
+def test_unused_combined_checkout_schema_can_be_reverted(monkeypatch):
+    from importlib import import_module
+    from os import environ
+
+    from sqlalchemy import text
+
+    from tests.helpers.financial_environment import isolated_financial_database
+
+    migration = import_module(
+        "ugc_bot.infrastructure.db.migrations.versions.0153_combined_checkout"
+    )
+    with (
+        isolated_financial_database(
+            environ["FINANCIAL_TEST_DATABASE_URL"]
+        ) as engine,
+        engine.begin() as db,
+    ):
+        monkeypatch.setattr(migration.op, "get_bind", lambda: db)
+        guard_states = text("""
+            SELECT tgname FROM pg_trigger
+            WHERE tgrelid IN ('browser_checkout_attempts'::regclass,
+                'consultation_checkout_attempts'::regclass)
+              AND tgname IN ('browser_package_amount_guard',
+                'consultation_package_channel_guard')
+            ORDER BY tgname
+        """)
+        expected = [
+            "browser_package_amount_guard",
+            "consultation_package_channel_guard",
+        ]
+        assert db.scalars(guard_states).all() == expected
+        migration.downgrade()
+        assert not db.scalars(guard_states).all()
+        assert "combined_checkout" not in db.scalar(
+            text(
+                "SELECT prosrc FROM pg_proc WHERE "
+                "oid='correction_validate_authority(jsonb)'::regprocedure"
+            )
+        )
+        migration.upgrade()
+        assert db.scalars(guard_states).all() == expected

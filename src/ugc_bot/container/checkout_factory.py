@@ -96,14 +96,25 @@ def build_browser_checkout(config: AppConfig, transactions, repos):
 CONSULTATION_DESCRIPTION = "Консультация по запуску UGC"
 
 
-def consultation_sales_ready(config: AppConfig) -> bool:
+def _browser_sales_ready(config: AppConfig) -> bool:
     financial = config.financial
     return bool(
         financial.yookassa_browser_enabled
         and financial.yookassa_browser_shop_id
         and financial.yookassa_browser_secret_key.get_secret_value().strip()
         and config.webhook.webhook_base_url.startswith("https://")
-        and len(config.admin.browser_paid_order_telegram_recipients or ()) == 2
+    )
+
+
+def combined_sales_ready(config: AppConfig) -> bool:
+    return _browser_sales_ready(config) and bool(
+        config.bot.telegram_payment_account_id.strip()
+    )
+
+
+def consultation_sales_ready(config: AppConfig) -> bool:
+    return _browser_sales_ready(config) and (
+        len(config.admin.browser_paid_order_telegram_recipients or ()) == 2
     )
 
 

@@ -10,6 +10,7 @@ from sqlalchemy import exists, insert, select, update
 from ugc_bot.application.errors import OrderCreationError
 from ugc_bot.domain.browser_checkout import BrowserInvoice, browser_invoice_url
 from ugc_bot.domain.enums import OrderStatus, PaymentStatus
+from ugc_bot.domain.financial_tariff import require_invoice_total
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     ACTIVE_STATES,
     BROWSER_LINKS,
@@ -24,7 +25,11 @@ from ugc_bot.infrastructure.db.checkout_models import (
     INBOX,
     REVIEWS,
 )
+from ugc_bot.infrastructure.db.consultation_models import (
+    combined_consultation_amount,
+)
 from ugc_bot.infrastructure.db.models import OrderModel, PaymentModel
+from ugc_bot.infrastructure.db.order_intake_models import is_combined_checkout
 from ugc_bot.infrastructure.db.repositories.financial_capture import PROVIDER
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
@@ -47,19 +52,33 @@ def invoice_request(
     email,
     receipt,
     description,
+    *,
+    combined_receipt=None,
 ):
     amount = {"value": f"{total:.2f}", "currency": currency}
     metadata = {"order_id": str(order_id), "attempt_id": str(attempt_id)}
+    fiscal = receipt(total, currency)
+    if combined_receipt is not None:
+        fiscal["items"] = combined_receipt
+        cart = [
+            {
+                "description": line["description"],
+                "price": line["amount"],
+                "quantity": 1,
+            }
+            for line in combined_receipt
+        ]
+    else:
+        cart = [{"description": description, "price": amount, "quantity": 1}]
     return {
         "payment_data": {
             "amount": amount,
             "capture": True,
             "description": description,
             "metadata": metadata,
-            "receipt": receipt(total, currency)
-            | {"customer": {"email": email}},
+            "receipt": fiscal | {"customer": {"email": email}},
         },
-        "cart": [{"description": description, "price": amount, "quantity": 1}],
+        "cart": cart,
         "delivery_method_data": {"type": "self"},
         "locale": "ru_RU",
         "expires_at": expires_at.isoformat(),
@@ -220,12 +239,12 @@ class SqlBrowserCheckout(BrowserAttemptClaims):
             raise LookupError("browser_link_not_found")
         return await self._view(link.order_id, session=session)
 
-    async def view(self, order_id, *, session):
+    async def view(self, order_id, *, client_id=None, session):
         db = _session(session)
         view = await self._view(order_id, session=session)
         if view is None:
             return None
-        token = await db.scalar(
+        token_query = (
             select(BROWSER_LINKS.c.token)
             .join(OrderModel, OrderModel.order_id == BROWSER_LINKS.c.order_id)
             .where(
@@ -233,6 +252,11 @@ class SqlBrowserCheckout(BrowserAttemptClaims):
                 OrderModel.advertiser_id == BROWSER_LINKS.c.client_id,
             )
         )
+        if client_id is not None:
+            token_query = token_query.where(
+                BROWSER_LINKS.c.client_id == client_id
+            )
+        token = await db.scalar(token_query)
         return {
             "state": view["state"],
             "token": token,
@@ -319,6 +343,10 @@ class SqlBrowserCheckout(BrowserAttemptClaims):
             order_id, owner, self.telegram_account, session=db
         )
         await self._require_unpaid_quote(db, order_id, total, currency)
+        total, combined_receipt = await self._prepare_browser_quote(
+            db, order_id, items, total, currency, receipt
+        )
+        description = f"Услуги UMC · заказ №{order_id.hex[:8].upper()}"
         attempt_id = uuid4()
         await db.execute(
             insert(ATTEMPTS).values(
@@ -336,7 +364,8 @@ class SqlBrowserCheckout(BrowserAttemptClaims):
                     expires_at,
                     email,
                     receipt,
-                    f"Услуги UMC · заказ №{order_id.hex[:8].upper()}",
+                    description,
+                    combined_receipt=combined_receipt,
                 ),
                 state="creating",
                 created_at=now,
@@ -345,6 +374,39 @@ class SqlBrowserCheckout(BrowserAttemptClaims):
             )
         )
         return order_id
+
+    @staticmethod
+    async def _prepare_browser_quote(
+        db, order_id, items, total, currency, receipt
+    ):
+        combined = await db.scalar(select(is_combined_checkout(order_id)))
+        consultation_minor = 0
+        if combined:
+            consultation_minor = await db.scalar(
+                select(combined_consultation_amount(order_id))
+            )
+        if combined:
+            components = [
+                ("Подбор авторов", sum(item.selection_minor for item in items)),
+                (
+                    "Сопровождение авторов",
+                    sum(item.accompaniment_minor for item in items),
+                ),
+                ("Консультация по UGC-кампании", consultation_minor),
+            ]
+            combined_receipt = []
+            for label, minor in components:
+                if minor:
+                    line = receipt(Decimal(minor) / 100, currency)["items"][0]
+                    combined_receipt.append(line | {"description": label})
+            total += Decimal(consultation_minor) / 100
+            try:
+                require_invoice_total(int(total * 100))
+            except ValueError as error:
+                raise OrderCreationError(str(error)) from error
+        else:
+            combined_receipt = None
+        return total, combined_receipt
 
     @staticmethod
     async def _require_unpaid_quote(db, order_id, total, currency):
@@ -407,8 +469,31 @@ class SqlBrowserCheckout(BrowserAttemptClaims):
         if invoice and invoice.payment:
             # Release the reservation and book the capture atomically. Order
             # mutations remain guarded until this transaction commits.
-            await self.capture.capture_browser(
-                claim.order_id, claim.client_id, invoice.payment, session=db
+            combined = await db.scalar(
+                select(is_combined_checkout(claim.order_id))
             )
+            consultation_minor = 0
+            if combined:
+                consultation_minor = (
+                    await db.scalar(
+                        select(combined_consultation_amount(claim.order_id))
+                    )
+                    or 0
+                )
+            await self.capture.capture_browser(
+                claim.order_id,
+                claim.client_id,
+                invoice.payment,
+                session=db,
+                consultation_minor=consultation_minor,
+            )
+            if consultation_minor and not self.test_mode:
+                from ugc_bot.infrastructure.db.repositories import (
+                    consultation_checkout,
+                )
+
+                await consultation_checkout.consultation_notices().enqueue(
+                    claim.order_id, "paid", session=db
+                )
             if self.notices is not None:
                 await self.notices.enqueue(claim.order_id, "paid", session=db)

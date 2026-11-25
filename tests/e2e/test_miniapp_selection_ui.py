@@ -183,12 +183,11 @@ class SelectionNetwork(MiniAppNetwork):
 
 
 def fill(page, *, manager=False):
-    page.locator("#intake-count").fill("30")
+    page.locator("#intake-count-preset").select_option("30")
     page.locator("#intake-policy").select_option(POLICY)
     page.locator("#intake-product").fill("https://example.test/real-product")
     page.locator("#intake-brief").fill("Actual synthetic requested brief")
     page.locator("#intake-honorarium").fill("999.00")
-    page.locator("#intake-contact").fill("@actual_synthetic_client")
     due = datetime.now(timezone.utc) + timedelta(days=3)
     page.locator("#intake-due").fill(due.strftime("%Y-%m-%dT%H:%M"))
     if manager:
@@ -224,7 +223,7 @@ def test_accompaniment_payment_terms_are_shown_before_checkout(
     open_app(page, SelectionNetwork(locale), platform, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
-    expect(page.locator("#intake-preview")).to_contain_text(disclosure)
+    expect(page.locator("#intake-preview .umc-receipt-total")).to_be_visible()
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-result")).to_contain_text(disclosure)
 
@@ -274,18 +273,15 @@ def test_actual_intake_uses_server_policy_and_persisted_quote(
     page.locator("#btn-show-create-order").click()
     expect(page.locator("#screen-intake")).to_be_visible()
     fill(page, manager=True)
-    expect(page.locator("#btn-intake-create")).to_have_text(
+    expect(page.locator("#btn-intake-create")).to_contain_text(
         {
-            "ru": "Перейти к оплате",
-            "en": "Continue to payment",
-            "kk": "Төлемге өту",
-            "be": "Перайсці да аплаты",
-            "uz": "To‘lovga o‘tish",
+            "ru": "Оплатить",
+            "en": "Pay",
+            "kk": "Төлеу",
+            "be": "Аплаціць",
+            "uz": "To‘lash",
         }[locale]
     )
-    page.locator("#intake-all-manager").uncheck()
-    page.locator("#intake-position-1").check()
-    page.locator("#intake-position-7").check()
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-result")).to_be_visible()
     expect(page.locator("#btn-intake-new")).to_have_text(
@@ -298,19 +294,19 @@ def test_actual_intake_uses_server_policy_and_persisted_quote(
         }[locale]
     )
     expect(page.locator("#intake-total")).to_have_attribute(
-        "data-minor", "1740000"
+        "data-minor", "5100000"
     )
     assert (
         page.locator(
             '#intake-components [data-position-total="170000"]'
         ).count()
-        == 2
+        == 30
     )
     assert len(network.creates) == 1
     sent = network.creates[0]
     assert sent["init_data"] == SIGNED and sent["platform"] == platform
     assert sent["policy_version"] == POLICY
-    assert sent["accompaniment_ordinals"] == [1, 7]
+    assert sent.get("accompaniment_ordinals") is None
     assert sent["honorarium"] == "999.00"
     assert (
         not {
@@ -684,8 +680,6 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
     errors = open_app(page, network, platform, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
-    page.locator("#intake-all-manager").uncheck()
-    page.locator("#intake-position-7").check()
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-result")).to_be_visible()
     expect(page.locator("#btn-intake-new")).to_have_text("Create another order")
@@ -698,8 +692,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
     expect(
         page.locator('input[name="intake-mode"][value="self_service"]')
     ).to_be_checked()
-    expect(page.locator("#intake-all-manager")).to_be_checked()
-    assert page.locator("#intake-position-options input:checked").count() == 0
+    expect(page.locator("#intake-position-options")).to_have_count(0)
     assert page.evaluate("sessionStorage.length") == 0
     assert len(network.creates) == 1
     fill(page)
@@ -711,7 +704,7 @@ def test_completed_receipt_allows_explicit_new_order_with_fresh_key(
         != network.creates[1]["operation_key"]
     )
     assert network.creates[1]["service_mode"] == "self_service"
-    assert network.creates[1]["accompaniment_ordinals"] == []
+    assert network.creates[1].get("accompaniment_ordinals") is None
     assert errors == []
 
 
@@ -1028,24 +1021,21 @@ def test_dark_form_quote_and_selection_fit_320px(page, platform, locale):
     assert errors == []
 
 
-def test_light_320px_subset_grid_supports_keyboard_and_exact_quote(page):
+def test_light_320px_count_and_full_accompaniment_quote(page):
     page.set_viewport_size({"width": 320, "height": 720})
     network = SelectionNetwork("en")
     errors = open_app(page, network, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
-    page.locator("#intake-all-manager").uncheck()
-    page.locator("#intake-position-1").focus()
-    page.keyboard.press("Space")
-    page.locator("#intake-position-30").check()
-    expect(page.locator("#intake-position-1")).to_be_checked()
+    page.locator("#intake-count-preset").focus()
+    expect(page.locator("#intake-count-preset")).to_have_value("30")
     assert page.evaluate(
         "document.documentElement.scrollWidth <= window.innerWidth"
     )
     screenshot(page, "intake-en-subset-light-320")
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-total")).to_have_attribute(
-        "data-minor", "1740000"
+        "data-minor", "5100000"
     )
     screenshot(page, "intake-en-subset-saved-light-320")
     assert errors == []

@@ -575,6 +575,11 @@ html[lang="kk"] { --font-body: "Segoe UI", Arial, sans-serif; --font-display: "A
 .umc-selection-summary > div:last-child { border-bottom: 0; }
 .umc-selection-summary dt { flex: 1 1 140px; color: var(--muted); }
 .umc-selection-summary dd { margin: 0; font-weight: 600; }
+.umc-selection .umc-consultation-choice { align-items: flex-start; }
+.umc-consultation-choice input { flex: 0 0 auto; margin-top: 0.1em; }
+.umc-selection-summary .umc-receipt-total { padding-top: var(--space-16); font-size: 1.2em; }
+.umc-receipt-total dt { color: var(--text); font-weight: 700; }
+
 .umc-selection-reference { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
 .umc-selection-position { margin: var(--space-20) 0; border: 1px solid var(--line-strong); border-radius: var(--radius-14); padding: var(--space-16); }
 .umc-selection-position h2 { font-size: 21px; margin: 0 0 var(--space-12); }

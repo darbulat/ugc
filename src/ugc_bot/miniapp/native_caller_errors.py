@@ -20,10 +20,12 @@ INTAKE_CODES = SHARED_CODES | {
     "pilot_policy_superseded": 409,
     "active_advertiser_required": 403,
     "intake_admin_required": 403,
+    "intake_city_not_found": 404,
     "invalid_intake_funnel_stage": 422,
     "invalid_intake_funnel_identity": 422,
     "client_not_allowlisted": 403,
     "consultation_unavailable": 400,
+    "combined_checkout_unavailable": 503,
     **dict.fromkeys(
         (
             "client_identity_required",

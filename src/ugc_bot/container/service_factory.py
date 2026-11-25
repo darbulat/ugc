@@ -150,7 +150,9 @@ from ugc_bot.container.campaign_analytics_factory import (
 )
 from ugc_bot.container.campaign_runtime_factory import build_campaign_runtime
 from ugc_bot.container.checkout_factory import (
+    build_browser_checkout,
     build_checkout_service,
+    combined_sales_ready,
     consultation_sales_ready,
 )
 from ugc_bot.container.correction_factory import (
@@ -866,6 +868,7 @@ def build_bot_services(
             image_service=image_service,
             consultation_public_base_url=config.webhook.webhook_base_url,
             consultation_payment_ready=consultation_sales_ready(config),
+            combined_checkout_ready=combined_sales_ready(config),
         )
         if repos.get("order_intake_repo") is not None
         else None,
@@ -917,6 +920,9 @@ def build_bot_services(
             referral_income_service=referral_income_service,
         ),
         "checkout_service": build_checkout_service(config, transaction_manager),
+        "browser_checkout_service": build_browser_checkout(
+            config, transaction_manager, repos
+        ),
         "payment_service": PaymentService(
             order_notices=SqlAlchemyOrderNoticeRepository()
             if transaction_manager is not None

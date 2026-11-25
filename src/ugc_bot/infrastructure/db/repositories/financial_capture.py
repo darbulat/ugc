@@ -348,6 +348,7 @@ class SqlAlchemyFinancialCaptureRepository:
         proof: BrowserPayment,
         *,
         session: object,
+        consultation_minor: int = 0,
     ) -> Payment:
         # The browser reservation owns this order and has already verified the
         # merchant, invoice and payment directly with YooKassa.
@@ -363,10 +364,23 @@ class SqlAlchemyFinancialCaptureRepository:
                         "amount_minor": proof.amount_minor,
                     },
                     proof.captured_at,
+                    provider_amount=True,
                 )
             )
         ):
             raise OrderCreationError("browser_capture_proof_required")
+        if consultation_minor:
+            from ugc_bot.infrastructure.db.consultation_models import (
+                combined_consultation_amount,
+            )
+
+            retained = await db.scalar(
+                select(combined_consultation_amount(order_id))
+            )
+            if retained != consultation_minor:
+                raise OrderCreationError(
+                    "combined_consultation_allocation_mismatch"
+                )
         intent = await db.get(OutboxEventModel, intent_id(order_id))
         payment = await db.scalar(
             select(PaymentModel)
@@ -395,7 +409,7 @@ class SqlAlchemyFinancialCaptureRepository:
             proof.shop_id,
             BROWSER_PROVIDER,
             external_id=proof.payment_id,
-            amount_minor=proof.amount_minor,
+            amount_minor=proof.amount_minor - consultation_minor,
             currency="RUB",
             at=proof.captured_at,
             source={

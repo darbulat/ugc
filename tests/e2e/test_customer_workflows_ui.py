@@ -1009,7 +1009,7 @@ def test_variable_quote_stories_and_saved_totals(page, count):
     errors = open_app(page, network, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
-    page.locator("#intake-count").fill(str(count))
+    page.locator("#intake-count-preset").select_option(str(count))
     page.locator("#intake-order-type").select_option("stories")
     page.locator("#intake-platform-telegram").check()
     page.locator("#btn-intake-create").click()

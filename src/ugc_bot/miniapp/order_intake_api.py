@@ -65,7 +65,9 @@ class OrderIntakeRequest(SignedMiniAppRequest):
     offer_text: str = Field(min_length=1, max_length=4000)
     honorarium: Decimal = Field(ge=0, max_digits=12, decimal_places=2)
     selection_due_at: datetime
-    contact_reference: str = Field(min_length=1, max_length=500)
+    contact_reference: str | None = Field(
+        default=None, min_length=1, max_length=500
+    )
     service_mode: Literal["self_service", "with_manager"]
     position_count: StrictInt = Field(default=30, ge=10, le=200)
     accompaniment_ordinals: list[StrictInt] | None = Field(
@@ -84,6 +86,10 @@ class OrderIntakeRequest(SignedMiniAppRequest):
         if selected is not None and len(set(selected)) != len(selected):
             raise ValueError("duplicate_accompaniment_ordinals")
         return self
+
+
+class IntakeCity(SignedMiniAppRequest):
+    city: str = Field(min_length=2, max_length=200)
 
 
 class FunnelStage(SignedMiniAppRequest):
@@ -109,6 +115,8 @@ class OrderIntakeResponse(BaseModel):
     consultation_minor: int = 0
     project_total_minor: int
     consultation_url: str | None = None
+    checkout_url: str | None = None
+    combined_checkout: bool = False
 
 
 async def _context(request, body, resolve):
@@ -124,6 +132,17 @@ async def _context(request, body, resolve):
     if service is None:
         raise HTTPException(503, "financial_disabled")
     return principal, service
+
+
+async def _resolve_intake_city(request: Request, city: str) -> dict:
+    geocoder = request.app.state.dispatcher.get("blogger_registration_service")
+    result = (
+        await geocoder.resolve_city_identity(city.strip()) if geocoder else None
+    )
+    if result is None:
+        raise HTTPException(404, "intake_city_not_found")
+    name, region, country = result
+    return {"city": name, "region": region, "country": country}
 
 
 def create_order_intake_router(
@@ -148,6 +167,11 @@ def create_order_intake_router(
             principal.user_id, principal=principal
         )
 
+    @router.post("/city")
+    async def city(request: Request, body: IntakeCity):
+        await _context(request, body, resolve)
+        return await _resolve_intake_city(request, body.city)
+
     @router.post("/policies", response_model_exclude_none=True)
     async def policies(
         request: Request, body: SignedMiniAppRequest
@@ -164,6 +188,10 @@ def create_order_intake_router(
     ) -> OrderIntakeResponse:
         principal, service = await _context(request, body, resolve)
         values = body.model_dump(exclude={"init_data", "platform"})
+        if values.get("contact_reference") is None:
+            values["contact_reference"] = (
+                f"{principal.platform}:{principal.external_id}"
+            )
         selected = values.pop("accompaniment_ordinals")
         targeting = values.pop("targeting")
         if targeting is not None:
@@ -197,7 +225,10 @@ def create_order_intake_router(
             selection_base_minor=result.selection_base_minor,
             project_total_minor=result.project_total_minor,
             consultation_url=service.consultation_link(result)
-            if result.consultation_token
+            if result.consultation_token and not result.combined_checkout
+            else None,
+            checkout_url=service.checkout_link(result)
+            if result.checkout_token
             else None,
         )
 

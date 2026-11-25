@@ -17,6 +17,10 @@ from ugc_bot.domain.order_intake import (
     OrderIntakeResult,
 )
 from ugc_bot.domain.order_targeting import OrderTargeting
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    BROWSER_LINKS,
+    BROWSER_ONLY_ORDERS,
+)
 from ugc_bot.infrastructure.db.consultation_models import CONSULTATIONS
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -52,7 +56,9 @@ def canonical(value: Any) -> Any:
 
 
 def result_from_payload(
-    payload: dict[str, Any], consultation_token: UUID | None = None
+    payload: dict[str, Any],
+    consultation_token: UUID | None = None,
+    checkout_token: UUID | None = None,
 ) -> OrderIntakeResult:
     return OrderIntakeResult(
         UUID(payload["request_id"]),
@@ -76,6 +82,8 @@ def result_from_payload(
         payload.get("targeting"),
         payload.get("consultation_minor", 0),
         consultation_token,
+        payload.get("combined_checkout", False),
+        checkout_token,
     )
 
 
@@ -257,11 +265,19 @@ class SqlAlchemyOrderIntakeRepository:
                     CONSULTATIONS.c.client_id == client_id,
                 )
             )
+        checkout_token = None
+        if row["result"].get("combined_checkout"):
+            checkout_token = await _session(session).scalar(
+                select(BROWSER_LINKS.c.token).where(
+                    BROWSER_LINKS.c.order_id == row["order_id"],
+                    BROWSER_LINKS.c.client_id == client_id,
+                )
+            )
         return OrderIntakeReceipt(
             client_id,
             operation_key,
             row["payload_hash"],
-            result_from_payload(row["result"], token),
+            result_from_payload(row["result"], token, checkout_token),
         )
 
     async def save(
@@ -275,6 +291,9 @@ class SqlAlchemyOrderIntakeRepository:
         result = receipt.result
         values = asdict(result)
         values.pop("consultation_token")
+        values.pop("checkout_token")
+        if not result.combined_checkout:
+            values.pop("combined_checkout")
         if not result.consultation_minor:
             values.pop("consultation_minor")
         await db.execute(
@@ -288,6 +307,19 @@ class SqlAlchemyOrderIntakeRepository:
                 result=canonical(values),
             )
         )
+        if result.checkout_token is not None:
+            await db.execute(
+                insert(BROWSER_LINKS).values(
+                    order_id=result.order_id,
+                    client_id=receipt.client_id,
+                    token=result.checkout_token,
+                )
+            )
+            await db.execute(
+                insert(BROWSER_ONLY_ORDERS).values(
+                    order_id=result.order_id, switched_at=result.requested_at
+                )
+            )
         if result.consultation_token is not None:
             await db.execute(
                 insert(CONSULTATIONS).values(

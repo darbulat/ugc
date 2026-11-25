@@ -8,7 +8,10 @@ from ugc_bot.application.native_principal_ports import (
 )
 from ugc_bot.application.ports import TransactionManager
 from ugc_bot.application.selection_view_ports import SelectionViewRepository
-from ugc_bot.domain.browser_checkout import consultation_payment_url
+from ugc_bot.domain.browser_checkout import (
+    consultation_payment_url,
+    order_payment_url,
+)
 
 
 @dataclass
@@ -38,5 +41,10 @@ class SelectionViewService:
         if token is not None:
             result["consultation_url"] = consultation_payment_url(
                 self.public_base_url, token
+            )
+        checkout_token = result.pop("checkout_token", None)
+        if checkout_token is not None:
+            result["checkout_url"] = order_payment_url(
+                self.public_base_url, checkout_token
             )
         return result

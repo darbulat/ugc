@@ -71,6 +71,8 @@ async def send_checkout_if_v1(
     checkout,
     config,
     locale,
+    *,
+    browser_checkout=None,
 ):
     order = await payments.get_order(order_id)
     if order is None or not isinstance(order.financial_version, str):
@@ -102,10 +104,14 @@ async def send_checkout_if_v1(
     if result.get("capture_state") == "confirmed":
         await messenger.send_text(chat_id=incoming.chat_id, text=copy[3])
     elif result.get("reason") == "browser_payment_active":
-        await messenger.send_text(
-            chat_id=incoming.chat_id,
-            text=customer_text(locale, "browser_payment_active"),
-            keyboard=help_keyboard,
+        await _send_browser_checkout(
+            browser_checkout,
+            messenger,
+            incoming,
+            order_id,
+            user.user_id,
+            locale,
+            copy,
         )
     elif result.get("authorization_id"):
         await messenger.send_text(
@@ -130,3 +136,29 @@ async def send_checkout_if_v1(
             chat_id=incoming.chat_id, text=copy[2], keyboard=help_keyboard
         )
     return True
+
+
+async def _send_browser_checkout(
+    browser, messenger, incoming, order_id, client_id, locale, copy
+):
+    view = (
+        await browser.view(order_id, client_id=client_id) if browser else None
+    )
+    if view and view["telegram_disabled"] and view["url"]:
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=copy[0],
+            keyboard=Keyboard(
+                kind=KeyboardKind.INLINE,
+                rows=[
+                    [Button(text=copy[1], url=view["url"])],
+                    [payment_help_button(order_id, locale)],
+                ],
+            ),
+        )
+    else:
+        await messenger.send_text(
+            chat_id=incoming.chat_id,
+            text=customer_text(locale, "browser_payment_active"),
+            keyboard=payment_help_keyboard(order_id, locale),
+        )

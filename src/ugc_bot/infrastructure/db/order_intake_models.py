@@ -29,6 +29,28 @@ INTAKE_RECEIPTS = sa.Table(
     ),
 )
 
+
+def is_combined_checkout(order_id):
+    return sa.exists().where(
+        INTAKE_RECEIPTS.c.order_id == order_id,
+        INTAKE_RECEIPTS.c.result["combined_checkout"].as_boolean().is_(True),
+    )
+
+
+def combined_receipt_consultation_minor(order_id):
+    amount = (
+        sa.select(INTAKE_RECEIPTS.c.result["consultation_minor"].as_integer())
+        .where(
+            INTAKE_RECEIPTS.c.order_id == order_id,
+            INTAKE_RECEIPTS.c.result["combined_checkout"]
+            .as_boolean()
+            .is_(True),
+        )
+        .scalar_subquery()
+    )
+    return sa.func.coalesce(amount, 0)
+
+
 ORDER_DISPATCH_CITY_OVERRIDES = sa.Table(
     "order_dispatch_city_overrides",
     metadata,

@@ -104,7 +104,7 @@
       <label id="lbl-adv-brand" for="adv-brand">Бренд / компания *</label>
       <input type="text" id="adv-brand" name="brand" required>
       <label id="lbl-adv-site" for="adv-site">Сайт</label>
-      <input type="url" id="adv-site" name="site_link" placeholder="https://">
+      <input type="text" inputmode="url" id="adv-site" name="site_link" placeholder="usemycontent.ru">
       <label id="lbl-adv-city" for="adv-city">Город</label>
       <input type="text" id="adv-city" name="city">
       <label id="lbl-adv-activity" for="adv-activity">Чем занимается компания</label>
@@ -558,15 +558,19 @@
       <label for="intake-policy" data-intake-copy="policy"></label>
       <select id="intake-policy" required></select>
       <div id="intake-terms" class="umc-selection-terms" hidden></div>
+      <label for="intake-count-preset" data-intake-copy="count"></label>
+      <select id="intake-count-preset" required>
+        <option value="10" selected>10</option><option value="20">20</option><option value="30">30</option>
+        <option value="50">50</option><option value="100">100</option><option value="200">200</option>
+        <option value="custom" data-intake-copy="customCount"></option>
+      </select>
+      <input id="intake-count" type="number" min="10" max="200" step="1" value="10" inputmode="numeric" aria-label="Количество авторов" hidden disabled>
       <label for="intake-product" data-intake-copy="product"></label>
       <input id="intake-product" type="url" required maxlength="2048" aria-describedby="intake-product-hint">
       <p id="intake-product-hint" class="hint umc-field-hint" data-intake-copy="productHint"></p>
       <label for="intake-brief" data-intake-copy="brief"></label>
       <textarea id="intake-brief" required maxlength="4000" aria-describedby="intake-brief-hint"></textarea>
       <p id="intake-brief-hint" class="hint umc-field-hint" data-intake-copy="briefHint"></p>
-      <label for="intake-count" data-intake-copy="count"></label>
-      <input id="intake-count" type="number" min="10" max="200" step="1" value="10" inputmode="numeric" list="intake-count-presets" required>
-      <datalist id="intake-count-presets"><option value="10"><option value="20"><option value="30"><option value="50"><option value="100"><option value="200"></datalist>
       <label for="intake-image" data-intake-copy="image"></label>
       <p class="hint" id="intake-image-hint">JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт).</p>
       <input id="intake-image" type="file" accept="image/jpeg" aria-describedby="intake-image-hint">
@@ -580,25 +584,20 @@
       <label for="intake-due" id="intake-due-label"></label>
       <input id="intake-due" type="datetime-local" required aria-describedby="intake-due-hint">
       <p id="intake-due-hint" class="hint umc-field-hint" data-intake-copy="dueHint"></p>
-      <label for="intake-contact" data-intake-copy="contact"></label>
-      <input id="intake-contact" required maxlength="500" autocomplete="off" aria-describedby="intake-contact-hint">
-      <p id="intake-contact-hint" class="hint umc-field-hint" data-intake-copy="contactHint"></p>
+      <p id="intake-contact-hint" class="hint" data-intake-copy="accountContact"></p>
       <fieldset class="umc-selection-modes">
         <legend data-intake-copy="mode"></legend>
         <label><input type="radio" name="intake-mode" value="self_service" checked><span data-intake-copy="self"></span></label>
         <label><input type="radio" name="intake-mode" value="with_manager"><span data-intake-copy="manager"></span></label>
       </fieldset>
-      <div id="intake-manager-options" hidden>
-        <label class="umc-selection-choice"><input id="intake-all-manager" type="checkbox" checked><span data-intake-copy="all"></span></label>
-        <fieldset id="intake-positions" hidden><legend data-intake-copy="positions"></legend><div class="umc-selection-position-grid" id="intake-position-options"></div></fieldset>
-      </div>
       <p class="hint" data-intake-copy="leadHint"></p>
       <div id="intake-consultation-option" class="umc-selection-summary" hidden>
-        <label><input type="checkbox" id="intake-consultation" aria-describedby="intake-consultation-description"> <span id="intake-consultation-label"></span></label>
+        <label class="umc-selection-choice umc-consultation-choice"><input type="checkbox" id="intake-consultation" aria-describedby="intake-consultation-description"> <span id="intake-consultation-label"></span></label>
         <p class="hint" id="intake-consultation-description" data-intake-copy="consultationDescription"></p>
       </div>
       <div id="intake-preview" class="umc-selection-summary" hidden></div>
       <button id="btn-intake-create" type="submit" class="btn" data-umc-primary="40" data-intake-copy="create"></button>
+      <button id="btn-intake-company" type="submit" class="btn btn-secondary" data-intake-copy="companyInvoice"></button>
     </form>
     <div id="intake-uncertain" class="umc-selection-notice" hidden><p data-intake-copy="uncertain"></p><button id="btn-intake-retry" type="button" class="btn" data-umc-primary="40" data-intake-copy="retry"></button></div>
     <div id="intake-result" hidden>
@@ -610,7 +609,7 @@
       <button id="btn-intake-selection" type="button" class="btn" data-intake-copy="viewSelection"></button>
       <button id="btn-intake-new" type="button" class="btn btn-secondary" data-intake-copy="newOrder"></button>
     </div>
-    <button id="btn-intake-refresh" type="button" class="btn btn-secondary" data-intake-copy="reload"></button>
+    <button id="btn-intake-refresh" type="button" class="btn btn-secondary" data-intake-copy="retry" hidden></button>
     <button id="btn-intake-back" type="button" class="btn btn-secondary" data-umc-back data-intake-copy="back"></button>
   </section>
   <section id="screen-summary" class="screen umc-summary" data-umc-section="mint" aria-busy="false">

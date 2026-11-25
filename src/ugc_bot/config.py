@@ -834,6 +834,9 @@ class FinancialConfig(BaseSettings):
     consultation_enabled: bool = Field(
         default=False, alias="FINANCIAL_CONSULTATION_ENABLED"
     )
+    combined_checkout_enabled: bool = Field(
+        default=False, alias="FINANCIAL_COMBINED_CHECKOUT_ENABLED"
+    )
     new_orders_enabled: bool = Field(
         default=False, alias="FINANCIAL_NEW_ORDERS_ENABLED"
     )

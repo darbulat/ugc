@@ -185,6 +185,8 @@ class OrderIntakeResult:
     targeting: dict | None = None
     consultation_minor: int = 0
     consultation_token: UUID | None = None
+    combined_checkout: bool = False
+    checkout_token: UUID | None = None
 
     @property
     def project_total_minor(self) -> int:

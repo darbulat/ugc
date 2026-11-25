@@ -16,21 +16,12 @@ pytestmark = [pytest.mark.e2e, pytest.mark.timeout(30)]
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-@pytest.mark.parametrize(
-    "mode,all_positions",
-    [("with_manager", True), ("with_manager", False), ("self_service", False)],
-)
-def test_draft_reload_preserves_mode_positions_and_policy(
-    page, platform, mode, all_positions
-):
+@pytest.mark.parametrize("mode", ["with_manager", "self_service"])
+def test_draft_reload_preserves_mode_count_and_policy(page, platform, mode):
     network = SelectionNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
-    if not all_positions:
-        page.locator("#intake-all-manager").uncheck()
-        page.locator("#intake-position-1").check()
-        page.locator("#intake-position-7").check()
     page.locator('input[name="intake-mode"][value="' + mode + '"]').check()
     due = page.locator("#intake-due").input_value()
     page.reload()
@@ -44,13 +35,7 @@ def test_draft_reload_preserves_mode_positions_and_policy(
     )
     expect(page.locator("#intake-honorarium")).to_have_value("999.00")
     expect(page.locator("#intake-due")).to_have_value(due)
-    if all_positions:
-        expect(page.locator("#intake-all-manager")).to_be_checked()
-    else:
-        expect(page.locator("#intake-all-manager")).not_to_be_checked()
-        expect(page.locator("#intake-position-1")).to_be_checked()
-        expect(page.locator("#intake-position-7")).to_be_checked()
-        expect(page.locator("#intake-position-2")).not_to_be_checked()
+    expect(page.locator("#intake-count-preset")).to_have_value("30")
     assert network.creates == [] and not errors
 
 
@@ -61,8 +46,7 @@ def test_draft_survives_closing_and_reopening_webview(page, platform):
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
     page.locator("#intake-brief").fill("Saved brief after reopening")
-    page.locator("#intake-all-manager").uncheck()
-    page.locator("#intake-position-7").check()
+    page.locator("#intake-count-preset").select_option("50")
     context = page.context
     page.close()
 
@@ -73,7 +57,7 @@ def test_draft_survives_closing_and_reopening_webview(page, platform):
         expect(reopened.locator("#intake-brief")).to_have_value(
             "Saved brief after reopening"
         )
-        expect(reopened.locator("#intake-position-7")).to_be_checked()
+        expect(reopened.locator("#intake-count-preset")).to_have_value("50")
         assert network.creates == []
     finally:
         reopened.close()
@@ -211,8 +195,8 @@ def test_legacy_request_cannot_resubmit_its_restored_draft(page, platform):
         offer_text:field('intake-brief').trim(),
         honorarium:Number(field('intake-honorarium')).toFixed(2),
         selection_due_at:new Date(field('intake-due')).toISOString(),
-        contact_reference:field('intake-contact').trim(),
-        position_count:Number(field('intake-count')),
+        contact_reference:'@historic_test_contact',
+        position_count:Number(field('intake-count-preset')),
         service_mode:'self_service',accompaniment_ordinals:[],
         order_type:field('intake-order-type')
       };
@@ -289,9 +273,9 @@ def test_legacy_draft_reports_session_only_when_durable_storage_fails(
     page.reload()
     page.locator("#btn-show-create-order").click()
     expect(page.locator("#intake-brief")).to_have_value("Legacy session draft")
-    expect(page.locator("#form-umc-intake [role=status]")).to_contain_text(
-        "в этой сессии"
-    )
+    expect(
+        page.locator("#form-umc-intake [role=status]:not(#intake-city-hint)")
+    ).to_contain_text("в этой сессии")
     context = page.context
     page.close()
     reopened = context.new_page()
@@ -567,8 +551,7 @@ def test_drafts_follow_account_and_platform_without_copying_private_brief(
     fill(page, manager=True)
     page.locator("#intake-brief").fill("PRIVATE account A brief")
     page.locator("#intake-city").fill("PRIVATE account A city")
-    page.locator("#intake-all-manager").uncheck()
-    page.locator("#intake-position-7").check()
+    page.locator("#intake-count-preset").select_option("50")
     flow_a = page.evaluate("UMCIntakeProgress.funnel()")
     user_b = (
         "22000000-0000-4000-8000-000000000099" if change == "user" else CLIENT
@@ -584,16 +567,15 @@ def test_drafts_follow_account_and_platform_without_copying_private_brief(
     switch_draft_identity(page, user_b, platform_b)
     expect(page.locator("#intake-brief")).to_have_value("")
     expect(page.locator("#intake-city")).to_have_value("")
-    expect(page.locator("#intake-contact")).to_have_value("")
+    expect(page.locator("#intake-contact")).to_have_count(0)
     expect(page.locator('input[name="intake-mode"]:checked')).to_have_value(
         "self_service"
     )
-    expect(page.locator("#intake-all-manager")).to_be_checked()
-    expect(page.locator("#intake-position-7")).not_to_be_checked()
+    expect(page.locator("#intake-count-preset")).not_to_have_value("50")
     flow_b = page.evaluate("UMCIntakeProgress.funnel()")
     assert flow_b and flow_b != flow_a
     page.locator("#intake-brief").fill("PRIVATE account B brief")
-    page.locator("#intake-contact").fill("PRIVATE account B contact")
+    page.locator("#intake-product").fill("https://account-b.example.test")
     saved_b = page.evaluate("key=>sessionStorage.getItem(key)", key_b)
     assert "account A" not in saved_b
     assert page.evaluate("key=>sessionStorage.getItem(key)", key_a) == saved_a
@@ -605,14 +587,14 @@ def test_drafts_follow_account_and_platform_without_copying_private_brief(
     expect(page.locator('input[name="intake-mode"]:checked')).to_have_value(
         "with_manager"
     )
-    expect(page.locator("#intake-position-7")).to_be_checked()
+    expect(page.locator("#intake-count-preset")).to_have_value("50")
     assert page.evaluate("UMCIntakeProgress.funnel()") == flow_a
     switch_draft_identity(page, user_b, platform_b)
     expect(page.locator("#intake-brief")).to_have_value(
         "PRIVATE account B brief"
     )
-    expect(page.locator("#intake-contact")).to_have_value(
-        "PRIVATE account B contact"
+    expect(page.locator("#intake-product")).to_have_value(
+        "https://account-b.example.test"
     )
     assert page.evaluate("UMCIntakeProgress.funnel()") == flow_b
     assert not network.creates and not errors
@@ -632,10 +614,10 @@ def test_input_after_unannounced_switch_cannot_store_previous_brief(
     old_key = f"umc:intake-draft:{platform}:{CLIENT}"
     saved = page.evaluate("key=>sessionStorage.getItem(key)", old_key)
     user_b = "22000000-0000-4000-8000-000000000099"
-    page.locator("#intake-contact").focus()
+    page.locator("#intake-product").focus()
     switch_draft_identity(page, user_b, platform, ready=False)
     page.keyboard.press("ControlOrMeta+A")
-    page.keyboard.insert_text("New owner contact")
+    page.keyboard.insert_text("New owner product")
     assert page.evaluate("UMCIntakeProgress.funnel()") is None
     expect(page.locator("#intake-brief")).to_have_value("")
     other = page.evaluate(
@@ -864,28 +846,23 @@ def test_draft_owner_switch_preserves_original_unknown_command_retry(
 
 
 @pytest.mark.parametrize("platform", ["telegram", "max"])
-def test_variable_count_restores_high_accompaniment_ordinal_before_submit(
+def test_custom_count_restores_with_full_accompaniment_before_submit(
     page, platform
 ):
     network = SelectionNetwork()
     errors = open_app(page, network, platform, init_data=SIGNED)
     page.locator("#btn-show-create-order").click()
     fill(page, manager=True)
-    page.locator("#intake-count").fill("20")
-    page.locator("#intake-all-manager").uncheck()
-    for ordinal in (1, 15):
-        page.locator(f"#intake-position-{ordinal}").check()
+    page.locator("#intake-count-preset").select_option("custom")
+    page.locator("#intake-count").fill("21")
     page.reload()
     page.locator("#btn-show-create-order").click()
-    expect(page.locator("#intake-count")).to_have_value("20")
-    expect(page.locator("#intake-position-options input")).to_have_count(20)
-    for ordinal in (1, 15):
-        expect(page.locator(f"#intake-position-{ordinal}")).to_be_checked()
-    expect(page.locator("#intake-position-2")).not_to_be_checked()
+    expect(page.locator("#intake-count-preset")).to_have_value("custom")
+    expect(page.locator("#intake-count")).to_have_value("21")
     assert network.creates == []
     page.locator("#btn-intake-create").click()
     expect(page.locator("#intake-result")).to_be_visible()
     assert len(network.creates) == 1
-    assert network.creates[0]["position_count"] == 20
-    assert network.creates[0]["accompaniment_ordinals"] == [1, 15]
+    assert network.creates[0]["position_count"] == 21
+    assert network.creates[0].get("accompaniment_ordinals") is None
     assert not errors
