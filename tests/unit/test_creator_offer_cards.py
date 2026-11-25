@@ -24,6 +24,9 @@ from ugc_bot.application.errors import (
     PaidSelectionResponseError,
 )
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.bot.creator_offer_card_flow import CreatorOfferCardFlow
 from ugc_bot.bot.max.handlers.offer_responses import (
     handle_creator_offer_card as handle_max_creator_offer,
@@ -351,6 +354,32 @@ async def test_full_brief_is_private_and_skip_without_reason_is_saved(
     )
     assert (
         "Оффер пропущен"
+        in offer_session.messenger.edit_offer_card.call_args.args[2].text
+    )
+
+
+@pytest.mark.asyncio
+async def test_unknown_action_and_analytics_failure_keep_flow_usable(
+    order, offer_session
+):
+    flow = offer_session.flow
+    await flow.handle(click(order, "not_an_action"))
+    flow.dispatch.record_card_action.assert_not_awaited()
+    flow.responses.respond_and_finalize.assert_not_awaited()
+
+    offer_session.receipts.record_card_action.side_effect = TimeoutError
+    dispatch = OfferDispatchService(
+        user_repo=AsyncMock(),
+        blogger_repo=AsyncMock(),
+        order_repo=flow.orders,
+        offer_dispatch_repo=offer_session.receipts,
+        interaction_repo=AsyncMock(),
+    )
+    flow.dispatch.record_card_action.side_effect = dispatch.record_card_action
+    await flow.handle(click(order, "brief"))
+    offer_session.receipts.record_card_action.assert_awaited_once()
+    assert (
+        "Короткий бриф"
         in offer_session.messenger.edit_offer_card.call_args.args[2].text
     )
 
@@ -840,6 +869,24 @@ async def test_max_offer_cover_retries_only_explicit_non_delivery(
         assert len(payloads) == 1
     upload.assert_awaited_once_with(cover)
     assert payloads[0]["attachments"][0]["type"] == "image"
+
+
+@pytest.mark.asyncio
+async def test_max_offer_has_clickable_text_fallback_if_upload_fails(
+    order, monkeypatch
+):
+    transport = MaxMessengerClient("fake", AsyncMock())
+    monkeypatch.setattr(
+        transport, "_upload_image_bytes", AsyncMock(side_effect=TimeoutError)
+    )
+    request = AsyncMock(return_value={"message": {"body": {"mid": "sent"}}})
+    monkeypatch.setattr(transport, "_request", request)
+    card = render_public_offer(order, "ru")
+    assert await transport.send_offer_card("100", card, NEUTRAL_COVER) == "sent"
+    request.assert_awaited_once()
+    assert (
+        request.call_args.args[2]["attachments"][0]["type"] == "inline_keyboard"
+    )
 
 
 @pytest.mark.asyncio
