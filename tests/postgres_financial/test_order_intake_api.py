@@ -362,9 +362,10 @@ async def test_v1_own_order_list_exposes_real_policy_without_legacy_pay_action(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("combined", [False, True])
 async def test_consultation_selection_payment_and_targeted_delivery(
-    intake_env, combined
+    intake_env, combined, monkeypatch
 ):
     from datetime import UTC, datetime, timedelta
+    from importlib import import_module
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
     from urllib.parse import urlsplit
@@ -374,6 +375,7 @@ async def test_consultation_selection_payment_and_targeted_delivery(
     from sqlalchemy import select
 
     from tests.helpers.correction_approval_pg import ApprovalRuntime
+    from ugc_bot.application.errors import OrderCreationError
     from ugc_bot.domain.browser_checkout import BrowserInvoice, BrowserPayment
     from ugc_bot.domain.checkout import CheckoutActor
     from ugc_bot.infrastructure.db.browser_checkout_models import (
@@ -476,6 +478,14 @@ async def test_consultation_selection_payment_and_targeted_delivery(
         with pytest.raises(LookupError):
             await container.build_consultation_checkout().buyer_view(token)
         assert len(scoped_rows(env, "browser_only_orders", order_id)) == 1
+    if combined:
+        owned_link = await checkout.view(
+            order_id, client_id=env["user"].user_id
+        )
+        foreign_link = await checkout.view(order_id, client_id=uuid4())
+        assert owned_link["url"] == result["checkout_url"]
+        assert foreign_link["url"] is None
+        assert await checkout.view(uuid4()) is None
     assert (await checkout.buyer_view(token))["state"] == "available"
     gateway.observe.return_value = BrowserInvoice(invoice_id, "pending", hosted)
     await checkout.start(token, "buyer@example.test")
@@ -499,12 +509,29 @@ async def test_consultation_selection_payment_and_targeted_delivery(
     gateway.observe.assert_awaited_once()
     assert (await checkout.buyer_view(token))["url"] == hosted
     attempts = BROWSER_ATTEMPTS if combined else CONSULTATION_ATTEMPTS
-    with Session(env["pg"]) as db, db.begin():
-        db.execute(
-            update(attempts)
-            .where(attempts.c.order_id == order_id)
-            .values(next_check_at=datetime.now(UTC))
+
+    def clear_cooldown():
+        with Session(env["pg"]) as db, db.begin():
+            db.execute(
+                update(attempts)
+                .where(attempts.c.order_id == order_id)
+                .values(next_check_at=datetime.now(UTC))
+            )
+
+    clear_cooldown()
+    if combined:
+        gateway.observe.return_value = BrowserInvoice(
+            invoice_id,
+            "paid",
+            payment=BrowserPayment(
+                invoice_id, payment_id, "123", 1700000, datetime.now(UTC)
+            ),
         )
+        assert await checkout.run_once(order_id)
+        assert (await checkout.buyer_view(token))["state"] == "review"
+        (unconfirmed,) = scoped_rows(env, "payments", order_id)
+        assert unconfirmed["captured_minor"] is None
+        clear_cooldown()
     gateway.observe.return_value = BrowserInvoice(
         invoice_id,
         "paid",
@@ -561,6 +588,41 @@ async def test_consultation_selection_payment_and_targeted_delivery(
                 event, session=db
             )
             assert facts.payment_id == payment["payment_id"]
+        captured_at = attempt["captured_at"]
+        proof = BrowserPayment(
+            invoice_id, payment_id, "123", amount_minor, captured_at
+        )
+        async with container.transaction_manager.transaction() as db:
+            with pytest.raises(
+                OrderCreationError,
+                match="combined_consultation_allocation_mismatch",
+            ):
+                await checkout.repository.capture.capture_browser(
+                    order_id,
+                    actor.user_id,
+                    proof,
+                    session=db,
+                    consultation_minor=1,
+                )
+            with pytest.raises(
+                OrderCreationError, match="browser_capture_proof_required"
+            ):
+                from dataclasses import replace
+
+                await checkout.repository.capture.capture_browser(
+                    order_id,
+                    actor.user_id,
+                    replace(proof, amount_minor=1700000),
+                    session=db,
+                    consultation_minor=500000,
+                )
+        migration = import_module(
+            "ugc_bot.infrastructure.db.migrations.versions.0153_combined_checkout"
+        )
+        with env["pg"].connect() as db:
+            monkeypatch.setattr(migration.op, "get_bind", lambda: db)
+            with pytest.raises(RuntimeError, match="existing orders"):
+                migration.downgrade()
         env["clock"].at = datetime.fromisoformat(
             result["selection_due_at"]
         ) + timedelta(seconds=1)
@@ -585,7 +647,7 @@ async def test_consultation_selection_payment_and_targeted_delivery(
             len(scoped_rows(env, "consultation_checkout_attempts", order_id))
             == 1
         )
-    assert gateway.observe.await_count == 2
+    assert gateway.observe.await_count == (3 if combined else 2)
 
     messenger = AsyncMock()
     worker = container.build_consultation_notice_delivery(messenger)
@@ -617,3 +679,136 @@ async def test_consultation_selection_payment_and_targeted_delivery(
         str(token) not in call.kwargs["text"]
         for call in messenger.send_text.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_city_lookup_requires_signed_buyer_session(intake_env):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    env = intake_env
+    mobile_app = app(env, env["container"])
+    resolver = AsyncMock(side_effect=[("Казань", "Татарстан", "ru"), None])
+    mobile_app.state.dispatcher["blogger_registration_service"] = (
+        SimpleNamespace(resolve_city_identity=resolver)
+    )
+    signed = body(env)["init_data"]
+    endpoint = "/miniapp/api/financial/orders/city"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mobile_app),
+        base_url="http://testserver",
+    ) as client:
+        denied = await client.post(
+            endpoint, json={"init_data": "invalid", "city": "Казань"}
+        )
+        assert denied.status_code == 401
+        resolver.assert_not_awaited()
+        found = await client.post(
+            endpoint, json={"init_data": signed, "city": " Казанб "}
+        )
+        assert found.status_code == 200
+        assert found.json() == {
+            "city": "Казань",
+            "region": "Татарстан",
+            "country": "ru",
+        }
+        resolver.assert_awaited_once_with("Казанб")
+        missing = await client.post(
+            endpoint, json={"init_data": signed, "city": "Неизвестный город"}
+        )
+        assert missing.status_code == 404
+        assert missing.json()["detail"] == "intake_city_not_found"
+
+
+@pytest.mark.asyncio
+async def test_checkout_gate_and_company_invoice_use_verified_contact(
+    intake_env,
+):
+    from datetime import datetime
+    from uuid import UUID
+
+    env = intake_env
+    env["config"].financial.combined_checkout_enabled = True
+    mobile_app = app(env, env["container"])
+    payload = body(env)
+    endpoint = "/miniapp/api/financial/orders"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mobile_app),
+        base_url="http://testserver",
+    ) as client:
+        policies = await client.post(
+            endpoint + "/policies", json={"init_data": payload["init_data"]}
+        )
+        assert policies.json()["writes_paused"] is True
+        blocked = await client.post(endpoint, json=payload)
+        assert blocked.status_code == 503
+        assert blocked.json()["detail"] == "combined_checkout_unavailable"
+
+        env["config"].financial.combined_checkout_enabled = False
+        response = await client.post(endpoint, json=payload)
+        assert response.status_code == 200, response.text
+        order_id = response.json()["order_id"]
+        request = {
+            "init_data": payload["init_data"],
+            "order_id": order_id,
+            "reason": "Please issue an invoice for this order",
+            "operation_key": f"invoice-{uuid4()}",
+        }
+        support_endpoint = "/miniapp/api/customer/support"
+        created = await client.post(support_endpoint, json=request)
+        assert created.status_code == 200, created.text
+        replay = await client.post(support_endpoint, json=request)
+        assert replay.status_code == 200
+        first, repeated = created.json(), replay.json()
+        assert datetime.fromisoformat(
+            first.pop("created_at")
+        ) == datetime.fromisoformat(repeated.pop("created_at"))
+        assert first == repeated
+    (stored,) = scoped_rows(env, "customer_requests", UUID(order_id))
+    assert (
+        stored["payload"]["contact_reference"]
+        == f"telegram:{env['user'].telegram_id}"
+    )
+
+
+def test_unused_combined_checkout_schema_can_be_reverted(monkeypatch):
+    from importlib import import_module
+    from os import environ
+
+    from sqlalchemy import text
+
+    from tests.helpers.financial_environment import isolated_financial_database
+
+    migration = import_module(
+        "ugc_bot.infrastructure.db.migrations.versions.0153_combined_checkout"
+    )
+    with (
+        isolated_financial_database(
+            environ["FINANCIAL_TEST_DATABASE_URL"]
+        ) as engine,
+        engine.begin() as db,
+    ):
+        monkeypatch.setattr(migration.op, "get_bind", lambda: db)
+        guard_states = text("""
+            SELECT tgname FROM pg_trigger
+            WHERE tgrelid IN ('browser_checkout_attempts'::regclass,
+                'consultation_checkout_attempts'::regclass)
+              AND tgname IN ('browser_package_amount_guard',
+                'consultation_package_channel_guard')
+            ORDER BY tgname
+        """)
+        expected = [
+            "browser_package_amount_guard",
+            "consultation_package_channel_guard",
+        ]
+        assert db.scalars(guard_states).all() == expected
+        migration.downgrade()
+        assert not db.scalars(guard_states).all()
+        assert "combined_checkout" not in db.scalar(
+            text(
+                "SELECT prosrc FROM pg_proc WHERE "
+                "oid='correction_validate_authority(jsonb)'::regprocedure"
+            )
+        )
+        migration.upgrade()
+        assert db.scalars(guard_states).all() == expected

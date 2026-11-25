@@ -19,6 +19,8 @@ from ugc_bot.domain.browser_checkout import (
     BrowserInvoice,
     BrowserPayment,
     InvoiceRejected,
+    consultation_payment_url,
+    order_payment_url,
 )
 
 
@@ -67,6 +69,8 @@ async def test_sales_pause_keeps_existing_payment_visible():
     token = uuid4()
     with pytest.raises(OrderCreationError, match="browser_payment_paused"):
         await checkout.offer(uuid4())
+    with pytest.raises(OrderCreationError, match="browser_payment_paused"):
+        await checkout.switch_to_browser(uuid4())
     checkout.repository.offer.assert_not_awaited()
     checkout.repository.buyer_view.return_value = {"state": "available"}
     assert await checkout.buyer_view(token) == {"state": "unavailable"}
@@ -169,3 +173,9 @@ async def test_scheduler_retries_errors_and_starts_with_issuance_paused(
     with pytest.raises(asyncio.CancelledError):
         await task
     assert [c.args[0] for c in sleep.await_args_list] == [5, 0.1]
+
+
+@pytest.mark.parametrize("url", [order_payment_url, consultation_payment_url])
+def test_order_payment_link_requires_base_and_token(url):
+    assert url("", uuid4()) is None
+    assert url("https://bot.example.test", None) is None
