@@ -12,10 +12,10 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "offer_card_action_events",
+        sa.Column("order_id", sa.Uuid(), primary_key=True),
+        sa.Column("blogger_id", sa.Uuid(), primary_key=True),
         sa.Column("channel", sa.String(8), primary_key=True),
         sa.Column("callback_digest", sa.String(64), primary_key=True),
-        sa.Column("order_id", sa.Uuid(), nullable=False),
-        sa.Column("blogger_id", sa.Uuid(), nullable=False),
         sa.Column("action", sa.String(16), nullable=False),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
         sa.ForeignKeyConstraint(
@@ -23,11 +23,6 @@ def upgrade() -> None:
             ("offer_dispatches.order_id", "offer_dispatches.blogger_id"),
             ondelete="CASCADE",
         ),
-    )
-    op.create_index(
-        "ix_offer_card_action_events_order",
-        "offer_card_action_events",
-        ["order_id"],
     )
 
 

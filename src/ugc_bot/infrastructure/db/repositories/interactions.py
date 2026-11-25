@@ -231,7 +231,7 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                     occurred_at=datetime.now(timezone.utc),
                 )
                 .on_conflict_do_nothing(
-                    index_elements=(events.c.channel, events.c.callback_digest)
+                    index_elements=tuple(events.primary_key.columns)
                 )
             )
 

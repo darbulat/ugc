@@ -1,5 +1,6 @@
 """Verify the saved campaign audience and the editor's live preview."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -10,6 +11,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, insert, update
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session
 
 from ugc_bot.admin import app as admin_app
@@ -24,14 +26,14 @@ from ugc_bot.domain.enums import (
 from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
-from ugc_bot.infrastructure.db.messenger_attribution import (
-    OFFER_CARD_ACTION_EVENTS,
-    OFFER_CHANNELS,
-)
+from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
 from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
     UserModel,
+)
+from ugc_bot.infrastructure.db.repositories.interactions import (
+    SqlAlchemyOfferDispatchRepository,
 )
 
 
@@ -119,20 +121,6 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
             )
         )
         db.execute(
-            insert(OFFER_CARD_ACTION_EVENTS),
-            [
-                dict(
-                    channel="telegram",
-                    callback_digest=str(n),
-                    order_id=order,
-                    blogger_id=counteroffer,
-                    action=kind,
-                    occurred_at=now,
-                )
-                for n, kind in enumerate(("brief", "brief", "skip"))
-            ],
-        )
-        db.execute(
             insert(INVITES).values(
                 id=uuid4(),
                 order_id=order,
@@ -145,6 +133,32 @@ def test_admin_offer_activity_tracks_recipients_and_legacy_orders(
             )
         )
 
+    async def record_card_actions():
+        async_engine = create_async_engine(
+            db_url.replace("sqlite:", "sqlite+aiosqlite:")
+        )
+        repo = SqlAlchemyOfferDispatchRepository(
+            async_sessionmaker(async_engine)
+        )
+        try:
+            for callback_id, action in (
+                ("brief-1", "brief"),
+                ("brief-1", "brief"),
+                ("brief-2", "brief"),
+                ("skip-1", "skip"),
+                ("", "skip"),
+            ):
+                await repo.record_card_action(
+                    order,
+                    counteroffer,
+                    MessengerType.TELEGRAM,
+                    callback_id,
+                    action,
+                )
+        finally:
+            await async_engine.dispose()
+
+    asyncio.run(record_card_actions())
     client = TestClient(admin_app.create_admin_app())
     path = f"/admin/orders/{order}/offer-activity"
     assert client.get(path).status_code == 401

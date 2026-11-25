@@ -6,7 +6,6 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
-    Index,
     String,
     Table,
     Uuid,
@@ -41,10 +40,10 @@ OFFER_CHANNELS = Table(
 OFFER_CARD_ACTION_EVENTS = Table(
     "offer_card_action_events",
     Base.metadata,
+    Column("order_id", Uuid(), primary_key=True),
+    Column("blogger_id", Uuid(), primary_key=True),
     Column("channel", String(8), primary_key=True),
     Column("callback_digest", String(64), primary_key=True),
-    Column("order_id", Uuid(), nullable=False),
-    Column("blogger_id", Uuid(), nullable=False),
     Column("action", String(16), nullable=False),
     Column("occurred_at", DateTime(timezone=True), nullable=False),
     ForeignKeyConstraint(
@@ -52,7 +51,6 @@ OFFER_CARD_ACTION_EVENTS = Table(
         ("offer_dispatches.order_id", "offer_dispatches.blogger_id"),
         ondelete="CASCADE",
     ),
-    Index("ix_offer_card_action_events_order", "order_id"),
 )
 
 REGISTRATION_CHANNELS = Table(
