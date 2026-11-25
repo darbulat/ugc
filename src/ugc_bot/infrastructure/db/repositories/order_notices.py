@@ -15,6 +15,7 @@ from ugc_bot.application.order_notice_ports import (
 from ugc_bot.domain.browser_checkout import BROWSER_PROVIDER
 from ugc_bot.domain.enums import PaymentStatus
 from ugc_bot.infrastructure.db.models import PaymentModel
+from ugc_bot.infrastructure.db.order_intake_models import is_combined_checkout
 from ugc_bot.infrastructure.db.order_notice_models import (
     ORDER_NOTICE_DELIVERIES as deliveries,
 )
@@ -31,6 +32,28 @@ def _browser_paid(order_notices):
     )
 
 
+def business_order_card_covers(order_id, event_kind, recipient):
+    """A business event owns this recipient's detailed card."""
+    delivery = exists().where(
+        deliveries.c.order_id == events.c.order_id,
+        deliveries.c.event_kind == events.c.event_kind,
+        deliveries.c.recipient == recipient,
+        deliveries.c.state != "failed",
+    )
+    return exists().where(
+        events.c.order_id == order_id,
+        events.c.event_kind == event_kind,
+        or_(events.c.expanded.is_(False), delivery),
+    )
+
+
+def _covered_consultation(order_id, event_kind, recipient):
+    # Legacy split checkout can pay for the consultation on its own.
+    return or_(event_kind == "created", is_combined_checkout(order_id)) & (
+        business_order_card_covers(order_id, event_kind, recipient)
+    )
+
+
 class SqlAlchemyOrderNoticeRepository:
     def __init__(
         self,
@@ -38,6 +61,7 @@ class SqlAlchemyOrderNoticeRepository:
         *,
         events_table: Table = events,
         deliveries_table: Table = deliveries,
+        order_card_recipients: frozenset[str] = frozenset(),
     ) -> None:
         self.browser_paid_recipients = browser_paid_recipients
         self.namespace = (
@@ -45,6 +69,7 @@ class SqlAlchemyOrderNoticeRepository:
         )
         self.events = events_table
         self.deliveries = deliveries_table
+        self.order_card_recipients = order_card_recipients
 
     async def enqueue(
         self, order_id: UUID, event_kind: OrderNoticeKind, *, session: object
@@ -112,6 +137,8 @@ class SqlAlchemyOrderNoticeRepository:
                     lease_until=None,
                 )
             )
+        if self.order_card_recipients:
+            await self._close_redundant_deliveries(session)
         pending = (
             (
                 await session.execute(
@@ -135,6 +162,8 @@ class SqlAlchemyOrderNoticeRepository:
             if not addresses:
                 continue
             for address in sorted(addresses):
+                if await self._included_in_order_card(session, event, address):
+                    continue
                 job_id = uuid5(
                     NAMESPACE_URL,
                     f"{self.namespace}:{event['order_id']}:{event['event_kind']}:{address}",
@@ -196,6 +225,35 @@ class SqlAlchemyOrderNoticeRepository:
             cast(OrderNoticeKind, row["event_kind"]),
             row["recipient"],
             attempt,
+        )
+
+    async def _included_in_order_card(self, session, event, address: str):
+        return address in self.order_card_recipients and bool(
+            await session.scalar(
+                select(
+                    _covered_consultation(
+                        event["order_id"], event["event_kind"], address
+                    )
+                )
+            )
+        )
+
+    async def _close_redundant_deliveries(self, session):
+        queued = self.deliveries
+        await session.execute(
+            update(queued)
+            .where(
+                queued.c.state.in_(("pending", "leased")),
+                queued.c.recipient.in_(self.order_card_recipients),
+                _covered_consultation(
+                    queued.c.order_id, queued.c.event_kind, queued.c.recipient
+                ),
+            )
+            .values(
+                state="failed",
+                last_error="included_in_business_order_card",
+                lease_until=None,
+            )
         )
 
     async def begin(

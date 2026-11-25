@@ -36,8 +36,13 @@ def build_lead_delivery(
     max_config = config.max_bot
     if max_config and max_config.token.strip() and max_session is not None:
         transports["max"] = MaxNoticeReceipts(max_session, max_config.token)
+    recipients = config.admin.business_order_telegram_recipients
+    browser_recipients = config.admin.browser_paid_order_telegram_recipients
+    # A browser payment can narrow access to a delayed created card.
+    if browser_recipients is not None:
+        recipients = recipients.intersection(browser_recipients)
     return AccompanimentLeadDelivery(
-        SqlAlchemyAccompanimentLeadDeliveryRepository(),
+        SqlAlchemyAccompanimentLeadDeliveryRepository(recipients),
         transactions,
         RoutedNoticeReceipts(transports),
         SystemClock(),

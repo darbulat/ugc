@@ -82,6 +82,9 @@ class AccompanimentLeadDeliveryRepository(Protocol):
     async def contact(
         self, user_id: UUID, *, session: object
     ) -> DeliveryContact | None: ...
+    async def covered_by_order_card(
+        self, job: LeadDeliveryJob, contact: DeliveryContact, *, session: object
+    ) -> bool: ...
     async def is_admin(self, user_id: UUID, *, session: object) -> bool: ...
     async def save_job(
         self, job: LeadDeliveryJob, *, session: object

@@ -34,10 +34,11 @@ from ugc_bot.infrastructure.db.repositories.order_notices import (
 )
 
 
-def consultation_notices():
+def consultation_notices(*, order_card_recipients=frozenset()):
     return SqlAlchemyOrderNoticeRepository(
         events_table=CONSULTATION_EVENTS,
         deliveries_table=CONSULTATION_DELIVERIES,
+        order_card_recipients=order_card_recipients,
     )
 
 

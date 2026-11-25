@@ -1539,3 +1539,30 @@ async def test_gpt_copy_opens_private_miniapp_from_business_card(event):
         for row in keyboard.inline_keyboard
         for button in row
     ) is (event == "paid")
+
+
+def test_business_card_distinguishes_split_consultation_from_full_payment():
+    from ugc_bot.application.services.business_order_card import (
+        render_business_order_card,
+    )
+
+    card = render_business_order_card(
+        _make_order(),
+        advertiser=None,
+        profile=None,
+        symbol="₽",
+        details={
+            "accompaniment_count": 0,
+            "selection_base_minor": 500000,
+            "total_minor": 500000,
+            "consultation_minor": 500000,
+            "consultation_state": "available",
+        },
+        payment_confirmed=True,
+        paid_event=True,
+        eligible_count=None,
+        flagged=False,
+    )
+    assert "<b>✅ Подбор оплачен</b>" in card
+    assert "<b>Консультация</b> · 5 000 ₽ · ожидает оплаты" in card
+    assert "<b>Счёт за услуги</b> · 10 000 ₽" in card

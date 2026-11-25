@@ -122,6 +122,47 @@ async def test_current_admin_receives_notice_after_attempt_commit(
 
 
 @pytest.mark.asyncio
+async def test_order_card_replaces_lead_only_for_covered_admin(intake_env):
+    from uuid import uuid4
+
+    from tests.helpers.factories import create_test_user
+    from ugc_bot.container.order_intake_factory import build_lead_delivery
+
+    env = intake_env
+    admin = env["admin"]
+    other = await create_test_user(
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        admin=True,
+    )
+    env["config"].admin.business_order_telegram_recipients = frozenset(
+        {admin.telegram_id}
+    )
+    env["config"].admin.browser_paid_order_telegram_recipients = frozenset(
+        {admin.telegram_id}
+    )
+    result = await request(env)
+    receiver = Receiver(env)
+    delivery = build_lead_delivery(
+        env["config"], env["container"].transaction_manager, None
+    )
+    delivery.transport = receiver
+    assert await delivery.run_once() == 1
+    assert [message.recipient_id for message in receiver.messages] == [
+        other.user_id
+    ]
+    states = {
+        row["recipient_id"]: row["state"]
+        for row in scoped_rows(
+            env, "accompaniment_lead_deliveries", result.order_id
+        )
+    }
+    assert states == {admin.user_id: "obsolete", other.user_id: "accepted"}
+    assert scoped_rows(env, "accompaniment_leads", result.order_id)
+    assert await delivery.run_once() == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "uncertain,state", [(False, "failed"), (True, "unknown")]
 )

@@ -23,9 +23,32 @@ from ugc_bot.infrastructure.db.order_intake_models import (
     LEAD_OUTCOMES,
 )
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
+from ugc_bot.infrastructure.db.repositories.order_notices import (
+    business_order_card_covers,
+)
 
 
 class SqlAlchemyAccompanimentLeadDeliveryRepository:
+    def __init__(self, order_card_recipients: frozenset[str] = frozenset()):
+        self.order_card_recipients = order_card_recipients
+
+    async def covered_by_order_card(
+        self, job: LeadDeliveryJob, contact: DeliveryContact, *, session: object
+    ) -> bool:
+        address = (contact.address or "").strip()
+        if (
+            contact.channel != "telegram"
+            or address not in self.order_card_recipients
+        ):
+            return False
+        return bool(
+            await _session(session).scalar(
+                select(
+                    business_order_card_covers(job.order_id, "created", address)
+                )
+            )
+        )
+
     async def expand(
         self, at: datetime, limit: int, *, session: object
     ) -> None:

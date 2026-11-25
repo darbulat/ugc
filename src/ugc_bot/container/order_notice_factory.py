@@ -273,7 +273,9 @@ def build_consultation_notice_delivery(
     )
 
     roles = UserRoleService(user_repo=repos["user_repo"])
-    repository = consultation_notices()
+    repository = consultation_notices(
+        order_card_recipients=config.admin.business_order_telegram_recipients,
+    )
     recipient_ids = (
         config.admin.browser_paid_order_telegram_recipients or frozenset()
     )
