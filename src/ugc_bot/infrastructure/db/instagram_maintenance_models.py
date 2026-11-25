@@ -87,6 +87,18 @@ def maintenance_tables(metadata: sa.MetaData) -> tuple[sa.Table, ...]:
 
 
 HEALTH, OBSERVATIONS, NOTICES = maintenance_tables(Base.metadata)
+OFFER_CHECKS = sa.Table(
+    "instagram_offer_checks",
+    Base.metadata,
+    sa.Column(
+        "user_id",
+        sa.Uuid(),
+        sa.ForeignKey("users.user_id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("meta_id", sa.String(100), nullable=False),
+    sa.Column("retry_at", sa.DateTime(timezone=True), nullable=False),
+)
 
 
 def instagram_available(profile):

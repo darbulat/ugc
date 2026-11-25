@@ -1,7 +1,14 @@
 """Observe only existing checks; drain a durable daytime notice queue."""
 
+import asyncio
+import logging
 from datetime import datetime, timedelta
+from uuid import UUID
 
+from ugc_bot.application.errors import (
+    InstagramProfileUnavailableError,
+    InstagramUserNotFoundError,
+)
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.instagram_maintenance_ports import (
     InstagramMaintenanceRepository,
@@ -11,11 +18,14 @@ from ugc_bot.application.notice_delivery_ports import (
     NoticeReceiptTransport,
 )
 from ugc_bot.application.ports import (
+    InstagramGraphApiClient,
     InstagramProfileInfo,
     TransactionManager,
 )
 from ugc_bot.domain.entities import BloggerProfile
 from ugc_bot.domain.instagram_maintenance import next_profile_notice_at
+
+logger = logging.getLogger(__name__)
 
 
 class InstagramProfileMaintenance:
@@ -54,6 +64,77 @@ class InstagramProfileMaintenance:
         await self.repo.verified(
             profile, at, previous_profile=previous_profile, session=session
         )
+
+
+class InstagramOfferContactCheck:
+    """Refresh only verified creators with a confirmed, undelivered response."""
+
+    def __init__(
+        self,
+        maintenance: InstagramProfileMaintenance,
+        client: InstagramGraphApiClient,
+        clock: Clock,
+    ):
+        self.maintenance, self.client, self.clock = maintenance, client, clock
+
+    async def run_once(
+        self, *, order_id: UUID | None = None, creator_id: UUID | None = None
+    ) -> None:
+        at = self.clock.now()
+        async with self.maintenance.transactions.transaction() as session:
+            targets = await self.maintenance.repo.claim_offer_checks(
+                at,
+                1 if creator_id else 5,
+                session=session,
+                order_id=order_id,
+                creator_id=creator_id,
+            )
+        unavailable = []
+        provider_responded = False
+        for profile in targets:
+            assert profile.instagram_user_id
+            try:
+                async with asyncio.timeout(5):
+                    info = await self.client.get_profile_by_id(
+                        profile.instagram_user_id
+                    )
+            except (
+                InstagramProfileUnavailableError,
+                InstagramUserNotFoundError,
+            ) as exc:
+                reason = (
+                    "100/33"
+                    if isinstance(exc, InstagramProfileUnavailableError)
+                    else "not_found"
+                )
+                unavailable.append((profile, reason))
+            except Exception as exc:
+                logger.warning(
+                    "Instagram offer check failed (%s)", type(exc).__name__
+                )
+            else:
+                if info is not None and info.username:
+                    provider_responded = True
+                    await self.maintenance.observe(profile, info, at)
+        # As in the regular collection batch, a provider outage must not
+        # turn a whole cohort into unavailable creators.
+        if unavailable and not provider_responded:
+            async with self.maintenance.transactions.transaction() as session:
+                provider_responded = (
+                    await self.maintenance.repo.recent_provider_success(
+                        at - timedelta(minutes=15), session=session
+                    )
+                )
+        if provider_responded:
+            for profile, reason in unavailable:
+                await self.maintenance.observe(profile, None, at, error=reason)
+
+    async def before_contact(self, order_id: UUID, creator_id: UUID) -> bool:
+        await self.run_once(order_id=order_id, creator_id=creator_id)
+        async with self.maintenance.transactions.transaction() as session:
+            return not await self.maintenance.repo.contact_under_review(
+                order_id, creator_id, session=session
+            )
 
 
 class InstagramProfileNoticeDelivery:

@@ -30,8 +30,12 @@ from ugc_bot.application.notice_delivery_ports import (
     DeliveryFailure,
     DeliveryReceipt,
 )
+from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.creator_transfer_service import (
     CreatorTransferService,
+)
+from ugc_bot.application.services.instagram_profile_maintenance import (
+    InstagramProfileMaintenance,
 )
 from ugc_bot.domain.enums import OrderStatus, RaterRole
 from ugc_bot.infrastructure.db.creator_transfer_models import TRANSFERS
@@ -47,6 +51,9 @@ from ugc_bot.infrastructure.db.repositories.creator_transfers import (
     SqlCreatorTransfers,
     delivered_count,
     delivery_history,
+)
+from ugc_bot.infrastructure.db.repositories.instagram_maintenance import (
+    SqlAlchemyInstagramMaintenanceRepository,
 )
 from ugc_bot.infrastructure.db.selection_delivery_models import ACCEPTED
 
@@ -96,6 +103,36 @@ async def setup(env, *, size=10, reserve=1, closed=False):
         env["clock"],
     )
     return service, transport, oid, candidates, summary, principal, baseline
+
+
+@pytest.mark.asyncio
+async def test_manual_reserve_waits_then_sends_a_verified_rename(intake_env):
+    env = intake_env
+    service, transport, order_id, candidates, *_ = await setup(env)
+    creator = candidates[0]
+    profiles = env["container"].build_repos()["blogger_repo"]
+    maintenance = InstagramProfileMaintenance(
+        SqlAlchemyInstagramMaintenanceRepository(profiles, "reserve:test"),
+        service.transactions,
+    )
+    async with service.transactions.transaction() as db:
+        profile = await profiles.get_by_user_id(creator, session=db)
+    now = service.clock.now()
+    for at in (now - timedelta(hours=6), now):
+        await maintenance.observe(profile, None, at, error="not_found")
+
+    with pytest.raises(ValueError, match="transfer_instagram_review_required"):
+        await service.send(order_id, creator, operator="admin:test")
+    transport.send.assert_not_awaited()
+
+    assert await maintenance.observe(
+        profile, InstagramProfileInfo(username="current_reserve"), now
+    )
+    assert (
+        await service.send(order_id, creator, operator="admin:test") == "sent"
+    )
+    urls = [link.url for link in transport.send.call_args.args[0].card.links]
+    assert "https://instagram.com/current_reserve/" in urls
 
 
 @pytest.mark.asyncio

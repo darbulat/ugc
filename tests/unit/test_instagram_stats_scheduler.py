@@ -1,9 +1,12 @@
 """Tests for Instagram stats scheduler."""
 
+from asyncio import CancelledError
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from ugc_bot import instagram_stats_scheduler as scheduler
 from ugc_bot.application.services.instagram_stats_update_service import (
     InstagramStatsUpdateService,
 )
@@ -35,3 +38,21 @@ async def test_run_loop_stops_after_max_iterations() -> None:
     )
 
     assert service.run_once.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_offer_checks_poll_again_after_a_failed_batch(
+    monkeypatch, caplog
+):
+    checker = SimpleNamespace(
+        run_once=AsyncMock(side_effect=[RuntimeError("synthetic"), None])
+    )
+    sleep = AsyncMock(side_effect=[None, CancelledError()])
+    monkeypatch.setattr(scheduler.asyncio, "sleep", sleep)
+
+    with pytest.raises(CancelledError):
+        await scheduler._check_confirmed_offers(checker)
+
+    assert checker.run_once.await_count == 2
+    assert [call.args for call in sleep.await_args_list] == [(60,), (60,)]
+    assert "Instagram offer check batch failed (RuntimeError)" in caplog.text

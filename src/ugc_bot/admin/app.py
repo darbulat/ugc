@@ -4495,8 +4495,19 @@ def create_admin_app() -> FastAPI:
             request, auth, container, order_id
         )
 
+    instagram_offer_check = (
+        container.build_instagram_offer_contact_check()
+        if config.instagram.instagram_profile_maintenance_enabled
+        and container.transaction_manager is not None
+        else None
+    )
     register_creator_transfers(
-        app, auth, _require_action_token, config, container.transaction_manager
+        app,
+        auth,
+        _require_action_token,
+        config,
+        container.transaction_manager,
+        instagram_offer_check=instagram_offer_check,
     )
     register_managers(app, auth, engine, templates, _require_action_token)
     register_order_review(app, auth, engine, templates, _require_action_token)

@@ -32,6 +32,14 @@
               {% if row.contact.get('instagram') %}{{ instagram(row.contact.instagram, show_platform=true) }}{% endif %}
               {% if row.contact.get('telegram') %}{{ telegram(row.contact.telegram, show_platform=true) }}{% endif %}
             </div>
+            {% if not row.delivered and row.instagram_status %}
+            <small class="order-creators__delivery-state" role="status">
+              {{ {'review': 'Instagram требует проверки · передача приостановлена',
+                  'suspect': 'Instagram проверяется повторно',
+                  'renamed': 'Instagram · показана актуальная ссылка',
+                  'mismatch': 'Instagram · ссылки расходятся, проверьте перед передачей'}.get(row.instagram_status, '') }}
+            </small>
+            {% endif %}
             {% if row.contact.get('phone') or row.responded_at or row.current_contact %}
             <details class="order-creators__details" data-creator-detail="{{ row.creator_id }}">
               <summary>Подробности</summary>

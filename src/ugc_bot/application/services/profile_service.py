@@ -9,6 +9,9 @@ from ugc_bot.application.ports import (
     TransactionManager,
     UserRepository,
 )
+from ugc_bot.application.services.instagram_profile_maintenance import (
+    InstagramOfferContactCheck,
+)
 from ugc_bot.domain.entities import AdvertiserProfile, BloggerProfile, User
 from ugc_bot.domain.enums import MessengerType
 from ugc_bot.infrastructure.db.session import with_optional_tx
@@ -22,6 +25,7 @@ class ProfileService:
     blogger_repo: BloggerProfileRepository
     advertiser_repo: AdvertiserProfileRepository
     transaction_manager: TransactionManager | None = None
+    instagram_offer_check: InstagramOfferContactCheck | None = None
 
     async def get_user_by_external(
         self, external_id: str, messenger_type: MessengerType
@@ -35,8 +39,18 @@ class ProfileService:
 
         return await with_optional_tx(self.transaction_manager, _run)
 
-    async def get_blogger_profile(self, user_id: UUID) -> BloggerProfile | None:
+    async def get_blogger_profile(
+        self, user_id: UUID, *, contact_order_id: UUID | None = None
+    ) -> BloggerProfile | None:
         """Fetch blogger profile by user id."""
+        if (
+            contact_order_id is not None
+            and self.instagram_offer_check is not None
+            and not await self.instagram_offer_check.before_contact(
+                contact_order_id, user_id
+            )
+        ):
+            return None
 
         async def _run(session: object | None):
             return await self.blogger_repo.get_by_user_id(

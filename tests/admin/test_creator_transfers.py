@@ -24,6 +24,7 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
     app = FastAPI()
     app.add_middleware(SessionMiddleware, secret_key="synthetic-secret")
     send = AsyncMock(return_value="sent")
+    check_contact = AsyncMock(return_value=True)
 
     @asynccontextmanager
     async def context():
@@ -50,6 +51,7 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
         _require_action_token,
         config,
         object(),
+        instagram_offer_check=SimpleNamespace(before_contact=check_contact),
     )
     templates = _build_templates(app, ZoneInfo("Europe/Moscow"))
 
@@ -129,3 +131,12 @@ def test_buttons_show_delivery_state_and_post_is_authorized(monkeypatch):
             rejected.json()["result"]["message"]
             == module.ERRORS["transfer_creator_unavailable"]
         )
+        check_contact.return_value = False
+        earlier_sends = send.await_count
+        review = client.post(path, data={"csrf_token": token})
+        assert (
+            review.json()["result"]["message"]
+            == module.ERRORS["transfer_instagram_review_required"]
+        )
+        check_contact.assert_awaited_with(oid, cid)
+        assert send.await_count == earlier_sends

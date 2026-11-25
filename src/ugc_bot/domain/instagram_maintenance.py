@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 MOSCOW = ZoneInfo("Europe/Moscow")
 FAILURE_SPACING = timedelta(hours=6)
+CONTACT_CHECK_FRESHNESS = timedelta(days=1)
 REFRESH_CALLBACK = "instagram:refresh"
 
 

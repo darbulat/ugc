@@ -105,6 +105,10 @@ class SelectionDeliveryOutcome:
 
 
 class PaidSelectionDeliveryRepository(Protocol):
+    async def contact_offer(
+        self, job_id: UUID, *, session: object
+    ) -> tuple[UUID, UUID] | None: ...
+
     async def candidates(
         self, at: datetime, limit: int, *, session: object
     ) -> tuple[UUID, ...]: ...

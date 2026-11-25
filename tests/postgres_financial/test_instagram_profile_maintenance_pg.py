@@ -5,6 +5,7 @@ import importlib
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -19,8 +20,11 @@ from tests.postgres_financial.test_creator_social import (
     profile_values,
     seed_user,
 )
+from ugc_bot.admin.order_creators import load_order_responses
+from ugc_bot.application.errors import InstagramProfileUnavailableError
 from ugc_bot.application.ports import InstagramProfileInfo
 from ugc_bot.application.services.instagram_profile_maintenance import (
+    InstagramOfferContactCheck,
     InstagramProfileMaintenance,
 )
 from ugc_bot.application.services.instagram_verification_service import (
@@ -40,6 +44,7 @@ from ugc_bot.infrastructure.db.instagram_maintenance_models import (
 from ugc_bot.infrastructure.db.models import (
     BloggerProfileModel,
     InteractionModel,
+    OfferDispatchModel,
     OrderModel,
     UserModel,
 )
@@ -96,6 +101,190 @@ async def rows(tx, table, owner):
             .mappings()
             .all()
         )
+
+
+async def offer_for(tx, owner, *, accepted):
+    order_id, advertiser = uuid4(), uuid4()
+    async with tx.transaction() as db:
+        await db.execute(
+            sa.insert(UserModel).values(
+                user_id=advertiser,
+                username="offer audit customer",
+                messenger_type="telegram",
+                status="active",
+            )
+        )
+        await db.execute(
+            sa.insert(OrderModel).values(
+                order_id=order_id,
+                advertiser_id=advertiser,
+                product_link="https://example.invalid",
+                offer_text="Test offer",
+                price=100,
+                bloggers_needed=10,
+                status="active",
+            )
+        )
+        await db.execute(
+            sa.insert(OfferDispatchModel).values(
+                order_id=order_id,
+                blogger_id=owner,
+                accepted=accepted,
+                in_offer=False,
+            )
+        )
+    return order_id
+
+
+@pytest.mark.asyncio
+async def test_offer_checks_wait_for_confirmation_and_coalesce_across_orders(
+    runtime,
+):
+    owner, profile, repo, service, tx, _, _ = runtime
+    first = await offer_for(tx, owner, accepted=None)
+    await offer_for(tx, owner, accepted=False)
+    client = SimpleNamespace(
+        get_profile_by_id=AsyncMock(
+            return_value=InstagramProfileInfo(username="new_handle")
+        )
+    )
+    checker = InstagramOfferContactCheck(
+        service, client, SimpleNamespace(now=lambda: NOW)
+    )
+    assert await checker.before_contact(first, owner)
+    client.get_profile_by_id.assert_not_called()
+
+    second = await offer_for(tx, owner, accepted=True)
+    async with tx.transaction() as db:
+        await db.execute(
+            sa.update(OfferDispatchModel)
+            .where(OfferDispatchModel.order_id == first)
+            .values(accepted=True)
+        )
+    assert all(
+        await asyncio.gather(
+            checker.before_contact(first, owner),
+            checker.before_contact(second, owner),
+        )
+    )
+    await checker.run_once()
+    client.get_profile_by_id.assert_awaited_once_with(profile.instagram_user_id)
+    async with tx.transaction() as db:
+        order = await db.get(OrderModel, first)
+        responses, _ = await load_order_responses(db, order)
+    assert responses[0]["accepted"] is True
+    assert responses[0]["instagram"] == "https://www.instagram.com/new_handle"
+
+
+@pytest.mark.asyncio
+async def test_offer_review_blocks_confirmed_contact_and_preserves_response(
+    runtime,
+):
+    owner, profile, repo, service, tx, _, _ = runtime
+    repo.context = "isolated:offer-test"
+    order_id = await offer_for(tx, owner, accepted=True)
+    now = NOW
+    client = SimpleNamespace(
+        get_profile_by_id=AsyncMock(
+            side_effect=InstagramProfileUnavailableError()
+        )
+    )
+    checker = InstagramOfferContactCheck(
+        service, client, SimpleNamespace(now=lambda: now)
+    )
+    assert await checker.before_contact(order_id, owner)
+    assert await rows(tx, HEALTH, owner) == []
+    assert await rows(tx, NOTICES, owner) == []
+    async with tx.transaction() as db:
+        control_id = await db.run_sync(
+            lambda session: seed_user(
+                session.connection(), telegram_id=str(uuid4().int)[:12]
+            )
+        )
+        await db.execute(
+            sa.insert(BloggerProfileModel).values(
+                **profile_values(control_id, stable_id=str(uuid4()))
+            )
+        )
+    for minutes in (15, 375):
+        now = NOW + timedelta(minutes=minutes)
+        async with tx.transaction() as db:
+            control = await repo.profiles.get_by_user_id(control_id, session=db)
+        assert await service.observe(
+            control, InstagramProfileInfo(username="healthy_control"), now
+        )
+        await checker.run_once()
+    assert not await checker.before_contact(order_id, owner)
+    async with tx.transaction() as db:
+        order = await db.get(OrderModel, order_id)
+        responses, _ = await load_order_responses(db, order)
+    assert responses[0]["accepted"] is True
+    assert responses[0]["instagram_status"] == "review"
+    assert len(await rows(tx, NOTICES, owner)) == 1
+
+
+@pytest.mark.asyncio
+async def test_order_preview_uses_newer_link_for_same_verified_identity(
+    runtime,
+):
+    owner, profile, _, _, tx, _, sessions = runtime
+    order_id = await offer_for(tx, owner, accepted=True)
+    social = SqlAlchemySocialAccountRepository(sessions)
+    async with tx.transaction() as db:
+        await social.save(
+            replace(
+                instagram_account(profile),
+                url="https://www.instagram.com/old_profile",
+                handle="old_profile",
+                metrics_fetched_at=NOW - timedelta(days=12),
+                verified_at=NOW - timedelta(days=20),
+                verification_observed_at=NOW - timedelta(days=20),
+                verification_source="legacy_profile_cutover",
+            ),
+            session=db,
+        )
+        await db.execute(
+            sa.update(BloggerProfileModel)
+            .where(BloggerProfileModel.user_id == owner)
+            .values(
+                instagram_url="https://www.instagram.com/current_profile",
+                instagram_username="current_profile",
+            )
+        )
+    async with tx.transaction() as db:
+        order = await db.get(OrderModel, order_id)
+        responses, _ = await load_order_responses(db, order)
+    assert responses[0]["instagram_status"] == "renamed"
+    assert (
+        responses[0]["instagram"] == "https://www.instagram.com/current_profile"
+    )
+
+
+@pytest.mark.asyncio
+async def test_offer_check_retries_timeout_without_flagging_creator(runtime):
+    owner, _, _, service, tx, _, _ = runtime
+    order_id = await offer_for(tx, owner, accepted=True)
+    now = NOW
+    client = SimpleNamespace(
+        get_profile_by_id=AsyncMock(
+            side_effect=[
+                TimeoutError(),
+                InstagramProfileInfo(username="healthy_after_retry"),
+            ]
+        )
+    )
+    checker = InstagramOfferContactCheck(
+        service, client, SimpleNamespace(now=lambda: now)
+    )
+    assert await checker.before_contact(order_id, owner)
+    assert await rows(tx, HEALTH, owner) == []
+    assert await rows(tx, NOTICES, owner) == []
+    assert await checker.before_contact(order_id, owner)
+    assert client.get_profile_by_id.await_count == 1
+    now += timedelta(minutes=15)
+    assert await checker.before_contact(order_id, owner)
+    assert client.get_profile_by_id.await_count == 2
+    assert (await rows(tx, HEALTH, owner))[0]["status"] == "healthy"
 
 
 @pytest.mark.asyncio

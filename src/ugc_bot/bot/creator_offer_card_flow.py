@@ -363,7 +363,9 @@ class CreatorOfferCardFlow:
         manager_id: UUID | None,
     ) -> None:
         client = await self.users.get_user_by_id(order.advertiser_id)
-        profile = await self.profiles.get_blogger_profile(user.user_id)
+        profile = await self.profiles.get_blogger_profile(
+            user.user_id, contact_order_id=order.order_id
+        )
         profile_url = https_link(profile.instagram_url) if profile else None
         if not (profile and profile_url):
             return

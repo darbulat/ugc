@@ -16,6 +16,11 @@ from tests.postgres_financial.test_paid_selection_interest import (
     seed_creators,
     service,
 )
+from ugc_bot.application.ports import InstagramProfileInfo
+from ugc_bot.application.services.instagram_profile_maintenance import (
+    InstagramOfferContactCheck,
+    InstagramProfileMaintenance,
+)
 from ugc_bot.config import AppConfig
 from ugc_bot.container import Container
 from ugc_bot.infrastructure.db.base import Base
@@ -25,6 +30,9 @@ from ugc_bot.infrastructure.db.models import (
     OrderItemModel,
     OrderModel,
     UserModel,
+)
+from ugc_bot.infrastructure.db.repositories.instagram_maintenance import (
+    SqlAlchemyInstagramMaintenanceRepository,
 )
 
 __all__ = ["capture_env"]
@@ -166,6 +174,44 @@ def state(env):
         return db.get(
             OrderItemModel, env["interest"].paid_item_id
         ).selection_state
+
+
+@pytest.mark.asyncio
+async def test_paid_contact_waits_for_instagram_review_and_resumes(
+    delivery_env,
+):
+    env = delivery_env
+    worker = env["worker"]
+    profiles = env["container"].build_repos()["blogger_repo"]
+    maintenance = InstagramProfileMaintenance(
+        SqlAlchemyInstagramMaintenanceRepository(profiles, "offer:test"),
+        worker.transactions,
+    )
+    async with worker.transactions.transaction() as db:
+        profile = await profiles.get_by_user_id(env["creator"], session=db)
+    now = worker.clock.now()
+    for at in (now - timedelta(hours=6), now):
+        await maintenance.observe(profile, None, at, error="not_found")
+    worker.instagram_offer_check = InstagramOfferContactCheck(
+        maintenance, SimpleNamespace(), worker.clock
+    )
+    worker.repository.hold_instagram_reviews = True
+    job_id = rows(env, "paid_selection_delivery_jobs")[0]["job_id"]
+    assert await worker.prepare(job_id) is None
+    await worker.run_once()
+    assert rows(env, "paid_selection_delivery_jobs")[0]["state"] == "ready"
+    assert env["bot"].calls == []
+
+    await maintenance.observe(
+        profile, InstagramProfileInfo(username="recovered_creator"), now
+    )
+    await worker.run_once()
+    assert len(env["bot"].calls) == 1
+    assert (
+        "https://www.instagram.com/recovered_creator"
+        in env["bot"].calls[0]["text"]
+    )
+    assert state(env) == "delivered"
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from aiogram import Bot
     from aiohttp import ClientSession
 
+    from ugc_bot.application.services.instagram_profile_maintenance import (
+        InstagramOfferContactCheck,
+    )
+
 
 def build_paid_selection_delivery(
     config: AppConfig,
@@ -29,6 +33,7 @@ def build_paid_selection_delivery(
     bot: "Bot",
     *,
     max_session: "ClientSession | None" = None,
+    instagram_offer_check: "InstagramOfferContactCheck | None" = None,
 ) -> PaidSelectionDelivery | None:
     if not config.financial.core_enabled:
         return None
@@ -42,8 +47,11 @@ def build_paid_selection_delivery(
     ):
         transports["max"] = MaxNoticeReceipts(max_session, config.max_bot.token)
     return PaidSelectionDelivery(
-        SqlAlchemyPaidSelectionDeliveryRepository(),
+        SqlAlchemyPaidSelectionDeliveryRepository(
+            hold_instagram_reviews=instagram_offer_check is not None
+        ),
         transactions,
         RoutedNoticeReceipts(transports),
         SystemClock(),
+        instagram_offer_check=instagram_offer_check,
     )
