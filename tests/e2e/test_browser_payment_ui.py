@@ -128,17 +128,20 @@ def test_optional_consultation_in_miniapp_quote(page, platform, selected):
     form = page.locator("#form-umc-intake")
     expect(form).to_be_visible()
     fill(page, manager=True)
-    page.locator("#intake-count").fill("10")
-    page.locator("#intake-all-manager").check()
-    extra = form.get_by_role("checkbox", name="Разбор запуска UGC")
+    page.locator("#intake-count-preset").select_option("10")
+    extra = form.get_by_role("checkbox", name="Консультация по UGC-кампании")
     expect(extra).not_to_be_checked()
-    expect(page.locator("#intake-preview")).to_contain_text("17\u00a0000,00")
+    expect(page.locator("#intake-preview")).to_contain_text(
+        "17\u00a0000\u00a0₽"
+    )
     extra.check()
-    expect(page.locator("#intake-preview")).to_contain_text("22\u00a0000,00")
+    expect(page.locator("#intake-preview")).to_contain_text(
+        "22\u00a0000\u00a0₽"
+    )
     if not selected:
         extra.uncheck()
         expect(page.locator("#intake-preview")).to_contain_text(
-            "17\u00a0000,00"
+            "17\u00a0000\u00a0₽"
         )
     page.locator("#btn-intake-create").click()
     saved = page.locator("#intake-result")
@@ -153,4 +156,95 @@ def test_optional_consultation_in_miniapp_quote(page, platform, selected):
         expect(saved).to_contain_text("оплачиваются отдельными платежами")
     else:
         expect(payment).to_have_count(0)
+    assert not errors
+
+
+@pytest.mark.parametrize("company_invoice", [False, True])
+def test_checkout_uses_one_order_and_canonical_city(page, company_invoice):
+    from tests.e2e.test_miniapp_design_system import open_app
+    from tests.e2e.test_miniapp_selection_ui import (
+        ORDER,
+        SIGNED,
+        SelectionNetwork,
+        fill,
+    )
+
+    checkout = f"{UMC}/miniapp/browser-payment.html#{uuid4()}"
+
+    class CheckoutNetwork(SelectionNetwork):
+        def route(self, route):
+            path = urlsplit(route.request.url).path
+            if path == "/miniapp/api/financial/orders/city":
+                return route.fulfill(
+                    json={"city": "Казань", "region": "Татарстан"}
+                )
+            if path == "/miniapp/api/financial/orders/policies":
+                return route.fulfill(
+                    json={
+                        "policies": self.policies,
+                        "consultation_minor": 500000,
+                    }
+                )
+            if path == "/miniapp/browser-payment.html":
+                return route.fulfill(
+                    content_type="text/html", body="<h1>Оплата заказа</h1>"
+                )
+            if path == "/miniapp/api/customer/support":
+                self.requests.append((path, route.request.post_data_json))
+                return route.fulfill(json={"request_id": str(uuid4())})
+            return super().route(route)
+
+        def created(self, payload):
+            return super().created(payload) | {
+                "combined_checkout": True,
+                "checkout_url": checkout,
+                "consultation_minor": 500000,
+                "project_total_minor": 2200000,
+            }
+
+    network = CheckoutNetwork()
+    page.set_viewport_size({"width": 390, "height": 844})
+    errors = open_app(page, network, init_data=SIGNED, query="?view=order")
+    fill(page, manager=True)
+    page.locator("#intake-count-preset").select_option("10")
+    page.locator("#intake-platform-instagram").check()
+    page.locator("#intake-city").fill("Казанб")
+    page.get_by_role("button", name="Казань, Татарстан").click()
+    expect(page.locator("#intake-city")).to_have_value("Казань")
+    extra = page.get_by_role("checkbox", name="Консультация по UGC-кампании")
+    extra.check()
+    primary = page.locator("#btn-intake-create")
+    expect(primary).to_have_text("Оплатить 22 000 ₽")
+    expect(page.locator("#intake-contact")).to_have_count(0)
+    expect(page.locator("#intake-position-options")).to_have_count(0)
+    expect(page.locator("#btn-intake-refresh")).to_be_hidden()
+
+    if company_invoice:
+        page.locator("#btn-intake-company").click()
+        support = page.locator("#screen-customer-support")
+        expect(
+            support.get_by_role("heading", name="Счёт для компании")
+        ).to_be_visible()
+        expect(support.get_by_role("textbox")).to_have_count(1)
+        expect(support).to_contain_text("22 000")
+        support.get_by_role("button", name="Запросить счёт").click()
+        expect(support).to_contain_text("Заявка сохранена")
+        sent = [
+            payload
+            for path, payload in network.requests
+            if path == "/miniapp/api/customer/support"
+        ]
+        assert len(sent) == 1
+        assert sent[0]["order_id"] == ORDER
+        assert "contact_reference" not in sent[0]
+    else:
+        primary.click()
+        expect(page).to_have_url(checkout)
+    assert len(network.creates) == 1
+    request = network.creates[0]
+    assert request["targeting"]["city"] == "Казань"
+    assert request["consultation_requested"] is True
+    assert request["service_mode"] == "with_manager"
+    assert "contact_reference" not in request
+    assert "accompaniment_ordinals" not in request
     assert not errors

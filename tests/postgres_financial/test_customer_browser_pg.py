@@ -312,7 +312,7 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             await expect(page.locator("#btn-show-create-order")).to_be_visible()
             await expect(page.locator("html")).to_have_attribute("lang", locale)
             await page.locator("#btn-show-create-order").click()
-            await page.locator("#intake-count").fill("10")
+            await page.locator("#intake-count-preset").select_option("10")
             await page.locator("#intake-policy").select_option(env["policy"])
             await page.locator("#intake-product").fill(
                 "https://example.test/product"
@@ -321,7 +321,6 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
                 "Synthetic complete requested brief"
             )
             await page.locator("#intake-honorarium").fill("999.00")
-            await page.locator("#intake-contact").fill("@synthetic_client")
             due = datetime.now(timezone.utc) + timedelta(days=3)
             await page.locator("#intake-due").fill(
                 due.strftime("%Y-%m-%dT%H:%M")
@@ -329,9 +328,9 @@ async def test_customer_creates_order_with_image_in_browser_and_postgres(
             await page.locator(
                 'input[name="intake-mode"][value="with_manager"]'
             ).check()
-            await expect(page.locator("#intake-preview")).to_contain_text(
-                _PAYMENT_TOGETHER[locale]
-            )
+            await expect(
+                page.locator("#intake-preview .umc-receipt-total")
+            ).to_be_visible()
             await page.locator("#intake-order-type").select_option("stories")
             await page.locator("#intake-image").set_input_files(
                 {
@@ -717,14 +716,13 @@ async def test_lost_create_response_survives_new_webview_with_one_order(
             page = await context.new_page()
             await page.goto(url)
             await page.locator("#btn-show-create-order").click()
-            await page.locator("#intake-count").fill("10")
+            await page.locator("#intake-count-preset").select_option("10")
             await page.locator("#intake-policy").select_option(env["policy"])
             await page.locator("#intake-product").fill(
                 "https://example.test/product"
             )
             await page.locator("#intake-brief").fill("Lost response brief")
             await page.locator("#intake-honorarium").fill("999.00")
-            await page.locator("#intake-contact").fill("@synthetic_client")
             due = datetime.now(timezone.utc) + timedelta(days=3)
             await page.locator("#intake-due").fill(
                 due.strftime("%Y-%m-%dT%H:%M")

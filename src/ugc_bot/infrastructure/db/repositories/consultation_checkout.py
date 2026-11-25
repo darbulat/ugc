@@ -18,6 +18,7 @@ from ugc_bot.infrastructure.db.consultation_models import (
     CONSULTATIONS as consultations,
 )
 from ugc_bot.infrastructure.db.models import OrderModel
+from ugc_bot.infrastructure.db.order_intake_models import is_combined_checkout
 from ugc_bot.infrastructure.db.order_notice_models import (
     CONSULTATION_DELIVERIES,
     CONSULTATION_EVENTS,
@@ -55,6 +56,7 @@ class SqlConsultationCheckout(BrowserAttemptClaims):
             )
             .where(
                 consultations.c.token == token,
+                ~is_combined_checkout(OrderModel.order_id),
                 consultations.c.client_id == OrderModel.advertiser_id,
             )
         )

@@ -134,7 +134,7 @@ class TestMiniAppAdvertiser:
             "document.querySelectorAll('#intake-policy option').length > 1"
         )
         miniapp_page.locator("#intake-policy").select_option(index=1)
-        miniapp_page.locator("#intake-count").fill("10")
+        miniapp_page.locator("#intake-count-preset").select_option("10")
         miniapp_page.locator("#intake-product").fill(
             "https://example.test/product"
         )
@@ -142,7 +142,6 @@ class TestMiniAppAdvertiser:
             "Synthetic E2E offer text for product review"
         )
         miniapp_page.locator("#intake-honorarium").fill("5000")
-        miniapp_page.locator("#intake-contact").fill("@synthetic_client")
         due = datetime.now(timezone.utc) + timedelta(days=3)
         miniapp_page.locator("#intake-due").fill(due.strftime("%Y-%m-%dT%H:%M"))
         miniapp_page.locator(

@@ -34,9 +34,11 @@ class BrowserCheckoutService:
         self.public_base_url = public_base_url
         self.can_create = can_create
 
-    async def view(self, order_id: UUID):
+    async def view(self, order_id: UUID, *, client_id: UUID | None = None):
         async with self.transactions.transaction() as session:
-            view = await self.repository.view(order_id, session=session)
+            view = await self.repository.view(
+                order_id, client_id=client_id, session=session
+            )
         if view is None:
             return None
         token = view["token"]

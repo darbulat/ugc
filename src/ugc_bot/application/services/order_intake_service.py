@@ -19,7 +19,10 @@ from ugc_bot.application.services.financial_policy_service import (
 from ugc_bot.application.services.order_image_service import OrderImageService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.config import FinancialConfig
-from ugc_bot.domain.browser_checkout import consultation_payment_url
+from ugc_bot.domain.browser_checkout import (
+    consultation_payment_url,
+    order_payment_url,
+)
 from ugc_bot.domain.financial import utc
 from ugc_bot.domain.financial_policy_versions import (
     PILOT_POLICY_VERSION,
@@ -72,6 +75,7 @@ class OrderIntakeService:
     image_service: OrderImageService | None = None
     consultation_public_base_url: str = ""
     consultation_payment_ready: bool = False
+    combined_checkout_ready: bool = False
 
     @property
     def consultation_available(self) -> bool:
@@ -82,6 +86,11 @@ class OrderIntakeService:
     def consultation_link(self, result: OrderIntakeResult) -> str | None:
         return consultation_payment_url(
             self.consultation_public_base_url, result.consultation_token
+        )
+
+    def checkout_link(self, result: OrderIntakeResult) -> str | None:
+        return order_payment_url(
+            self.consultation_public_base_url, result.checkout_token
         )
 
     async def eligible_policies(
@@ -110,6 +119,10 @@ class OrderIntakeService:
             paused = (
                 not self.config.core_enabled
                 or not self.config.new_orders_enabled
+                or (
+                    getattr(self.config, "combined_checkout_enabled", False)
+                    and not self.combined_checkout_ready
+                )
             )
             if paused or client.country != "ru" or client.currency != "RUB":
                 return EligibleOrderPolicies(client.currency, paused, ())
@@ -210,6 +223,9 @@ class OrderIntakeService:
                 and not self.consultation_available
             ):
                 raise ValueError("consultation_unavailable")
+            combined = getattr(self.config, "combined_checkout_enabled", False)
+            if combined and not self.combined_checkout_ready:
+                raise ValueError("combined_checkout_unavailable")
             if command.policy_version == PILOT_POLICY_VERSION:
                 # Coordinate with publication of the replacement version.
                 await self.policies.lock_version(
@@ -270,6 +286,8 @@ class OrderIntakeService:
                     for i in quote.items
                 ),
                 lead_id,
+                combined_checkout=combined,
+                checkout_token=uuid4() if combined else None,
                 consultation_minor=CONSULTATION_MINOR
                 if command.consultation_requested
                 else 0,

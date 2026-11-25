@@ -67,7 +67,6 @@
     'intake-count': 'Укажите количество авторов.',
     'intake-honorarium': 'Укажите гонорар одному автору.',
     'intake-due': 'Укажите срок подбора авторов.',
-    'intake-contact': 'Укажите контакт для связи по заказу.',
   };
   var state = { busy:false, policies:[], pending:null, pendingEntry:null, completedEntry:null, result:null, order:null, intakeBack:'screen-advertiser-dashboard', selectionBack:'screen-advertiser-dashboard', opened:false };
   var context=null,owner=null,requestedIntake=null;
@@ -117,10 +116,16 @@
   function validId(value) { return typeof value==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value) && !/^0{8}-0{4}-0{4}-0{4}-0{12}$/.test(value); }
   function safeUrl(value) { try { var url=new URL(value); return url.protocol==='https:' && !url.username && !url.password ? url.href : null; } catch(_) { return null; } }
   function money(value, currency) { var raw=String(value); if(!/^\d+$/.test(raw) || (typeof value==='number' && !Number.isSafeInteger(value))) return words().unknown; raw=raw.padStart(3,'0'); return raw.slice(0,-2).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0') + ',' + raw.slice(-2) + '\u00a0' + (currency==='RUB' && (window._me || {}).locale==='ru' ? 'руб.' : currency); }
+  function checkoutMoney(value, currency) {
+    return currency==='RUB' && words()===copy.ru && Number.isSafeInteger(value)
+      ? money(value,currency).replace(/(?:,00)?\u00a0руб\.$/, '\u00a0₽')
+      : money(value,currency);
+  }
   function date(value) { var d=new Date(value); return value && !isNaN(d.getTime()) ? d.toISOString().replace('T',' ').slice(0,16)+' UTC' : words().unknown; }
   function localize() {
     document.querySelectorAll('[data-intake-copy]').forEach(function(el) {
-      var field = el.htmlFor && id(el.htmlFor), label = words()[el.dataset.intakeCopy] || '';
+      var field = el.htmlFor && id(el.htmlFor), key=el.dataset.intakeCopy, label=words()[key]||'';
+      if(key==='accountContact'&&words()===copy.ru&&window.__miniapp_platform==='telegram')label='Свяжемся с вами в этом Telegram';
       el.textContent = label + (field && field.required ? ' *' : '');
     });
     text('intake-brief-hint', words().briefHint + ' ' + words().briefExample);
@@ -132,12 +137,71 @@
   function row(parent, label, value, valueId, minor) { var line=node('div'), dt=node('dt',label), dd=node('dd',value); if(valueId) dd.id=valueId; if(minor != null) dd.dataset.minor=String(minor); line.append(dt,dd); parent.appendChild(line); }
   function link(parent, value, label) { var url=safeUrl(value), el=node(url?'a':'span',url?(label || value):value); if(url) { el.href=url; el.target='_blank'; el.rel='noopener noreferrer'; } parent.appendChild(el); }
   var targetLabels={ru:['Фильтры авторов','Подписчиков от','Подписчиков до','Возраст от','Возраст до','Пол автора','Любой','Мужской','Женский'],en:['Creator filters','Followers from','Followers to','Age from','Age to','Creator gender','Any','Male','Female'],kk:['Автор сүзгілері','Жазылушылар саны бастап','Жазылушылар саны дейін','Жасы бастап','Жасы дейін','Автор жынысы','Кез келген','Ер','Әйел'],be:['Фільтры аўтараў','Падпісчыкі ад','Падпісчыкі да','Узрост ад','Узрост да','Пол аўтара','Любы','Мужчынскі','Жаночы'],uz:['Muallif filtrlari','Obunachilar kamida','Obunachilar ko‘pi bilan','Yosh kamida','Yosh ko‘pi bilan','Muallif jinsi','Istalgan','Erkak','Ayol']};
-  var briefLabels={ru:['Город автора (точное совпадение)','Площадки (хотя бы одна)','Использование и формат контента','Ссылка на подробный бриф','Тип работы','Только UGC','UGC с размещением'],en:['Creator city (exact match)','Platforms (at least one)','Content use and format','Detailed brief link','Work type','UGC only','UGC with placement'],kk:['Автор қаласы (дәл сәйкестік)','Платформалар (кемінде біреу)','Контентті пайдалану және пішімі','Толық бриф сілтемесі','Жұмыс түрі','Тек UGC','Жарияланатын UGC'],be:['Горад аўтара (дакладнае супадзенне)','Пляцоўкі (хаця б адна)','Выкарыстанне і фармат кантэнту','Спасылка на падрабязны брыф','Тып працы','Толькі UGC','UGC з размяшчэннем'],uz:['Muallif shahri (aniq moslik)','Platformalar (kamida bittasi)','Kontentdan foydalanish va format','Batafsil brif havolasi','Ish turi','Faqat UGC','Joylashtirish bilan UGC']};
+  var briefLabels={
+    ru:['Город автора','Площадки (хотя бы одна)','','','Что нужно от автора?','UGC без публикации','UGC с публикацией у автора'],
+    en:['Creator city','Platforms (at least one)','','','What should the creator deliver?','UGC without a post','UGC with a creator post'],
+    kk:['Автор қаласы','Платформалар (кемінде біреу)','','','Автордан не қажет?','Жарияланымсыз UGC','Автор жариялайтын UGC'],
+    be:['Горад аўтара','Пляцоўкі (хаця б адна)','','','Што патрэбна ад аўтара?','UGC без публікацыі','UGC з публікацыяй аўтара'],
+    uz:['Muallif shahri','Platformalar (kamida bittasi)','','','Muallifdan nima kerak?','Joylashtirishsiz UGC','Muallif joylashtiradigan UGC'],
+  };
+  var intakeShortCopy={
+    ru:['Другое количество','Свяжемся с вами в этом чате','Состав заказа','Оплатить','Город не найден. Проверьте название или оставьте поле пустым.','Выберите город из результата поиска.','Введите город или оставьте пустым'],
+    en:['Other quantity','We’ll contact you in this chat','Order summary','Pay','City not found. Check the spelling or leave it blank.','Select a city from the search result.','Enter a city or leave it blank'],
+    kk:['Басқа сан','Сізбен осы чатта байланысамыз','Тапсырыс құрамы','Төлеу','Қала табылмады. Атауын тексеріңіз немесе бос қалдырыңыз.','Іздеу нәтижесінен қаланы таңдаңыз.','Қаланы енгізіңіз немесе бос қалдырыңыз'],
+    be:['Іншая колькасць','Звяжамся з вамі ў гэтым чаце','Склад замовы','Аплаціць','Горад не знойдзены. Праверце назву або пакіньце поле пустым.','Выберыце горад з выніку пошуку.','Увядзіце горад або пакіньце поле пустым'],
+    uz:['Boshqa miqdor','Shu chatda siz bilan bog‘lanamiz','Buyurtma tarkibi','To‘lash','Shahar topilmadi. Nomini tekshiring yoki maydonni bo‘sh qoldiring.','Qidiruv natijasidan shaharni tanlang.','Shaharni kiriting yoki bo‘sh qoldiring'],
+  };
+  var invoiceLabels={ru:'Запросить счёт для компании',en:'Request a company invoice',kk:'Компанияға шот сұрау',be:'Запытаць рахунак для кампаніі',uz:'Kompaniya uchun hisob so‘rash'};
+  Object.keys(invoiceLabels).forEach(function(locale){copy[locale].companyInvoice=invoiceLabels[locale];});
+  Object.keys(intakeShortCopy).forEach(function(locale){
+    var a=intakeShortCopy[locale];
+    Object.assign(copy[locale],{customCount:a[0],accountContact:a[1],orderSummary:a[2],payTotal:a[3],cityMissing:a[4],citySelect:a[5],cityHint:a[6]});
+  });
   Object.keys(targetLabels).forEach(function(locale){targetLabels[locale]=targetLabels[locale].concat(briefLabels[locale]);});
   var targetFields=['min_followers','max_followers','min_age','max_age'];
-  function targeting() { var result={}, any=false;targetFields.forEach(function(name){var value=id('intake-'+name).value;result[name]=value===''?null:Number(value);if(value!=='')any=true;});result.gender=id('intake-gender').value||null;['city','content_usage','brief_link'].forEach(function(name){var value=id('intake-'+name).value.trim();if(value){result[name]=value;any=true;}});var platforms=Array.from(document.querySelectorAll('[data-intake-platform]:checked')).map(function(el){return el.value;});if(platforms.length){result.platforms=platforms;any=true;}return any||result.gender?result:null; }
+  function targeting() {
+    var result={}, any=false;
+    targetFields.forEach(function(name) {
+      var value=id('intake-'+name).value;
+      result[name]=value===''?null:Number(value);
+      if(value!=='')any=true;
+    });
+    result.gender=id('intake-gender').value||null;
+    var city=id('intake-city').value.trim();
+    if(city) result.city=city;
+    var platforms=Array.from(document.querySelectorAll('[data-intake-platform]:checked'))
+      .map(function(el){return el.value;});
+    if(platforms.length) result.platforms=platforms;
+    return any||result.gender||city||platforms.length ? result : null;
+  }
   function targetLocalize(){var c=targetLabels[(window._me||{}).locale]||targetLabels.en;document.querySelectorAll('[data-target-copy]').forEach(function(el){el.textContent=c[Number(el.dataset.targetCopy)];});}
-  function targetControls(){var box=node('fieldset'),title=node('legend');title.dataset.targetCopy='0';box.appendChild(title);targetFields.forEach(function(name,index){var label=node('label'),span=node('span'),input=document.createElement('input');span.dataset.targetCopy=String(index+1);input.id='intake-'+name;input.type='number';input.min='0';input.max=index<2?'2147483647':'120';input.step='1';input.inputMode='numeric';label.append(span,input);box.appendChild(label);});var label=node('label'),span=node('span'),select=document.createElement('select');span.dataset.targetCopy='5';select.id='intake-gender';['','m','f'].forEach(function(value,index){var option=node('option');option.value=value;option.dataset.targetCopy=String(index+6);select.appendChild(option);});label.append(span,select);box.appendChild(label);[['city',9,'text'],['content_usage',11,'text'],['brief_link',12,'url']].forEach(function(row){var label=node('label'),span=node('span'),input=document.createElement('input');span.dataset.targetCopy=String(row[1]);input.id='intake-'+row[0];input.type=row[2];input.maxLength=row[0]==='city'?200:row[0]==='brief_link'?2048:4000;label.append(span,input);box.appendChild(label);});
+  function targetControls(){var box=node('fieldset'),title=node('legend');title.dataset.targetCopy='0';box.appendChild(title);targetFields.forEach(function(name,index){var label=node('label'),span=node('span'),input=document.createElement('input');span.dataset.targetCopy=String(index+1);input.id='intake-'+name;input.type='number';input.min='0';input.max=index<2?'2147483647':'120';input.step='1';input.inputMode='numeric';label.append(span,input);box.appendChild(label);});var label=node('label'),span=node('span'),select=document.createElement('select');span.dataset.targetCopy='5';select.id='intake-gender';['','m','f'].forEach(function(value,index){var option=node('option');option.value=value;option.dataset.targetCopy=String(index+6);select.appendChild(option);});label.append(span,select);box.appendChild(label);    var cityLabel=node('label'),cityName=node('span'),city=document.createElement('input');
+    cityName.dataset.targetCopy='9';city.id='intake-city';city.type='text';city.maxLength=200;city.autocomplete='off';
+    city.setAttribute('aria-describedby','intake-city-hint');cityLabel.append(cityName,city);box.appendChild(cityLabel);
+    var cityHint=node('p',words().cityHint,'hint');cityHint.id='intake-city-hint';cityHint.setAttribute('role','status');box.appendChild(cityHint);
+    var cityResult=node('button','','btn btn-secondary');cityResult.type='button';cityResult.hidden=true;box.appendChild(cityResult);
+    var timer, confirmed='', sequence=0;
+    function lookupCity(){
+      clearTimeout(timer);cityResult.hidden=true;var entered=city.value.trim(), turn=++sequence, request=binding();
+      if(!entered||entered===confirmed){city.setCustomValidity('');cityHint.textContent=words().cityHint;return;}
+      city.setCustomValidity(words().citySelect);cityHint.textContent=words().citySelect;
+      if(entered.length<2)return;
+      timer=setTimeout(function(){
+        request.request('/financial/orders/city',{city:entered}).then(function(found){
+          if(turn!==sequence||!request.isCurrent()||entered!==city.value.trim()||!found.city)return;
+          if(found.city.toLocaleLowerCase()===entered.toLocaleLowerCase()){
+            confirmed=found.city;city.value=confirmed;city.setCustomValidity('');cityHint.textContent=words().cityHint;return;
+          }
+          cityResult.textContent=[found.city,found.region].filter(Boolean).join(', ');cityResult.hidden=false;
+          cityResult.onclick=function(){confirmed=found.city;city.value=confirmed;city.dispatchEvent(new Event('input',{bubbles:true}));};
+        }).catch(function(){if(turn===sequence&&request.isCurrent()){city.setCustomValidity(words().cityMissing);cityHint.textContent=words().cityMissing;}});
+      },300);
+    }
+    city.addEventListener('input',function(){if(city.value.trim()!==confirmed) confirmed='';lookupCity();});
+    id('form-umc-intake').addEventListener('reset',function(){
+      clearTimeout(timer);sequence++;confirmed='';cityResult.hidden=true;
+      city.setCustomValidity('');cityHint.textContent=words().cityHint;
+    });
     var platforms = node('fieldset');
     var platformTitle = node('legend');
     platformTitle.dataset.targetCopy = '10';
@@ -155,12 +219,13 @@
     box.appendChild(platforms);
     var formatLabel=node('label'),formatTitle=node('span'),format=document.createElement('select');formatTitle.dataset.targetCopy='13';format.id='intake-order-type';['ugc_only','ugc_plus_placement','stories'].forEach(function(value,index){var option=node('option');option.value=value;if(value==='stories')option.textContent=({ru:'Сторис',en:'Stories',kk:'Сторис',be:'Сторыс',uz:'Stories'})[(window._me||{}).locale]||'Stories';else option.dataset.targetCopy=String(14+index);format.appendChild(option);});formatLabel.append(formatTitle,format);box.appendChild(formatLabel);id('intake-contact-hint').insertAdjacentElement('afterend',box);targetLocalize();}
   targetControls();
+  document.addEventListener('umc:intake-policy-ready',syncCount);
   var consultationCopy = {
-    ru:{consultation:'Разбор запуска UGC', consultationDescription:'До 60 минут на ТЗ, подбор блогеров и план запуска.', consultationPay:'Оплатить консультацию', consultationPaid:'Консультация оплачена', consultationPaymentNote:'Подбор и консультация оплачиваются отдельными платежами.'},
-    en:{consultation:'UGC launch consultation', consultationDescription:'Up to 60 minutes on your brief, creator selection and launch plan.', consultationPay:'Pay for consultation', consultationPaid:'Consultation paid', consultationPaymentNote:'Selection and consultation are paid separately.'},
-    kk:{consultation:'UGC іске қосу бойынша кеңес', consultationDescription:'Техникалық тапсырма, блогерлерді іріктеу және іске қосу жоспары. 60 минутқа дейін.', consultationPay:'Кеңесті төлеу', consultationPaid:'Кеңес төленді', consultationPaymentNote:'Іріктеу мен кеңес бөлек төленеді.'},
-    be:{consultation:'Кансультацыя па запуску UGC', consultationDescription:'Да 60 хвілін на тэхзаданне, выбар блогераў і план запуску.', consultationPay:'Аплаціць кансультацыю', consultationPaid:'Кансультацыя аплачана', consultationPaymentNote:'Падбор і кансультацыя аплачваюцца асобна.'},
-    uz:{consultation:'UGC ishga tushirish bo‘yicha maslahat', consultationDescription:'Texnik topshiriq, blogerlarni tanlash va ishga tushirish rejasi uchun 60 daqiqagacha.', consultationPay:'Maslahat uchun to‘lash', consultationPaid:'Maslahat uchun to‘landi', consultationPaymentNote:'Tanlov va maslahat alohida to‘lanadi.'},
+    ru:{consultation:'Консультация по UGC-кампании', consultationDescription:'До 60 минут со специалистом UMC. Разберём ТЗ для блогеров, составим план запуска кампании и наметим путь от просмотра контента до заявки. Определим, какие показатели отслеживать после запуска.', consultationPay:'Оплатить консультацию', consultationPaid:'Консультация оплачена', orderPaid:'Заказ оплачен', consultationPaymentNote:'Подбор и консультация оплачиваются отдельными платежами.'},
+    en:{consultation:'UGC launch consultation', consultationDescription:'Up to 60 minutes on your brief, creator selection and launch plan.', consultationPay:'Pay for consultation', consultationPaid:'Consultation paid', orderPaid:'Order paid', consultationPaymentNote:'Selection and consultation are paid separately.'},
+    kk:{consultation:'UGC іске қосу бойынша кеңес', consultationDescription:'Техникалық тапсырма, блогерлерді іріктеу және іске қосу жоспары. 60 минутқа дейін.', consultationPay:'Кеңесті төлеу', consultationPaid:'Кеңес төленді', orderPaid:'Тапсырыс төленді', consultationPaymentNote:'Іріктеу мен кеңес бөлек төленеді.'},
+    be:{consultation:'Кансультацыя па запуску UGC', consultationDescription:'Да 60 хвілін на тэхзаданне, выбар блогераў і план запуску.', consultationPay:'Аплаціць кансультацыю', consultationPaid:'Кансультацыя аплачана', orderPaid:'Заказ аплачаны', consultationPaymentNote:'Падбор і кансультацыя аплачваюцца асобна.'},
+    uz:{consultation:'UGC ishga tushirish bo‘yicha maslahat', consultationDescription:'Texnik topshiriq, blogerlarni tanlash va ishga tushirish rejasi uchun 60 daqiqagacha.', consultationPay:'Maslahat uchun to‘lash', consultationPaid:'Maslahat uchun to‘landi', orderPaid:'Buyurtma to‘landi', consultationPaymentNote:'Tanlov va maslahat alohida to‘lanadi.'},
   };
   Object.keys(consultationCopy).forEach(function(locale) { Object.assign(copy[locale], consultationCopy[locale]); });
   function consultationPayment(data) {
@@ -178,27 +243,46 @@
     return checkout;
   }
   function selectedPolicy() { return state.policies.find(function(p) { return p.version===id('intake-policy').value; }); }
-  function selectedPositions() { if(document.querySelector('input[name="intake-mode"]:checked').value==='self_service') return []; if(id('intake-all-manager').checked) return null; return Array.from(id('intake-position-options').querySelectorAll('input:checked')).map(function(el) { return Number(el.value); }); }
+  function combinedPayment(data) {
+    if(!data.combined_checkout)return null;
+    var checkout=node('section','','umc-selection-summary');
+    if(data.checkout_paid) {
+      checkout.appendChild(node('p',words().orderPaid));
+    } else if(safeUrl(data.checkout_url)) {
+      var total=data.project_total_minor;
+      if(!total&&Array.isArray(data.positions)) {
+        total=data.positions.reduce(function(sum,item) {
+          return sum+Number(item.selection_minor)+Number(item.accompaniment_minor);
+        },Number(data.consultation_minor||0));
+      }
+      var title=words().payTotal+(total?' '+checkoutMoney(total,data.currency||'RUB'):'');
+      link(checkout,data.checkout_url,title);
+      checkout.lastElementChild.className='btn';
+    }
+    return checkout;
+  }
   function preview() {
     var c=words(), p=selectedPolicy(), manager=document.querySelector('input[name="intake-mode"]:checked').value==='with_manager';
-    id('intake-manager-options').hidden=!manager; id('intake-positions').hidden=!manager || id('intake-all-manager').checked;
     id('intake-consultation-option').hidden=!(p&&state.consultationMinor);
-    if(p&&state.consultationMinor) text('intake-consultation-label',c.consultation+' · '+money(state.consultationMinor,p.currency));
+    if(p&&state.consultationMinor) text('intake-consultation-label',c.consultation+' · '+checkoutMoney(state.consultationMinor,p.currency));
     id('intake-terms').hidden=!p; id('intake-preview').hidden=!p;
     if(!p) return;
     var terms=id('intake-terms'); terms.replaceChildren(); link(terms,p.terms_reference,c.published);
-    var positions=selectedPositions(), count=positions===null?positionCount():positions.length;
-    var parent=id('intake-preview'); parent.replaceChildren(); parent.appendChild(node('h2',c.preview)); var list=node('dl');
-    row(list,c.base,money(p.selection_minor,p.currency)+' × '+positionCount());
-    row(list,c.accompaniment,money(p.accompaniment_minor,p.currency)+' / '+c.position.toLowerCase()+' × '+count);
-    if(manager) row(list,c.manager,money(Number(p.selection_minor)+Number(p.accompaniment_minor),p.currency)+' / '+c.position.toLowerCase());
+    var count=positionCount(), parent=id('intake-preview'); parent.replaceChildren();
+    if (!Number.isInteger(count)||count<10||count>200) return;
+    parent.appendChild(node('h2',c.orderSummary));
+    var list=node('dl'), selection=Number(p.selection_minor)*count;
+    var accompaniment=manager?Number(p.accompaniment_minor)*count:0;
     var consultation=state.consultationMinor&&id('intake-consultation').checked?state.consultationMinor:0;
-    if(consultation) row(list,c.consultation,money(consultation,p.currency));
-    row(list,c.total,money(Number(p.selection_minor)*positionCount()+Number(p.accompaniment_minor)*count+consultation,p.currency));
+    var total=selection+accompaniment+consultation;
+    row(list,c.base+' · '+count,checkoutMoney(selection,p.currency));
+    if(accompaniment) row(list,c.manager+' · '+count,checkoutMoney(accompaniment,p.currency));
+    if(consultation) row(list,c.consultation,checkoutMoney(consultation,p.currency));
+    row(list,c.total,checkoutMoney(total,p.currency));list.lastElementChild.className='umc-receipt-total';
     parent.appendChild(list);
-    if(consultation) parent.appendChild(node('p',c.consultationPaymentNote,'hint'));
-    else if(manager&&count>0) parent.appendChild(node('p',c.paymentTogether,'hint'));
+    text('btn-intake-create',c.payTotal+' '+checkoutMoney(total,p.currency));sync();
   }
+
   function storageKey() { var user=(window._me || {}).user_id; if(!validId(user)) throw new Error('missing_authenticated_identity'); return 'umc:intake:'+window.__miniapp_platform+':'+user; }
   function legacyPending(owner) { var raw=sessionStorage.getItem(owner); return raw?JSON.parse(raw):null; }
   function mirrorPending(owner,entry) { try { sessionStorage.setItem(owner,JSON.stringify({__umcIntakeMirror:1,payload:entry.payload,snapshot:entry.snapshot})); } catch(_) { /* IndexedDB is the recovery source. */ } }
@@ -222,25 +306,25 @@
       return result;
     });
   }
-  function busy(value, screen) { state.busy=value; screen.setAttribute('aria-busy',String(value)); screen.querySelectorAll('button,input,textarea,select').forEach(function(el) { el.disabled=value; }); sync(); }
+  function busy(value, screen) { state.busy=value; screen.setAttribute('aria-busy',String(value)); screen.querySelectorAll('button,input,textarea,select').forEach(function(el) { el.disabled=value; }); syncCount(); sync(); }
   function failure(error, target) { var c=words(); text(target,error.status===401?c.session:error.status===403?c.forbidden:error.status===404?c.missing:error.status===409?c.conflict:c.error); }
   function pendingView() { id('form-umc-intake').hidden=true; id('intake-result').hidden=true; id('intake-uncertain').hidden=false; sync(); }
   function renderResult(result,entry) {
     document.dispatchEvent(new CustomEvent("umc:intake-created",{detail:{order_id:result.order_id,intent_id:entry.payload.funnel_id||null}}));
     var request=entry.payload;state.result=result; state.pending=null;state.pendingEntry=null;state.completedEntry=entry;
-    document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:result.order_id,target:'intake-result'}}));
+    document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:result.combined_checkout?null:result.order_id,target:'intake-result'}}));
     id('form-umc-intake').hidden=true; id('intake-uncertain').hidden=true; id('intake-result').hidden=false;
     text('intake-error',''); text('intake-order-id',[result.public_number,result.public_title||(request&&request.offer_text||'').split('\n')[0].slice(0,120)].filter(Boolean).join(' · '));
     var parent=id('intake-quote'); parent.replaceChildren(); var accompaniment=result.items.reduce(function(total,item) { return total+Number(item.accompaniment_minor); },0);
     var c=words();
-    row(parent,c.base+' · '+result.items.length,money(result.selection_base_minor,result.currency));
-    row(parent,c.accompaniment,money(accompaniment,result.currency));
-    if(result.consultation_minor) row(parent,c.consultation,money(result.consultation_minor,result.currency));
-    row(parent,c.total,money(result.project_total_minor??result.total_minor,result.currency),'intake-total',result.project_total_minor??result.total_minor);
+    row(parent,c.base+' · '+result.items.length,checkoutMoney(result.selection_base_minor,result.currency));
+    if(accompaniment) row(parent,c.manager,checkoutMoney(accompaniment,result.currency));
+    if(result.consultation_minor) row(parent,c.consultation,checkoutMoney(result.consultation_minor,result.currency));
+    row(parent,c.total,checkoutMoney(result.project_total_minor??result.total_minor,result.currency),'intake-total',result.project_total_minor??result.total_minor);parent.lastElementChild.className='umc-receipt-total';
     row(parent,c.due,date(result.selection_due_at));
     var previousConsultation=id('intake-consultation-checkout');
     if(previousConsultation) previousConsultation.remove();
-    var checkout=consultationPayment(result);
+    var checkout=combinedPayment(result)||consultationPayment(result);
     if(checkout) {
       checkout.id='intake-consultation-checkout';
       parent.insertAdjacentElement('afterend',checkout);
@@ -262,7 +346,7 @@
     }).then(function(result){
       if(!ctx.isCurrent()||!result)return;
       document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:null,target:null}}));
-      state.result=null;state.completedEntry=null; id('form-umc-intake').reset();positionOptions(); id('intake-result').hidden=true;
+      state.result=null;state.completedEntry=null; id('form-umc-intake').reset();syncCount(); id('intake-result').hidden=true;
       text('intake-order-id',''); id('intake-quote').replaceChildren(); text('intake-lead-state',''); delete id('intake-lead-state').dataset.state;
       var details=id('intake-components'); if(details) details.remove();
       busy(false,intake);loadPolicies();
@@ -282,14 +366,21 @@
         if(status.outcome==='confirmed')showSubmitted();else text('intake-error',words().invalid);
         return null;
       }
-      return ctx.request('/financial/orders',payload);
+      var request=Object.assign({},payload); delete request.company_invoice_request;
+      return ctx.request('/financial/orders',request);
     }).then(function(data){
       if(!ctx.isCurrent()||!data)return;
       return window.UMCIntakeStore.confirm(owner,entry).catch(function(){/* Keep the same key for recovery. */}).then(function(){
         if(!ctx.isCurrent())return;
         var progress=window.UMCIntakeProgress;
         return progress?progress.complete(entry.snapshot):null;
-      }).catch(function(){/* Keep the same key until cleanup succeeds. */}).then(function(){if(ctx.isCurrent())renderResult(data,entry);});
+      }).catch(function(){/* Keep the same key until cleanup succeeds. */}).then(function(){if(!ctx.isCurrent())return;
+        renderResult(data,entry);
+        if(entry.payload.company_invoice_request&&window.UMCCustomer){
+          window.UMCCustomer.companyInvoice(data.order_id,data.project_total_minor??data.total_minor,data.currency);
+        } else if(data.combined_checkout&&safeUrl(data.checkout_url)&&!isRetry) {
+          window.location.assign(data.checkout_url);
+        }});
     }).catch(function(error) {
       if(!ctx.isCurrent())return;
       if (error.status === 403 && error.message === 'registration_agreement_required' &&
@@ -309,7 +400,7 @@
   }
   function loadPolicies() {
     clearRequiredError();
-    if(state.busy) return; localize(); text('intake-error',''); text('intake-loading',words().loading); busy(true,intake);
+    if(state.busy) return; localize(); id('btn-intake-refresh').hidden=true; text('intake-error',''); text('intake-loading',words().loading); busy(true,intake);
     if(!state.result) { id('form-umc-intake').hidden=true; id('intake-uncertain').hidden=true; }
     var ctx=binding(),owner;
     if(!ctx.isCurrent()){text('intake-error',words().session);text('intake-loading','');busy(false,intake);return;}
@@ -334,7 +425,7 @@
         document.dispatchEvent(new CustomEvent("umc:intake-policy-ready",{detail:{tracking:data.funnel_tracking===true}}));
         preview();
       });
-    }).catch(function(error) { if(!ctx.isCurrent())return;if(state.pending) pendingView(); if(error.intakeStorage)text('intake-error',words().storage);else failure(error,'intake-error'); }).finally(function() { if(ctx.isCurrent()){text('intake-loading',''); busy(false,intake);} });
+    }).catch(function(error) { if(!ctx.isCurrent())return;id('btn-intake-refresh').hidden=false;if(state.pending) pendingView(); if(error.intakeStorage)text('intake-error',words().storage);else failure(error,'intake-error'); }).finally(function() { if(ctx.isCurrent()){text('intake-loading',''); busy(false,intake);} });
   }
   function openIntake(options) {
     if (state.busy) return;
@@ -363,9 +454,10 @@
   function key() { if(!window.crypto || !crypto.getRandomValues) return null; if(crypto.randomUUID) return crypto.randomUUID(); return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(function(n) { return n.toString(16).padStart(2,'0'); }).join(''); }
   id('form-umc-intake').addEventListener('submit',function(event) {
     event.preventDefault(); if(state.busy || state.pending || state.result || (window.UMCOrderImages && window.UMCOrderImages.busy())) return;
-    var p=selectedPolicy(), positions=selectedPositions(), due=new Date(id('intake-due').value), op=key();
-    if(!p || !op || isNaN(due.getTime()) || due<=new Date() || (positions!==null && document.querySelector('input[name="intake-mode"]:checked').value==='with_manager' && !positions.length)) { text('intake-error',words().invalid); return; }
-    var payload={ position_count:positionCount(), operation_key:'miniapp:intake:'+op, policy_version:p.version, product_link:id('intake-product').value.trim(), offer_text:id('intake-brief').value.trim(), honorarium:Number(id('intake-honorarium').value).toFixed(2), selection_due_at:due.toISOString(), contact_reference:id('intake-contact').value.trim(), service_mode:document.querySelector('input[name="intake-mode"]:checked').value, accompaniment_ordinals:positions };
+    var p=selectedPolicy(), due=new Date(id('intake-due').value), op=key();
+    if(!p || !op || isNaN(due.getTime()) || due<=new Date() || !Number.isInteger(positionCount()) || positionCount()<10 || positionCount()>200) { text('intake-error',words().invalid); return; }
+    var payload={ position_count:positionCount(), operation_key:'miniapp:intake:'+op, policy_version:p.version, product_link:id('intake-product').value.trim(), offer_text:id('intake-brief').value.trim(), honorarium:Number(id('intake-honorarium').value).toFixed(2), selection_due_at:due.toISOString(), service_mode:document.querySelector('input[name="intake-mode"]:checked').value };
+    if(event.submitter&&event.submitter.id==='btn-intake-company') payload.company_invoice_request=true;
     if(state.consultationMinor&&id('intake-consultation').checked) payload.consultation_requested=true;
     if(id('intake-image-token').value) payload.image_token=id('intake-image-token').value;
     payload.order_type=id('intake-order-type').value;var filters=targeting();if(filters)payload.targeting=filters;
@@ -392,7 +484,7 @@
   id('btn-intake-back').addEventListener('click',function() { if(!state.busy) bridge.showScreen(state.intakeBack); });
   id('btn-intake-selection').addEventListener('click',function() { if(state.result) openSelection(state.result.order_id); });
   function clearFilledRequiredField(event) {
-    if (event.target === requiredField && !requiredField.validity.valueMissing) {
+    if (event.target === requiredField && requiredField.validity.valid) {
       clearRequiredError();
     }
   }
@@ -403,13 +495,22 @@
     preview();
   });
   intakeForm.addEventListener('change', function(event) {
+    syncCount();
     clearFilledRequiredField(event);
     preview();
   });
-  function positionCount(){return Number(id('intake-count').value);}
-  function positionOptions(){var parent=id('intake-position-options'),selected=Array.from(parent.querySelectorAll('input:checked')).map(function(n){return n.value;});parent.replaceChildren();var count=positionCount();if(!Number.isInteger(count)||count<10||count>200)return;for(var ordinal=1;ordinal<=count;ordinal++){var label=node('label'),checkbox=document.createElement('input');checkbox.type='checkbox';checkbox.id='intake-position-'+ordinal;checkbox.value=String(ordinal);checkbox.checked=selected.includes(checkbox.value);label.append(checkbox,node('span',ordinal));parent.appendChild(label);}}
-  id('intake-count').addEventListener('input',function(){positionOptions();preview();});
-  positionOptions();
+  function positionCount() {
+    var preset=id('intake-count-preset');
+    return Number(preset.value==='custom'?id('intake-count').value:preset.value);
+  }
+  function syncCount() {
+    var custom=id('intake-count-preset').value==='custom', field=id('intake-count');
+    field.hidden=!custom;
+    field.required=custom;
+    field.disabled=!custom||state.busy;
+  }
+  id('intake-count-preset').addEventListener('change',syncCount);
+  syncCount();
   var handoffCopy={
     ru:['Передано авторов','из','Все переданные авторы и контакты','Цена требует согласования','Оценить авторов'],
     en:['Creators provided','of','All creator contacts','Price requires agreement','Rate creators'],
@@ -439,9 +540,9 @@
     parent.appendChild(section);
   }
   function renderSelection(data) {
-    document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:data.order_id,target:'screen-selection'}}));
+    document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:data.combined_checkout?null:data.order_id,target:'screen-selection'}}));
     var c=words(); text('selection-order-id',data.public_number || ''); id('selection-paused').hidden=!data.writes_paused; text('selection-paused',c.readPaused); text('selection-waitlist',c.waitlist+': '+data.waitlist_count);
-    var parent=id('selection-positions'); parent.replaceChildren(); var checkout=consultationPayment(data); if(checkout) parent.appendChild(checkout); renderHandoffs(data,parent); if(!data.positions.length) parent.appendChild(node('p',c.noPositions,'hint'));
+    var parent=id('selection-positions'); parent.replaceChildren(); var checkout=combinedPayment(data)||consultationPayment(data); if(checkout) parent.appendChild(checkout); renderHandoffs(data,parent); if(!data.positions.length) parent.appendChild(node('p',c.noPositions,'hint'));
     data.positions.forEach(function(position) {
       var article=node('article','','umc-selection-position'); article.dataset.position=String(position.ordinal); article.appendChild(node('h2',c.position+' '+position.ordinal));
       article.appendChild(node('p',money(position.selection_minor,position.currency)+' + '+money(position.accompaniment_minor,position.currency),'hint'));
@@ -475,12 +576,12 @@
   }
   id('btn-selection-refresh').addEventListener('click',loadSelection);
   id('btn-selection-back').addEventListener('click',function() { if(state.busy) return; var url=new URL(location.href); url.searchParams.delete('selection'); history.replaceState(null,'',url.href); bridge.showScreen(state.selectionBack); });
-  document.addEventListener('umc:screen-change',function(event) { if(!event.detail || event.detail.screen!==intake.id || !state.result) return; var panel=id('umc-checkout');if(!panel || panel.parentElement!==id('intake-result')) document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:state.result.order_id,target:'intake-result'}})); });
+  document.addEventListener('umc:screen-change',function(event) { if(!event.detail || event.detail.screen!==intake.id || !state.result || state.result.combined_checkout) return; var panel=id('umc-checkout');if(!panel || panel.parentElement!==id('intake-result')) document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:state.result.order_id,target:'intake-result'}})); });
   id('btn-show-create-order').textContent=words().entry;
   var list=id('orders-list');
   function orderLinks() { list.querySelectorAll('[data-order-id]').forEach(function(row) { if(!row.dataset.financialVersion || row.querySelector('[data-selection-open]')) return; var button=node('button',words().viewSelection,'btn btn-secondary'); button.type='button'; button.dataset.selectionOpen=''; button.addEventListener('click',function(event) { event.preventDefault(); event.stopPropagation(); openSelection(row.dataset.orderId); }); row.appendChild(button); }); }
   new MutationObserver(orderLinks).observe(list,{childList:true,subtree:true});
-  function ready() { var identity=(window.__miniapp_platform||'telegram')+':'+(window._me||{}).user_id;if(owner!==identity||(context&&!context.isCurrent())){owner=identity;if(context)context.dispose();context=null;state.busy=false;state.pending=null;state.pendingEntry=null;state.completedEntry=null;state.result=null;state.order=null;state.opened=false;freshDraft.hidden=true;id('form-umc-intake').reset();positionOptions();id('intake-result').hidden=true;id('intake-uncertain').hidden=true;id('selection-positions').replaceChildren();text('intake-order-id','');text('selection-order-id','');document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:null,target:null}}));}if(!context)context=bridge.createRequestContext();localize(); orderLinks();if(intake.classList.contains('active')){loadPolicies();return;} if(state.opened) return; var params=new URLSearchParams(location.search), values=params.getAll('selection');if(['orders','services','ratings'].indexOf(params.get('screen'))>=0&&params.has('order_id'))return;if(params.get('view')==='order'||params.get('tgWebAppStartParam')==='order'){state.opened=true;openIntake();return;} if(!values.length || params.has('assignment') || params.has('assignment_id') || params.get('view')==='partner') return; state.opened=true; openSelection(values.length===1?values[0]:null); }
-  window.UMCSelection={open:openSelection,create:openIntake,rebuildPositions:positionOptions,supportsAgreementRecovery:typeof bridge.resumeAgreement === 'function'};
+  function ready() { var identity=(window.__miniapp_platform||'telegram')+':'+(window._me||{}).user_id;if(owner!==identity||(context&&!context.isCurrent())){owner=identity;if(context)context.dispose();context=null;state.busy=false;state.pending=null;state.pendingEntry=null;state.completedEntry=null;state.result=null;state.order=null;state.opened=false;freshDraft.hidden=true;id('form-umc-intake').reset();syncCount();id('intake-result').hidden=true;id('intake-uncertain').hidden=true;id('selection-positions').replaceChildren();text('intake-order-id','');text('selection-order-id','');document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:null,target:null}}));}if(!context)context=bridge.createRequestContext();localize(); orderLinks();if(intake.classList.contains('active')){loadPolicies();return;} if(state.opened) return; var params=new URLSearchParams(location.search), values=params.getAll('selection');if(['orders','services','ratings'].indexOf(params.get('screen'))>=0&&params.has('order_id'))return;if(params.get('view')==='order'||params.get('tgWebAppStartParam')==='order'){state.opened=true;openIntake();return;} if(!values.length || params.has('assignment') || params.has('assignment_id') || params.get('view')==='partner') return; state.opened=true; openSelection(values.length===1?values[0]:null); }
+  window.UMCSelection={open:openSelection,create:openIntake,rebuildPositions:syncCount,supportsAgreementRecovery:typeof bridge.resumeAgreement === 'function'};
   document.addEventListener('umc:app-ready',ready); if(window.__umcAppReady) ready();
 })();

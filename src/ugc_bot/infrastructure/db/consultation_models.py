@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.domain.order_intake import CONSULTATION_MINOR
 from ugc_bot.infrastructure.db.base import Base
-from ugc_bot.infrastructure.db.browser_checkout_models import checkout_attempts
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    BROWSER_ATTEMPTS,
+    checkout_attempts,
+)
+from ugc_bot.infrastructure.db.order_intake_models import is_combined_checkout
 
 CONSULTATIONS = sa.Table(
     "order_consultations",
@@ -39,13 +43,28 @@ async def consultation_tables_installed(db: AsyncSession) -> bool:
     )
 
 
-def consultation_status(order_id):
-    latest = (
-        sa.select(CONSULTATION_ATTEMPTS.c.state)
-        .where(CONSULTATION_ATTEMPTS.c.order_id == order_id)
-        .order_by(CONSULTATION_ATTEMPTS.c.created_at.desc())
-        .limit(1)
-        .scalar_subquery()
-        .correlate(CONSULTATIONS)
+def combined_consultation_amount(order_id):
+    selected = sa.exists().where(CONSULTATIONS.c.order_id == order_id)
+    return sa.case(
+        (is_combined_checkout(order_id) & selected, CONSULTATION_MINOR), else_=0
     )
-    return sa.func.coalesce(latest, "available")
+
+
+def consultation_status(order_id):
+    def latest(table):
+        return (
+            sa.select(table.c.state)
+            .where(table.c.order_id == order_id)
+            .order_by(table.c.created_at.desc())
+            .limit(1)
+            .scalar_subquery()
+            .correlate(CONSULTATIONS)
+        )
+
+    return sa.func.coalesce(
+        sa.case(
+            (is_combined_checkout(order_id), latest(BROWSER_ATTEMPTS)),
+            else_=latest(CONSULTATION_ATTEMPTS),
+        ),
+        "available",
+    )

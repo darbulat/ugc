@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Request
+from pydantic import Field
 
 from ugc_bot.domain.customer_workflows import SupportInput
 from ugc_bot.miniapp.customer_workflow_api import CustomerWorkflowRoute, context
@@ -12,7 +13,7 @@ from ugc_bot.miniapp.principal import SignedMiniAppRequest
 
 
 class SupportRequest(SignedMiniAppRequest, SupportInput):
-    pass
+    contact_reference: str = Field(default="", min_length=1, max_length=500)
 
 
 class SupportList(SignedMiniAppRequest):
@@ -36,9 +37,14 @@ def create_order_support_router(
         principal, service = await context(
             request, body, resolve, "order_support_service"
         )
+        values = body.model_dump(exclude={"init_data", "platform"})
+        if not values["contact_reference"]:
+            values["contact_reference"] = (
+                f"{principal.platform}:{principal.external_id}"
+            )
         return await service.create(
             principal.user_id,
-            SupportInput(**body.model_dump(exclude={"init_data", "platform"})),
+            SupportInput(**values),
             principal=principal,
         )
 

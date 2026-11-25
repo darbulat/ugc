@@ -7,6 +7,10 @@ from ugc_bot.domain.enums import OrderStatus
 from ugc_bot.domain.order_intake import CONSULTATION_MINOR
 from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.browser_checkout_models import (
+    BROWSER_ATTEMPTS,
+    BROWSER_LINKS,
+)
 from ugc_bot.infrastructure.db.consultation_models import (
     CONSULTATIONS,
     consultation_status,
@@ -21,6 +25,7 @@ from ugc_bot.infrastructure.db.models import (
     OrderModel,
     UserModel,
 )
+from ugc_bot.infrastructure.db.order_intake_models import is_combined_checkout
 from ugc_bot.infrastructure.db.paid_selection_models import INTERESTS, JOBS
 from ugc_bot.infrastructure.db.repositories.creator_transfers import (
     delivery_history,
@@ -221,6 +226,30 @@ class SqlAlchemySelectionViewRepository:
     async def _consultation(db, order, client_id, user_status):
         if not await consultation_tables_installed(db):
             return {}
+        order_id = order["order_id"]
+        active = user_status == "active" and order["status"] not in (
+            OrderStatus.CLOSED,
+            OrderStatus.DELETED,
+        )
+        combined = await db.scalar(select(is_combined_checkout(order_id)))
+        result = {"combined_checkout": True} if combined else {}
+        if combined:
+            paid = await db.scalar(
+                select(
+                    exists().where(
+                        BROWSER_ATTEMPTS.c.order_id == order_id,
+                        BROWSER_ATTEMPTS.c.state == "paid",
+                    )
+                )
+            )
+            result["checkout_paid"] = bool(paid)
+            if active and not paid:
+                result["checkout_token"] = await db.scalar(
+                    select(BROWSER_LINKS.c.token).where(
+                        BROWSER_LINKS.c.order_id == order_id,
+                        BROWSER_LINKS.c.client_id == client_id,
+                    )
+                )
         row = (
             await db.execute(
                 select(
@@ -233,17 +262,12 @@ class SqlAlchemySelectionViewRepository:
             )
         ).one_or_none()
         if row is None:
-            return {}
+            return result
         token, state = row
-        result = {
-            "consultation_minor": CONSULTATION_MINOR,
-            "consultation_state": state,
-        }
-        if (
-            state != "paid"
-            and user_status == "active"
-            and order["status"] not in (OrderStatus.CLOSED, OrderStatus.DELETED)
-        ):
+        result.update(
+            consultation_minor=CONSULTATION_MINOR, consultation_state=state
+        )
+        if state != "paid" and active and not combined:
             result["consultation_token"] = token
         return result
 

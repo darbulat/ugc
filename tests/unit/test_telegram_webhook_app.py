@@ -478,8 +478,17 @@ def test_miniapp_api_register_advertiser_registration_error_400(
     assert "detail" in response.json()
 
 
+@pytest.mark.parametrize(
+    "site, expected",
+    [
+        ("usemycontent.ru", "https://usemycontent.ru"),
+        ("https://usemycontent.com", "https://usemycontent.com"),
+    ],
+)
 def test_miniapp_api_register_advertiser_success(
     client: TestClient,
+    site: str,
+    expected: str,
 ) -> None:
     """Register advertiser with valid data returns 200 and needs_agreement."""
     init_data = _make_valid_init_data("test_token", 99999)
@@ -515,9 +524,14 @@ def test_miniapp_api_register_advertiser_success(
             "init_data": init_data,
             "phone": "+79001234567",
             "brand": "TestBrand",
+            "site_link": site,
         },
     )
     assert response.status_code == 200
+    assert (
+        mock_adv.save_advertiser_before_agreement.await_args.kwargs["site_link"]
+        == expected
+    )
     data = response.json()
     assert data.get("ok") is True
     assert data.get("user_id") == str(user_id)

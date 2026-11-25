@@ -1778,28 +1778,47 @@ async def _confirm_customer_order(
         manager_line += customer_text(
             locale, "customer_consultation_line", amount=consultation_amount
         )
-        payment_note = "\n\n" + customer_text(
-            locale, "customer_consultation_payment_note"
-        )
-        payment_buttons[0][0] = Button(
-            text=customer_text(
-                locale, "customer_consultation_pay_selection", amount=total
-            ),
-            callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
-        )
-        if link := intake.consultation_link(result):
-            payment_buttons.append(
+        if not getattr(result, "combined_checkout", False):
+            payment_note = "\n\n" + customer_text(
+                locale, "customer_consultation_payment_note"
+            )
+            payment_buttons[0][0] = Button(
+                text=customer_text(
+                    locale, "customer_consultation_pay_selection", amount=total
+                ),
+                callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
+            )
+            if link := intake.consultation_link(result):
+                payment_buttons.append(
+                    [
+                        Button(
+                            text=customer_text(
+                                locale,
+                                "customer_consultation_pay",
+                                amount=consultation_amount,
+                            ),
+                            url=link,
+                        )
+                    ]
+                )
+    if getattr(result, "combined_checkout", False):
+        link = intake.checkout_link(result)
+        payment_buttons = (
+            [
                 [
                     Button(
                         text=customer_text(
                             locale,
-                            "customer_consultation_pay",
-                            amount=consultation_amount,
+                            "customer_confirmation_pay",
+                            total=format_rubles(result.project_total_minor),
                         ),
                         url=link,
                     )
                 ]
-            )
+            ]
+            if link
+            else []
+        )
     await messenger.send_text(
         chat_id=incoming.chat_id,
         text=customer_text(

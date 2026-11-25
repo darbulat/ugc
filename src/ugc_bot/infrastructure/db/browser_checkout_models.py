@@ -4,6 +4,9 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.order_intake_models import (
+    combined_receipt_consultation_minor,
+)
 
 ACTIVE_STATES = ("creating", "pending", "review")
 ACTIVE_SQL = "state IN ('creating', 'pending', 'review')"
@@ -111,13 +114,18 @@ def telegram_payment_blocked(order_id):
     return browser_payment_active(order_id) | browser_only(order_id)
 
 
-def browser_capture_matches(order_id, identity, captured_at):
+def browser_capture_matches(
+    order_id, identity, captured_at, *, provider_amount=False
+):
+    amount_minor = identity.get("amount_minor")
+    if not provider_amount and amount_minor is not None:
+        amount_minor += combined_receipt_consultation_minor(order_id)
     return sa.exists().where(
         BROWSER_ATTEMPTS.c.order_id == order_id,
         BROWSER_ATTEMPTS.c.shop_id == identity.get("account"),
         BROWSER_ATTEMPTS.c.invoice_id == identity.get("browser_invoice_id"),
         BROWSER_ATTEMPTS.c.payment_id == identity.get("external_id"),
-        BROWSER_ATTEMPTS.c.amount_minor == identity.get("amount_minor"),
+        BROWSER_ATTEMPTS.c.amount_minor == amount_minor,
         BROWSER_ATTEMPTS.c.captured_at == captured_at,
         BROWSER_ATTEMPTS.c.state == "paid",
     )

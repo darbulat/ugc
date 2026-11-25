@@ -360,8 +360,12 @@ async def test_v1_own_order_list_exposes_real_policy_without_legacy_pay_action(
 
 
 @pytest.mark.asyncio
-async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
-    from datetime import UTC, datetime
+@pytest.mark.parametrize("combined", [False, True])
+async def test_consultation_selection_payment_and_targeted_delivery(
+    intake_env, combined
+):
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
     from unittest.mock import AsyncMock
     from urllib.parse import urlsplit
     from uuid import UUID
@@ -369,12 +373,21 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     from pydantic import SecretStr
     from sqlalchemy import select
 
+    from tests.helpers.correction_approval_pg import ApprovalRuntime
     from ugc_bot.domain.browser_checkout import BrowserInvoice, BrowserPayment
+    from ugc_bot.domain.checkout import CheckoutActor
+    from ugc_bot.infrastructure.db.browser_checkout_models import (
+        BROWSER_ATTEMPTS,
+    )
     from ugc_bot.infrastructure.db.consultation_models import (
         CONSULTATION_ATTEMPTS,
     )
+    from ugc_bot.infrastructure.db.models import OutboxEventModel
     from ugc_bot.infrastructure.db.order_notice_models import (
         CONSULTATION_DELIVERIES,
+    )
+    from ugc_bot.infrastructure.db.repositories.entitlements import (
+        SqlAlchemyClientEntitlementRepository,
     )
 
     env = intake_env
@@ -385,11 +398,17 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     config.financial.yookassa_browser_shop_id = "123"
     config.financial.yookassa_browser_secret_key = SecretStr("synthetic")
     config.financial.yookassa_browser_test_mode = False
+    config.financial.combined_checkout_enabled = combined
+    config.bot.telegram_payment_account_id = "synthetic-telegram-account"
     other_admin = await create_test_user(
-        env["repos"]["user_repo"], external_id="1234567", admin=True
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        admin=True,
     )
     unrelated = await create_test_user(
-        env["repos"]["user_repo"], external_id="7654321", admin=True
+        env["repos"]["user_repo"],
+        external_id=str(uuid4().int % 10**12 + 1),
+        admin=True,
     )
     allowed = frozenset((env["admin"].telegram_id, other_admin.telegram_id))
     config.admin.browser_paid_order_telegram_recipients = allowed
@@ -403,6 +422,8 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
         "accompaniment_ordinals": None,
         "consultation_requested": True,
     }
+    payload.pop("contact_reference")
+    link_key = "checkout_url" if combined else "consultation_url"
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=mobile_app),
         base_url="http://testserver",
@@ -419,12 +440,15 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
         assert result["total_minor"] == 1700000
         assert result["project_total_minor"] == 2200000
         assert result["consultation_minor"] == 500000
-        token = UUID(urlsplit(result["consultation_url"]).fragment)
+        assert result["combined_checkout"] is combined
+        if combined:
+            assert result["consultation_url"] is None
+        token = UUID(urlsplit(result[link_key]).fragment)
         selected = await client.post(
             f"{endpoint}/{result['order_id']}/selection", json=signed
         )
         assert selected.status_code == 200, selected.text
-        assert selected.json()["consultation_url"] == result["consultation_url"]
+        assert selected.json()[link_key] == result[link_key]
         assert (await client.post(endpoint, json=payload)).json() == result
         conflict = await client.post(
             endpoint, json=payload | {"consultation_requested": False}
@@ -434,7 +458,13 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     order_id = UUID(result["order_id"])
     receipt = scoped_rows(env, "order_intake_receipts", order_id)[0]
     assert str(token) not in str(receipt)
-    checkout = container.build_consultation_checkout()
+    lead = scoped_rows(env, "accompaniment_leads", order_id)[0]
+    assert lead["contact_reference"] == f"telegram:{env['user'].telegram_id}"
+    checkout = (
+        container.build_browser_checkout()
+        if combined
+        else container.build_consultation_checkout()
+    )
     invoice_id = f"in-{uuid4()}"
     hosted = "https://yookassa.ru/my/i/consultation"
     payment_id = str(uuid4())
@@ -442,32 +472,44 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     checkout.gateway = gateway
     with pytest.raises(LookupError):
         await checkout.buyer_view(uuid4())
-    assert await checkout.buyer_view(token) == {"state": "available"}
+    if combined:
+        with pytest.raises(LookupError):
+            await container.build_consultation_checkout().buyer_view(token)
+        assert len(scoped_rows(env, "browser_only_orders", order_id)) == 1
+    assert (await checkout.buyer_view(token))["state"] == "available"
     gateway.observe.return_value = BrowserInvoice(invoice_id, "pending", hosted)
     await checkout.start(token, "buyer@example.test")
     attempt = gateway.observe.call_args.args[0]
+    amount_minor = 2200000 if combined else 500000
     assert attempt.request["payment_data"]["amount"] == {
-        "value": "5000.00",
+        "value": "22000.00" if combined else "5000.00",
         "currency": "RUB",
     }
     assert (
         attempt.request["payment_data"]["receipt"]["customer"]["email"]
         == "buyer@example.test"
     )
+    if combined:
+        assert [
+            line["amount"]["value"]
+            for line in attempt.request["payment_data"]["receipt"]["items"]
+        ] == ["5000.00", "12000.00", "5000.00"]
+        assert len(attempt.request["cart"]) == 3
     await checkout.start(token, "buyer@example.test")
     gateway.observe.assert_awaited_once()
     assert (await checkout.buyer_view(token))["url"] == hosted
+    attempts = BROWSER_ATTEMPTS if combined else CONSULTATION_ATTEMPTS
     with Session(env["pg"]) as db, db.begin():
         db.execute(
-            update(CONSULTATION_ATTEMPTS)
-            .where(CONSULTATION_ATTEMPTS.c.order_id == order_id)
+            update(attempts)
+            .where(attempts.c.order_id == order_id)
             .values(next_check_at=datetime.now(UTC))
         )
     gateway.observe.return_value = BrowserInvoice(
         invoice_id,
         "paid",
         payment=BrowserPayment(
-            invoice_id, payment_id, "123", 500000, datetime.now(UTC)
+            invoice_id, payment_id, "123", amount_minor, datetime.now(UTC)
         ),
     )
     assert await checkout.run_once(order_id)
@@ -489,13 +531,61 @@ async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
     )
     assert quote["consultation_state"] == "paid"
     assert quote["total_minor"] == 1700000
-    await checkout.start(token, "buyer@example.test")
+    if combined:
+        assert paid_selection.json()["checkout_paid"] is True
+        assert "checkout_url" not in paid_selection.json()
+        (payment,) = scoped_rows(env, "payments", order_id)
+        assert payment["captured_minor"] == 1700000
+        (attempt,) = scoped_rows(env, "browser_checkout_attempts", order_id)
+        assert attempt["amount_minor"] == 2200000
+        assert attempt["state"] == "paid"
+        assert (
+            scoped_rows(env, "consultation_checkout_attempts", order_id) == []
+        )
+        actor = CheckoutActor(
+            env["user"].user_id, "telegram", env["user"].telegram_id
+        )
+        status = await mobile_app.state.dispatcher["checkout_service"].status(
+            order_id, actor
+        )
+        assert status["capture_state"] == "confirmed"
+        async with container.transaction_manager.transaction() as db:
+            event = await db.scalar(
+                select(OutboxEventModel).where(
+                    OutboxEventModel.aggregate_id == str(order_id),
+                    OutboxEventModel.event_type
+                    == "financial.client_snapshot_requested",
+                )
+            )
+            facts = await SqlAlchemyClientEntitlementRepository().load_capture(
+                event, session=db
+            )
+            assert facts.payment_id == payment["payment_id"]
+        env["clock"].at = datetime.fromisoformat(
+            result["selection_due_at"]
+        ) + timedelta(seconds=1)
+        refund_order = SimpleNamespace(
+            order_id=order_id,
+            items=[
+                SimpleNamespace(paid_item_id=UUID(item["paid_item_id"]))
+                for item in result["items"]
+            ],
+        )
+        refunds = ApprovalRuntime(
+            env, {"order": refund_order, "client": env["user"].user_id}
+        )
+        requested = await refunds.execute(await refunds.request())
+        approved = await refunds.execute(refunds.review(requested))
+        assert approved.get("approval_id")
+    else:
+        await checkout.start(token, "buyer@example.test")
+        assert scoped_rows(env, "payments", order_id) == []
+        assert scoped_rows(env, "financial_obligations", order_id) == []
+        assert (
+            len(scoped_rows(env, "consultation_checkout_attempts", order_id))
+            == 1
+        )
     assert gateway.observe.await_count == 2
-    assert scoped_rows(env, "payments", order_id) == []
-    assert scoped_rows(env, "financial_obligations", order_id) == []
-    assert (
-        len(scoped_rows(env, "consultation_checkout_attempts", order_id)) == 1
-    )
 
     messenger = AsyncMock()
     worker = container.build_consultation_notice_delivery(messenger)

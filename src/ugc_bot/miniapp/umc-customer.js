@@ -79,12 +79,35 @@
     ctx.request(path,pending).then(function(data){if(!ctx.isCurrent())return;localStorage.removeItem(savedKey);state.pending=null;status.textContent=word('sent')+' '+String(data.request_id||'').replace(/-/g,'').slice(-8).toUpperCase();submitButton.hidden=true;}).catch(function(e){if(!ctx.isCurrent())return;status.textContent=word('error');if(!retrying&&(e.status===422||e.status===400)){localStorage.removeItem(savedKey);state.pending=null;form.querySelectorAll('input,textarea,select').forEach(function(n){n.disabled=false;});}else {state.pendingRetry=true;submitButton.textContent=word('retry');}}).finally(function(){if(ctx.isCurrent())submitButton.disabled=false;});
   }
   function beginForm(kind){fresh();state.kind=kind;state.pending=null;state.pendingRetry=false;try{state.pending=JSON.parse(localStorage.getItem(storageKey(kind))||'null');}catch(_){state.pending=null;}state.pendingRetry=!!state.pending;return state.pending;}
-  function openSupport(orderId){
-    state.current=orderId||state.current;var saved=beginForm('support');support.replaceChildren(element('h1',word('problem')),button(word('back'),openOrders));var form=document.createElement('form'),select=document.createElement('select'),status=element('p','', 'hint');select.required=true;select.setAttribute('aria-label',word('chooseOrder'));var hint=element('option',word('chooseOrder'));hint.value='';select.appendChild(hint);form.appendChild(select);
+  function openSupport(orderId,invoice){
+    state.current=orderId||state.current;var saved=beginForm(invoice?'company-invoice':'support');support.replaceChildren(element('h1',invoice?'Счёт для компании':word('problem')),button(word('back'),openOrders));var form=document.createElement('form'),select=document.createElement('select'),status=element('p','', 'hint');select.required=true;select.setAttribute('aria-label',word('chooseOrder'));var hint=element('option',word('chooseOrder'));hint.value='';select.appendChild(hint);form.appendChild(select);
     var desired=saved?saved.order_id:state.current||'',own=state.orders.find(function(o){return o.order_id===desired;});if(desired){var selected=element('option',own?title(own):word('open'));selected.value=desired;select.appendChild(selected);select.value=desired;}
+    if(invoice){select.disabled=true;form.prepend(element('p','Подготовим счёт на '+invoice+' и свяжемся с вами в этом чате.','hint'));}
     var ctx=state.context;request('/orders/list',{page:0,limit:50}).then(function(data){if(!ctx.isCurrent())return;(data.orders||[]).forEach(function(order){var option=Array.from(select.options).find(function(o){return o.value===order.order_id;});if(option)option.textContent=title(order);else{option=element('option',title(order));option.value=order.order_id;select.appendChild(option);}});}).catch(function(){if(ctx.isCurrent()&&!select.value)status.textContent=word('error');});
-    var reason=field(form,'reason',true,'textarea'),contact=field(form,'contact',true),evidence=field(form,'evidence',false,'url');if(saved){reason.value=saved.reason;contact.value=saved.contact_reference;evidence.value=((saved.attachments||[])[0]||{}).reference||'';}var send=element('button',word(saved?'retry':'send'),'btn');send.type='submit';form.append(send,status);if(saved)form.querySelectorAll('input,textarea,select').forEach(function(n){n.disabled=true;});support.appendChild(form);support.appendChild(link(word('help'),'https://usemycontent.ru/safety'));
-    form.addEventListener('submit',function(e){e.preventDefault();submit(form,'support','/customer/support',{order_id:select.value,reason:reason.value,contact_reference:contact.value,attachments:evidence.value?[{reference:evidence.value,label:word('evidence')}]:[]},status,send);});
+    var reason=field(form,'reason',true,'textarea');
+    var contact=invoice?null:field(form,'contact',true);
+    var evidence=invoice?null:field(form,'evidence',false,'url');
+    if(saved) {
+      reason.value=saved.reason;
+      if(contact)contact.value=saved.contact_reference;
+      if(evidence)evidence.value=((saved.attachments||[])[0]||{}).reference||'';
+    } else if(invoice) {
+      reason.value='Прошу выставить счёт для компании по этому заказу на '+invoice+'.';
+    }
+    if(invoice)reason.previousElementSibling.textContent='Комментарий к счёту';
+    var send=element('button',invoice&&!saved?'Запросить счёт':word(saved?'retry':'send'),'btn');
+    send.type='submit';
+    form.append(send,status);
+    if(saved)form.querySelectorAll('input,textarea,select').forEach(function(n){n.disabled=true;});
+    support.appendChild(form);
+    support.appendChild(link(word('help'),'https://usemycontent.ru/safety'));
+    form.addEventListener('submit',function(e) {
+      e.preventDefault();
+      var payload={order_id:select.value,reason:reason.value,attachments:[]};
+      if(contact)payload.contact_reference=contact.value;
+      if(evidence&&evidence.value)payload.attachments.push({reference:evidence.value,label:word('evidence')});
+      submit(form,invoice?'company-invoice':'support','/customer/support',payload,status,send);
+    });
     var history=element('section');support.appendChild(history);function load(){history.replaceChildren();if(!select.value)return;var selectedOrder=select.value;ctx.request('/customer/support/list',{order_id:selectedOrder}).then(function(data){if(selectedOrder!==select.value||!ctx.isCurrent()||!(data.requests||[]).length)return;history.appendChild(element('h2',word('supportStatus')));(data.requests||[]).forEach(function(item){history.appendChild(element('p',word(item.state==='new'?'ticketNew':item.state)+' · '+(item.payload||{}).reason));});}).catch(function(){});}select.addEventListener('change',load);show(support);if(select.value)load();
   }
   function lead(code,serviceTitle){
@@ -141,7 +164,7 @@
   }
   var ordersButton=document.getElementById('btn-show-orders-list');if(ordersButton)ordersButton.addEventListener('click',function(e){e.stopImmediatePropagation();openOrders();},true);
   document.addEventListener('umc:checkout-order',function(e){if(e.detail)state.current=e.detail.order_id||null;});
-  document.getElementById('screen-intake').appendChild(button(word('help'),function(){openSupport(state.current);}));
+  document.getElementById('intake-result').appendChild(button(word('help'),function(){openSupport(state.current);}));
   document.getElementById('screen-selection').append(button(word('problem'),function(){openSupport(state.current);}),button(word('rating'),function(){openRatings(state.current);}),button(word('services'),openServices));
   document.addEventListener('umc:intake-created',function(e){syncFollowupAfterActivity('order_created',e.detail&&e.detail.order_id,e.detail&&e.detail.intent_id);document.getElementById('btn-show-orders-list').textContent=word('orders');homeSummary();});
   document.addEventListener('umc:intake-policy-ready',function(){if(document.getElementById('form-umc-intake').hidden)return;var progress=window.UMCIntakeProgress,intent=progress&&progress.registeredFunnel();if(intent)syncFollowupAfterActivity('brief_opened',null,intent);});
@@ -161,5 +184,5 @@
   function syncFollowupAfterActivity(event,orderId,intentId){var sequence=++followupGeneration,owner=who(),old=document.getElementById('customer-followup');if(old)old.remove();activity(event,orderId,intentId).then(function(saved){if(saved&&sequence===followupGeneration&&owner===who())followup();});}
   function followup(){var sequence=++followupGeneration,ctx=bridge.createRequestContext(),owner=who();ctx.request('/customer/followups/state',{}).then(function(data){if(sequence!==followupGeneration||!ctx.isCurrent()||owner!==who())return;var old=document.getElementById('customer-followup');if(old)old.remove();if(!data||data.opted_out||data.stop_reason)return;var box=element('aside',null,'umc-customer-order');box.id='customer-followup';box.append(button(word(data.next_action==='services'?'services':'returnOrder'),function(){if(data.next_action==='services'){if(data.order_id)openOwnedDestination('services',data.order_id);else openServices();}else if(data.order_id)window.UMCSelection.open(data.order_id);else window.UMCSelection.create();}),button(word('noReminders'),function(){++followupGeneration;var action=bridge.createRequestContext();action.request('/customer/followups/optout',{}).then(function(){if(action.isCurrent()&&owner===who()){++followupGeneration;var current=document.getElementById('customer-followup');if(current)current.replaceChildren(element('p',word('disabled')));}}).catch(function(){if(action.isCurrent())box.appendChild(element('p',word('error')));});}));document.getElementById('screen-advertiser-dashboard').appendChild(box);}).catch(function(){});}
   document.addEventListener('umc:checkout-confirmed',function(){var old=document.getElementById('customer-followup');if(old)old.remove();followup();});
-  window.UMCCustomer={orders:openOrders,services:openServices,support:openSupport,ratings:openRatings};document.addEventListener('umc:app-ready',ready);if(window.__umcAppReady)ready();
+  window.UMCCustomer={orders:openOrders,services:openServices,support:openSupport,companyInvoice:function(orderId,minor,currency){openSupport(orderId,new Intl.NumberFormat((window._me||{}).locale||'ru',{style:'currency',currency:currency}).format(minor/100));},ratings:openRatings};document.addEventListener('umc:app-ready',ready);if(window.__umcAppReady)ready();
 })();

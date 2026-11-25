@@ -23,6 +23,7 @@ from ugc_bot.domain.enums import MessengerType
         "confirmed",
         "pending",
         "browser",
+        "combined",
         "unknown",
     ],
 )
@@ -56,7 +57,9 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         "authorization_id": uuid4() if case == "pending" else None,
         "can_open": case == "pending",
         "invoice_url": "https://t.me/$synthetic_invoice",
-        "reason": "browser_payment_active" if case == "browser" else None,
+        "reason": "browser_payment_active"
+        if case in {"browser", "combined"}
+        else None,
     }
     if case == "rejected":
         repo.prepare.side_effect = ValueError("not payable")
@@ -74,6 +77,16 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         None if case == "missing_coordinator" else checkout,
         config,
         "en",
+        browser_checkout=SimpleNamespace(
+            view=AsyncMock(
+                return_value={
+                    "telegram_disabled": True,
+                    "url": "https://bot.example.test/miniapp/browser-payment.html#test",
+                }
+            )
+        )
+        if case == "combined"
+        else None,
     )
     assert result == (case not in {"legacy", "missing_order"})
     if result:
@@ -91,3 +104,8 @@ async def test_bot_checkout_only_uses_current_v1_coordinator(case):
         assert button.url.startswith("https://t.me/usemycontent?text=")
         assert order_id.hex[:8].upper() in button.url
         assert button.callback_data is None
+    if case == "combined":
+        message = messenger.send_text.await_args.kwargs
+        payment, help_button = message["keyboard"].rows
+        assert payment[0].url.endswith("/miniapp/browser-payment.html#test")
+        assert help_button[0].url.startswith("https://t.me/usemycontent?text=")
