@@ -1,6 +1,7 @@
 """Optional consultation reservations, isolated from creator entitlements."""
 
 import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ugc_bot.domain.order_intake import CONSULTATION_MINOR
 from ugc_bot.infrastructure.db.base import Base
@@ -25,6 +26,17 @@ CONSULTATION_ATTEMPTS = checkout_attempts(
     f"amount_minor = {CONSULTATION_MINOR}",
     reserved_states="state IN ('creating', 'pending', 'review', 'paid')",
 )
+
+
+async def consultation_tables_installed(db: AsyncSession) -> bool:
+    return bool(
+        await db.scalar(
+            sa.text(
+                "SELECT to_regclass('order_consultations') IS NOT NULL "
+                "AND to_regclass('consultation_checkout_attempts') IS NOT NULL"
+            )
+        )
+    )
 
 
 def consultation_status(order_id):

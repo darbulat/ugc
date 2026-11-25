@@ -9,6 +9,7 @@ from ugc_bot.domain.order_intake import CONSULTATION_MINOR
 from ugc_bot.infrastructure.db.consultation_models import (
     CONSULTATIONS,
     consultation_status,
+    consultation_tables_installed,
 )
 from ugc_bot.infrastructure.db.models import OrderItemModel, OrderModel
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
@@ -39,11 +40,13 @@ class SqlAlchemyOrderNoticeDetailsRepository:
                 OrderModel.order_id == order_id
             )
         )
-        consultation = await db.scalar(
-            select(consultation_status(CONSULTATIONS.c.order_id)).where(
-                CONSULTATIONS.c.order_id == order_id
+        consultation = None
+        if await consultation_tables_installed(db):
+            consultation = await db.scalar(
+                select(consultation_status(CONSULTATIONS.c.order_id)).where(
+                    CONSULTATIONS.c.order_id == order_id
+                )
             )
-        )
         return dict(
             consultation_state=consultation,
             consultation_minor=CONSULTATION_MINOR if consultation else 0,

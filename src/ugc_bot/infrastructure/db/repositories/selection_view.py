@@ -10,6 +10,7 @@ from ugc_bot.infrastructure.db.base import Base
 from ugc_bot.infrastructure.db.consultation_models import (
     CONSULTATIONS,
     consultation_status,
+    consultation_tables_installed,
 )
 from ugc_bot.infrastructure.db.invite_handoff_models import STAFF_DELIVERIES
 from ugc_bot.infrastructure.db.models import (
@@ -218,6 +219,8 @@ class SqlAlchemySelectionViewRepository:
 
     @staticmethod
     async def _consultation(db, order, client_id, user_status):
+        if not await consultation_tables_installed(db):
+            return {}
         row = (
             await db.execute(
                 select(
