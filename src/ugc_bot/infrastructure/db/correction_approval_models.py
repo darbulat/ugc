@@ -11,6 +11,10 @@ from ugc_bot.infrastructure.db.browser_checkout_models import (
 from ugc_bot.infrastructure.db.browser_checkout_models import (
     GUARD_SQL as BROWSER_CHECKOUT_GUARDS,
 )
+from ugc_bot.infrastructure.db.consultation_models import (
+    CONSULTATION_ATTEMPTS,
+    CONSULTATIONS,
+)
 from ugc_bot.infrastructure.db.correction_approval_schema import (
     correction_approval_pending_sql,
     correction_approval_tables,
@@ -76,16 +80,26 @@ def install_final_guard(metadata, connection, **kw):
 
             if {table.name for table in HANDOFF_TABLES} <= names:
                 install_invite_handoff_guards(connection.exec_driver_sql)
-                if BROWSER_ATTEMPTS.name in names:
-                    browser = import_module(
-                        "ugc_bot.infrastructure.db.migrations.versions."
-                        "0140_browser_checkout"
-                    )
-                    connection.exec_driver_sql(
-                        browser._authority_sql(browser=True)
-                    )
-                    if BROWSER_ATTEMPTS in kw.get("tables", ()):
-                        connection.exec_driver_sql(BROWSER_CHECKOUT_GUARDS)
+                _install_browser_authority(
+                    connection, names, kw.get("tables", ())
+                )
+
+
+def _install_browser_authority(connection, names, new_tables):
+    if BROWSER_ATTEMPTS.name not in names:
+        return
+    if BROWSER_ATTEMPTS in new_tables:
+        connection.exec_driver_sql(BROWSER_CHECKOUT_GUARDS)
+    if {CONSULTATIONS.name, CONSULTATION_ATTEMPTS.name} <= names:
+        combined = import_module(
+            "ugc_bot.infrastructure.db.migrations.versions.0153_combined_checkout"
+        )
+        combined.install_combined_checkout(connection)
+    else:
+        browser = import_module(
+            "ugc_bot.infrastructure.db.migrations.versions.0140_browser_checkout"
+        )
+        connection.exec_driver_sql(browser._authority_sql(browser=True))
 
 
 sa.event.listen(Base.metadata, "after_create", install_final_guard)

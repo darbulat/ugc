@@ -20,7 +20,7 @@ _COMBINED_PROOF = """b.amount_minor=payment.captured_minor + CASE WHEN EXISTS (
  ) THEN 500000 ELSE 0 END"""
 
 _GUARDS = """
-CREATE FUNCTION guard_checkout_package_amount()
+CREATE OR REPLACE FUNCTION guard_checkout_package_amount()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE expected bigint;
 BEGIN
@@ -42,10 +42,10 @@ BEGIN
  END IF;
  RETURN NEW;
 END $$;
-CREATE TRIGGER browser_package_amount_guard
+CREATE OR REPLACE TRIGGER browser_package_amount_guard
 BEFORE INSERT ON browser_checkout_attempts
 FOR EACH ROW EXECUTE FUNCTION guard_checkout_package_amount();
-CREATE TRIGGER consultation_package_channel_guard
+CREATE OR REPLACE TRIGGER consultation_package_channel_guard
 BEFORE INSERT ON consultation_checkout_attempts
 FOR EACH ROW EXECUTE FUNCTION guard_checkout_package_amount();
 """
@@ -57,13 +57,20 @@ def _previous_authority() -> str:
     )._authority_sql(True)
 
 
-def upgrade() -> None:
+def _authority_sql() -> str:
     previous = _previous_authority()
     if previous.count(_BASE_PROOF) != 1:
         raise RuntimeError("Unexpected browser payment authority")
-    connection = op.get_bind()
-    connection.exec_driver_sql(previous.replace(_BASE_PROOF, _COMBINED_PROOF))
+    return previous.replace(_BASE_PROOF, _COMBINED_PROOF)
+
+
+def install_combined_checkout(connection) -> None:
+    connection.exec_driver_sql(_authority_sql())
     connection.exec_driver_sql(_GUARDS)
+
+
+def upgrade() -> None:
+    install_combined_checkout(op.get_bind())
 
 
 def downgrade() -> None:
