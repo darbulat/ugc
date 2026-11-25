@@ -3816,16 +3816,29 @@ async def _inject_order_quote_details(context, model_view, model) -> None:
         return
     details = await service.for_order(model)
     if details:
-        context["order_quote_details"] = details | {
-            key.removesuffix("_minor") + "_display": format(
-                Decimal(details[key]) / 100, ".2f"
-            )
-            for key in (
-                "selection_base_minor",
-                "accompaniment_minor",
-                "total_minor",
-            )
-        }
+        consultation_minor = details.get("consultation_minor", 0)
+        context["order_quote_details"] = (
+            details
+            | {
+                "consultation_display": format(
+                    Decimal(consultation_minor) / 100, ".2f"
+                ),
+                "project_total_display": format(
+                    Decimal(details["total_minor"] + consultation_minor) / 100,
+                    ".2f",
+                ),
+            }
+            | {
+                key.removesuffix("_minor") + "_display": format(
+                    Decimal(details[key]) / 100, ".2f"
+                )
+                for key in (
+                    "selection_base_minor",
+                    "accompaniment_minor",
+                    "total_minor",
+                )
+            }
+        )
 
 
 async def _handle_order_image_preview(request, auth, container, order_id):

@@ -48,3 +48,11 @@ async def run_enabled(
             interval_seconds=interval_seconds,
             max_iterations=max_iterations,
         )
+
+
+async def run_consultation_notices(container, bot):
+    worker = container.build_consultation_notice_delivery(
+        TelegramMessengerClient(bot, retry_attempts=1)
+    )
+    if worker is not None:
+        await run_loop(worker)

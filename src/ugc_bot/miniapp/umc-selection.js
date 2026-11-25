@@ -155,11 +155,35 @@
     box.appendChild(platforms);
     var formatLabel=node('label'),formatTitle=node('span'),format=document.createElement('select');formatTitle.dataset.targetCopy='13';format.id='intake-order-type';['ugc_only','ugc_plus_placement','stories'].forEach(function(value,index){var option=node('option');option.value=value;if(value==='stories')option.textContent=({ru:'Сторис',en:'Stories',kk:'Сторис',be:'Сторыс',uz:'Stories'})[(window._me||{}).locale]||'Stories';else option.dataset.targetCopy=String(14+index);format.appendChild(option);});formatLabel.append(formatTitle,format);box.appendChild(formatLabel);id('intake-contact-hint').insertAdjacentElement('afterend',box);targetLocalize();}
   targetControls();
+  var consultationCopy = {
+    ru:{consultation:'Разбор запуска UGC', consultationDescription:'До 60 минут на ТЗ, подбор блогеров и план запуска.', consultationPay:'Оплатить консультацию', consultationPaid:'Консультация оплачена', consultationPaymentNote:'Подбор и консультация оплачиваются отдельными платежами.'},
+    en:{consultation:'UGC launch consultation', consultationDescription:'Up to 60 minutes on your brief, creator selection and launch plan.', consultationPay:'Pay for consultation', consultationPaid:'Consultation paid', consultationPaymentNote:'Selection and consultation are paid separately.'},
+    kk:{consultation:'UGC іске қосу бойынша кеңес', consultationDescription:'Техникалық тапсырма, блогерлерді іріктеу және іске қосу жоспары. 60 минутқа дейін.', consultationPay:'Кеңесті төлеу', consultationPaid:'Кеңес төленді', consultationPaymentNote:'Іріктеу мен кеңес бөлек төленеді.'},
+    be:{consultation:'Кансультацыя па запуску UGC', consultationDescription:'Да 60 хвілін на тэхзаданне, выбар блогераў і план запуску.', consultationPay:'Аплаціць кансультацыю', consultationPaid:'Кансультацыя аплачана', consultationPaymentNote:'Падбор і кансультацыя аплачваюцца асобна.'},
+    uz:{consultation:'UGC ishga tushirish bo‘yicha maslahat', consultationDescription:'Texnik topshiriq, blogerlarni tanlash va ishga tushirish rejasi uchun 60 daqiqagacha.', consultationPay:'Maslahat uchun to‘lash', consultationPaid:'Maslahat uchun to‘landi', consultationPaymentNote:'Tanlov va maslahat alohida to‘lanadi.'},
+  };
+  Object.keys(consultationCopy).forEach(function(locale) { Object.assign(copy[locale], consultationCopy[locale]); });
+  function consultationPayment(data) {
+    if(!data.consultation_minor) return null;
+    var c=words(), checkout=node('section','','umc-selection-summary');
+    if(data.consultation_state==='paid') {
+      checkout.appendChild(node('p',c.consultationPaid+' · '+money(data.consultation_minor,data.currency||'RUB')));
+    } else if(safeUrl(data.consultation_url)) {
+      checkout.appendChild(node('p',c.consultationPaymentNote,'hint'));
+      link(checkout,data.consultation_url,c.consultationPay+' · '+money(data.consultation_minor,data.currency||'RUB'));
+      checkout.lastElementChild.className='btn btn-secondary';
+    } else {
+      checkout.appendChild(node('p',c.consultation+' · '+money(data.consultation_minor,data.currency||'RUB')));
+    }
+    return checkout;
+  }
   function selectedPolicy() { return state.policies.find(function(p) { return p.version===id('intake-policy').value; }); }
   function selectedPositions() { if(document.querySelector('input[name="intake-mode"]:checked').value==='self_service') return []; if(id('intake-all-manager').checked) return null; return Array.from(id('intake-position-options').querySelectorAll('input:checked')).map(function(el) { return Number(el.value); }); }
   function preview() {
     var c=words(), p=selectedPolicy(), manager=document.querySelector('input[name="intake-mode"]:checked').value==='with_manager';
     id('intake-manager-options').hidden=!manager; id('intake-positions').hidden=!manager || id('intake-all-manager').checked;
+    id('intake-consultation-option').hidden=!(p&&state.consultationMinor);
+    if(p&&state.consultationMinor) text('intake-consultation-label',c.consultation+' · '+money(state.consultationMinor,p.currency));
     id('intake-terms').hidden=!p; id('intake-preview').hidden=!p;
     if(!p) return;
     var terms=id('intake-terms'); terms.replaceChildren(); link(terms,p.terms_reference,c.published);
@@ -168,7 +192,12 @@
     row(list,c.base,money(p.selection_minor,p.currency)+' × '+positionCount());
     row(list,c.accompaniment,money(p.accompaniment_minor,p.currency)+' / '+c.position.toLowerCase()+' × '+count);
     if(manager) row(list,c.manager,money(Number(p.selection_minor)+Number(p.accompaniment_minor),p.currency)+' / '+c.position.toLowerCase());
-    row(list,c.total,money(Number(p.selection_minor)*positionCount()+Number(p.accompaniment_minor)*count,p.currency)); parent.appendChild(list);if(manager&&count>0)parent.appendChild(node('p',c.paymentTogether,'hint'));
+    var consultation=state.consultationMinor&&id('intake-consultation').checked?state.consultationMinor:0;
+    if(consultation) row(list,c.consultation,money(consultation,p.currency));
+    row(list,c.total,money(Number(p.selection_minor)*positionCount()+Number(p.accompaniment_minor)*count+consultation,p.currency));
+    parent.appendChild(list);
+    if(consultation) parent.appendChild(node('p',c.consultationPaymentNote,'hint'));
+    else if(manager&&count>0) parent.appendChild(node('p',c.paymentTogether,'hint'));
   }
   function storageKey() { var user=(window._me || {}).user_id; if(!validId(user)) throw new Error('missing_authenticated_identity'); return 'umc:intake:'+window.__miniapp_platform+':'+user; }
   function legacyPending(owner) { var raw=sessionStorage.getItem(owner); return raw?JSON.parse(raw):null; }
@@ -203,7 +232,19 @@
     id('form-umc-intake').hidden=true; id('intake-uncertain').hidden=true; id('intake-result').hidden=false;
     text('intake-error',''); text('intake-order-id',[result.public_number,result.public_title||(request&&request.offer_text||'').split('\n')[0].slice(0,120)].filter(Boolean).join(' · '));
     var parent=id('intake-quote'); parent.replaceChildren(); var accompaniment=result.items.reduce(function(total,item) { return total+Number(item.accompaniment_minor); },0);
-    row(parent,words().base+' · '+result.items.length,money(result.selection_base_minor,result.currency)); row(parent,words().accompaniment,money(accompaniment,result.currency)); row(parent,words().total,money(result.total_minor,result.currency),'intake-total',result.total_minor); row(parent,words().due,date(result.selection_due_at));
+    var c=words();
+    row(parent,c.base+' · '+result.items.length,money(result.selection_base_minor,result.currency));
+    row(parent,c.accompaniment,money(accompaniment,result.currency));
+    if(result.consultation_minor) row(parent,c.consultation,money(result.consultation_minor,result.currency));
+    row(parent,c.total,money(result.project_total_minor??result.total_minor,result.currency),'intake-total',result.project_total_minor??result.total_minor);
+    row(parent,c.due,date(result.selection_due_at));
+    var previousConsultation=id('intake-consultation-checkout');
+    if(previousConsultation) previousConsultation.remove();
+    var checkout=consultationPayment(result);
+    if(checkout) {
+      checkout.id='intake-consultation-checkout';
+      parent.insertAdjacentElement('afterend',checkout);
+    }
     text('intake-lead-state',result.lead_id?words().unpaid+' '+words().paymentTogether:words().noLead); id('intake-lead-state').dataset.state=result.lead_id?'requested_unpaid':'self_service';
     var previous=id('intake-components'); if(previous) previous.remove(); var details=node('details'); details.id='intake-components'; details.appendChild(node('summary',words().breakdown));
     result.items.forEach(function(item) { var total=Number(item.selection_minor)+Number(item.accompaniment_minor); var line=node('p',words().position+' '+item.ordinal+': '+money(item.selection_minor,result.currency)+' + '+money(item.accompaniment_minor,result.currency)+' = '+money(total,result.currency)); line.dataset.positionTotal=String(total); details.appendChild(line); }); id('intake-result').appendChild(details); sync();
@@ -278,6 +319,7 @@
       return ctx.request('/financial/orders/policies',{});
     }).then(function(data) {
       if(!ctx.isCurrent()||!data)return;
+      state.consultationMinor=Number(data.consultation_minor)||0;
       state.policies=data.policies || []; id('intake-paused').hidden=!data.writes_paused; text('intake-paused',words().paused); id('intake-empty').hidden=data.writes_paused || state.policies.length>0; text('intake-empty',words().empty);
       var select=id('intake-policy'), old=select.value; select.replaceChildren(); var placeholder=node('option',words().choose); placeholder.value=''; select.appendChild(placeholder);
       state.policies.forEach(function(p) { var option=node('option',p.terms_reference+' · '+date(p.effective_from)); option.value=p.version; select.appendChild(option); }); if(state.policies.some(function(p) { return p.version===old; })) select.value=old; else if(state.policies.length===1)select.value=state.policies[0].version;
@@ -324,6 +366,7 @@
     var p=selectedPolicy(), positions=selectedPositions(), due=new Date(id('intake-due').value), op=key();
     if(!p || !op || isNaN(due.getTime()) || due<=new Date() || (positions!==null && document.querySelector('input[name="intake-mode"]:checked').value==='with_manager' && !positions.length)) { text('intake-error',words().invalid); return; }
     var payload={ position_count:positionCount(), operation_key:'miniapp:intake:'+op, policy_version:p.version, product_link:id('intake-product').value.trim(), offer_text:id('intake-brief').value.trim(), honorarium:Number(id('intake-honorarium').value).toFixed(2), selection_due_at:due.toISOString(), contact_reference:id('intake-contact').value.trim(), service_mode:document.querySelector('input[name="intake-mode"]:checked').value, accompaniment_ordinals:positions };
+    if(state.consultationMinor&&id('intake-consultation').checked) payload.consultation_requested=true;
     if(id('intake-image-token').value) payload.image_token=id('intake-image-token').value;
     payload.order_type=id('intake-order-type').value;var filters=targeting();if(filters)payload.targeting=filters;
     if(window.UMCIntakeProgress&&window.UMCIntakeProgress.funnel())payload.funnel_id=window.UMCIntakeProgress.funnel();
@@ -398,7 +441,7 @@
   function renderSelection(data) {
     document.dispatchEvent(new CustomEvent('umc:checkout-order',{detail:{order_id:data.order_id,target:'screen-selection'}}));
     var c=words(); text('selection-order-id',data.public_number || ''); id('selection-paused').hidden=!data.writes_paused; text('selection-paused',c.readPaused); text('selection-waitlist',c.waitlist+': '+data.waitlist_count);
-    var parent=id('selection-positions'); parent.replaceChildren(); renderHandoffs(data,parent); if(!data.positions.length) parent.appendChild(node('p',c.noPositions,'hint'));
+    var parent=id('selection-positions'); parent.replaceChildren(); var checkout=consultationPayment(data); if(checkout) parent.appendChild(checkout); renderHandoffs(data,parent); if(!data.positions.length) parent.appendChild(node('p',c.noPositions,'hint'));
     data.positions.forEach(function(position) {
       var article=node('article','','umc-selection-position'); article.dataset.position=String(position.ordinal); article.appendChild(node('h2',c.position+' '+position.ordinal));
       article.appendChild(node('p',money(position.selection_minor,position.currency)+' + '+money(position.accompaniment_minor,position.currency),'hint'));

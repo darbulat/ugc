@@ -831,6 +831,9 @@ class FinancialConfig(BaseSettings):
         raise ValueError("tariff_integer_minor_required")
 
     core_enabled: bool = Field(default=False, alias="FINANCIAL_CORE_ENABLED")
+    consultation_enabled: bool = Field(
+        default=False, alias="FINANCIAL_CONSULTATION_ENABLED"
+    )
     new_orders_enabled: bool = Field(
         default=False, alias="FINANCIAL_NEW_ORDERS_ENABLED"
     )

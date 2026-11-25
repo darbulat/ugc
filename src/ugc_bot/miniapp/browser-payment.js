@@ -1,4 +1,5 @@
 (() => {
+  const consultation = new URLSearchParams(location.search).get("service") === "consultation";
   const token = location.hash.slice(1);
   const form = document.getElementById("payment-form");
   const email = document.getElementById("email");
@@ -7,13 +8,14 @@
   const status = document.getElementById("status");
   const error = document.getElementById("error");
   let poll;
+  if (consultation) document.querySelector("h1").textContent = "Консультация по запуску UGC · 5 000 ₽";
 
   const text = {
     available: "",
     creating: "Подготавливаем счёт…",
     pending: "Счёт готов. Завершите оплату в ЮKassa.",
     review: "Проверяем результат оплаты. Обновим статус после сверки.",
-    paid: "Заказ уже оплачен.",
+    paid: consultation ? "Консультация оплачена." : "Заказ уже оплачен.",
     canceled: "Предыдущий счёт закрыт. Можно начать оплату заново.",
     failed: "Счёт пока недоступен. Попробуйте ещё раз.",
     telegram_pending: "Проверяем предыдущую попытку оплаты. Пожалуйста, подождите.",
@@ -41,7 +43,7 @@
       const response = await fetch("./api/browser-payment/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, ...details }),
+        body: JSON.stringify({ token, ...(consultation ? {service: "consultation"} : {}), ...details }),
         cache: "no-store",
       });
       const data = await response.json();

@@ -20,6 +20,9 @@ from ugc_bot.infrastructure.db.repositories.browser_checkout import (
 from ugc_bot.infrastructure.db.repositories.checkout import (
     SqlCheckoutRepository,
 )
+from ugc_bot.infrastructure.db.repositories.consultation_checkout import (
+    SqlConsultationCheckout,
+)
 from ugc_bot.infrastructure.db.repositories.financial_capture import (
     SqlAlchemyFinancialCaptureRepository,
 )
@@ -86,5 +89,44 @@ def build_browser_checkout(config: AppConfig, transactions, repos):
             financial.yookassa_browser_enabled
             and financial.core_enabled
             and financial.new_orders_enabled
+        ),
+    )
+
+
+CONSULTATION_DESCRIPTION = "Консультация по запуску UGC"
+
+
+def consultation_sales_ready(config: AppConfig) -> bool:
+    financial = config.financial
+    return bool(
+        financial.yookassa_browser_enabled
+        and financial.yookassa_browser_shop_id
+        and financial.yookassa_browser_secret_key.get_secret_value().strip()
+        and config.webhook.webhook_base_url.startswith("https://")
+        and len(config.admin.browser_paid_order_telegram_recipients or ()) == 2
+    )
+
+
+def build_consultation_checkout(config: AppConfig, transactions):
+    financial = config.financial
+    shop = financial.yookassa_browser_shop_id
+    secret = financial.yookassa_browser_secret_key.get_secret_value().strip()
+    if transactions is None or not (shop and secret):
+        return None
+    return BrowserCheckoutService(
+        SqlConsultationCheckout(shop, financial.yookassa_browser_test_mode),
+        transactions,
+        YooKassaInvoices(shop, secret, financial.yookassa_browser_test_mode),
+        lambda total, currency: json.loads(
+            build_receipt_provider_data(
+                total, currency, CONSULTATION_DESCRIPTION
+            )
+        )["receipt"],
+        public_base_url=config.webhook.webhook_base_url,
+        can_create=(
+            financial.consultation_enabled
+            and financial.core_enabled
+            and financial.new_orders_enabled
+            and consultation_sales_ready(config)
         ),
     )

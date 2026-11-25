@@ -33,53 +33,66 @@ BROWSER_ONLY_ORDERS = sa.Table(
     sa.Column("switched_at", sa.DateTime(timezone=True), nullable=False),
 )
 
-BROWSER_ATTEMPTS = sa.Table(
-    "browser_checkout_attempts",
-    Base.metadata,
-    sa.Column("attempt_id", sa.Uuid(), primary_key=True),
-    sa.Column(
-        "order_id", sa.Uuid(), sa.ForeignKey("orders.order_id"), nullable=False
-    ),
-    sa.Column("client_id", sa.Uuid(), nullable=False),
-    sa.Column("shop_id", sa.String(64), nullable=False),
-    sa.Column("test_mode", sa.Boolean(), nullable=False),
-    sa.Column("amount_minor", sa.BigInteger(), nullable=False),
-    sa.Column("request", sa.JSON().with_variant(JSONB(), "postgresql")),
-    sa.Column("state", sa.String(16), nullable=False),
-    sa.Column("invoice_id", sa.String(64)),
-    sa.Column("invoice_url", sa.Text()),
-    sa.Column("payment_id", sa.String(64)),
-    sa.Column("captured_at", sa.DateTime(timezone=True)),
-    sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-    sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-    sa.Column("next_check_at", sa.DateTime(timezone=True)),
-    sa.Column("claim_id", sa.Uuid()),
-    sa.Column("lease_until", sa.DateTime(timezone=True)),
-    sa.CheckConstraint(
-        "state IN ('creating', 'pending', 'review', "
-        "'paid', 'canceled', 'failed')",
-        name="ck_browser_checkout_state",
-    ),
-    sa.CheckConstraint("amount_minor > 0", name="ck_browser_checkout_amount"),
-    sa.UniqueConstraint(
-        "shop_id", "invoice_id", name="uq_browser_checkout_invoice"
-    ),
-    sa.UniqueConstraint(
-        "shop_id", "payment_id", name="uq_browser_checkout_payment"
-    ),
-)
-sa.Index(
-    "uq_browser_checkout_active_order",
-    BROWSER_ATTEMPTS.c.order_id,
-    unique=True,
-    postgresql_where=sa.text(ACTIVE_SQL),
-    sqlite_where=sa.text(ACTIVE_SQL),
-)
-sa.Index("ix_browser_checkout_checks", BROWSER_ATTEMPTS.c.next_check_at)
-sa.Index(
-    "ix_browser_checkout_order",
-    BROWSER_ATTEMPTS.c.order_id,
-    BROWSER_ATTEMPTS.c.created_at,
+
+def checkout_attempts(
+    prefix, order_reference, amount_check, *, reserved_states=ACTIVE_SQL
+):
+    table = sa.Table(
+        f"{prefix}_attempts",
+        Base.metadata,
+        sa.Column("attempt_id", sa.Uuid(), primary_key=True),
+        sa.Column(
+            "order_id",
+            sa.Uuid(),
+            sa.ForeignKey(order_reference),
+            nullable=False,
+        ),
+        sa.Column("client_id", sa.Uuid(), nullable=False),
+        sa.Column("shop_id", sa.String(64), nullable=False),
+        sa.Column("test_mode", sa.Boolean(), nullable=False),
+        sa.Column("amount_minor", sa.BigInteger(), nullable=False),
+        sa.Column("request", sa.JSON().with_variant(JSONB(), "postgresql")),
+        sa.Column("state", sa.String(16), nullable=False),
+        sa.Column("invoice_id", sa.String(64)),
+        sa.Column("invoice_url", sa.Text()),
+        sa.Column("payment_id", sa.String(64)),
+        sa.Column("captured_at", sa.DateTime(timezone=True)),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("next_check_at", sa.DateTime(timezone=True)),
+        sa.Column("claim_id", sa.Uuid()),
+        sa.Column("lease_until", sa.DateTime(timezone=True)),
+        sa.CheckConstraint(
+            "state IN ('creating', 'pending', 'review', "
+            "'paid', 'canceled', 'failed')",
+            name=f"ck_{prefix}_state",
+        ),
+        sa.CheckConstraint(amount_check, name=f"ck_{prefix}_amount"),
+        sa.UniqueConstraint(
+            "shop_id", "invoice_id", name=f"uq_{prefix}_invoice"
+        ),
+        sa.UniqueConstraint(
+            "shop_id", "payment_id", name=f"uq_{prefix}_payment"
+        ),
+    )
+    sa.Index(
+        f"uq_{prefix}_active_order",
+        table.c.order_id,
+        unique=True,
+        postgresql_where=sa.text(reserved_states),
+        sqlite_where=sa.text(reserved_states),
+    )
+    sa.Index(f"ix_{prefix}_checks", table.c.next_check_at)
+    sa.Index(
+        f"ix_{prefix}_order",
+        table.c.order_id,
+        table.c.created_at,
+    )
+    return table
+
+
+BROWSER_ATTEMPTS = checkout_attempts(
+    "browser_checkout", "orders.order_id", "amount_minor > 0"
 )
 
 

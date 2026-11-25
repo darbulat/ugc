@@ -357,3 +357,162 @@ async def test_v1_own_order_list_exposes_real_policy_without_legacy_pay_action(
         )
         assert item["financial_version"] == env["policy"]
         assert item["payment_link"] == ""
+
+
+@pytest.mark.asyncio
+async def test_consultation_selection_payment_and_targeted_delivery(intake_env):
+    from datetime import UTC, datetime
+    from unittest.mock import AsyncMock
+    from urllib.parse import urlsplit
+    from uuid import UUID
+
+    from pydantic import SecretStr
+    from sqlalchemy import select
+
+    from ugc_bot.domain.browser_checkout import BrowserInvoice, BrowserPayment
+    from ugc_bot.infrastructure.db.consultation_models import (
+        CONSULTATION_ATTEMPTS,
+    )
+    from ugc_bot.infrastructure.db.order_notice_models import (
+        CONSULTATION_DELIVERIES,
+    )
+
+    env = intake_env
+    config = env["config"]
+    container = env["container"]
+    config.webhook.webhook_base_url = "https://bot.example.test"
+    config.financial.yookassa_browser_enabled = True
+    config.financial.yookassa_browser_shop_id = "123"
+    config.financial.yookassa_browser_secret_key = SecretStr("synthetic")
+    config.financial.yookassa_browser_test_mode = False
+    other_admin = await create_test_user(
+        env["repos"]["user_repo"], external_id="1234567", admin=True
+    )
+    unrelated = await create_test_user(
+        env["repos"]["user_repo"], external_id="7654321", admin=True
+    )
+    allowed = frozenset((env["admin"].telegram_id, other_admin.telegram_id))
+    config.admin.browser_paid_order_telegram_recipients = allowed
+    config.admin.business_order_telegram_recipients = allowed | {
+        unrelated.telegram_id
+    }
+    mobile_app = app(env, container)
+    endpoint = "/miniapp/api/financial/orders"
+    payload = body(env) | {
+        "position_count": 10,
+        "accompaniment_ordinals": None,
+        "consultation_requested": True,
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=mobile_app),
+        base_url="http://testserver",
+    ) as client:
+        assert (await client.post(endpoint, json=payload)).status_code == 400
+        ready = mobile_app.state.dispatcher["order_intake_service"]
+        ready.config.consultation_enabled = True
+        signed = {key: payload[key] for key in ("init_data", "platform")}
+        policies = await client.post(endpoint + "/policies", json=signed)
+        assert policies.json()["consultation_minor"] == 500000
+        response = await client.post(endpoint, json=payload)
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result["total_minor"] == 1700000
+        assert result["project_total_minor"] == 2200000
+        assert result["consultation_minor"] == 500000
+        token = UUID(urlsplit(result["consultation_url"]).fragment)
+        selected = await client.post(
+            f"{endpoint}/{result['order_id']}/selection", json=signed
+        )
+        assert selected.status_code == 200, selected.text
+        assert selected.json()["consultation_url"] == result["consultation_url"]
+        assert (await client.post(endpoint, json=payload)).json() == result
+        conflict = await client.post(
+            endpoint, json=payload | {"consultation_requested": False}
+        )
+        assert conflict.status_code == 409
+
+    order_id = UUID(result["order_id"])
+    receipt = scoped_rows(env, "order_intake_receipts", order_id)[0]
+    assert str(token) not in str(receipt)
+    checkout = container.build_consultation_checkout()
+    invoice_id = f"in-{uuid4()}"
+    hosted = "https://yookassa.ru/my/i/consultation"
+    payment_id = str(uuid4())
+    gateway = AsyncMock()
+    checkout.gateway = gateway
+    with pytest.raises(LookupError):
+        await checkout.buyer_view(uuid4())
+    assert await checkout.buyer_view(token) == {"state": "available"}
+    gateway.observe.return_value = BrowserInvoice(invoice_id, "pending", hosted)
+    await checkout.start(token, "buyer@example.test")
+    attempt = gateway.observe.call_args.args[0]
+    assert attempt.request["payment_data"]["amount"] == {
+        "value": "5000.00",
+        "currency": "RUB",
+    }
+    assert (
+        attempt.request["payment_data"]["receipt"]["customer"]["email"]
+        == "buyer@example.test"
+    )
+    await checkout.start(token, "buyer@example.test")
+    gateway.observe.assert_awaited_once()
+    assert (await checkout.buyer_view(token))["url"] == hosted
+    with Session(env["pg"]) as db, db.begin():
+        db.execute(
+            update(CONSULTATION_ATTEMPTS)
+            .where(CONSULTATION_ATTEMPTS.c.order_id == order_id)
+            .values(next_check_at=datetime.now(UTC))
+        )
+    gateway.observe.return_value = BrowserInvoice(
+        invoice_id,
+        "paid",
+        payment=BrowserPayment(
+            invoice_id, payment_id, "123", 500000, datetime.now(UTC)
+        ),
+    )
+    assert await checkout.run_once(order_id)
+    assert (await checkout.buyer_view(token))["state"] == "paid"
+    order = await env["repos"]["order_repo"].get_by_id(order_id)
+    quote = await container.build_order_notice_details_service().for_order(
+        order
+    )
+    assert quote["consultation_state"] == "paid"
+    assert quote["total_minor"] == 1700000
+    await checkout.start(token, "buyer@example.test")
+    assert gateway.observe.await_count == 2
+    assert scoped_rows(env, "payments", order_id) == []
+    assert scoped_rows(env, "financial_obligations", order_id) == []
+    assert (
+        len(scoped_rows(env, "consultation_checkout_attempts", order_id)) == 1
+    )
+
+    messenger = AsyncMock()
+    worker = container.build_consultation_notice_delivery(messenger)
+    for _ in range(4):
+        assert await worker.run_once()
+    assert not await worker.run_once()
+    with Session(env["pg"]) as db:
+        deliveries = (
+            db.execute(
+                select(CONSULTATION_DELIVERIES).where(
+                    CONSULTATION_DELIVERIES.c.order_id == order_id
+                )
+            )
+            .mappings()
+            .all()
+        )
+    assert {
+        (row["event_kind"], row["recipient"], row["state"])
+        for row in deliveries
+    } == {
+        (kind, recipient, "sent")
+        for kind in ("created", "paid")
+        for recipient in allowed
+    }
+    assert {
+        call.kwargs["chat_id"] for call in messenger.send_text.await_args_list
+    } == allowed
+    assert all(
+        str(token) not in call.kwargs["text"]
+        for call in messenger.send_text.await_args_list
+    )

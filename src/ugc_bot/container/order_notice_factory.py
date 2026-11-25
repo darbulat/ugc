@@ -256,3 +256,76 @@ def build_order_notice_delivery(
         recipients,
         prepares_before_send=True,
     )
+
+
+def build_consultation_notice_delivery(
+    config: AppConfig,
+    transactions: TransactionManager,
+    messenger_client: MessengerClient,
+    repos: Mapping[str, Any],
+) -> OrderNoticeDelivery:
+    from ugc_bot.application.services.admin_notification_service import (
+        order_admin_url,
+    )
+    from ugc_bot.domain.order_intake import CONSULTATION_MINOR
+    from ugc_bot.infrastructure.db.repositories.consultation_checkout import (
+        consultation_notices,
+    )
+
+    roles = UserRoleService(user_repo=repos["user_repo"])
+    repository = consultation_notices()
+    recipient_ids = (
+        config.admin.browser_paid_order_telegram_recipients or frozenset()
+    )
+
+    async def recipients() -> tuple[str, ...]:
+        admins = await business_order_admins(roles, recipient_ids)
+        addresses = tuple(
+            user.telegram_id.strip() for user in admins if user.telegram_id
+        )
+        return addresses if len(addresses) == len(recipient_ids) == 2 else ()
+
+    async def prepare_and_send(job: OrderNoticeJob, tracked: Any) -> None:
+        order = await repos["order_repo"].get_by_id(job.order_id)
+        if order is None:
+            raise DeliveryFailure("order_notice_order_missing", uncertain=False)
+        if job.recipient not in await recipients():
+            raise DeliveryFailure(
+                "order_notice_recipient_ineligible", uncertain=False
+            )
+        payment = (
+            "оплачена" if job.event_kind == "paid" else "добавлена к заказу"
+        )
+        amount = f"{CONSULTATION_MINOR // 100:,}".replace(",", " ")
+        text = (
+            f"Консультация UMC · {payment}\n"
+            f"Заказ №{job.order_id.hex[:8].upper()} · {amount} ₽\n"
+            f"Разбор запуска, ТЗ и критериев подбора блогеров, до 60 минут."
+        )
+        if link := order_admin_url(config.admin.admin_base_url, order):
+            text += f"\n\n{link}"
+        try:
+            await tracked.send_text(
+                chat_id=job.recipient, text=text, disable_preview=True
+            )
+        except Exception as exc:
+            _raise_classified_telegram_error(exc)
+
+    async def send(job: OrderNoticeJob) -> None:
+        async def begin() -> None:
+            async with transactions.transaction() as session:
+                started = await repository.begin(
+                    job, datetime.now(timezone.utc), session=session
+                )
+            if not started:
+                raise DeliveryFailure(
+                    "order_notice_lease_lost", uncertain=False
+                )
+
+        await _send_with_boundary(
+            job, messenger_client, prepare_and_send, begin
+        )
+
+    return OrderNoticeDelivery(
+        repository, transactions, send, recipients, prepares_before_send=True
+    )

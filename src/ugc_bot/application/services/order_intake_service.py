@@ -3,7 +3,7 @@
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from typing import Any
-from uuid import UUID, uuid5
+from uuid import UUID, uuid4, uuid5
 
 from ugc_bot.application.financial_ports import Clock
 from ugc_bot.application.native_principal_ports import (
@@ -19,12 +19,14 @@ from ugc_bot.application.services.financial_policy_service import (
 from ugc_bot.application.services.order_image_service import OrderImageService
 from ugc_bot.application.services.order_service import OrderService
 from ugc_bot.config import FinancialConfig
+from ugc_bot.domain.browser_checkout import CONSULTATION_PAYMENT_PATH
 from ugc_bot.domain.financial import utc
 from ugc_bot.domain.financial_policy_versions import (
     PILOT_POLICY_VERSION,
     PUBLIC_POLICY_VERSION,
 )
 from ugc_bot.domain.order_intake import (
+    CONSULTATION_MINOR,
     AccompanimentLead,
     EligibleOrderPolicies,
     EligibleOrderPolicy,
@@ -68,6 +70,63 @@ class OrderIntakeService:
     clock: Clock
     config: FinancialConfig
     image_service: OrderImageService | None = None
+    consultation_public_base_url: str = ""
+    consultation_payment_ready: bool = False
+
+    @property
+    def consultation_available(self) -> bool:
+        return (
+            self.consultation_payment_ready and self.config.consultation_enabled
+        )
+
+    def consultation_link(self, result: OrderIntakeResult) -> str | None:
+        return self._consultation_link(result.consultation_token)
+
+    def _consultation_link(self, token: UUID | None) -> str | None:
+        if not token or not self.consultation_public_base_url:
+            return None
+        return (
+            f"{self.consultation_public_base_url}{CONSULTATION_PAYMENT_PATH}"
+            f"#{token}"
+        )
+
+    async def consultation_for_order(
+        self,
+        order_id: UUID,
+        client_id: UUID,
+        *,
+        principal: AuthenticatedMessengerPrincipal,
+    ) -> dict | None:
+        async with self.transactions.transaction() as session:
+            client = await self.repository.lock_client(
+                client_id, session=session
+            )
+            require_current_principal(
+                principal,
+                client_id,
+                client.client_id if client else None,
+                client.telegram_id if client else None,
+                client.max_id if client else None,
+            )
+            if (
+                client is None
+                or client.status != "active"
+                or not client.is_advertiser
+            ):
+                return None
+            stored = await self.repository.get_consultation(
+                order_id, client_id, session=session
+            )
+        if stored is None:
+            return None
+        token, state = stored
+        return {
+            "consultation_minor": CONSULTATION_MINOR,
+            "consultation_state": state,
+            "consultation_url": self._consultation_link(token)
+            if state != "paid"
+            else None,
+        }
 
     async def eligible_policies(
         self,
@@ -144,6 +203,11 @@ class OrderIntakeService:
                 paused,
                 tuple(result),
                 funnel_tracking=True if result else None,
+                consultation_minor=(
+                    CONSULTATION_MINOR
+                    if result and self.consultation_available
+                    else None
+                ),
             )
 
     async def create(
@@ -185,6 +249,11 @@ class OrderIntakeService:
                     raise ValueError("idempotency_payload_conflict")
                 return previous.result
             self._require_new_order_allowed(client)
+            if (
+                command.consultation_requested
+                and not self.consultation_available
+            ):
+                raise ValueError("consultation_unavailable")
             if command.policy_version == PILOT_POLICY_VERSION:
                 # Coordinate with publication of the replacement version.
                 await self.policies.lock_version(
@@ -245,6 +314,12 @@ class OrderIntakeService:
                     for i in quote.items
                 ),
                 lead_id,
+                consultation_minor=CONSULTATION_MINOR
+                if command.consultation_requested
+                else 0,
+                consultation_token=uuid4()
+                if command.consultation_requested
+                else None,
                 targeting=(
                     command.targeting.payload()
                     | {"platforms": list(command.targeting.platforms)}

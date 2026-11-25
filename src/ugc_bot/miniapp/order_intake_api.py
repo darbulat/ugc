@@ -7,7 +7,14 @@ from typing import Literal, Self, cast
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StrictInt,
+    model_validator,
+)
 
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
@@ -69,6 +76,7 @@ class OrderIntakeRequest(SignedMiniAppRequest):
     targeting: IntakeTargeting | None = None
     funnel_id: UUID | None = None
     image_token: UUID | None = None
+    consultation_requested: StrictBool = False
 
     @model_validator(mode="after")
     def unique_positions(self) -> Self:
@@ -98,6 +106,9 @@ class OrderIntakeResponse(BaseModel):
     targeting: dict | None = None
     total_minor: int
     selection_base_minor: int
+    consultation_minor: int = 0
+    project_total_minor: int
+    consultation_url: str | None = None
 
 
 async def _context(request, body, resolve):
@@ -184,6 +195,10 @@ def create_order_intake_router(
             public_number=public_order_number(result.order_id),
             total_minor=result.total_minor,
             selection_base_minor=result.selection_base_minor,
+            project_total_minor=result.project_total_minor,
+            consultation_url=service.consultation_link(result)
+            if result.consultation_token
+            else None,
         )
 
     return router

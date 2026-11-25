@@ -12,6 +12,7 @@ from ugc_bot.miniapp.api import router
 from ugc_bot.telegram_webhook_app import _init_browser_checkout
 
 
+@pytest.mark.parametrize("service", [None, "consultation"])
 @pytest.mark.parametrize(
     "route, failure, status, state",
     [
@@ -41,6 +42,7 @@ from ugc_bot.telegram_webhook_app import _init_browser_checkout
 )
 def test_bearer_link_checkout_does_not_require_messenger_session(
     route,
+    service,
     failure,
     status,
     state,
@@ -58,7 +60,10 @@ def test_bearer_link_checkout_does_not_require_messenger_session(
     app = FastAPI()
     app.include_router(router, prefix="/miniapp")
     container = SimpleNamespace(
-        build_browser_checkout=Mock(return_value=checkout)
+        build_browser_checkout=Mock(return_value=None if service else checkout),
+        build_consultation_checkout=Mock(
+            return_value=checkout if service else None
+        ),
     )
     config = AppConfig.model_validate(
         {"BOT_TOKEN": "synthetic", "YOOKASSA_BROWSER_SHOP_ID": "123"}
@@ -67,7 +72,11 @@ def test_bearer_link_checkout_does_not_require_messenger_session(
     client = TestClient(app)
     response = client.post(
         f"/miniapp/api/browser-payment/{route}",
-        json={"token": str(token), "email": "buyer@example.test"},
+        json={
+            "token": str(token),
+            "email": "buyer@example.test",
+            "service": service,
+        },
     )
     assert response.status_code == status
     assert response.headers["cache-control"] == "no-store"

@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlsplit
 
+BROWSER_PAGE_PATH = "/miniapp/browser-payment.html"
+CONSULTATION_PAYMENT_PATH = f"{BROWSER_PAGE_PATH}?service=consultation"
+
 BROWSER_PROVIDER = "yookassa_browser"
 BROWSER_CAPTURE_SOURCE = "yookassa.payment.captured_at"
 

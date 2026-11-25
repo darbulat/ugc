@@ -7,11 +7,13 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from ugc_bot.application.errors import OrderCreationError
-from ugc_bot.domain.browser_checkout import InvoiceRejected, InvoiceUnavailable
+from ugc_bot.domain.browser_checkout import (
+    BROWSER_PAGE_PATH,
+    InvoiceRejected,
+    InvoiceUnavailable,
+)
 
 logger = logging.getLogger(__name__)
-
-BROWSER_PAGE_PATH = "/miniapp/browser-payment.html"
 
 
 class BrowserCheckoutService:

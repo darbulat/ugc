@@ -41,6 +41,10 @@ class OrderIntakeRepository(Protocol):
         self, client_id: UUID, operation_key: str, *, session: object
     ) -> OrderIntakeReceipt | None: ...
 
+    async def get_consultation(
+        self, order_id: UUID, client_id: UUID, *, session: object
+    ) -> tuple[UUID | None, str] | None: ...
+
     async def save(
         self,
         receipt: OrderIntakeReceipt,

@@ -5,6 +5,11 @@ from uuid import UUID
 from sqlalchemy import select
 
 from ugc_bot.domain.financial import utc
+from ugc_bot.domain.order_intake import CONSULTATION_MINOR
+from ugc_bot.infrastructure.db.consultation_models import (
+    CONSULTATIONS,
+    consultation_status,
+)
 from ugc_bot.infrastructure.db.models import OrderItemModel, OrderModel
 from ugc_bot.infrastructure.db.repositories.financial_items import _session
 
@@ -34,7 +39,14 @@ class SqlAlchemyOrderNoticeDetailsRepository:
                 OrderModel.order_id == order_id
             )
         )
+        consultation = await db.scalar(
+            select(consultation_status(CONSULTATIONS.c.order_id)).where(
+                CONSULTATIONS.c.order_id == order_id
+            )
+        )
         return dict(
+            consultation_state=consultation,
+            consultation_minor=CONSULTATION_MINOR if consultation else 0,
             user_id=owner,
             contact_reference=snapshot["client_contact_reference"],
             format="with_manager" if count else "self_service",
