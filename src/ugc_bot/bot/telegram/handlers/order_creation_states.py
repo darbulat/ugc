@@ -74,6 +74,7 @@ class OrderCreationStates(StatesGroup):
     platforms = State()
     accompaniment = State()
     accompaniment_choice = State()
+    consultation_choice = State()
 
 
 def order_type_keyboard(

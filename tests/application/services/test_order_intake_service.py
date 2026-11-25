@@ -98,3 +98,20 @@ def test_normalized_equivalent_click_has_same_economic_hash():
     assert original.payload_hash == changed.payload_hash
     assert original.request_id == changed.request_id
     assert original.order_id == changed.order_id
+
+
+def test_consultation_is_optional_and_bound_to_the_intake_operation():
+    from ugc_bot.domain.order_intake import OrderIntakeCommand
+
+    details = values()
+    original = OrderIntakeCommand(**details)
+    explicit_no = OrderIntakeCommand(**details, consultation_requested=False)
+    with_consultation = OrderIntakeCommand(
+        **details, consultation_requested=True
+    )
+    assert explicit_no.payload_hash == original.payload_hash
+    assert with_consultation.payload_hash != original.payload_hash
+    assert with_consultation.legacy_payload_hash != original.legacy_payload_hash
+    assert with_consultation.request_id == original.request_id
+    with pytest.raises(ValueError, match="invalid_consultation_selection"):
+        OrderIntakeCommand(**details, consultation_requested="false")

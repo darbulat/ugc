@@ -38,12 +38,100 @@ def unresolved_telegram_payment(order_id):
     ) | exists().where(INBOX.c.order_id == order_id)
 
 
-class SqlBrowserCheckout:
-    def __init__(self, capture, telegram_account, shop_id, test_mode, notices):
-        self.capture = capture
-        self.telegram_account = telegram_account
+def invoice_request(
+    order_id,
+    attempt_id,
+    total,
+    currency,
+    expires_at,
+    email,
+    receipt,
+    description,
+):
+    amount = {"value": f"{total:.2f}", "currency": currency}
+    metadata = {"order_id": str(order_id), "attempt_id": str(attempt_id)}
+    return {
+        "payment_data": {
+            "amount": amount,
+            "capture": True,
+            "description": description,
+            "metadata": metadata,
+            "receipt": receipt(total, currency)
+            | {"customer": {"email": email}},
+        },
+        "cart": [{"description": description, "price": amount, "quantity": 1}],
+        "delivery_method_data": {"type": "self"},
+        "locale": "ru_RU",
+        "expires_at": expires_at.isoformat(),
+        "description": description,
+        "metadata": metadata,
+    }
+
+
+def invoice_outcome(claim, invoice, state):
+    state = invoice.state if invoice else state or claim.state
+    values = {
+        "claim_id": None,
+        "lease_until": None,
+        "next_check_at": (
+            datetime.now(timezone.utc)
+            + timedelta(seconds=20 if invoice else 60)
+            if state in ACTIVE_STATES
+            else None
+        ),
+        "state": state,
+    }
+    if invoice:
+        values.update(
+            invoice_id=invoice.invoice_id, invoice_url=invoice.url, request=None
+        )
+    if state not in ACTIVE_STATES:
+        values["request"] = None
+    return values
+
+
+class BrowserAttemptClaims:
+    def __init__(self, attempts, shop_id, test_mode):
+        self.attempts = attempts
         self.shop_id = shop_id
         self.test_mode = test_mode
+
+    async def claim(self, order_id, *, session):
+        db = _session(session)
+        table = self.attempts
+        now = datetime.now(timezone.utc)
+        query = (
+            select(table)
+            .where(
+                table.c.state.in_(ACTIVE_STATES),
+                table.c.shop_id == self.shop_id,
+                table.c.test_mode == self.test_mode,
+                table.c.next_check_at <= now,
+                (table.c.lease_until.is_(None) | (table.c.lease_until <= now)),
+            )
+            .order_by(table.c.next_check_at, table.c.attempt_id)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+        )
+        if order_id is not None:
+            query = query.where(table.c.order_id == order_id)
+        row = (await db.execute(query)).mappings().one_or_none()
+        if row is None:
+            return None
+        claim_id = uuid4()
+        await db.execute(
+            update(table)
+            .where(table.c.attempt_id == row.attempt_id)
+            .values(lease_until=now + timedelta(seconds=45), claim_id=claim_id)
+        )
+        return SimpleNamespace(**(dict(row) | {"claim_id": claim_id}))
+
+
+class SqlBrowserCheckout(BrowserAttemptClaims):
+    def __init__(self, capture, telegram_account, shop_id, test_mode, notices):
+        super().__init__(ATTEMPTS, shop_id, test_mode)
+        self.capture = capture
+        self.telegram_account = telegram_account
         self.notices = notices
 
     async def offer(
@@ -232,9 +320,6 @@ class SqlBrowserCheckout:
         )
         await self._require_unpaid_quote(db, order_id, total, currency)
         attempt_id = uuid4()
-        amount = {"value": f"{total:.2f}", "currency": currency}
-        metadata = {"order_id": str(order_id), "attempt_id": str(attempt_id)}
-        description = f"Услуги UMC · заказ №{order_id.hex[:8].upper()}"
         await db.execute(
             insert(ATTEMPTS).values(
                 attempt_id=attempt_id,
@@ -243,28 +328,16 @@ class SqlBrowserCheckout:
                 shop_id=self.shop_id,
                 test_mode=self.test_mode,
                 amount_minor=int(total * Decimal(100)),
-                request={
-                    "payment_data": {
-                        "amount": amount,
-                        "capture": True,
-                        "description": description,
-                        "metadata": metadata,
-                        "receipt": receipt(total, currency)
-                        | {"customer": {"email": email}},
-                    },
-                    "cart": [
-                        {
-                            "description": description,
-                            "price": amount,
-                            "quantity": 1,
-                        }
-                    ],
-                    "delivery_method_data": {"type": "self"},
-                    "locale": "ru_RU",
-                    "expires_at": expires_at.isoformat(),
-                    "description": description,
-                    "metadata": metadata,
-                },
+                request=invoice_request(
+                    order_id,
+                    attempt_id,
+                    total,
+                    currency,
+                    expires_at,
+                    email,
+                    receipt,
+                    f"Услуги UMC · заказ №{order_id.hex[:8].upper()}",
+                ),
                 state="creating",
                 created_at=now,
                 expires_at=expires_at,
@@ -292,38 +365,6 @@ class SqlBrowserCheckout:
         ):
             raise OrderCreationError("browser_payment_quote_not_unpaid")
 
-    async def claim(self, order_id, *, session):
-        db = _session(session)
-        now = datetime.now(timezone.utc)
-        query = (
-            select(ATTEMPTS)
-            .where(
-                ATTEMPTS.c.state.in_(ACTIVE_STATES),
-                ATTEMPTS.c.shop_id == self.shop_id,
-                ATTEMPTS.c.test_mode == self.test_mode,
-                ATTEMPTS.c.next_check_at <= now,
-                (
-                    ATTEMPTS.c.lease_until.is_(None)
-                    | (ATTEMPTS.c.lease_until <= now)
-                ),
-            )
-            .order_by(ATTEMPTS.c.next_check_at, ATTEMPTS.c.attempt_id)
-            .limit(1)
-            .with_for_update(skip_locked=True)
-        )
-        if order_id is not None:
-            query = query.where(ATTEMPTS.c.order_id == order_id)
-        row = (await db.execute(query)).mappings().one_or_none()
-        if row is None:
-            return None
-        claim_id = uuid4()
-        await db.execute(
-            update(ATTEMPTS)
-            .where(ATTEMPTS.c.attempt_id == row.attempt_id)
-            .values(lease_until=now + timedelta(seconds=45), claim_id=claim_id)
-        )
-        return SimpleNamespace(**(dict(row) | {"claim_id": claim_id}))
-
     async def finish(
         self, claim, invoice: BrowserInvoice | None, state=None, *, session
     ):
@@ -343,27 +384,7 @@ class SqlBrowserCheckout:
         )
         if result.scalar_one_or_none() is None:
             return
-        if invoice is not None:
-            state = invoice.state
-        values = {
-            "claim_id": None,
-            "lease_until": None,
-            "next_check_at": (
-                datetime.now(timezone.utc)
-                + timedelta(seconds=20 if invoice else 60)
-                if (state or claim.state) in ACTIVE_STATES
-                else None
-            ),
-            "state": state or claim.state,
-        }
-        if invoice:
-            values.update(
-                invoice_id=invoice.invoice_id,
-                invoice_url=invoice.url,
-                request=None,
-            )
-        if state not in ACTIVE_STATES and state is not None:
-            values["request"] = None
+        values = invoice_outcome(claim, invoice, state)
         if invoice and invoice.payment:
             proof = invoice.payment
             if (

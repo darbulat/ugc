@@ -3,9 +3,21 @@
 from dataclasses import dataclass
 from datetime import datetime
 from urllib.parse import urlsplit
+from uuid import UUID
+
+BROWSER_PAGE_PATH = "/miniapp/browser-payment.html"
+CONSULTATION_PAYMENT_PATH = f"{BROWSER_PAGE_PATH}?service=consultation"
 
 BROWSER_PROVIDER = "yookassa_browser"
 BROWSER_CAPTURE_SOURCE = "yookassa.payment.captured_at"
+
+
+def consultation_payment_url(
+    public_base_url: str, token: UUID | None
+) -> str | None:
+    if token is None or not public_base_url:
+        return None
+    return f"{public_base_url}{CONSULTATION_PAYMENT_PATH}#{token}"
 
 
 @dataclass(frozen=True)

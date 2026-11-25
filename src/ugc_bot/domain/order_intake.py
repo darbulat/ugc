@@ -12,6 +12,8 @@ from ugc_bot.domain.enums import OrderType
 from ugc_bot.domain.financial import utc
 from ugc_bot.domain.order_targeting import OrderTargeting
 
+CONSULTATION_MINOR = 500_000
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class OrderIntakeCommand:
@@ -31,6 +33,7 @@ class OrderIntakeCommand:
     targeting: OrderTargeting | None = None
     funnel_id: UUID | None = None
     image_token: UUID | None = None
+    consultation_requested: bool = False
 
     def __post_init__(self) -> None:
         if self.image_token is not None and (
@@ -90,6 +93,8 @@ class OrderIntakeCommand:
         )
 
     def _positions(self) -> frozenset[int]:
+        if type(self.consultation_requested) is not bool:
+            raise ValueError("invalid_consultation_selection")
         if self.service_mode not in ("self_service", "with_manager"):
             raise ValueError("invalid_service_mode")
         selected = self.accompaniment_ordinals
@@ -144,6 +149,8 @@ class OrderIntakeCommand:
             payload["position_count"] = self.position_count
             if self.image_token is not None:
                 payload["image_token"] = str(self.image_token)
+        if self.consultation_requested:
+            payload["consultation_requested"] = True
         if self.funnel_id is not None:
             payload["funnel_id"] = str(self.funnel_id)
         if self.targeting is not None:
@@ -176,6 +183,12 @@ class OrderIntakeResult:
     lead_id: UUID | None
     honorarium_payment: Literal["paid_direct"] = "paid_direct"
     targeting: dict | None = None
+    consultation_minor: int = 0
+    consultation_token: UUID | None = None
+
+    @property
+    def project_total_minor(self) -> int:
+        return self.total_minor + self.consultation_minor
 
     @property
     def total_minor(self) -> int:
@@ -242,3 +255,4 @@ class EligibleOrderPolicies:
     writes_paused: bool
     policies: tuple[EligibleOrderPolicy, ...]
     funnel_tracking: bool | None = None
+    consultation_minor: int | None = None

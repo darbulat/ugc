@@ -21,6 +21,7 @@ from ugc_bot.domain.social import ORDER_TARGET_PLATFORMS, SocialPlatform
 
 IMAGE_REQUIREMENTS = "JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт)"
 ACCOMPANIMENT_CALLBACK_PREFIX = "order:manager:"
+CONSULTATION_CALLBACK_PREFIX = "order:consult:"
 logger = logging.getLogger(__name__)
 UNAVAILABLE = (
     "Оформление сейчас недоступно. Обратитесь в поддержку через «Помощь». "
@@ -120,6 +121,7 @@ async def ask_platforms(incoming, state, messenger, intake):
         intake_policy=policy.version,
         intake_selection_minor=policy.selection_minor,
         intake_accompaniment_minor=policy.accompaniment_minor,
+        intake_consultation_minor=getattr(eligible, "consultation_minor", None),
         intake_operation_key=data.get("intake_operation_key") or str(uuid4()),
         intake_due_at=data.get("intake_due_at")
         or (datetime.now(UTC) + timedelta(days=7)).isoformat(),
@@ -214,6 +216,7 @@ def command_from_state(data, incoming):
         service_mode="with_manager" if accompanied else "self_service",
         accompaniment_ordinals=frozenset(range(1, accompanied + 1)),
         position_count=count,
+        consultation_requested=data.get("consultation_requested", False),
         order_type=OrderType(data["order_type"]),
         barter_description=data.get("barter_description"),
         targeting=OrderTargeting(
@@ -240,6 +243,7 @@ async def complete_intake(
     *,
     selected_count=None,
     expected_key=None,
+    consultation_requested=False,
     send_receipt=True,
 ):
     data = await state.get_data()
@@ -267,6 +271,7 @@ async def complete_intake(
             return None
         await state.update_data(accompaniment_count=count)
         data = await state.get_data()
+    data["consultation_requested"] = consultation_requested
     try:
         command = command_from_state(data, incoming)
         result = await intake.create(

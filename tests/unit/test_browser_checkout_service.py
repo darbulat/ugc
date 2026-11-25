@@ -155,7 +155,10 @@ async def test_scheduler_retries_errors_and_starts_with_issuance_paused(
     config = SimpleNamespace(
         financial=SimpleNamespace(yookassa_browser_shop_id="123")
     )
-    container = SimpleNamespace(build_browser_checkout=Mock(return_value=None))
+    container = SimpleNamespace(
+        build_browser_checkout=Mock(return_value=None),
+        build_consultation_checkout=Mock(return_value=None),
+    )
     assert (
         browser_checkout_scheduler.start_reconciliation(config, container) == []
     )

@@ -23,6 +23,7 @@ INTAKE_CODES = SHARED_CODES | {
     "invalid_intake_funnel_stage": 422,
     "invalid_intake_funnel_identity": 422,
     "client_not_allowlisted": 403,
+    "consultation_unavailable": 400,
     **dict.fromkeys(
         (
             "client_identity_required",

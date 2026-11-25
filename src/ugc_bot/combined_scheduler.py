@@ -36,6 +36,7 @@ from ugc_bot.notice_delivery_scheduler import run_enabled as notice_loop
 from ugc_bot.order_image_cleanup_scheduler import (
     run_enabled as image_cleanup_loop,
 )
+from ugc_bot.order_notice_scheduler import run_consultation_notices
 from ugc_bot.order_notice_scheduler import run_enabled as order_notice_loop
 from ugc_bot.order_review_scheduler import run_enabled as order_review_loop
 from ugc_bot.paid_selection_delivery_scheduler import (
@@ -67,6 +68,17 @@ def _customer_tasks(config, container, bot) -> list[asyncio.Task]:
             ("order-image-cleanup", image_cleanup_loop),
         )
     ]
+    if getattr(
+        getattr(config, "admin", None),
+        "browser_paid_order_telegram_recipients",
+        None,
+    ):
+        tasks.append(
+            asyncio.create_task(
+                run_consultation_notices(container, bot),
+                name="consultation-notice-delivery",
+            )
+        )
     if getattr(
         getattr(config, "instagram", None),
         "instagram_profile_maintenance_enabled",

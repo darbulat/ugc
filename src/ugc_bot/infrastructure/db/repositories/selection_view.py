@@ -3,8 +3,15 @@
 from sqlalchemy import exists, select, text
 
 from ugc_bot.application.native_principal_ports import require_current_principal
+from ugc_bot.domain.enums import OrderStatus
+from ugc_bot.domain.order_intake import CONSULTATION_MINOR
 from ugc_bot.domain.refund_rules import RefundRules
 from ugc_bot.infrastructure.db.base import Base
+from ugc_bot.infrastructure.db.consultation_models import (
+    CONSULTATIONS,
+    consultation_status,
+    consultation_tables_installed,
+)
 from ugc_bot.infrastructure.db.invite_handoff_models import STAFF_DELIVERIES
 from ugc_bot.infrastructure.db.models import (
     AdvertiserProfileModel,
@@ -203,11 +210,42 @@ class SqlAlchemySelectionViewRepository:
                 if closure_policy is not None
                 else {}
             ),
+            **await self._consultation(db, order, client_id, user.status),
             positions=positions,
             delivered_authors=await delivery_history(db, order_id),
             requested_authors=order["bloggers_needed"],
             waitlist_count=sum(not row["accepted"] for row in interests),
         )
+
+    @staticmethod
+    async def _consultation(db, order, client_id, user_status):
+        if not await consultation_tables_installed(db):
+            return {}
+        row = (
+            await db.execute(
+                select(
+                    CONSULTATIONS.c.token,
+                    consultation_status(CONSULTATIONS.c.order_id),
+                ).where(
+                    CONSULTATIONS.c.order_id == order["order_id"],
+                    CONSULTATIONS.c.client_id == client_id,
+                )
+            )
+        ).one_or_none()
+        if row is None:
+            return {}
+        token, state = row
+        result = {
+            "consultation_minor": CONSULTATION_MINOR,
+            "consultation_state": state,
+        }
+        if (
+            state != "paid"
+            and user_status == "active"
+            and order["status"] not in (OrderStatus.CLOSED, OrderStatus.DELETED)
+        ):
+            result["consultation_token"] = token
+        return result
 
     @staticmethod
     async def _closure_policy(db, order_id, policy_version, items, positions):

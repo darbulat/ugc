@@ -92,6 +92,11 @@ def _init_browser_checkout(app, dispatcher, config) -> None:
         if config.financial.yookassa_browser_shop_id
         else None
     )
+    app.state.consultation_checkout = (
+        dispatcher["container"].build_consultation_checkout()
+        if config.financial.yookassa_browser_shop_id
+        else None
+    )
 
 
 @asynccontextmanager

@@ -1,5 +1,7 @@
 """Pay through an order-specific link without a messenger session."""
 
+from typing import Literal
+
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel, Field
@@ -12,10 +14,20 @@ _HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 class PaymentLink(BaseModel):
     token: UUID4
+    service: Literal["consultation"] | None = None
 
 
 class StartPayment(PaymentLink):
     email: str = Field(max_length=254)
+
+
+def _checkout(request: Request, body: PaymentLink):
+    name = (
+        "consultation_checkout"
+        if body.service == "consultation"
+        else "browser_checkout"
+    )
+    return getattr(request.app.state, name, None)
 
 
 async def _status(checkout, token):
@@ -30,13 +42,13 @@ async def _status(checkout, token):
 
 @router.post("/status")
 async def browser_payment_status(request: Request, body: PaymentLink):
-    checkout = getattr(request.app.state, "browser_checkout", None)
+    checkout = _checkout(request, body)
     return await _status(checkout, body.token)
 
 
 @router.post("/start")
 async def browser_payment_start(request: Request, body: StartPayment):
-    checkout = getattr(request.app.state, "browser_checkout", None)
+    checkout = _checkout(request, body)
     if checkout is not None:
         try:
             await checkout.start(body.token, body.email)

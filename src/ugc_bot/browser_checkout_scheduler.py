@@ -11,13 +11,17 @@ def start_reconciliation(config, container) -> list[asyncio.Task]:
         getattr(config, "financial", None), "yookassa_browser_shop_id", ""
     ):
         return []
-    checkout = container.build_browser_checkout()
-    if checkout is None:
-        return []
+    checkouts = (
+        (container.build_browser_checkout(), "browser-payment-reconciliation"),
+        (
+            container.build_consultation_checkout(),
+            "consultation-payment-reconciliation",
+        ),
+    )
     return [
-        asyncio.create_task(
-            run_loop(checkout), name="browser-payment-reconciliation"
-        )
+        asyncio.create_task(run_loop(checkout), name=name)
+        for checkout, name in checkouts
+        if checkout is not None
     ]
 
 

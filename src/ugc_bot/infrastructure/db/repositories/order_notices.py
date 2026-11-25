@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import case, exists, false, or_, select, update
+from sqlalchemy import Table, case, exists, false, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,9 +33,18 @@ def _browser_paid(order_notices):
 
 class SqlAlchemyOrderNoticeRepository:
     def __init__(
-        self, browser_paid_recipients: frozenset[str] | None = None
+        self,
+        browser_paid_recipients: frozenset[str] | None = None,
+        *,
+        events_table: Table = events,
+        deliveries_table: Table = deliveries,
     ) -> None:
         self.browser_paid_recipients = browser_paid_recipients
+        self.namespace = (
+            "order-notice" if events_table is events else events_table.name
+        )
+        self.events = events_table
+        self.deliveries = deliveries_table
 
     async def enqueue(
         self, order_id: UUID, event_kind: OrderNoticeKind, *, session: object
@@ -44,7 +53,7 @@ class SqlAlchemyOrderNoticeRepository:
         if event_kind not in {"created", "paid"}:
             raise ValueError("invalid_order_notice_kind")
         await session.execute(
-            insert(events)
+            insert(self.events)
             .values(
                 order_id=order_id,
                 event_kind=event_kind,
@@ -62,6 +71,7 @@ class SqlAlchemyOrderNoticeRepository:
         session: object,
     ) -> OrderNoticeJob | None:
         session = cast(AsyncSession, session)
+        events, deliveries = self.events, self.deliveries
         # Provider acceptance after a process interruption is ambiguous. Keep it
         # visible for manual resolution instead of risking a duplicate card.
         await session.execute(
@@ -127,7 +137,7 @@ class SqlAlchemyOrderNoticeRepository:
             for address in sorted(addresses):
                 job_id = uuid5(
                     NAMESPACE_URL,
-                    f"order-notice:{event['order_id']}:{event['event_kind']}:{address}",
+                    f"{self.namespace}:{event['order_id']}:{event['event_kind']}:{address}",
                 )
                 await session.execute(
                     insert(deliveries)
@@ -192,6 +202,7 @@ class SqlAlchemyOrderNoticeRepository:
         self, job: OrderNoticeJob, now: datetime, *, session: object
     ) -> bool:
         session = cast(AsyncSession, session)
+        deliveries = self.deliveries
         statement = update(deliveries).where(
             deliveries.c.job_id == job.job_id,
             deliveries.c.state == "leased",
@@ -219,6 +230,7 @@ class SqlAlchemyOrderNoticeRepository:
         retry_after_seconds: int | None = None,
     ) -> None:
         session = cast(AsyncSession, session)
+        deliveries = self.deliveries
         await session.execute(
             update(deliveries)
             .where(

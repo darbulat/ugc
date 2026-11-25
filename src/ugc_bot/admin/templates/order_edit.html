@@ -126,7 +126,7 @@
       {% endif %}
 {% if order_quote_details %}
 <details class="order-editor__quote">
-  <summary>Сохранённые условия заказа · {{ order_quote_details.total_display }} {{ order_quote_details.currency }}</summary>
+  <summary>Сохранённые условия заказа · {{ order_quote_details.project_total_display }} {{ order_quote_details.currency }}</summary>
     <div class="pt-3">
       <dl class="row mb-0" id="order-saved-quote">
         <dt class="col-sm-5">Контакт клиента</dt><dd class="col-sm-7">{{ order_quote_details.contact_reference }}</dd>
@@ -138,7 +138,12 @@
         {% endif %}
         <dt class="col-sm-5">Подбор</dt><dd class="col-sm-7">{{ order_quote_details.selection_base_display }} {{ order_quote_details.currency }}</dd>
         <dt class="col-sm-5">Сопровождение</dt><dd class="col-sm-7">{{ order_quote_details.accompaniment_display }} {{ order_quote_details.currency }}</dd>
-        <dt class="col-sm-5">Сумма счёта</dt><dd class="col-sm-7"><strong>{{ order_quote_details.total_display }} {{ order_quote_details.currency }}</strong></dd>
+        <dt class="col-sm-5">Счёт за подбор и сопровождение</dt><dd class="col-sm-7"><strong>{{ order_quote_details.total_display }} {{ order_quote_details.currency }}</strong></dd>
+        {% if order_quote_details.consultation_state %}
+        {% set consultation_statuses = {'available': 'ожидает оплаты', 'creating': 'счёт готовится', 'pending': 'ожидает оплаты', 'review': 'на сверке', 'paid': 'оплачена', 'canceled': 'счёт закрыт', 'failed': 'счёт требует повторного запроса'} %}
+        <dt class="col-sm-5">Консультация UMC</dt><dd class="col-sm-7">{{ order_quote_details.consultation_display }} {{ order_quote_details.currency }} · {{ consultation_statuses.get(order_quote_details.consultation_state, 'на сверке') }}</dd>
+        <dt class="col-sm-5">Итого по заказу</dt><dd class="col-sm-7"><strong>{{ order_quote_details.project_total_display }} {{ order_quote_details.currency }}</strong></dd>
+        {% endif %}
       </dl>
       <p class="text-muted mb-0 mt-2">Суммы сохранены при создании заказа.</p>
     </div>

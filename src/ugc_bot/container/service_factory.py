@@ -149,7 +149,10 @@ from ugc_bot.container.campaign_analytics_factory import (
     build_campaign_analytics,
 )
 from ugc_bot.container.campaign_runtime_factory import build_campaign_runtime
-from ugc_bot.container.checkout_factory import build_checkout_service
+from ugc_bot.container.checkout_factory import (
+    build_checkout_service,
+    consultation_sales_ready,
+)
 from ugc_bot.container.correction_factory import (
     build_accompaniment_refund_service,
     build_correction_services,
@@ -762,6 +765,7 @@ def build_bot_services(
         "selection_view_service": SelectionViewService(
             repos["selection_view_repo"],
             transaction_manager,
+            public_base_url=config.webhook.webhook_base_url,
         )
         if repos.get("selection_view_repo") is not None
         else None,
@@ -860,6 +864,8 @@ def build_bot_services(
             SystemClock(),
             config.financial,
             image_service=image_service,
+            consultation_public_base_url=config.webhook.webhook_base_url,
+            consultation_payment_ready=consultation_sales_ready(config),
         )
         if repos.get("order_intake_repo") is not None
         else None,

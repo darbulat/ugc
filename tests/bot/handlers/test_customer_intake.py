@@ -934,6 +934,8 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
         items=tuple(range(10)),
         selection_base_minor=500050,
         total_minor=2200080 if with_manager else 500050,
+        project_total_minor=2200080 if with_manager else 500050,
+        consultation_minor=0,
     )
     deps = dict(
         messenger_client=messenger,
@@ -1210,3 +1212,89 @@ async def test_new_canonical_brief_clears_previous_operation(
         followup.register_brief.call_args.kwargs["principal"].user_id == user_id
     )
     assert followup.record_activity.call_args.kwargs["intent_id"] == intent_id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("opt_in", [False, True])
+async def test_telegram_consultation_adds_one_choice_and_keeps_selection_price(
+    flow, opt_in
+):
+    from ugc_bot.application.messenger.dto import IncomingCallback
+    from ugc_bot.bot.telegram.handlers.order_creation import (
+        handle_accompaniment_choice,
+        handle_consultation_choice,
+    )
+    from ugc_bot.domain.order_intake import IntakeItem, OrderIntakeResult
+
+    _, incoming, state, intake, messenger = flow
+    result = intake.eligible_policies.return_value
+    intake.eligible_policies.return_value = replace(
+        result,
+        policies=(replace(result.policies[0], accompaniment_minor=120000),),
+        consultation_minor=500000,
+    )
+    now = datetime.now(UTC)
+    intake.create.return_value = OrderIntakeResult(
+        uuid4(),
+        uuid4(),
+        now,
+        "RUB",
+        "v1",
+        now,
+        "terms",
+        tuple(IntakeItem(uuid4(), n, 50000, 120000) for n in range(1, 11)),
+        uuid4(),
+        consultation_minor=500000 if opt_in else 0,
+    )
+    intake.consultation_link = lambda _: "https://example.test/payment"
+    messenger.answer_callback = AsyncMock()
+    await ask_platforms(incoming, state, messenger, intake)
+    key = state._data["intake_operation_key"]
+    state.state = OrderCreationStates.accompaniment_choice.state
+    callbacks = SimpleNamespace(from_callback=lambda callback: callback)
+
+    def callback(data):
+        return IncomingCallback(
+            "cb-id", incoming.chat_id, incoming.user, data=data
+        )
+
+    await handle_accompaniment_choice(
+        callback(f"order:manager:yes:{key}"),
+        state,
+        intake,
+        messenger_client=messenger,
+        event_adapter=callbacks,
+    )
+    assert state.state == OrderCreationStates.consultation_choice.state
+    keyboard = messenger.send_text.call_args.kwargs["keyboard"]
+    assert len(keyboard.rows) == 2
+    assert [button.text for row in keyboard.rows for button in row] == [
+        "Добавить · 22 000 ₽",
+        "Без консультации · 17 000 ₽",
+    ]
+    intake.create.assert_not_awaited()
+    choice = "yes" if opt_in else "no"
+    await handle_consultation_choice(
+        callback(f"order:consult:{choice}:stale"),
+        state,
+        intake,
+        messenger_client=messenger,
+        event_adapter=callbacks,
+    )
+    intake.create.assert_not_awaited()
+    await handle_consultation_choice(
+        callback(f"order:consult:{choice}:{key}"),
+        state,
+        intake,
+        messenger_client=messenger,
+        event_adapter=callbacks,
+    )
+    assert intake.create.call_args.args[0].consultation_requested is opt_in
+    confirmation = messenger.send_text.call_args.kwargs
+    assert (
+        f"Итого: {'22 000' if opt_in else '17 000'} ₽" in confirmation["text"]
+    )
+    buttons = confirmation["keyboard"].rows
+    assert "17 000 ₽" in buttons[0][0].text
+    assert (buttons[1][0].url == "https://example.test/payment") is opt_in
+    assert state.state is None

@@ -34,6 +34,7 @@ from ugc_bot.application.services.user_role_service import UserRoleService
 from ugc_bot.bot import customer_actions
 from ugc_bot.bot.customer_intake import (
     ACCOMPANIMENT_CALLBACK_PREFIX,
+    CONSULTATION_CALLBACK_PREFIX,
     ask_platforms,
     begin_intake,
     choose_platforms,
@@ -1734,6 +1735,7 @@ async def _confirm_customer_order(
     *,
     selected_count=None,
     expected_key=None,
+    consultation_requested=False,
 ):
     locale = (await state.get_data()).get("locale", "ru")
     result = await complete_intake(
@@ -1744,6 +1746,7 @@ async def _confirm_customer_order(
         followup,
         selected_count=selected_count,
         expected_key=expected_key,
+        consultation_requested=consultation_requested,
         send_receipt=False,
     )
     if result is None:
@@ -1759,6 +1762,44 @@ async def _confirm_customer_order(
         if accompaniment
         else ""
     )
+    payment_buttons = [
+        [
+            Button(
+                text=customer_text(
+                    locale, "customer_confirmation_pay", total=total
+                ),
+                callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
+            )
+        ]
+    ]
+    payment_note = ""
+    if result.consultation_minor:
+        consultation_amount = format_rubles(result.consultation_minor)
+        manager_line += customer_text(
+            locale, "customer_consultation_line", amount=consultation_amount
+        )
+        payment_note = "\n\n" + customer_text(
+            locale, "customer_consultation_payment_note"
+        )
+        payment_buttons[0][0] = Button(
+            text=customer_text(
+                locale, "customer_consultation_pay_selection", amount=total
+            ),
+            callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
+        )
+        if link := intake.consultation_link(result):
+            payment_buttons.append(
+                [
+                    Button(
+                        text=customer_text(
+                            locale,
+                            "customer_consultation_pay",
+                            amount=consultation_amount,
+                        ),
+                        url=link,
+                    )
+                ]
+            )
     await messenger.send_text(
         chat_id=incoming.chat_id,
         text=customer_text(
@@ -1767,19 +1808,13 @@ async def _confirm_customer_order(
             count=len(result.items),
             base=format_rubles(result.selection_base_minor),
             manager_line=manager_line,
-            total=total,
-        ),
+            total=format_rubles(result.project_total_minor),
+        )
+        + payment_note,
         parse_mode="HTML",
         keyboard=flow_inline_keyboard(
             [
-                [
-                    Button(
-                        text=customer_text(
-                            locale, "customer_confirmation_pay", total=total
-                        ),
-                        callback_data=f"{PAY_ORDER_CALLBACK_PREFIX}{result.order_id}",
-                    )
-                ],
+                *payment_buttons,
                 [cancel_order_button(result.order_id, locale)],
                 [payment_help_button(result.order_id, locale)],
             ]
@@ -1844,14 +1879,100 @@ async def handle_accompaniment_choice(
         != OrderCreationStates.accompaniment_choice.state
     ):
         return
+    selected_count = data["bloggers_needed"] if choice == "yes" else 0
+    consultation_minor = data.get("intake_consultation_minor")
+    if consultation_minor:
+        total = (
+            data["bloggers_needed"] * data["intake_selection_minor"]
+            + selected_count * data["intake_accompaniment_minor"]
+        )
+        locale = data.get("locale", "ru")
+        await state.update_data(accompaniment_count=selected_count)
+        await state.set_state(OrderCreationStates.consultation_choice.state)
+        await messenger_client.send_text(
+            chat_id=incoming.chat_id,
+            text=customer_text(
+                locale,
+                "customer_consultation_offer",
+                amount=format_rubles(consultation_minor),
+            ),
+            keyboard=flow_inline_keyboard(
+                [
+                    [
+                        Button(
+                            text=customer_text(
+                                locale,
+                                "customer_consultation_yes",
+                                total=format_rubles(total + consultation_minor),
+                            ),
+                            callback_data=f"{CONSULTATION_CALLBACK_PREFIX}yes:{key}",
+                        )
+                    ],
+                    [
+                        Button(
+                            text=customer_text(
+                                locale,
+                                "customer_consultation_no",
+                                total=format_rubles(total),
+                            ),
+                            callback_data=f"{CONSULTATION_CALLBACK_PREFIX}no:{key}",
+                        )
+                    ],
+                ]
+            ),
+        )
+        return
     await _confirm_customer_order(
         incoming,
         state,
         messenger_client,
         order_intake_service,
         client_followup_service,
-        selected_count=data["bloggers_needed"] if choice == "yes" else 0,
+        selected_count=selected_count,
         expected_key=key,
+    )
+
+
+@router.callback_query(
+    lambda c: (c.data or "").startswith(CONSULTATION_CALLBACK_PREFIX)
+)
+async def handle_consultation_choice(
+    callback: CallbackQuery,
+    state: FSMContext,
+    order_intake_service: Any = None,
+    client_followup_service: Any = None,
+    messenger_client: MessengerClient | None = None,
+    event_adapter: MessengerEventAdapter | None = None,
+) -> None:
+    messenger, adapter = resolve_messenger_dependencies(
+        callback, messenger_client, event_adapter
+    )
+    incoming = adapter.from_callback(callback)
+    await messenger.answer_callback(callback_id=incoming.callback_id)
+    choice, _, key = (incoming.data or "")[
+        len(CONSULTATION_CALLBACK_PREFIX) :
+    ].partition(":")
+    data = await state.get_data()
+    if (
+        order_intake_service is None
+        or choice not in {"yes", "no"}
+        or not key
+        or key != data.get("intake_operation_key")
+        or not data.get("intake_consultation_minor")
+        or "accompaniment_count" not in data
+        or await state.get_state()
+        != OrderCreationStates.consultation_choice.state
+    ):
+        return
+    await _confirm_customer_order(
+        incoming,
+        state,
+        messenger,
+        order_intake_service,
+        client_followup_service,
+        selected_count=data["accompaniment_count"],
+        expected_key=key,
+        consultation_requested=choice == "yes",
     )
 
 
