@@ -18,10 +18,13 @@ PUBLIC_FIELDS = {
     "sender_name": 64,
     "title": 64,
     "task": 200,
+    "eligibility": 100,
     "brief": 620,
     "deadline": 106,
     "usage": 106,
     "barter": 100,
+    "barter_story": 55,
+    "barter_reel": 55,
     "brand": 64,
 }
 CONTACT_FIELDS = ("contact", "client_contact", "manager_contact")
@@ -50,6 +53,7 @@ _TELEGRAM_HANDLE = re.compile(r"@?([a-zA-Z][a-zA-Z0-9_]{4,31})\Z")
 class OfferCard:
     text: str
     keyboard: Keyboard | None
+    callback_feedback: str | None = None
 
 
 def telegram_contact_url(handle: str | None) -> str | None:
@@ -95,7 +99,7 @@ def validate_public_offer(
     if card.get("photo") == "approved":
         result["photo"] = "approved"
     required = {"title", "task", "deadline", "usage"}
-    if barter:
+    if barter and not {"barter_story", "barter_reel"} & result.keys():
         required.add("barter")
     if ready and not required <= result.keys():
         raise ValueError(
@@ -156,6 +160,11 @@ _REASONS = {
 }
 SKIP_REASONS = {code: reason[0] for code, reason in _REASONS.items()}
 VIEWS = {"open", "brief", "safe", "confirm", "skip"}
+OFFER_CARD_ACTIONS = (
+    VIEWS
+    | {"done", "full", "s_none"}
+    | {f"s_{reason}" for reason in SKIP_REASONS}
+)
 
 
 def _ru(locale: str) -> bool:
@@ -174,57 +183,59 @@ def reward(order: Order, ru: bool) -> str:
     return f"{number} {currency}"
 
 
+def _reward_lines(order: Order, card: dict[str, str], ru: bool) -> str:
+    lines = [f"<b>{escape(reward(order, ru))}</b>"]
+    labels = (
+        ("barter_story", "за сторис" if ru else "for a story"),
+        ("barter_reel", "за рилс" if ru else "for a reel"),
+    )
+    breakdown = [
+        f"<b>{escape(card[key])}</b> {label}"
+        for key, label in labels
+        if card.get(key)
+    ]
+    if order.price > 0 or not breakdown:
+        lines[0] += (
+            " · "
+            + _FORMAT.get(order.order_type, _FORMAT[OrderType.UGC_ONLY])[not ru]
+        )
+    if breakdown:
+        lines.extend(breakdown)
+    if card.get("barter"):
+        lines.append(escape(card["barter"]))
+    return "\n".join(lines)
+
+
 def _state_content(
     order: Order, card: dict[str, str], view: str, ru: bool
 ) -> tuple[str, list[str]]:
     title = card["title"]
     if view == "open":
-        lines = [
-            f"<b>{escape(reward(order, ru))}</b> · "
-            + _FORMAT.get(order.order_type, _FORMAT[OrderType.UGC_ONLY])[
-                not ru
-            ],
-            "",
-            escape(card["task"]),
-            "",
+        lines = [_reward_lines(order, card, ru), "", escape(card["task"]), ""]
+        lines += [
             ("<b>Срок</b> · " if ru else "<b>Deadline</b> · ")
             + escape(card["deadline"]),
             ("<b>Где используют</b> · " if ru else "<b>Use</b> · ")
             + escape(card["usage"]),
         ]
-        if card.get("sender_name"):
-            lines.insert(
-                0,
-                ("<b>Заказчик</b> · " if ru else "<b>Client</b> · ")
-                + escape(card["sender_name"]),
-            )
-        if card.get("barter") and order.price > 0:
-            lines.append(
-                ("<b>Бартер</b> · " if ru else "<b>Barter</b> · ")
-                + escape(card["barter"])
-            )
-        elif card.get("barter"):
-            lines.insert(1, escape(card["barter"]))
-        if card.get("brand"):
-            lines.append(
-                ("<b>Бренд</b> · " if ru else "<b>Brand</b> · ")
-                + escape(card["brand"])
-            )
+        for field, label in (
+            ("eligibility", "Кому подойдёт" if ru else "Eligibility"),
+            ("sender_name", "Заказчик" if ru else "Client"),
+            ("brand", "Бренд" if ru else "Brand"),
+        ):
+            if card.get(field):
+                lines.append(f"<b>{label}</b> · {escape(card[field])}")
         return title, lines
     if view == "brief":
         return ("Короткий бриф" if ru else "Brief"), [
             escape(card.get("brief") or card["task"])
         ]
+    if view == "safe":
+        return (
+            "Безопасная работа" if ru else "Work safely",
+            [_work_rules(order, ru)],
+        )
     variants = {
-        "safe": (
-            "Безопасная работа",
-            "Согласуй условия напрямую. Покажи превью с водяным знаком. "
-            "Передай финал после оплаты. Откликайся, если условия подходят. "
-            "Отказ при прежних условиях может привести к жалобе.",
-            "Work safely",
-            "Agree on terms directly. Share a watermarked preview and deliver "
-            "the final version after payment. Apply if the terms suit you.",
-        ),
         "confirm": (
             "Подтверди отклик",
             "Подтверждая отклик, ты соглашаешься с условиями. "
@@ -262,28 +273,23 @@ def _state_content(
                 else "Your application will join the reserve. "
                 "You may be contacted if a replacement is needed."
             )
-        return headline, [escape(reward(order, ru)), "", detail]
+        return headline, [_reward_lines(order, card, ru), "", detail]
     return headline, [detail] if detail else []
 
 
 def _keyboard(order: Order, view: str, ru: bool) -> Keyboard | None:
     def action(label: str, code: str) -> Button:
-        return Button(
-            label,
-            callback_data=f"{CALLBACK_PREFIX}{code}:{order.order_id}",
-            style="primary" if code in {"confirm", "done"} else None,
-        )
+        return _action(order, label, code)
 
     apply = action("Откликнуться" if ru else "Respond", "confirm")
     if order.offer_reserve_until is not None:
         apply = action("В резерв" if ru else "Join reserve", "confirm")
     back = action("← К офферу" if ru else "← Back", "open")
     brief = action("Бриф" if ru else "Brief", "brief")
-    safety = action("Правила" if ru else "Rules", "safe")
     rows = {
         "open": [
             [apply],
-            [brief, safety, action("Пропустить" if ru else "Skip", "skip")],
+            [brief, action("Пропустить" if ru else "Skip", "skip")],
         ],
         "brief": [[apply], [back]],
         "safe": [[back]],
@@ -297,8 +303,25 @@ def _keyboard(order: Order, view: str, ru: bool) -> Keyboard | None:
         ],
         "skip": [
             *[
-                [action(labels[1 if ru else 2], f"s_{code}")]
+                [
+                    action(
+                        (
+                            "Бартер не подходит"
+                            if ru
+                            else "Barter doesn't suit me"
+                        )
+                        if code == "price" and order.price <= 0
+                        else labels[1 if ru else 2],
+                        f"s_{code}",
+                    )
+                ]
                 for code, labels in _REASONS.items()
+            ],
+            [
+                action(
+                    "Пропустить без причины" if ru else "Skip without a reason",
+                    "s_none",
+                )
             ],
             [back],
         ],
@@ -327,51 +350,107 @@ def render_public_offer(
     visible_text = unescape(text.replace("<b>", "").replace("</b>", ""))
     if len(visible_text.encode("utf-16-le")) // 2 > CAPTION_LIMIT:
         raise ValueError("Карточка не помещается в одно сообщение Telegram.")
-    return OfferCard(text, _keyboard(order, view, ru))
+    feedback = heading if view in {"closed", "reserve", "skipped"} else None
+    return OfferCard(text, _keyboard(order, view, ru), feedback)
+
+
+def _action(order: Order, label: str, code: str) -> Button:
+    return Button(
+        label,
+        callback_data=f"{CALLBACK_PREFIX}{code}:{order.order_id}",
+        style="primary" if code in {"confirm", "done", "full"} else None,
+    )
 
 
 def render_saved_offer(order: Order, locale: str) -> OfferCard:
     ru = _ru(locale)
     card = order.creator_offer_card or {}
     contact = telegram_contact_url(offer_contact(card))
+    title = "Отклик отправлен" if ru else "Response submitted"
+    next_step = (
+        "ТЗ и правила работы доступны ниже."
+        if ru
+        else "The brief and working rules are below."
+    )
+    rows = [
+        [
+            _action(
+                order, "Открыть полное ТЗ" if ru else "Open full brief", "full"
+            )
+        ]
+    ]
     if contact:
-        next_step = (
-            "Рабочий контакт по заказу доступен ниже."
-            if ru
-            else "The work contact is available below."
+        rows.append(
+            [
+                Button(
+                    "Написать по заказу" if ru else "Message about the order",
+                    url=contact,
+                )
+            ]
         )
     else:
-        next_step = (
-            "Заказчик напишет первым."
+        next_step += (
+            " Заказчик напишет первым."
             if ru
-            else "The client will reach out first."
+            else " The client will reach out first."
         )
-    title = "Отклик сохранён" if ru else "Response saved"
-    brief = https_link(order.brief_link)
-    product = https_link(order.product_link)
-    links = [
-        Button(label, url=url, style="primary" if url == contact else None)
+    body = (
+        f"<b>{title}</b>\n\n{escape(card['title'])}\n"
+        f"{_reward_lines(order, card, ru)}\n\n{next_step}"
+    )
+    return OfferCard(body, Keyboard(KeyboardKind.INLINE, rows), title)
+
+
+def _work_rules(order: Order, ru: bool) -> str:
+    if order.price <= 0:
+        return (
+            "Согласуй формат, срок и получение бартера. "
+            "Покажи превью, если требуется согласование."
+            if ru
+            else "Agree on the format, deadline and barter. "
+            "Share a preview if approval is required."
+        )
+    return (
+        "Согласуй условия заранее. Покажи превью с водяным знаком. "
+        "Передай финал после оплаты."
+        if ru
+        else "Agree on the terms first. Share a watermarked preview. "
+        "Deliver the final after payment."
+    )
+
+
+def render_full_offer_brief(order: Order, locale: str) -> OfferCard:
+    ru = _ru(locale)
+    card = order.creator_offer_card or {}
+    heading = "ТЗ и правила работы" if ru else "Brief and working rules"
+    deadline = "Срок" if ru else "Deadline"
+    how = "Как работаем" if ru else "How we work"
+    body = "\n\n".join(
+        [
+            f"<b>{heading}</b>",
+            escape(card.get("brief") or card["task"]),
+            f"<b>{deadline}</b> · {escape(card['deadline'])}",
+            f"<b>{how}</b>\n{_work_rules(order, ru)}",
+        ]
+    )
+    rows = [
+        [Button(label, url=url)]
         for label, url in (
             (
-                "Написать по заказу" if ru else "Message about the order",
-                contact,
+                "Документ с ТЗ" if ru else "Brief document",
+                https_link(order.brief_link),
             ),
-            ("Продукт" if ru else "Product", product),
-            ("Полное ТЗ" if ru else "Full brief", brief),
+            (
+                "Материалы" if ru else "Materials",
+                https_link(order.product_link),
+            ),
         )
         if url
     ]
-    rules = (
-        "Покажи превью с водяным знаком. Передай финал после оплаты."
-        if ru
-        else "Use a watermarked preview. Deliver the final after payment."
+    rows.append(
+        [_action(order, "← К отклику" if ru else "← Back to response", "open")]
     )
-    body = (
-        f"<b>{title}</b>\n\n{escape(card['title'])} · "
-        f"{escape(reward(order, ru))}\n{next_step}\n\n{rules}"
-    )
-    keyboard = Keyboard(KeyboardKind.INLINE, [[link] for link in links])
-    return OfferCard(body, keyboard if links else None)
+    return OfferCard(body, Keyboard(KeyboardKind.INLINE, rows))
 
 
 def client_contact_links(

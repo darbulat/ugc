@@ -9,13 +9,16 @@ from uuid import UUID
 
 import aiohttp
 
-from ugc_bot.application.creator_offer_cards import OfferCard
+from ugc_bot.application.creator_offer_cards import NEUTRAL_COVER, OfferCard
 from ugc_bot.application.messenger.dto import (
     Invoice,
     Keyboard,
     KeyboardKind,
 )
 from ugc_bot.application.messenger.ports import MessengerClient
+from ugc_bot.infrastructure.messenger.telegram.offer_cover import (
+    neutral_offer_cover,
+)
 from ugc_bot.infrastructure.order_images import PrivateOrderImageStorage
 
 logger = logging.getLogger(__name__)
@@ -267,6 +270,9 @@ class MaxMessengerClient(MessengerClient):
     async def _upload_order_image(self, reference: str) -> str:
         token = UUID(reference.removeprefix("order-image:"))
         data = await PrivateOrderImageStorage().get(token)
+        return await self._upload_image_bytes(data, f"{token}.jpg")
+
+    async def _upload_image_bytes(self, data: bytes, filename: str) -> str:
         upload = await self._post("/uploads", params={"type": "image"})
         url = upload.get("url")
         upload_url = url if isinstance(url, str) else ""
@@ -281,7 +287,7 @@ class MaxMessengerClient(MessengerClient):
             raise ValueError("max_image_upload_url_invalid")
         form = aiohttp.FormData()
         form.add_field(
-            "data", data, filename=f"{token}.jpg", content_type="image/jpeg"
+            "data", data, filename=filename, content_type="image/jpeg"
         )
         response = await self._session.request(
             "POST",
@@ -332,15 +338,61 @@ class MaxMessengerClient(MessengerClient):
             "format": "html",
             "disable_link_preview": True,
         }
-        if card.keyboard:
-            body["attachments"] = [_build_inline_keyboard(card.keyboard)]
-        response = await self._request(
-            "POST", "/messages", body, params={"chat_id": chat_id}, attempts=1
+        keyboard = (
+            [_build_inline_keyboard(card.keyboard)] if card.keyboard else []
         )
+        image = await self._offer_image(cover)
+        if image:
+            body["attachments"] = [
+                {"type": "image", "payload": {"token": image}},
+                *keyboard,
+            ]
+        elif keyboard:
+            body["attachments"] = keyboard
+        try:
+            response = await self._request(
+                "POST",
+                "/messages",
+                body,
+                params={"chat_id": chat_id},
+                attempts=1,
+            )
+        except MaxAPIError as exc:
+            # A retry is safe only for the explicit rejection before delivery.
+            if (
+                not image
+                or exc.status != 400
+                or '"attachment.not.ready"' not in exc.body
+            ):
+                raise
+            body["attachments"] = keyboard
+            response = await self._request(
+                "POST",
+                "/messages",
+                body,
+                params={"chat_id": chat_id},
+                attempts=1,
+            )
         message_id = response.get("message", {}).get("body", {}).get("mid")
         if not isinstance(message_id, str) or not message_id:
             raise ValueError("offer_card_receipt_unavailable")
         return message_id
+
+    async def _offer_image(self, cover: str | None) -> str | None:
+        if not cover:
+            return None
+        try:
+            if cover.startswith("order-image:"):
+                return await self._upload_order_image(cover)
+            if cover == NEUTRAL_COVER:
+                return await self._upload_image_bytes(
+                    neutral_offer_cover(), "ugc-offer.jpg"
+                )
+        except (aiohttp.ClientError, MaxAPIError, OSError, ValueError) as exc:
+            logger.warning(
+                "MAX offer cover unavailable (%s)", type(exc).__name__
+            )
+        return None
 
     async def edit_offer_card(
         self, chat_id: str, message_id: str, card: OfferCard

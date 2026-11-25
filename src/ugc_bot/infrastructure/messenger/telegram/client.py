@@ -199,6 +199,7 @@ class TelegramMessengerClient(MessengerClient):
             chat_id=int(chat_id),
             photo=photo,
             caption=card.text,
+            show_caption_above_media=True,
             reply_markup=_build_markup(card.keyboard),
             parse_mode="HTML",
         )
@@ -208,12 +209,15 @@ class TelegramMessengerClient(MessengerClient):
         self, chat_id: str, message_id: str, card: OfferCard
     ) -> None:
         try:
-            await self._bot.edit_message_caption(
-                chat_id=int(chat_id),
-                message_id=int(message_id),
-                caption=card.text,
-                reply_markup=_build_markup(card.keyboard),
-                parse_mode="HTML",
+            await self._with_retry(
+                lambda: self._bot.edit_message_caption(
+                    chat_id=int(chat_id),
+                    message_id=int(message_id),
+                    caption=card.text,
+                    show_caption_above_media=True,
+                    reply_markup=_build_markup(card.keyboard),
+                    parse_mode="HTML",
+                )
             )
         except TelegramBadRequest as exc:
             if "message is not modified" not in exc.message.lower():

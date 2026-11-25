@@ -37,6 +37,22 @@ OFFER_CHANNELS = Table(
     ),
 )
 
+OFFER_CARD_ACTION_EVENTS = Table(
+    "offer_card_action_events",
+    Base.metadata,
+    Column("order_id", Uuid(), primary_key=True),
+    Column("blogger_id", Uuid(), primary_key=True),
+    Column("channel", String(8), primary_key=True),
+    Column("callback_digest", String(64), primary_key=True),
+    Column("action", String(16), nullable=False),
+    Column("occurred_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ("order_id", "blogger_id"),
+        ("offer_dispatches.order_id", "offer_dispatches.blogger_id"),
+        ondelete="CASCADE",
+    ),
+)
+
 REGISTRATION_CHANNELS = Table(
     "creator_registration_channels",
     Base.metadata,

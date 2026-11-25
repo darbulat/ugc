@@ -9,12 +9,14 @@ from uuid import UUID
 
 from ugc_bot.application.creator_offer_cards import (
     CALLBACK_PREFIX,
+    OFFER_CARD_ACTIONS,
     SKIP_REASONS,
     VIEWS,
     OfferCard,
     client_contact_links,
     client_contact_text,
     https_link,
+    render_full_offer_brief,
     render_public_offer,
     render_saved_offer,
 )
@@ -161,6 +163,16 @@ class CreatorOfferCardFlow:
         if user is None:
             return None
         response: OfferResponseResult | None = None
+        if action not in OFFER_CARD_ACTIONS:
+            await self._answer(incoming)
+            return None
+        await self.dispatch.record_card_action(
+            order_id,
+            user.user_id,
+            incoming.user.messenger_type,
+            incoming.callback_id,
+            action,
+        )
         if action == "done":
             card, response = await self._confirm(incoming, order, user)
             if card is None:
@@ -169,7 +181,10 @@ class CreatorOfferCardFlow:
             card = await self._view(incoming, order, user, action)
             if card is None:
                 return None
-        await self._answer(incoming)
+        await self.messenger.answer_callback(
+            callback_id=incoming.callback_id,
+            text=card.callback_feedback,
+        )
         if response and response.accepted and not response.delivery_queued:
             # Direct delivery has no paid delivery worker. Make the
             # notification available to the caller before editing the card.
@@ -216,6 +231,8 @@ class CreatorOfferCardFlow:
         self,
         order: Order,
         user: User,
+        *,
+        full_brief: bool = False,
     ) -> OfferCard | None:
         responses = (
             await self.dispatch.offer_dispatch_repo.list_responses_by_blogger(
@@ -229,6 +246,8 @@ class CreatorOfferCardFlow:
         if matching is None:
             return None
         if matching.accepted and matching.in_offer:
+            if full_brief:
+                return render_full_offer_brief(order, self.locale)
             return render_saved_offer(order, self.locale)
         if not intake_open(
             order.status, order.dispatch_stopped, order.offer_reserve_until
@@ -289,7 +308,9 @@ class CreatorOfferCardFlow:
         user: User,
         action: str,
     ) -> OfferCard | None:
-        stored = await self._stored_view(order, user)
+        stored = await self._stored_view(
+            order, user, full_brief=action == "full"
+        )
         if stored:
             return stored
         if not intake_open(
@@ -316,7 +337,7 @@ class CreatorOfferCardFlow:
             if action.startswith("s_")
             else None
         )
-        if reason:
+        if reason or action == "s_none":
             result = await self.dispatch.record_skip(
                 order.order_id,
                 user.user_id,

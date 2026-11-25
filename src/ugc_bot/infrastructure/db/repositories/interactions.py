@@ -1,5 +1,6 @@
 """SQLAlchemy interaction and offer dispatch repositories."""
 
+import hashlib
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from ugc_bot.domain.enums import (
     RejectionReason,
 )
 from ugc_bot.infrastructure.db.messenger_attribution import (
+    OFFER_CARD_ACTION_EVENTS,
     OFFER_CHANNELS,
     remember_offer_response,
 )
@@ -198,6 +200,40 @@ class SqlAlchemyOfferDispatchRepository(OfferDispatchRepository):
                 .values(creator_card_message_id=message_id)
             )
             return True
+
+    async def record_card_action(
+        self,
+        order_id: UUID,
+        blogger_id: UUID,
+        channel: MessengerType,
+        callback_id: str,
+        action: str,
+    ) -> None:
+        if not callback_id:
+            return
+        async with _resolve_session(self.session_factory, None) as db:
+            insert = (
+                sqlite_insert
+                if db.get_bind().dialect.name == "sqlite"
+                else pg_insert
+            )
+            events = OFFER_CARD_ACTION_EVENTS
+            await db.execute(
+                insert(events)
+                .values(
+                    channel=channel.value,
+                    callback_digest=hashlib.sha256(
+                        callback_id.encode()
+                    ).hexdigest(),
+                    order_id=order_id,
+                    blogger_id=blogger_id,
+                    action=action,
+                    occurred_at=datetime.now(timezone.utc),
+                )
+                .on_conflict_do_nothing(
+                    index_elements=tuple(events.primary_key.columns)
+                )
+            )
 
     async def record_response_started(
         self, order_id: UUID, blogger_id: UUID

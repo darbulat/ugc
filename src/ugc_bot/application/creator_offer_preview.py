@@ -5,9 +5,10 @@ from html import escape
 
 from ugc_bot.application.creator_offer_cards import (
     CALLBACK_PREFIX,
-    SKIP_REASONS,
+    OFFER_CARD_ACTIONS,
     VIEWS,
     OfferCard,
+    render_full_offer_brief,
     render_public_offer,
     render_saved_offer,
     reward,
@@ -16,7 +17,7 @@ from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.domain.entities import Order
 
 PREVIEW_CALLBACK_PREFIX = "offer_preview:"
-PREVIEW_ACTIONS = VIEWS | {"done"} | {f"s_{key}" for key in SKIP_REASONS}
+PREVIEW_ACTIONS = OFFER_CARD_ACTIONS | {"result"}
 
 
 def _back(order: Order, ru: bool) -> Button:
@@ -57,8 +58,10 @@ def render_offer_preview(
         raise ValueError("Unknown preview action")
     ru = locale.lower().replace("_", "-").split("-", 1)[0] == "ru"
     card = render_public_offer(order, locale, view if view in VIEWS else "open")
-    if view == "done" or view.startswith("s_"):
-        return _result(order, locale, view == "done", ru)
+    if view == "full":
+        card = render_full_offer_brief(order, locale)
+    elif view in {"done", "result"} or view.startswith("s_"):
+        card = _result(order, locale, view in {"done", "result"}, ru)
     labels = {
         "confirm": "Откликнуться · просмотр" if ru else "Preview response",
         "done": "Посмотреть результат" if ru else "View result",
@@ -70,12 +73,17 @@ def render_offer_preview(
             data = button.callback_data
             if data and data.startswith(CALLBACK_PREFIX):
                 action = data.removeprefix(CALLBACK_PREFIX).partition(":")[0]
+                callback = (
+                    f"{PREVIEW_CALLBACK_PREFIX}result:{order.order_id}"
+                    if view == "full" and action == "open"
+                    else data.replace(
+                        CALLBACK_PREFIX, PREVIEW_CALLBACK_PREFIX, 1
+                    )
+                )
                 button = replace(
                     button,
                     text=labels.get(action, button.text),
-                    callback_data=data.replace(
-                        CALLBACK_PREFIX, PREVIEW_CALLBACK_PREFIX, 1
-                    ),
+                    callback_data=callback,
                 )
             rewritten.append(button)
         rows.append(rewritten)

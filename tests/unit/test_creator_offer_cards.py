@@ -14,6 +14,7 @@ from ugc_bot.admin.app import OrderAdmin, _creator_card_edit_data
 from ugc_bot.application.creator_offer_cards import (
     CALLBACK_PREFIX,
     NEUTRAL_COVER,
+    render_full_offer_brief,
     render_public_offer,
     render_saved_offer,
     validate_public_offer,
@@ -23,6 +24,9 @@ from ugc_bot.application.errors import (
     PaidSelectionResponseError,
 )
 from ugc_bot.application.messenger.dto import IncomingCallback, IncomingUser
+from ugc_bot.application.services.offer_dispatch_service import (
+    OfferDispatchService,
+)
 from ugc_bot.bot.creator_offer_card_flow import CreatorOfferCardFlow
 from ugc_bot.bot.max.handlers.offer_responses import (
     handle_creator_offer_card as handle_max_creator_offer,
@@ -39,7 +43,10 @@ from ugc_bot.domain.enums import (
     RejectionReason,
     UserStatus,
 )
-from ugc_bot.infrastructure.messenger.max.client import MaxMessengerClient
+from ugc_bot.infrastructure.messenger.max.client import (
+    MaxAPIError,
+    MaxMessengerClient,
+)
 from ugc_bot.infrastructure.messenger.telegram.client import (
     TelegramMessengerClient,
 )
@@ -107,8 +114,12 @@ def test_first_card_only_exposes_approved_public_fields(order):
             button.url for row in card.keyboard.rows for button in row
         )
     saved = render_saved_offer(order, "ru")
-    assert {row[0].url for row in saved.keyboard.rows} == {
-        "https://t.me/client_work",
+    assert saved.keyboard.rows[0][0].callback_data.startswith(
+        "offer_card:full:"
+    )
+    assert saved.keyboard.rows[1][0].url == "https://t.me/client_work"
+    brief = render_full_offer_brief(order, "ru")
+    assert {row[0].url for row in brief.keyboard.rows if row[0].url} == {
         order.product_link,
         order.brief_link,
     }
@@ -132,7 +143,7 @@ def test_selected_communicator_is_independent_of_notification_recipients(
     assert "<b>Заказчик</b> · UseMyContent" in public.text
     assert "_account" not in public.text
     saved = render_saved_offer(configured, "ru")
-    assert saved.keyboard.rows[0][0].url == f"https://t.me/{role}_account"
+    assert saved.keyboard.rows[1][0].url == f"https://t.me/{role}_account"
     normalized = validate_public_offer(values, ready=True)
     assert normalized["contact"] == f"@{role}_account"
     assert normalized["communication_role"] == role
@@ -146,7 +157,7 @@ def test_missing_manager_contact_cannot_expose_the_client_contact(order):
     }
     saved = render_saved_offer(replace(order, creator_offer_card=values), "ru")
     assert all(
-        "t.me" not in button.url
+        "t.me" not in (button.url or "")
         for row in saved.keyboard.rows
         for button in row
     )
@@ -288,18 +299,89 @@ async def test_offer_navigation_and_confirmation_edit_original_message(
         for call in bot.edit_message_caption.await_args_list
     )
     assert (
-        "Отклик сохранён"
+        "Отклик отправлен"
         in bot.edit_message_caption.call_args.kwargs["caption"]
     )
     assert (
         bot.edit_message_caption.call_args.kwargs["reply_markup"]
-        .inline_keyboard[0][0]
+        .inline_keyboard[1][0]
         .url
         == "https://t.me/client_work"
     )
     bot.send_message.assert_not_called()
     responses.respond_and_finalize.assert_awaited_once()
     dispatch.offer_dispatch_repo.mark_creator_card_updated.assert_awaited_once()
+
+
+def test_barter_reward_breakdown_and_rules_are_consistent(order):
+    concert = replace(
+        order,
+        price=0,
+        creator_offer_card={
+            **order.creator_offer_card,
+            "barter_story": "2 билета",
+            "barter_reel": "4 билета",
+            "eligibility": "Авторы из Казани",
+        },
+    )
+    initial = render_public_offer(concert, "ru")
+    assert "<b>2 билета</b> за сторис" in initial.text
+    assert "<b>4 билета</b> за рилс" in initial.text
+    assert "Авторы из Казани" in initial.text
+    assert [item.text for item in initial.keyboard.rows[1]] == [
+        "Бриф",
+        "Пропустить",
+    ]
+    brief = render_full_offer_brief(concert, "ru")
+    assert "получение бартера" in brief.text
+    assert "после оплаты" not in brief.text
+    assert "после оплаты" in render_full_offer_brief(order, "ru").text
+
+
+@pytest.mark.asyncio
+async def test_full_brief_is_private_and_skip_without_reason_is_saved(
+    order, offer_session
+):
+    flow = offer_session.flow
+    incoming = click(order, "full")
+    await flow.handle(incoming)
+    card = offer_session.messenger.edit_offer_card.call_args.args[2]
+    assert not any(button.url for row in card.keyboard.rows for button in row)
+    flow.dispatch.record_card_action.assert_awaited_once()
+    await flow.handle(click(order, "s_none"))
+    assert (
+        flow.dispatch.record_skip.call_args.kwargs["rejection_reason"] is None
+    )
+    assert (
+        "Оффер пропущен"
+        in offer_session.messenger.edit_offer_card.call_args.args[2].text
+    )
+
+
+@pytest.mark.asyncio
+async def test_unknown_action_and_analytics_failure_keep_flow_usable(
+    order, offer_session
+):
+    flow = offer_session.flow
+    await flow.handle(click(order, "not_an_action"))
+    flow.dispatch.record_card_action.assert_not_awaited()
+    flow.responses.respond_and_finalize.assert_not_awaited()
+
+    offer_session.receipts.record_card_action.side_effect = TimeoutError
+    dispatch = OfferDispatchService(
+        user_repo=AsyncMock(),
+        blogger_repo=AsyncMock(),
+        order_repo=flow.orders,
+        offer_dispatch_repo=offer_session.receipts,
+        interaction_repo=AsyncMock(),
+    )
+    flow.dispatch.record_card_action.side_effect = dispatch.record_card_action
+    await flow.handle(click(order, "brief"))
+    offer_session.receipts.record_card_action.assert_awaited_once()
+    assert (
+        "Короткий бриф"
+        in offer_session.messenger.edit_offer_card.call_args.args[2].text
+    )
 
 
 def test_cover_decodes_as_jpeg():
@@ -434,8 +516,8 @@ async def test_rejected_callback_cannot_reveal_contacts(
     ("state", "action", "caption"),
     [
         ("closed", "brief", "Набор завершён"),
-        ("accepted", "done", "Отклик сохранён"),
-        ("accepted", "open", "Отклик сохранён"),
+        ("accepted", "done", "Отклик отправлен"),
+        ("accepted", "open", "Отклик отправлен"),
         ("reserve", "done", "Ты в листе ожидания"),
         ("skipped", "done", "Оффер пропущен"),
         ("new", "s_time", "Оффер пропущен"),
@@ -722,6 +804,9 @@ async def test_max_uses_one_provider_attempt_and_edits_in_place(
     order, monkeypatch, provider_receipt
 ):
     transport = MaxMessengerClient("fake", AsyncMock())
+    monkeypatch.setattr(
+        transport, "_upload_image_bytes", AsyncMock(return_value="image")
+    )
     request = AsyncMock(
         return_value={"message": {"body": {"mid": "receipt"}}}
         if provider_receipt
@@ -740,9 +825,68 @@ async def test_max_uses_one_provider_attempt_and_edits_in_place(
     request.assert_awaited_once()
     assert request.call_args.kwargs["attempts"] == 1
     assert request.call_args.args[2]["format"] == "html"
+    assert request.call_args.args[2]["attachments"][0] == {
+        "type": "image",
+        "payload": {"token": "image"},
+    }
     await transport.edit_offer_card("100", "receipt", card)
     assert request.call_args.args[:2] == ("PUT", "/messages")
     assert request.call_args.kwargs["params"] == {"message_id": "receipt"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("safe_rejection", [True, False])
+async def test_max_offer_cover_retries_only_explicit_non_delivery(
+    order, monkeypatch, safe_rejection
+):
+    from copy import deepcopy
+
+    transport = MaxMessengerClient("fake", AsyncMock())
+    upload = AsyncMock(return_value="image")
+    monkeypatch.setattr(transport, "_upload_order_image", upload)
+    payloads = []
+
+    async def request(_method, _path, body, **_kwargs):
+        payloads.append(deepcopy(body))
+        if len(payloads) == 1:
+            if safe_rejection:
+                raise MaxAPIError(400, '{"code":"attachment.not.ready"}')
+            raise TimeoutError
+        return {"message": {"body": {"mid": "sent"}}}
+
+    monkeypatch.setattr(transport, "_request", request)
+    cover = f"order-image:{uuid4()}"
+    card = render_public_offer(order, "ru")
+    if safe_rejection:
+        assert await transport.send_offer_card("100", card, cover) == "sent"
+        assert len(payloads) == 2
+        assert [item["type"] for item in payloads[1]["attachments"]] == [
+            "inline_keyboard"
+        ]
+    else:
+        with pytest.raises(TimeoutError):
+            await transport.send_offer_card("100", card, cover)
+        assert len(payloads) == 1
+    upload.assert_awaited_once_with(cover)
+    assert payloads[0]["attachments"][0]["type"] == "image"
+
+
+@pytest.mark.asyncio
+async def test_max_offer_has_clickable_text_fallback_if_upload_fails(
+    order, monkeypatch
+):
+    transport = MaxMessengerClient("fake", AsyncMock())
+    monkeypatch.setattr(
+        transport, "_upload_image_bytes", AsyncMock(side_effect=TimeoutError)
+    )
+    request = AsyncMock(return_value={"message": {"body": {"mid": "sent"}}})
+    monkeypatch.setattr(transport, "_request", request)
+    card = render_public_offer(order, "ru")
+    assert await transport.send_offer_card("100", card, NEUTRAL_COVER) == "sent"
+    request.assert_awaited_once()
+    assert (
+        request.call_args.args[2]["attachments"][0]["type"] == "inline_keyboard"
+    )
 
 
 @pytest.mark.asyncio
@@ -874,8 +1018,12 @@ def test_saved_offer_omits_unusable_links_and_has_contact_fallback(
         ),
         "ru",
     )
-    assert saved.keyboard is None
     assert "Заказчик напишет первым" in saved.text
+    assert not any(button.url for row in saved.keyboard.rows for button in row)
+    brief = render_full_offer_brief(
+        replace(order, product_link=private_link, brief_link=""), "ru"
+    )
+    assert not any(button.url for row in brief.keyboard.rows for button in row)
 
 
 @pytest.mark.asyncio
@@ -1019,7 +1167,10 @@ async def test_selected_creator_keeps_brief_and_contacts_after_intake(
     ]
     await offer_session.flow.handle(click(order, "open"))
     card = offer_session.messenger.edit_offer_card.call_args.args[2]
-    assert "Отклик сохранён" in card.text
+    assert "Отклик отправлен" in card.text
+    await offer_session.flow.handle(click(order, "full"))
+    card = offer_session.messenger.edit_offer_card.call_args.args[2]
+    assert "Как работаем" in card.text
     assert order.brief_link in {
         button.url for row in card.keyboard.rows for button in row
     }

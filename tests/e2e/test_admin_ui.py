@@ -868,8 +868,27 @@ def test_order_worklist_search_hide_and_restore(
         "href", "https://example.test/ugc"
     )
     activity = page.get_by_role("region", name="Креаторы, отклики и резерв")
-    counters = activity.locator("article strong")
-    expect(counters).to_have_text(["2 из 4", "1", "1", "1", "0", "0"])
+
+    def offer_counter(label):
+        return (
+            activity.locator("article")
+            .filter(has=page.get_by_role("heading", name=label, exact=True))
+            .locator("strong")
+        )
+
+    for label, count in (
+        ("Отправлено", "2 из 4"),
+        ("Не доставлено", "1"),
+        ("Согласились", "1"),
+        ("Отказ / новая цена", "1"),
+        ("Начали отклик", "0"),
+        ("Подтвердили отклик", "0"),
+        ("Было действие", "2"),
+        ("Действий не зафиксировано", "0"),
+        ("Нажали «Бриф» / «Полное ТЗ»", "0 / 0"),
+        ("Открыли пропуск", "0"),
+    ):
+        expect(offer_counter(label)).to_have_text(count)
     expect(activity).to_contain_text("Авторов без результата отправки — 1")
     counteroffer = activity.get_by_role("row").filter(
         has_text="Автор со встречной ценой"
@@ -890,9 +909,9 @@ def test_order_worklist_search_hide_and_restore(
             )
         )
     engine.dispose()
-    expect(counters).to_have_text(
-        ["3 из 4", "1", "1", "2", "0", "0"], timeout=25_000
-    )
+    expect(offer_counter("Отправлено")).to_have_text("3 из 4", timeout=25_000)
+    expect(offer_counter("Отказ / новая цена")).to_have_text("2")
+    expect(offer_counter("Было действие")).to_have_text("3")
     expect(activity).to_contain_text("Рассылка завершена")
     expect(counteroffer).to_be_hidden()
     activity.get_by_label("Найти креатора").fill("")

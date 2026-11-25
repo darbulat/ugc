@@ -123,9 +123,13 @@ def test_preview_reuses_public_content_and_isolates_all_callbacks(
         )
         assert "private-" not in card.text
     saved = render_offer_preview(preview.order, locale, "done")
+    assert saved.keyboard.rows[0][0].callback_data.startswith(
+        f"{PREVIEW_CALLBACK_PREFIX}full:"
+    )
+    brief = render_offer_preview(preview.order, locale, "full")
     assert {
         button.url
-        for row in saved.keyboard.rows
+        for row in brief.keyboard.rows
         for button in row
         if button.url
     } == {

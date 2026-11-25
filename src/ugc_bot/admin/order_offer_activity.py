@@ -10,7 +10,10 @@ from ugc_bot.domain.enums import OrderStatus, RejectionReason
 from ugc_bot.domain.offer_intake import intake_open, reserve_notice
 from ugc_bot.infrastructure.db.creator_invite_models import INVITES
 from ugc_bot.infrastructure.db.dispatch_control import CLAIMS, CONTROLS
-from ugc_bot.infrastructure.db.messenger_attribution import OFFER_CHANNELS
+from ugc_bot.infrastructure.db.messenger_attribution import (
+    OFFER_CARD_ACTION_EVENTS,
+    OFFER_CHANNELS,
+)
 from ugc_bot.infrastructure.db.models import (
     OfferDispatchModel,
     OrderModel,
@@ -60,12 +63,23 @@ async def load_order_offer_activity(
             INVITES.c.consented_at.is_not(None),
         ),
     )
+    events = OFFER_CARD_ACTION_EVENTS
+    interacted = exists().where(
+        events.c.order_id == order_id,
+        events.c.blogger_id == OfferDispatchModel.blogger_id,
+    )
     offers = (
         select(
             OfferDispatchModel.blogger_id,
             sent.label("sent"),
             OFFER_CHANNELS.c.response_started_at.is_not(None).label("started"),
+            or_(
+                interacted,
+                OFFER_CHANNELS.c.response_started_at.is_not(None),
+                OfferDispatchModel.accepted.is_not(None),
+            ).label("interacted"),
             OfferDispatchModel.accepted,
+            OfferDispatchModel.in_offer,
             OfferDispatchModel.rejection_reason,
             OfferDispatchModel.desired_price,
             func.coalesce(
@@ -85,7 +99,13 @@ async def load_order_offer_activity(
     responses = select(
         func.count().filter(offers.c.sent.is_(True)).label("sent"),
         func.count().filter(offers.c.accepted.is_(True)).label("accepted"),
+        func.count()
+        .filter(offers.c.accepted.is_(True), offers.c.in_offer.is_(False))
+        .label("reserved"),
         func.count().filter(offers.c.started).label("started"),
+        func.count()
+        .filter(offers.c.sent.is_(True), offers.c.interacted)
+        .label("sent_interacted"),
         func.count()
         .filter(offers.c.started, offers.c.accepted.is_(True))
         .label("confirmed_after_start"),
@@ -97,6 +117,9 @@ async def load_order_offer_activity(
             .filter(offers.c.sent.is_(True))
             .label("sent_to_audience"),
             func.count()
+            .filter(offers.c.sent.is_(True), offers.c.interacted)
+            .label("audience_interacted"),
+            func.count()
             .filter(CLAIMS.c.rejected.is_(True), offers.c.sent.is_not(True))
             .label("failed"),
             func.count()
@@ -107,6 +130,22 @@ async def load_order_offer_activity(
             CLAIMS.outerjoin(offers, CLAIMS.c.blogger_id == offers.c.blogger_id)
         )
         .where(CLAIMS.c.order_id == order_id)
+        .subquery()
+    )
+    event_summary = (
+        select(
+            func.count().label("total_taps"),
+            func.count(func.distinct(events.c.blogger_id))
+            .filter(events.c.action == "brief")
+            .label("brief_opened"),
+            func.count(func.distinct(events.c.blogger_id))
+            .filter(events.c.action == "full")
+            .label("full_brief_opened"),
+            func.count(func.distinct(events.c.blogger_id))
+            .filter(events.c.action == "skip")
+            .label("skip_opened"),
+        )
+        .where(events.c.order_id == order_id)
         .subquery()
     )
     declines = (
@@ -130,17 +169,20 @@ async def load_order_offer_activity(
             OrderModel.status,
             OrderModel.offer_reserve_until,
             OrderModel.currency,
+            OrderModel.price,
             OrderModel.dispatch_stopped,
             CONTROLS.c.audience_ready,
             CONTROLS.c.paused,
             responses,
             audience,
+            event_summary,
             declines,
         )
         .select_from(OrderModel)
         .outerjoin(CONTROLS, CONTROLS.c.order_id == OrderModel.order_id)
         .join(responses, true())
         .join(audience, true())
+        .join(event_summary, true())
         .outerjoin(declines, true())
         .where(
             OrderModel.order_id == order_id,
@@ -156,11 +198,24 @@ async def load_order_offer_activity(
     if not rows:
         return None
     summary = rows[0]
+    sent_count = (
+        summary.sent_to_audience if summary.audience_ready else summary.sent
+    )
+    active_count = (
+        summary.audience_interacted
+        if summary.audience_ready
+        else summary.sent_interacted
+    )
     refused = [
         {
             "creator_id": row.blogger_id,
             "name": row.name,
-            "reason": _REASONS.get(row.rejection_reason, "Причина не указана"),
+            "reason": (
+                "Бартер не подходит"
+                if summary.price <= 0
+                and row.rejection_reason == RejectionReason.LOW_PRICE
+                else _REASONS.get(row.rejection_reason, "Причина не указана")
+            ),
             "price": row.desired_price,
         }
         for row in rows
@@ -184,13 +239,18 @@ async def load_order_offer_activity(
             )
             else None
         ),
-        "sent": summary.sent_to_audience
-        if summary.audience_ready
-        else summary.sent,
+        "sent": sent_count,
+        "sent_interacted": active_count,
+        "sent_without_activity": sent_count - active_count,
+        "total_taps": summary.total_taps,
+        "brief_opened": summary.brief_opened,
+        "full_brief_opened": summary.full_brief_opened,
+        "skip_opened": summary.skip_opened,
         "targeted": summary.targeted if summary.audience_ready else None,
         "failed": summary.failed if summary.audience_ready else None,
         "via_invite": summary.via_invite if summary.audience_ready else 0,
         "accepted": summary.accepted,
+        "reserved": summary.reserved,
         "started": summary.started,
         "confirmed_after_start": summary.confirmed_after_start,
         "declined": len(refused),
