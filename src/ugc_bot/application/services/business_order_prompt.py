@@ -127,8 +127,14 @@ def _order_fields(order: Order, platforms: Iterable[str]):
 def _service_fields(
     order: Order, quote: Mapping[str, Any], payment: Payment | None
 ):
+    consultation = quote.get("consultation_minor") or 0
+    consultation_paid = quote.get("consultation_state") == "paid"
     if payment and payment.status == PaymentStatus.PAID:
-        paid = "подтверждена"
+        paid = (
+            "подтверждена за подбор и выбранное сопровождение"
+            if consultation and not consultation_paid
+            else "подтверждена"
+        )
     elif order.complimentary:
         paid = "по согласованию без оплаты"
     else:
@@ -149,10 +155,16 @@ def _service_fields(
     for key, label in (
         ("selection_base_minor", "Стоимость подбора"),
         ("accompaniment_minor", "Стоимость сопровождения"),
-        ("total_minor", "Счёт за услуги"),
     ):
         if (amount := quote.get(key)) is not None:
             rows.append((label, f"{Decimal(amount) / 100:f} {order.currency}"))
+    if consultation:
+        state = "оплачена" if consultation_paid else "ожидает оплаты"
+        amount = Decimal(consultation) / 100
+        rows.append(("Консультация", f"{amount:f} {order.currency}, {state}"))
+    if (total := quote.get("total_minor")) is not None:
+        amount = Decimal(total + consultation) / 100
+        rows.append(("Счёт за услуги", f"{amount:f} {order.currency}"))
     return rows
 
 

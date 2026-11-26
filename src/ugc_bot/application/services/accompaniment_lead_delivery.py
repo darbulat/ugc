@@ -61,13 +61,19 @@ class AccompanimentLeadDelivery:
                     continue
                 if job.state != "ready":
                     continue
-                lead = await repo.lead(job.lead_id, session=session)
                 contact = await repo.contact(job.recipient_id, session=session)
-                if contact is None or not contact.address:
+                if (
+                    contact is None
+                    or not contact.address
+                    or await repo.covered_by_order_card(
+                        job, contact, session=session
+                    )
+                ):
                     await repo.save_job(
                         replace(job, state="obsolete"), session=session
                     )
                     continue
+                lead = await repo.lead(job.lead_id, session=session)
                 text = (
                     "Заявка на сопровождение UMC\n"
                     f"Заказ: {lead.order_id}\n"

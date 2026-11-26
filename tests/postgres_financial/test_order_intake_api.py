@@ -359,6 +359,53 @@ async def test_v1_own_order_list_exposes_real_policy_without_legacy_pay_action(
         assert item["payment_link"] == ""
 
 
+async def _business_cards(cards, messenger, order_id):
+    for _ in range(100):
+        if not await cards.run_once():
+            break
+    return [
+        call.kwargs
+        for call in messenger.send_text.await_args_list
+        if call.kwargs.get("keyboard")
+        and any(
+            button.url and str(order_id) in button.url
+            for row in call.kwargs["keyboard"].rows
+            for button in row
+        )
+    ]
+
+
+def _assert_created_cards(created_cards, allowed):
+    assert {card["chat_id"] for card in created_cards} == allowed
+    assert len(created_cards) == len(allowed)
+    for card in created_cards:
+        assert card["parse_mode"] == "HTML"
+        assert "🟠 Ожидает оплаты" in card["text"]
+        assert (
+            "<b>Менеджер</b> · нужен для всех креаторов · 12 000 ₽"
+            in card["text"]
+        )
+        assert "<b>Консультация</b> · 5 000 ₽ · ожидает оплаты" in card["text"]
+        assert "<b>Счёт за услуги</b> · 22 000 ₽" in card["text"]
+        assert "Позиции:" not in card["text"]
+        assert [
+            button.text for row in card["keyboard"].rows for button in row
+        ] == [
+            "Открыть в админке",
+            "Продукт",
+            "Скопировать для GPT",
+        ]
+
+
+def _assert_paid_cards(paid_cards, allowed):
+    assert len(paid_cards) == len(allowed)
+    assert {card["chat_id"] for card in paid_cards} == allowed
+    for card in paid_cards:
+        assert "✅ Заказ оплачен" in card["text"]
+        assert "<b>Консультация</b> · 5 000 ₽ · оплачена" in card["text"]
+        assert "<b>Счёт за услуги</b> · 22 000 ₽" in card["text"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("combined", [False, True])
 async def test_consultation_selection_payment_and_targeted_delivery(
@@ -388,6 +435,9 @@ async def test_consultation_selection_payment_and_targeted_delivery(
     from ugc_bot.infrastructure.db.order_notice_models import (
         CONSULTATION_DELIVERIES,
     )
+    from ugc_bot.infrastructure.db.repositories.consultation_checkout import (
+        consultation_notices,
+    )
     from ugc_bot.infrastructure.db.repositories.entitlements import (
         SqlAlchemyClientEntitlementRepository,
     )
@@ -396,6 +446,7 @@ async def test_consultation_selection_payment_and_targeted_delivery(
     config = env["config"]
     container = env["container"]
     config.webhook.webhook_base_url = "https://bot.example.test"
+    config.admin.admin_base_url = "https://admin.example.test/admin"
     config.financial.yookassa_browser_enabled = True
     config.financial.yookassa_browser_shop_id = "123"
     config.financial.yookassa_browser_secret_key = SecretStr("synthetic")
@@ -414,9 +465,7 @@ async def test_consultation_selection_payment_and_targeted_delivery(
     )
     allowed = frozenset((env["admin"].telegram_id, other_admin.telegram_id))
     config.admin.browser_paid_order_telegram_recipients = allowed
-    config.admin.business_order_telegram_recipients = allowed | {
-        unrelated.telegram_id
-    }
+    config.admin.business_order_telegram_recipients = allowed
     mobile_app = app(env, container)
     endpoint = "/miniapp/api/financial/orders"
     payload = body(env) | {
@@ -458,6 +507,23 @@ async def test_consultation_selection_payment_and_targeted_delivery(
         assert conflict.status_code == 409
 
     order_id = UUID(result["order_id"])
+    messenger = AsyncMock()
+    if combined:
+        # Simulate legacy delivery jobs expanded before the scheduler update.
+        async with container.transaction_manager.transaction() as db:
+            old_job = await consultation_notices().claim(
+                datetime.now(UTC), tuple(allowed), session=db
+            )
+        assert old_job.order_id == order_id and old_job.event_kind == "created"
+    separate = container.build_consultation_notice_delivery(messenger)
+    assert not await separate.run_once()
+    messenger.send_text.assert_not_awaited()
+    cards = container.build_order_notice_delivery(messenger)
+
+    created_cards = await _business_cards(cards, messenger, order_id)
+    _assert_created_cards(created_cards, allowed)
+    messenger.send_text.reset_mock()
+
     receipt = scoped_rows(env, "order_intake_receipts", order_id)[0]
     assert str(token) not in str(receipt)
     lead = scoped_rows(env, "accompaniment_leads", order_id)[0]
@@ -649,13 +715,12 @@ async def test_consultation_selection_payment_and_targeted_delivery(
         )
     assert gateway.observe.await_count == (3 if combined else 2)
 
-    messenger = AsyncMock()
-    worker = container.build_consultation_notice_delivery(messenger)
-    for _ in range(4):
-        assert await worker.run_once()
-    assert not await worker.run_once()
+    for _ in range(0 if combined else 2):
+        assert await separate.run_once()
+    assert not await separate.run_once()
+    standalone = [call.kwargs for call in messenger.send_text.await_args_list]
     with Session(env["pg"]) as db:
-        deliveries = (
+        actual = (
             db.execute(
                 select(CONSULTATION_DELIVERIES).where(
                     CONSULTATION_DELIVERIES.c.order_id == order_id
@@ -664,20 +729,32 @@ async def test_consultation_selection_payment_and_targeted_delivery(
             .mappings()
             .all()
         )
+    expected_kind, expected_state = (
+        ("created", "failed") if combined else ("paid", "sent")
+    )
     assert {
-        (row["event_kind"], row["recipient"], row["state"])
-        for row in deliveries
-    } == {
-        (kind, recipient, "sent")
-        for kind in ("created", "paid")
-        for recipient in allowed
-    }
-    assert {
-        call.kwargs["chat_id"] for call in messenger.send_text.await_args_list
-    } == allowed
+        (row["event_kind"], row["recipient"], row["state"]) for row in actual
+    } == {(expected_kind, recipient, expected_state) for recipient in allowed}
+    if combined:
+        assert all(
+            row["last_error"] == "included_in_business_order_card"
+            for row in actual
+        )
+    assert {card["chat_id"] for card in standalone} == (
+        set() if combined else allowed
+    )
+
+    paid_cards = await _business_cards(cards, messenger, order_id)
+    if combined:
+        _assert_paid_cards(paid_cards, allowed)
+    else:
+        assert paid_cards == []
     assert all(
-        str(token) not in call.kwargs["text"]
-        for call in messenger.send_text.await_args_list
+        str(token) not in card["text"] for card in standalone + paid_cards
+    )
+    assert not any(
+        card["chat_id"] == unrelated.telegram_id
+        for card in created_cards + standalone + paid_cards
     )
 
 

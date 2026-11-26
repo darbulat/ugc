@@ -308,3 +308,19 @@ def test_copy_prompt_legacy_without_payment_or_brief(export, complimentary):
     export.repos[
         "order_intake_repo"
     ].target_platforms_for_order.assert_not_awaited()
+
+
+@pytest.mark.parametrize("state", ["available", "paid"])
+def test_copy_prompt_keeps_consultation_total_and_payment_state(export, state):
+    export.quote.return_value = export.quote.return_value | {
+        "consultation_minor": 500000,
+        "consultation_state": state,
+    }
+    response = _post(export)
+    assert response.status_code == 200
+    prompt = response.json()["prompt"]
+    payment = "оплачена" if state == "paid" else "ожидает оплаты"
+    assert f"Консультация — 5000 RUB, {payment}" in prompt
+    assert "Счёт за услуги — 12400 RUB" in prompt
+    assert ("подтверждена за подбор" in prompt) == (state != "paid")
+    assert "private-payment-reference" not in prompt

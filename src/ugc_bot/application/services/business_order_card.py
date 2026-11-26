@@ -78,9 +78,7 @@ def _money(amount: Decimal, symbol: str) -> str:
     return f"{whole},{fraction} {symbol}" if fraction else f"{whole} {symbol}"
 
 
-def _quote_lines(details: Mapping[str, Any], symbol: str) -> list[str]:
-    if not details:
-        return [_line("Менеджер", "не указан")]
+def _manager_line(details: Mapping[str, Any], symbol: str) -> str:
     count = details.get("accompaniment_count")
     if count is None:
         manager = "не указан"
@@ -92,7 +90,14 @@ def _quote_lines(details: Mapping[str, Any], symbol: str) -> list[str]:
         manager = f"нужен для {count} из {positions}"
     else:
         manager = "нужен"
-    lines = [_line("Менеджер", manager)]
+    accompaniment = details.get("accompaniment_minor", 0)
+    if accompaniment:
+        manager += f" · {_money(Decimal(accompaniment) / 100, symbol)}"
+    return _line("Менеджер", manager)
+
+
+def _quote_lines(details: Mapping[str, Any], symbol: str) -> list[str]:
+    lines = [_manager_line(details, symbol)]
     if due := details.get("selection_due_at"):
         local = datetime.fromisoformat(due).astimezone(
             ZoneInfo("Europe/Moscow")
@@ -100,15 +105,31 @@ def _quote_lines(details: Mapping[str, Any], symbol: str) -> list[str]:
         lines.append(
             _line("Срок подбора", local.strftime("%d.%m.%Y, %H:%M МСК"))
         )
-    for key, label in (
-        ("selection_base_minor", "Подбор"),
-        ("accompaniment_minor", "Сопровождение"),
-        ("total_minor", "Счёт за услуги"),
-    ):
-        if (amount := details.get(key)) is not None and (
-            key != "accompaniment_minor" or amount > 0
-        ):
-            lines.append(_line(label, _money(Decimal(amount) / 100, symbol)))
+    if (selection := details.get("selection_base_minor")) is not None:
+        lines.append(_line("Подбор", _money(Decimal(selection) / 100, symbol)))
+    consultation = details.get("consultation_minor") or 0
+    if consultation:
+        payment = (
+            "оплачена"
+            if details.get("consultation_state") == "paid"
+            else "ожидает оплаты"
+        )
+        amount = _money(Decimal(consultation) / 100, symbol)
+        lines.append(
+            _line(
+                "Консультация",
+                f"{amount} · {payment} · до 60 минут на запуск, ТЗ"
+                " и подбор блогеров",
+                110,
+            )
+        )
+    if (total := details.get("total_minor")) is not None:
+        lines.append(
+            _line(
+                "Счёт за услуги",
+                _money(Decimal(total + consultation) / 100, symbol),
+            )
+        )
     return lines
 
 
@@ -120,15 +141,19 @@ class _VisibleText(HTMLParser):
 
 
 def _heading(
-    order: Order, paid_event: bool, payment_confirmed: bool | None
+    order: Order,
+    paid_event: bool,
+    payment_confirmed: bool | None,
+    *,
+    consultation_unpaid: bool,
 ) -> str:
     moderation = order.status == OrderStatus.PENDING_MODERATION
     if paid_event:
-        return "<b>✅ Заказ оплачен</b>" + (
-            "\nЖдёт модерации" if moderation else ""
-        )
+        state = "Подбор оплачен" if consultation_unpaid else "Заказ оплачен"
+        return f"<b>✅ {state}</b>" + ("\nЖдёт модерации" if moderation else "")
     if payment_confirmed:
-        payment = "✅ Оплачен" + (" · ждёт модерации" if moderation else "")
+        state = "Подбор оплачен" if consultation_unpaid else "Оплачен"
+        payment = f"✅ {state}" + (" · ждёт модерации" if moderation else "")
     elif order.complimentary:
         payment = "⚪ Без оплаты по согласованию"
     elif order.status == OrderStatus.NEW:
@@ -214,8 +239,16 @@ def render_business_order_card(
     flagged: bool,
 ) -> str:
     details = details or {}
+    consultation_unpaid = bool(details.get("consultation_minor")) and (
+        details.get("consultation_state") != "paid"
+    )
     sections = [
-        _heading(order, paid_event, payment_confirmed),
+        _heading(
+            order,
+            paid_event,
+            payment_confirmed,
+            consultation_unpaid=consultation_unpaid,
+        ),
         "\n".join(
             _client_lines(advertiser, profile, details.get("contact_reference"))
         ),
