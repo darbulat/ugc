@@ -52,6 +52,23 @@
     counter.hidden = false;
   }
 
+  function updateProgress() {
+    const source = panel.querySelector('[data-picked-count]');
+    const progress = document.getElementById('order-picked-progress');
+    if (!source || !progress) return;
+    const count = Number(source.dataset.pickedCount);
+    const needed = Number(source.dataset.pickedNeeded);
+    if (!Number.isInteger(count) || !Number.isInteger(needed)) return;
+    const caption = `${count} из ${needed}`;
+    const percent = needed > 0 ? Math.min(100, Math.round(count * 100 / needed)) : 0;
+    progress.setAttribute('aria-valuetext', caption);
+    progress.setAttribute('aria-valuenow', percent);
+    progress.firstElementChild.style.width = `${percent}%`;
+    document.getElementById('order-picked-value').textContent = caption;
+    document.getElementById('order-picked-remaining').textContent =
+      `Осталось подобрать ${Math.max(needed - count, 0)}`;
+  }
+
   async function refresh() {
     if (sending || (document.hidden && previousHtml !== undefined)) {
       window.setTimeout(refresh, interval);
@@ -85,6 +102,7 @@
         panel.querySelectorAll('[data-creator-detail]').forEach(item => { item.open = expanded.has(item.dataset.creatorDetail); });
         filterRows(filter);
         updateCounter();
+        updateProgress();
         const nextScroller = panel.querySelector('.order-creators__scroll');
         if (nextScroller) [nextScroller.scrollTop, nextScroller.scrollLeft] = scrollPosition;
         if (focusedSearch && nextSearch) {

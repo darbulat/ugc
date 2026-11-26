@@ -232,3 +232,31 @@
     flex: 1;
   }
 }
+.order-close-dialog {
+  width: min(30rem, calc(100% - 2rem));
+  padding: 1.25rem;
+  border: 1px solid var(--tblr-border-color, #dce1e7);
+  border-radius: .75rem;
+  background: var(--tblr-bg-surface, #fff);
+  color: var(--tblr-body-color, #1f2937);
+}
+
+.order-close-dialog::backdrop {
+  background: rgb(15 23 42 / 45%);
+}
+
+.order-close-dialog textarea {
+  display: block;
+  width: 100%;
+  padding: .5rem;
+  font: inherit;
+  border: 1px solid var(--tblr-border-color, #dce1e7);
+  border-radius: .375rem;
+}
+
+.order-close-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem;
+  margin-top: .75rem;
+}

@@ -1151,6 +1151,7 @@ async def test_get_order_card_returns_detail(service) -> None:
         None,  # Closure reason
         False,  # Closure reason can be edited
         False,
+        True,  # Can close
         None,
         None,
         None,
@@ -1168,6 +1169,8 @@ async def test_get_order_card_returns_detail(service) -> None:
     assert card["test_candidate"] is False
     assert card["closure_reason"] == ""
     assert card["can_edit_closure_reason"] is False
+    assert card["can_close"] is True
+    assert card["closure_hint"] is None
     assert card["order_type"] == "ugc_only"
     assert card["bloggers_needed"] == 10
     assert card["picked_count"] == 5
@@ -1213,6 +1216,7 @@ async def test_get_order_card_includes_eligible_creators_count_for_new_order(
         None,
         False,
         False,
+        False,  # Can close
         None,
         None,
         None,
@@ -1258,6 +1262,7 @@ async def test_get_order_card_eligible_creators_count_none_when_dispatch_raises(
         None,
         False,
         False,
+        False,  # Can close
         None,
         None,
         None,
@@ -1502,6 +1507,7 @@ async def test_progress_ratio_capped_at_one(service) -> None:
         None,  # Closure reason
         False,  # Closure reason can be edited
         False,
+        True,  # Can close
         None,
         None,
         None,
@@ -1662,6 +1668,7 @@ async def test_progress_ratio_zero_when_needed_zero(service) -> None:
         None,  # Closure reason
         False,  # Closure reason can be edited
         False,
+        True,  # Can close
         None,
         None,
         None,
@@ -1933,8 +1940,13 @@ async def test_list_creators_with_digit_search_hits_user_search_condition(
 
 
 @pytest.mark.asyncio
-async def test_list_orders_sort_picked_count(service) -> None:
-    """list_orders with sort=picked_count uses responses coalesce."""
+async def test_list_orders_sort_picked_count(service, monkeypatch) -> None:
+    """list_orders uses the admin progress expression for the sort."""
+    from ugc_bot.admin.dashboard_service import admin_picked_order_sort
+    from ugc_bot.admin.order_summary import picked_order_count
+
+    run_sync = AsyncMock(return_value=picked_order_count())
+    monkeypatch.setattr(_FakeSession, "run_sync", run_sync, raising=False)
     order = _make_order()
     rows = [(order, 2, 0, "Ad", "ad", 2, 2)]
     results = [
@@ -1946,6 +1958,7 @@ async def test_list_orders_sort_picked_count(service) -> None:
         "today", status_filter=None, sort="picked_count", order="desc"
     )
     assert result["items"][0]["picked_count"] == 2
+    run_sync.assert_awaited_once_with(admin_picked_order_sort)
 
 
 @pytest.mark.asyncio

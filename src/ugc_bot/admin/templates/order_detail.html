@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "people_parts.html" import telegram, instagram %}
 {% from 'order_managers.html' import order_managers %}
+{% from 'order_close_form.html' import close_order_form %}
 {% block title %}{{ (order.offer_text or 'Заказ')|truncate(65) }}{% endblock %}
 {% block head %}
   <link rel="stylesheet" href="{{ admin_asset(request, 'order-detail.css') }}">
@@ -25,6 +26,9 @@
       <a class="admin-button" href="#order-detail-actions">Действия с заказом</a>
       <a class="admin-button" href="#order-offer-heading">Креаторы</a>
       <a class="admin-button" href="#order-brief-heading">Бриф и условия</a>
+      {% if order.get('can_close') or order.get('closure_hint') %}
+        <a class="admin-button" href="#order-closure">Закрытие заказа</a>
+      {% endif %}
       {% if status == 'active' %}
         <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(order_id=order.order_id, stage="all") }}">Очередь по позициям</a>
         {% if order.get('financial_selection') %}
@@ -55,8 +59,8 @@
       <div class="order-detail__stats">
         <article>
           <h2>Подобрано по плану</h2>
-          <strong>{{ picked }} из {{ needed }}</strong>
-          <div class="order-detail__progress" role="progressbar" aria-label="Подобрано по плану" aria-valuetext="{{ picked }} из {{ needed }}" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
+          <strong id="order-picked-value">{{ picked }} из {{ needed }}</strong>
+          <div id="order-picked-progress" class="order-detail__progress" role="progressbar" aria-label="Подобрано по плану" aria-valuetext="{{ picked }} из {{ needed }}" aria-valuenow="{{ (order.progress|default(0) * 100)|round|int }}" aria-valuemin="0" aria-valuemax="100">
             <span style="width: {{ (order.progress|default(0) * 100)|round|int }}%"></span>
           </div>
           <div id="order-transferred-counter" class="order-detail__transfer" aria-live="polite" hidden>
@@ -70,7 +74,7 @@
           {% if order.manual_creator_count %}
           <small>Согласились в переписке: {{ order.manual_creator_count }}</small>
           {% endif %}
-          <small>Осталось подобрать {{ [needed - picked - order.get('manual_creator_count', 0), 0]|max }}</small>
+          <small id="order-picked-remaining">Осталось подобрать {{ [needed - picked, 0]|max }}</small>
           {% if order.get('eligible_creators_count') is not none %}<small>Подходят по фильтрам {{ order.eligible_creators_count }}</small>{% endif %}
         </article>
         <article>
@@ -191,9 +195,18 @@
     </section>
     {% endif %}
 
-    {% if order.can_edit_closure_reason or order.closure_reason or closure_result %}
+    {% if order.can_edit_closure_reason or order.closure_reason or closure_result or order.get('can_close') or order.get('closure_hint') %}
     <section class="card order-detail__section" id="order-closure" aria-labelledby="order-closure-heading">
       <h2 id="order-closure-heading">Закрытие заказа</h2>
+      {% if order.get('can_close') %}
+        <p>После подтверждения заказ перейдёт в «Закрытые», а рассылка остановится.</p>
+        {{ close_order_form(order.order_id, request.url_for('update_order_worklist', order_id=order.order_id, operation='close').include_query_params(return_to=back_url), admin_action_token(request), closure_reason_limit, 'admin-button', 'admin-button admin-button--primary') }}
+      {% elif order.get('closure_hint') %}
+        <p>{{ order.closure_hint }}</p>
+        {% if order.get('financial_selection') %}
+          <a class="admin-button" href="{{ request.url_for('admin_order_review').include_query_params(order_id=order.order_id, stage='all') }}">Проверить позиции</a>
+        {% endif %}
+      {% endif %}
       {% if closure_result %}
       <div class="order-detail__closure-result order-detail__closure-result--{{ 'saved' if closure_result.saved else 'error' }}"
            role="{{ 'status' if closure_result.saved else 'alert' }}">

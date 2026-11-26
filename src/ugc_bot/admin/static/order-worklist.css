@@ -175,17 +175,3 @@
 .order-company-toggle[aria-expanded="true"] {
   background: #f7faff;
 }
-
-
-.order-close-dialog {
-  width: min(30rem, calc(100% - 2rem));
-  padding: 1.25rem;
-  border: 1px solid var(--tblr-border-color, #dce1e7);
-  border-radius: .75rem;
-  background: var(--tblr-bg-surface, #fff);
-  color: var(--tblr-body-color, #1f2937);
-}
-
-.order-close-dialog::backdrop {
-  background: rgb(15 23 42 / 45%);
-}

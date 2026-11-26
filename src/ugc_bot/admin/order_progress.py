@@ -1,15 +1,19 @@
-"""Batch delivery counters for visible orders, separate from paid positions."""
+"""Batch counts of filled positions and unique transferred contacts."""
 
 from dataclasses import dataclass
 
-from sqlalchemy import String, cast, func, literal, select, union_all
+from sqlalchemy import String, case, cast, func, literal, or_, select, union_all
 
 from ugc_bot.admin.manual_deliveries import (
     delivery_schema,
     manual_delivery_rows,
 )
 from ugc_bot.infrastructure.db.creator_transfer_models import TRANSFERS
-from ugc_bot.infrastructure.db.models import OrderModel
+from ugc_bot.infrastructure.db.models import (
+    ItemAssignmentModel,
+    OrderItemModel,
+    OrderModel,
+)
 from ugc_bot.infrastructure.db.order_selection import (
     picked_order_count,
     use_financial_positions,
@@ -43,6 +47,44 @@ async def load_async_order_progress(session, orders):
     return await session.run_sync(load_order_progress, order_ids)
 
 
+def admin_picked_order_count(manual=None):
+    if manual is None:
+        return picked_order_count()
+    assigned = (
+        select(ItemAssignmentModel.assignment_id)
+        .where(
+            ItemAssignmentModel.paid_item_id == OrderItemModel.paid_item_id,
+            ItemAssignmentModel.valid_to.is_(None),
+        )
+        .exists()
+    )
+    handed_off = (
+        select(manual.c.item_id)
+        .where(manual.c.item_id == OrderItemModel.paid_item_id)
+        .exists()
+    )
+    filled = (
+        select(func.count())
+        .select_from(OrderItemModel)
+        .where(
+            OrderItemModel.order_id == OrderModel.order_id,
+            or_(assigned, handed_off),
+        )
+        .correlate(OrderModel)
+        .scalar_subquery()
+    )
+    return case(
+        (use_financial_positions(), filled),
+        else_=picked_order_count(),
+    )
+
+
+def admin_picked_order_sort(session):
+    _, manual_available = delivery_schema(session, set())
+    manual = manual_delivery_rows().subquery() if manual_available else None
+    return admin_picked_order_count(manual)
+
+
 def load_order_progress(session, order_ids):
     if not order_ids:
         return {}
@@ -63,8 +105,8 @@ def load_order_progress(session, order_ids):
             literal(0).label("manual"),
         )
     ]
-    if manual_available:
-        manual = manual_delivery_rows(order_ids).subquery()
+    manual = manual_delivery_rows(order_ids).cte() if manual_available else None
+    if manual is not None:
         sources.append(
             select(
                 manual.c.order_id,
@@ -89,7 +131,7 @@ def load_order_progress(session, order_ids):
         select(
             OrderModel.order_id,
             func.count(unique.c.creator_key),
-            picked_order_count(),
+            admin_picked_order_count(manual),
             func.coalesce(func.sum(unique.c.manual), 0),
         )
         .outerjoin(unique, unique.c.order_id == OrderModel.order_id)

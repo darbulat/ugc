@@ -3,6 +3,7 @@
 {{ '{:,.2f}'.format(value).replace(',', ' ').replace('.', ',').removesuffix(',00') }} {{ '₽' if workspace.currency == 'RUB' else workspace.currency }}
 {%- endmacro %}
 <div class="order-creators" data-creator-workspace
+     {% if workspace.picked_count is defined %}data-picked-count="{{ workspace.picked_count }}" data-picked-needed="{{ workspace.needed }}"{% endif %}
      {% if workspace.transfer_count is not none %}data-transferred-count="{{ workspace.transfer_count }}" data-transfer-needed="{{ workspace.needed }}" data-manual-transferred-count="{{ workspace.manual_count }}"{% endif %}>
   <div class="order-creators__toolbar">
     <div class="order-creators__filters" role="group" aria-label="Показать креаторов">

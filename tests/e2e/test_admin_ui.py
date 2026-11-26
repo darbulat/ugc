@@ -1122,6 +1122,14 @@ def test_manual_order_closure_requires_and_displays_reason(
 
     _login(page, admin_server)
     listing = f"{admin_server}/admin/order-model/list"
+    page.goto(f"{admin_server}/admin/orders/{quick_id}")
+    page.locator("#order-closure").get_by_role(
+        "button", name="Закрыть", exact=True
+    ).click()
+    card_dialog = page.get_by_role("dialog", name="Закрыть заказ")
+    expect(card_dialog.get_by_label("Причина закрытия")).to_be_focused()
+    card_dialog.get_by_role("button", name="Отмена").click()
+    expect(card_dialog).to_be_hidden()
     page.goto(f"{listing}?search={quick_id}")
     row = page.get_by_role("row").filter(has_text="Проверка закрытия из списка")
     close = row.get_by_role("button", name="Закрыть", exact=True)

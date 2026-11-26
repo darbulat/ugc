@@ -1,4 +1,5 @@
 {% from 'order_progress.html' import order_progress %}
+{% from 'order_close_form.html' import close_order_form %}
 {% set details = model_view.worklist_details(order_rows) %}
 {% set closure_reasons = model_view.closure_reasons(order_rows) %}
 {% set reminders = model_view.unpaid_reminder_statuses(order_rows) if group == 'unpaid' else {} %}
@@ -119,27 +120,17 @@
             {% if operation %}
               {% set label = {'close': 'Закрыть', 'hide': 'Убрать из списка', 'restore': 'Вернуть в список'}[operation] %}
               {% set confirm_url = request.url_for('update_order_worklist', order_id=row.order_id, operation=operation) %}
+              {% if operation == 'close' %}
+                {{ close_order_form(row.order_id, confirm_url.replace(query=request.url.query), csrf_token, model_view.closure_reason_limit, 'btn btn-sm btn-outline-primary', 'btn btn-primary') }}
+              {% else %}
               <form method="post" action="{{ confirm_url.replace(query=request.url.query) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                {% if operation == 'close' %}
-                <button type="button" class="btn btn-sm btn-outline-primary" data-order-close>Закрыть</button>
-                <dialog class="order-close-dialog" aria-labelledby="order-close-title-{{ row.order_id }}">
-                  <h3 id="order-close-title-{{ row.order_id }}">Закрыть заказ</h3>
-                  <label class="form-label" for="order-close-reason-{{ row.order_id }}">Причина закрытия</label>
-                  <textarea id="order-close-reason-{{ row.order_id }}" name="closure_reason" class="form-control" rows="3"
-                            maxlength="{{ model_view.closure_reason_limit }}" required autofocus></textarea>
-                  <div class="d-flex flex-wrap gap-2 mt-3">
-                    <button type="submit" class="btn btn-primary">Закрыть заказ</button>
-                    <button type="button" class="btn btn-outline-secondary" data-order-close-cancel>Отмена</button>
-                  </div>
-                </dialog>
-                {% else %}
                 <button type="button" class="btn btn-sm btn-outline-primary"
                         data-admin-confirm="Заказ «{{ row.offer_text | truncate(70) }}» ({{ (row.order_id | string)[:8] }}). {{ label }}?{% if operation == 'hide' %} Запись сохранится.{% endif %}">
                   {{ label }}
                 </button>
-                {% endif %}
               </form>
+              {% endif %}
             {% endif %}
             {% if not info.archived %}
               {% if info.test_candidate %}
@@ -166,6 +157,9 @@
             {% set restore_button_class = 'btn btn-sm btn-outline-primary' %}
             {% include 'order_delete_button.html' %}
           </div>
+          {% if info.closure_hint %}
+            <a class="order-row-note" href="{{ detail_url }}#order-closure">{{ info.closure_hint }}</a>
+          {% endif %}
           {% set replacing = info.replaceable_managers|length > 0 %}
           {% if manager_actions and not info.archived and row.status != 'closed' %}
           {% if replacing or ('no_manager' in quick_filters and not info.managers) %}

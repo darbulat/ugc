@@ -38,7 +38,7 @@ __all__ = ["financial_pg_engine", "intake_env"]
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("registered", [False, True])
-async def test_existing_manual_receipt_is_third_contact_across_admin_views(
+async def test_existing_manual_receipts_fill_eight_positions_across_admin_views(
     intake_env,
     registered,
 ):
@@ -63,48 +63,58 @@ async def test_existing_manual_receipt_is_third_contact_across_admin_views(
             profile = db.get(BloggerProfileModel, creator)
             profile.instagram_url = "https://instagram.com/manual_creator"
             db.flush()
-        item = db.scalar(
-            select(OrderItemModel.paid_item_id).where(
+        items = db.scalars(
+            select(OrderItemModel.paid_item_id)
+            .where(
                 OrderItemModel.order_id == order_id,
-                OrderItemModel.ordinal == 3,
+                OrderItemModel.ordinal.between(3, 8),
             )
-        )
-        identity = create_invite(
-            db,
-            order_id,
-            item,
-            None,
-            "@manual_creator",
-            env["clock"].now(),
-            telegram="@manual_creator",
-            consent_source="other",
-            creator_name="Мурат",
-        )
-        # Existing persisted provider-accepted receipt; rendering sends nothing.
-        db.execute(
-            NOTICES.insert().values(
-                invite_id=identity, kind="customer", state="sent"
+            .order_by(OrderItemModel.ordinal)
+        ).all()
+        for ordinal, item in enumerate(items, 3):
+            handle = "manual_creator" if ordinal == 3 else f"manual_{ordinal}"
+            identity = create_invite(
+                db,
+                order_id,
+                item,
+                None,
+                handle,
+                env["clock"].now(),
+                telegram=handle,
+                consent_source="other",
+                creator_name="Мурат" if ordinal == 3 else f"Автор {ordinal}",
             )
-        )
+            db.execute(
+                NOTICES.insert().values(
+                    invite_id=identity, kind="customer", state="sent"
+                )
+            )
         assert load_order_progress(db, [order_id])[order_id] == OrderProgress(
-            2, 3, 1
+            8, 8, 6
         )
         details = worklist_row_details(db, [order_id], thresholds)[order_id]
-        assert details["transferred_count"] == 3
-        assert details["manual_transferred_count"] == 1
-        assert details["picked"] == 2
+        assert details["transferred_count"] == 8
+        assert details["manual_transferred_count"] == 6
+        assert details["picked"] == 8
+        assert "low_picked" not in details["attention_reasons"]
     dashboard = AdminDashboardService(
         env["container"].session_factory,
         "Europe/Moscow",
         thresholds,
     )
-    orders = await dashboard.list_orders("all", search=str(order_id))
+    orders = await dashboard.list_orders(
+        "all", search=str(order_id), sort="picked_count"
+    )
     row = next(
         row for row in orders["items"] if row["order_id"] == str(order_id)
     )
     assert (
-        row["transferred_count"] == 3 and row["manual_transferred_count"] == 1
+        row["transferred_count"] == 8 and row["manual_transferred_count"] == 6
     )
+    assert row["picked_count"] == 8
+    card = await dashboard.get_order_card(order_id, include_responses=False)
+    assert card["picked_count"] == 8
+    assert card["remaining_count"] == 2
     async with env["container"].session_factory() as db:
         attention = await dashboard._get_order_attention(db)
         row = next(
@@ -113,21 +123,28 @@ async def test_existing_manual_receipt_is_third_contact_across_admin_views(
             if row["order_id"] == str(order_id)
         )
         assert (
-            row["transferred_count"] == 3
-            and row["manual_transferred_count"] == 1
+            row["transferred_count"] == 8
+            and row["manual_transferred_count"] == 6
         )
+        assert row["picked_count"] == 8
+        assert "low_picked" not in row["reasons"]
         # Financial/customer acknowledgement history keeps its original meaning.
         assert await delivered_count(db, order_id) == 2
     activity = await dashboard.get_order_workspace_activity(
         order_id, can_send=True
     )
     workspace = activity["workspace"]
-    assert workspace["transfer_count"] == 3 and workspace["manual_count"] == 1
-    (manual,) = [row for row in workspace["rows"] if row["manual"]]
+    assert workspace["transfer_count"] == 8 and workspace["manual_count"] == 6
+    assert workspace["picked_count"] == 8
+    (manual,) = [
+        row
+        for row in workspace["rows"]
+        if row["manual"] and row["ordinal"] == 3
+    ]
     assert manual["name"] == "Мурат" and manual["ordinal"] == 3
     assert manual["delivered"] and not manual["can_send"]
     assert bool(manual["profile_id"]) == registered
-    assert len(workspace["rows"]) == 3
+    assert len(workspace["rows"]) == 8
     with Session(env["pg"]) as db:
         assert (
             db.scalar(select(func.count()).select_from(FinancialMovementModel))
