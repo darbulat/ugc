@@ -52,6 +52,7 @@ from ugc_bot.admin.dashboard_periods import (
 from ugc_bot.admin.order_offer_activity import load_order_offer_activity
 from ugc_bot.admin.order_progress import (
     OrderProgress,
+    admin_picked_order_sort,
     load_async_order_progress,
 )
 from ugc_bot.admin.order_summary import DelayThresholds as DelayThresholds
@@ -70,8 +71,10 @@ from ugc_bot.admin.order_summary import (
 )
 from ugc_bot.admin.order_worklist import (
     _is_test_order,
+    active_order_closure_hint,
     aging_unpaid_condition,
     business_order_conditions,
+    can_close_order,
     format_order_closure_reason,
     order_archived,
     order_closure_reason,
@@ -1574,6 +1577,9 @@ class AdminDashboardService:
         )
         result = await session.execute(query)
         rows = result.all()
+        progress = await load_async_order_progress(
+            session, (row[0] for row in rows)
+        )
         attention: dict[str, Any] = {
             "active": 0,
             "delayed": [],
@@ -1593,6 +1599,9 @@ class AdminDashboardService:
         ) in rows:
             if order.status == OrderStatus.ACTIVE:
                 attention["active"] += 1
+            order_progress = progress.get(order.order_id)
+            if order_progress is not None:
+                picked = order_progress.picked_count
             queue, reasons = self._attention_reasons(
                 now, order, picked, payment_status, paused, unpaid
             )
@@ -1626,6 +1635,16 @@ class AdminDashboardService:
                     "created_at": order.created_at,
                     "age_hours": order_age_hours(now, order.created_at),
                     "picked_count": int(picked),
+                    "transferred_count": (
+                        order_progress.transferred_count
+                        if order_progress is not None
+                        else None
+                    ),
+                    "manual_transferred_count": (
+                        order_progress.manual_count
+                        if order_progress is not None
+                        else 0
+                    ),
                     "needed_count": int(order.bloggers_needed),
                     "has_problem": open_count > 0,
                     "reasons": reasons,
@@ -1637,10 +1656,6 @@ class AdminDashboardService:
             for queue in ("delayed", "unpaid", "moderation")
             for item in attention[queue]
         }
-        progress = await load_async_order_progress(
-            session,
-            (row[0] for row in rows if str(row[0].order_id) in visible),
-        )
         managers: dict[str, list[dict[str, str | None]]] = {}
         if visible:
             manager_rows = await session.execute(
@@ -1653,13 +1668,6 @@ class AdminDashboardService:
         for queue in ("delayed", "unpaid", "moderation"):
             for item in attention[queue]:
                 item["managers"] = managers.get(item["order_id"], [])
-                order_progress = progress.get(UUID(item["order_id"]))
-                item["transferred_count"] = (
-                    order_progress.transferred_count if order_progress else None
-                )
-                item["manual_transferred_count"] = (
-                    order_progress.manual_count if order_progress else 0
-                )
         return attention
 
     def _attention_reasons(
@@ -2144,7 +2152,6 @@ class AdminDashboardService:
                 AdvertiserProfileModel.brand, UserModel.username
             ),
             "status": OrderModel.status,
-            "picked_count": picked_order_count(),
             "responses": func.coalesce(responses.c.responses, 0),
             "dispatched_count": func.coalesce(
                 dispatched_subq.c.dispatched_count, 0
@@ -2157,7 +2164,11 @@ class AdminDashboardService:
             ),
             "created_at": OrderModel.created_at,
         }
-        order_col = sort_map.get(sort_by, OrderModel.created_at)
+        order_col = (
+            await session.run_sync(admin_picked_order_sort)
+            if sort_by == "picked_count"
+            else sort_map.get(sort_by, OrderModel.created_at)
+        )
         query = query.order_by(
             order_col.asc() if order_asc else order_col.desc()
         )
@@ -2237,6 +2248,7 @@ class AdminDashboardService:
                     else_=False,
                 ).label("can_edit_closure_reason"),
                 order_archived().label("archived"),
+                can_close_order().label("can_close"),
                 order_activity_at().label("related_at"),
                 PaymentModel.status.label("payment_status"),
                 CONTROLS.c.paused.label("paused"),
@@ -2285,6 +2297,7 @@ class AdminDashboardService:
             closure_reason,
             can_edit_closure_reason,
             archived,
+            can_close,
             related_at,
             payment_status,
             dispatch_paused,
@@ -2293,6 +2306,9 @@ class AdminDashboardService:
             order.financial_version is not None and not order.complimentary
         )
         responses_list = []
+        progress = (await load_async_order_progress(session, [order])).get(
+            order_id
+        )
         if include_responses:
             from ugc_bot.admin.order_creators import load_order_responses
 
@@ -2301,7 +2317,7 @@ class AdminDashboardService:
             )
             if financial_picked is not None:
                 responses_count = financial_picked
-        elif financial_selection:
+        elif financial_selection and progress is None:
             responses_count = (
                 await session.scalar(
                     select(func.count()).select_from(
@@ -2310,6 +2326,8 @@ class AdminDashboardService:
                 )
                 or 0
             )
+        if progress is not None:
+            responses_count = progress.picked_count
         manager_rows = (
             await session.execute(order_managers_query([order_id]))
         ).all()
@@ -2355,6 +2373,10 @@ class AdminDashboardService:
             "test_candidate": bool(test_candidate),
             "closure_reason": format_order_closure_reason(closure_reason),
             "can_edit_closure_reason": bool(can_edit_closure_reason),
+            "can_close": bool(can_close and not archived),
+            "closure_hint": active_order_closure_hint(order, can_close)
+            if not archived
+            else None,
             "archived": bool(archived),
             "managers": [manager_contact(manager) for manager in manager_rows],
             "last_activity_at": latest_order_activity(order, related_at),

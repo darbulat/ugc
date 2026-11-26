@@ -134,10 +134,11 @@ def snapshot():
     return card, activity, transfers
 
 
-def open_workspace(page, monkeypatch, *, payment_state="paid"):
+def open_workspace(page, monkeypatch, *, payment_state="paid", picked=10):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     monkeypatch.setenv("USE_REDIS_STORAGE", "false")
     card, activity, transfers = snapshot()
+    card.update(picked_count=picked, progress=picked / card["bloggers_needed"])
 
     async def get_card(self, order_id, *, include_responses=True):
         result = deepcopy(card)
@@ -146,12 +147,14 @@ def open_workspace(page, monkeypatch, *, payment_state="paid"):
         return result
 
     async def get_activity(self, order_id, **kwargs):
+        workspace = creator_workspace(
+            card["responses_list"], activity, transfers, offer_price=1000
+        )
+        workspace["picked_count"] = transfers.get("picked_count", picked)
         return dict(
             activity=deepcopy(activity),
             transfers=deepcopy(transfers),
-            workspace=creator_workspace(
-                card["responses_list"], activity, transfers, offer_price=1000
-            ),
+            workspace=workspace,
         )
 
     monkeypatch.setattr(
@@ -438,6 +441,22 @@ def test_order_progress_and_position_scope_layout(page, monkeypatch, worklist):
     )
     expect(progress).to_contain_text("Подобрано по плану 9 из 10")
     expect(progress).to_contain_text("Осталось 1")
+    plan.update(picked=8, transferred_count=8, manual_transferred_count=6)
+    page.reload()
+    expect(progress).to_contain_text("Подобрано по плану 8 из 10")
+    expect(progress).to_contain_text("Осталось 2")
+    expect(progress).to_contain_text("6 вручную")
+    expect(progress.locator(".order-progress__extra")).to_have_count(0)
+    page.get_by_role(
+        "link", name="Для закрытия нужно урегулировать все позиции."
+    ).click()
+    closure = page.locator("#order-closure")
+    expect(closure.get_by_role("button", name="Закрыть")).to_have_count(0)
+    expect(
+        closure.get_by_role("link", name="Проверить позиции")
+    ).to_have_attribute(
+        "href", f"{base}/admin/order-review?order_id={oid}&stage=all"
+    )
     page.goto(base + f"/admin/order-review?order_id={oid}&stage=all")
     scope = page.get_by_text("Выбран один заказ", exact=True)
     button = page.get_by_role("link", name="Все ответственные", exact=True)
@@ -454,8 +473,9 @@ def test_manual_handoff_badge_updates_and_remains_distinct_from_over_plan(
 ):
     page.clock.install()
     page.set_viewport_size({"width": 1440, "height": 900})
-    _, _, transfers = open_workspace(page, monkeypatch)
+    _, _, transfers = open_workspace(page, monkeypatch, picked=2)
     expect(page.locator("#order-transferred-manual")).to_be_hidden()
+    expect(page.locator("#order-picked-value")).to_have_text("2 из 10")
     transfers["manual_count"] = 1
     transfers["history"].append(
         dict(
@@ -473,11 +493,19 @@ def test_manual_handoff_badge_updates_and_remains_distinct_from_over_plan(
         )
     )
     transfers["count"] = 16
+    transfers["picked_count"] = 8
     with page.expect_response(
         lambda response: urlsplit(response.url).path.endswith("/offer-activity")
     ):
         page.clock.fast_forward(20_000)
     expect(page.locator("#order-transferred-value")).to_have_text("16")
+    expect(page.locator("#order-picked-value")).to_have_text("8 из 10")
+    expect(page.locator("#order-picked-progress")).to_have_attribute(
+        "aria-valuenow", "80"
+    )
+    expect(page.locator("#order-picked-remaining")).to_have_text(
+        "Осталось подобрать 2"
+    )
     manual = page.locator("#order-transferred-manual")
     expect(manual).to_have_text("1 вручную")
     expect(page.locator("#order-transferred-extra")).to_have_text(

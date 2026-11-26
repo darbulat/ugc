@@ -131,12 +131,22 @@ def _can_hide():
     return (OrderModel.status == OrderStatus.NEW) & _without_order_activity()
 
 
-def _can_close():
+def can_close_order():
     return (
         (OrderModel.status == OrderStatus.ACTIVE)
         & OrderModel.financial_version.is_(None)
         & ~_order_has(PaymentModel.__table__)
     )
+
+
+def active_order_closure_hint(order, can_close):
+    if order.status != OrderStatus.ACTIVE or can_close:
+        return None
+    if order.financial_version is not None and not order.complimentary:
+        return "Для закрытия нужно урегулировать все позиции."
+    if order.financial_version is not None:
+        return "Для этого заказа ручное закрытие недоступно."
+    return "По заказу есть запись об оплате. Быстрое закрытие недоступно."
 
 
 def _order_test_marker():
@@ -533,7 +543,7 @@ def worklist_row_details(
             .label("has_complaints"),
             UserModel.username,
             AdvertiserProfileModel.brand,
-            _can_close().label("can_close"),
+            can_close_order().label("can_close"),
             _can_hide().label("can_hide"),
             _is_test_order().label("is_test"),
             order_test_candidate().label("test_candidate"),
@@ -559,28 +569,31 @@ def worklist_row_details(
         session, financial_order_ids(row[0] for row in rows)
     )
     now = datetime.now(timezone.utc)
-    return {
-        row[0].order_id: {
+    details = {}
+    for row in rows:
+        order = row[0]
+        order_progress = progress.get(order.order_id)
+        picked = order_progress.picked_count if order_progress else row.picked
+        details[order.order_id] = {
             **{k: v for k, v in row._mapping.items() if k != "OrderModel"},
-            "managers": managers[row[0].order_id],
+            "picked": picked,
+            "managers": managers[order.order_id],
             "transferred_count": (
-                progress[row[0].order_id].transferred_count
-                if row[0].order_id in progress
-                else None
+                order_progress.transferred_count if order_progress else None
             ),
             "manual_transferred_count": (
-                progress[row[0].order_id].manual_count
-                if row[0].order_id in progress
-                else 0
+                order_progress.manual_count if order_progress else 0
             ),
-            "replaceable_managers": replaceable[row[0].order_id],
+            "replaceable_managers": replaceable[order.order_id],
+            "closure_hint": active_order_closure_hint(order, row.can_close)
+            if not row.archived
+            else None,
             "attention_reasons": active_pick_reasons(
-                now, row[0], row.picked, row.dispatch_paused, thresholds
+                now, order, picked, row.dispatch_paused, thresholds
             ),
-            "last_activity_at": latest_order_activity(row[0], row.related_at),
+            "last_activity_at": latest_order_activity(order, row.related_at),
         }
-        for row in rows
-    }
+    return details
 
 
 def _mark_test_order(
@@ -1034,7 +1047,7 @@ def change_order_worklist(
             else "Заказ возвращён из удалённых."
         )
     if not session.scalar(
-        select(_can_close()).where(OrderModel.order_id == order_id)
+        select(can_close_order()).where(OrderModel.order_id == order_id)
     ):
         return "Закрыть здесь можно только активный заказ без оплаты."
 

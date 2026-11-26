@@ -7,6 +7,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 
+from ugc_bot.admin.order_progress import load_async_order_progress
 from ugc_bot.admin.order_summary import (
     financial_positions,
     order_creator_contacts,
@@ -296,6 +297,11 @@ async def load_creator_workspace(session, order_id, activity, transfers):
         with suppress(ValueError):
             user_ids.append(UUID(key))
     contacts = await order_creator_contacts(session, user_ids)
-    return creator_workspace(
+    workspace = creator_workspace(
         responses, activity, transfers, contacts, offer_price=order.price
     )
+    progress = (await load_async_order_progress(session, [order])).get(order_id)
+    if progress is not None:
+        workspace["picked_count"] = progress.picked_count
+        workspace["needed"] = order.bloggers_needed
+    return workspace

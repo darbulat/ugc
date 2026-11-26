@@ -39,14 +39,14 @@ def delivery_schema(session, tables):
     return installed, manual
 
 
-def manual_delivery_rows(order_ids):
+def manual_delivery_rows(order_ids=None):
     acknowledged = exists().where(
         STAFF_DELIVERIES.c.delivery_id == INVITES.c.id,
         STAFF_DELIVERIES.c.order_id == OrderModel.order_id,
         STAFF_DELIVERIES.c.paid_item_id == OrderItemModel.paid_item_id,
         STAFF_DELIVERIES.c.client_id == OrderModel.advertiser_id,
     )
-    return (
+    query = (
         select(
             INVITES.c.id.label("invite_id"),
             INVITES.c.order_id,
@@ -76,13 +76,15 @@ def manual_delivery_rows(order_ids):
             ),
         )
         .where(
-            INVITES.c.order_id.in_(order_ids),
             INVITES.c.reported_at.is_not(None),
             OrderModel.financial_version.is_not(None),
             OrderModel.complimentary.is_(False),
             or_(NOTICES.c.invite_id.is_not(None), acknowledged),
         )
     )
+    if order_ids is not None:
+        query = query.where(INVITES.c.order_id.in_(order_ids))
+    return query
 
 
 def load_manual_history(session, order_ids):

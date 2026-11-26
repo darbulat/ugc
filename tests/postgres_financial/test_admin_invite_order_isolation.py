@@ -149,7 +149,8 @@ async def assert_separate_counters(env, order_ids, counts):
         progress = load_order_progress(db, order_ids)
         worklist = worklist_row_details(db, order_ids, thresholds)
         for oid, count in zip(order_ids, counts, strict=True):
-            assert progress[oid] == OrderProgress(0, count, count)
+            assert progress[oid] == OrderProgress(count, count, count)
+            assert worklist[oid]["picked"] == count
             assert worklist[oid]["transferred_count"] == count
             assert worklist[oid]["manual_transferred_count"] == count
     dashboard = AdminDashboardService(
@@ -160,6 +161,7 @@ async def assert_separate_counters(env, order_ids, counts):
         row = next(r for r in listed["items"] if r["order_id"] == str(oid))
         assert row["transferred_count"] == count
         assert row["manual_transferred_count"] == count
+        assert row["picked_count"] == count
         activity = await dashboard.get_order_workspace_activity(
             oid, can_send=True
         )

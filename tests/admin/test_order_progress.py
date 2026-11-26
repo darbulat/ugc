@@ -14,6 +14,7 @@ from sqlalchemy import (
     Uuid,
     create_engine,
     event,
+    select,
 )
 from sqlalchemy.orm import Session
 
@@ -274,16 +275,19 @@ def add_manual(
 ):
     from datetime import datetime, timezone
 
-    identity, item = uuid4(), uuid4()
-    session.execute(
-        t["items"]
-        .insert()
-        .values(
-            paid_item_id=item,
-            order_id=order,
-            ordinal=ordinal,
+    identity = uuid4()
+    item = session.scalar(
+        select(t["items"].c.paid_item_id).where(
+            t["items"].c.order_id == order, t["items"].c.ordinal == ordinal
         )
     )
+    if item is None:
+        item = uuid4()
+        session.execute(
+            t["items"]
+            .insert()
+            .values(paid_item_id=item, order_id=order, ordinal=ordinal)
+        )
     session.execute(
         t["order_creator_invites"]
         .insert()
@@ -311,7 +315,7 @@ def add_manual(
     return identity, item
 
 
-def test_manual_sent_contacts_count_without_inflating_paid_assignments(
+def test_manual_sent_contacts_fill_positions_once(
     delivery_db,
 ):
     session, t = delivery_db
@@ -327,15 +331,15 @@ def test_manual_sent_contacts_count_without_inflating_paid_assignments(
             creator_id=regular,
         )
     )
-    add_manual(session, t, order, creator=manual)
+    _, manual_item = add_manual(session, t, order, creator=manual)
     add_manual(session, t, order, instagram="external_creator", ordinal=4)
     add_manual(session, t, order, instagram="EXTERNAL_CREATOR", ordinal=4)
-    for state in (None, "sending", "failed", "unknown"):
-        add_manual(session, t, order, state=state)
-    add_manual(session, t, order, kind="creator")
-    add_manual(session, t, order, reported=False)
+    for ordinal, state in enumerate((None, "sending", "failed", "unknown"), 5):
+        add_manual(session, t, order, state=state, ordinal=ordinal)
+    add_manual(session, t, order, kind="creator", ordinal=9)
+    add_manual(session, t, order, reported=False, ordinal=10)
     assert load_order_progress(session, [order])[order] == OrderProgress(
-        0, 3, 2
+        2, 3, 2
     )
     # A creator registering later must not count as a fourth delivered person.
     session.execute(
@@ -347,8 +351,15 @@ def test_manual_sent_contacts_count_without_inflating_paid_assignments(
             creator_id=manual,
         )
     )
+    session.execute(
+        t["assignments"]
+        .insert()
+        .values(
+            assignment_id=uuid4(), creator_id=manual, paid_item_id=manual_item
+        )
+    )
     assert load_order_progress(session, [order])[order] == OrderProgress(
-        0, 3, 2
+        2, 3, 2
     )
 
 
@@ -378,7 +389,7 @@ def test_manual_acknowledgement_requires_the_order_customer(delivery_db):
         )
     )
     assert load_order_progress(session, [order])[order] == OrderProgress(
-        0, 1, 1
+        1, 1, 1
     )
     # The following notification does not count the acknowledgement twice.
     session.execute(
@@ -391,7 +402,7 @@ def test_manual_acknowledgement_requires_the_order_customer(delivery_db):
         )
     )
     assert load_order_progress(session, [order])[order] == OrderProgress(
-        0, 1, 1
+        1, 1, 1
     )
 
 
@@ -403,7 +414,7 @@ def test_unregistered_manual_contact_merges_after_accepting_its_link(
     order, client = add_order(session, t)
     identity, _ = add_manual(session, t, order, instagram="external_creator")
     assert load_order_progress(session, [order])[order] == OrderProgress(
-        0, 1, 1
+        1, 1, 1
     )
     creator = uuid4()
     table = t["order_creator_invites"]
@@ -420,5 +431,5 @@ def test_unregistered_manual_contact_merges_after_accepting_its_link(
         )
     )
     assert load_order_progress(session, [order])[order] == OrderProgress(
-        0, 1, 1
+        1, 1, 1
     )

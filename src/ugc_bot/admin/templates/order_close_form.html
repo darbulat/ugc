@@ -1,0 +1,16 @@
+{% macro close_order_form(order_id, action, csrf_token, reason_limit, button_class, action_class) %}
+<form method="post" action="{{ action }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <button type="button" class="{{ button_class }}" data-order-close>Закрыть</button>
+  <dialog class="order-close-dialog" aria-labelledby="order-close-title-{{ order_id }}">
+    <h3 id="order-close-title-{{ order_id }}">Закрыть заказ</h3>
+    <label for="order-close-reason-{{ order_id }}">Причина закрытия</label>
+    <textarea id="order-close-reason-{{ order_id }}" name="closure_reason" rows="3"
+              maxlength="{{ reason_limit }}" required autofocus></textarea>
+    <div class="order-close-dialog__actions">
+      <button type="submit" class="{{ action_class }}">Закрыть заказ</button>
+      <button type="button" class="{{ button_class }}" data-order-close-cancel>Отмена</button>
+    </div>
+  </dialog>
+</form>
+{% endmacro %}
