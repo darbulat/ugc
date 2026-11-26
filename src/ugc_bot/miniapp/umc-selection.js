@@ -29,6 +29,7 @@
       briefExample: 'Пример: вертикальный ролик на 30 секунд с распаковкой и демонстрацией товара.',
       dueHint: 'Выберите будущую дату, к которой нужен подбор авторов.',
       contactHint: 'Укажите Telegram, телефон или email для связи по заказу.',
+      imageHint: 'Выберите фото из галереи. Оно автоматически впишется в квадрат без обрезки.',
     },
     en: {
       requiredFields: 'Fields marked with an asterisk are required.',
@@ -36,6 +37,7 @@
       briefExample: 'Example: a 30-second vertical video showing the unboxing and the product in use.',
       dueHint: 'Choose a future date by which you need creators selected.',
       contactHint: 'Enter a Telegram handle, phone number or email for this order.',
+      imageHint: 'Choose a photo from your gallery. It will fit inside a square without cropping.',
     },
     kk: {
       requiredFields: 'Жұлдызшамен белгіленген өрістер міндетті.',
@@ -43,6 +45,7 @@
       briefExample: 'Мысал: өнімді қораптан шығарып, қолдануды көрсететін 30 секундтық тік бейне.',
       dueHint: 'Авторларды іріктеу аяқталуы тиіс алдағы күнді таңдаңыз.',
       contactHint: 'Тапсырыс бойынша байланысу үшін Telegram, телефон немесе email көрсетіңіз.',
+      imageHint: 'Галереядан фото таңдаңыз. Ол қиылмай, шаршыға сыяды.',
     },
     be: {
       requiredFields: 'Палі з зорачкай абавязковыя.',
@@ -50,6 +53,7 @@
       briefExample: 'Прыклад: вертыкальны ролік на 30 секунд з распакоўкай і дэманстрацыяй тавару.',
       dueHint: 'Выберыце будучую дату, да якой трэба падабраць аўтараў.',
       contactHint: 'Пазначце Telegram, тэлефон або email для сувязі па заказе.',
+      imageHint: 'Выберыце фота з галерэі. Яно змесціцца ў квадрат без абразання.',
     },
     uz: {
       requiredFields: 'Yulduzcha bilan belgilangan maydonlar majburiy.',
@@ -57,6 +61,7 @@
       briefExample: 'Misol: mahsulotni qutidan ochish va ishlatishni ko‘rsatadigan 30 soniyalik vertikal video.',
       dueHint: 'Mualliflarni tanlash yakunlanishi kerak bo‘lgan kelgusi sanani tanlang.',
       contactHint: 'Buyurtma bo‘yicha aloqa uchun Telegram, telefon yoki email kiriting.',
+      imageHint: 'Galereyadan surat tanlang. U qirqilmasdan kvadratga joylanadi.',
     },
   };
   Object.keys(fieldHints).forEach(function(locale) { Object.assign(copy[locale], fieldHints[locale]); });
@@ -131,7 +136,7 @@
     text('intake-brief-hint', words().briefHint + ' ' + words().briefExample);
     var entry=id('btn-show-create-order'); if(entry) entry.textContent=words().entry;freshDraft.textContent=submittedWords()[1];
     document.querySelectorAll('[data-selection-open]').forEach(function(el) { el.textContent=words().viewSelection; });
-    dueLabel(); targetLocalize();var hints={ru:'до 5 МБ (5 000 000 байт)',en:'up to 5 MB (5 000 000 bytes)',kk:'5 МБ дейін (5 000 000 байт)',be:'да 5 МБ (5 000 000 байт)',uz:'5 MB gacha (5 000 000 bayt)'};text('intake-image-hint','JPEG, 1080 × 1080 px, '+(hints[(window._me||{}).locale]||hints.en));
+    dueLabel(); targetLocalize();
   }
   function dueLabel() { var d=new Date(id('intake-due').value || Date.now()); var offset=-d.getTimezoneOffset(), sign=offset>=0?'+':'-'; var zone=Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; text('intake-due-label',words().due+' ('+zone+', UTC'+sign+String(Math.floor(Math.abs(offset)/60)).padStart(2,'0')+':'+String(Math.abs(offset)%60).padStart(2,'0')+') *'); }
   function row(parent, label, value, valueId, minor) { var line=node('div'), dt=node('dt',label), dd=node('dd',value); if(valueId) dd.id=valueId; if(minor != null) dd.dataset.minor=String(minor); line.append(dt,dd); parent.appendChild(line); }

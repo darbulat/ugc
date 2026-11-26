@@ -1,24 +1,147 @@
-/* Original JPEG upload; browser preview is never server validation. */
+/* Prepare order photos in the browser and upload the previewed JPEG. */
 (function(){
   'use strict';
   var bridge=window.__umcAppBridge,input=document.getElementById('intake-image');
   if(!bridge||!input)return;
   var token=document.getElementById('intake-image-token'),preview=document.getElementById('intake-image-preview'),remove=document.getElementById('intake-image-remove'),error=document.getElementById('intake-image-error');
   var generation=0,uploading=false,context=null,owner=null;
-  var copy={ru:{large:'Изображение должно весить до 5 МБ.',jpeg:'Выберите JPEG 1080 × 1080 px.',dimensions:'Нужен квадратный JPEG 1080 × 1080 px.',invalid:'Не удалось прочитать JPEG. Выберите другой файл.',expired:'Изображение устарело. Прикрепите его ещё раз.',failed:'Изображение не загрузилось. Повторите попытку.',busy:'Загружаем изображение…'},en:{large:'The image must be at most 5 MB.',jpeg:'Choose a 1080 × 1080 JPEG.',dimensions:'Choose a square 1080 × 1080 JPEG.',invalid:'The JPEG could not be read. Choose another file.',expired:'Upload this image again.',failed:'Upload failed. Try again.',busy:'Uploading image…'},kk:{large:'Сурет 5 МБ-тан аспауы керек.',jpeg:'1080 × 1080 JPEG таңдаңыз.',dimensions:'1080 × 1080 шаршы JPEG керек.',invalid:'JPEG оқылмады. Басқа файл таңдаңыз.',expired:'Суретті қайта тіркеңіз.',failed:'Сурет жүктелмеді. Қайталаңыз.',busy:'Сурет жүктелуде…'},be:{large:'Выява павінна быць да 5 МБ.',jpeg:'Выберыце JPEG 1080 × 1080 px.',dimensions:'Патрэбны квадратны JPEG 1080 × 1080 px.',invalid:'JPEG не прачытаны. Выберыце іншы файл.',expired:'Прымацуйце выяву яшчэ раз.',failed:'Выява не загрузілася. Паўтарыце.',busy:'Загрузка выявы…'},uz:{large:'Rasm hajmi 5 MB gacha bo‘lishi kerak.',jpeg:'1080 × 1080 JPEG tanlang.',dimensions:'1080 × 1080 kvadrat JPEG kerak.',invalid:'JPEG o‘qilmadi. Boshqa fayl tanlang.',expired:'Rasmni qayta yuklang.',failed:'Rasm yuklanmadi. Qayta urining.',busy:'Rasm yuklanmoqda…'}};
+  var IMAGE_SIZE = 1080;
+  var MAX_IMAGE_BYTES = 5000000;
+  var copy = {
+    ru: {
+      large: 'Не удалось сжать фото. Выберите другое изображение.',
+      invalid: 'Не удалось открыть фото. Попробуйте выбрать JPEG или PNG.',
+      expired: 'Изображение устарело. Прикрепите его ещё раз.',
+      failed: 'Фото не загрузилось. Выберите его ещё раз.',
+      busy: 'Подготавливаем и загружаем фото…'
+    },
+    en: {
+      large: 'The photo could not be compressed. Choose another image.',
+      invalid: 'The photo could not be opened. Try a JPEG or PNG.',
+      expired: 'Upload this image again.',
+      failed: 'The photo could not be uploaded. Choose it again.',
+      busy: 'Preparing and uploading the photo…'
+    },
+    kk: {
+      large: 'Фотоны сығу мүмкін болмады. Басқа сурет таңдаңыз.',
+      invalid: 'Фото ашылмады. JPEG немесе PNG таңдап көріңіз.',
+      expired: 'Суретті қайта тіркеңіз.',
+      failed: 'Фото жүктелмеді. Оны қайта таңдаңыз.',
+      busy: 'Фото дайындалып, жүктелуде…'
+    },
+    be: {
+      large: 'Не ўдалося сціснуць фота. Выберыце іншую выяву.',
+      invalid: 'Не ўдалося адкрыць фота. Паспрабуйце выбраць JPEG або PNG.',
+      expired: 'Прымацуйце выяву яшчэ раз.',
+      failed: 'Фота не загрузілася. Выберыце яго яшчэ раз.',
+      busy: 'Рыхтуем і загружаем фота…'
+    },
+    uz: {
+      large: 'Suratni siqib bo‘lmadi. Boshqa rasm tanlang.',
+      invalid: 'Surat ochilmadi. JPEG yoki PNG faylini tanlab ko‘ring.',
+      expired: 'Rasmni qayta yuklang.',
+      failed: 'Surat yuklanmadi. Uni qayta tanlang.',
+      busy: 'Surat tayyorlanmoqda va yuklanmoqda…'
+    }
+  };
   function words(){return copy[(window._me||{}).locale]||copy.en;}
   function identity(){return (window.__miniapp_platform||'telegram')+':'+((window._me||{}).user_id||'');}
   function busy(value){uploading=value;var submit=document.getElementById('btn-intake-create');submit.disabled=value||document.getElementById('screen-intake').getAttribute('aria-busy')==='true';if(window.UMCShell)window.UMCShell.syncControls();}
   function changed(){token.dispatchEvent(new Event('input',{bubbles:true}));}
-  function clear(){generation++;if(context)context.dispose();context=null;busy(false);input.value='';token.value='';preview.removeAttribute('src');preview.hidden=true;remove.hidden=true;error.textContent='';}
+  function clear(){generation++;if(context)context.dispose();context=null;busy(false);input.value='';token.value='';hidePreview();error.textContent='';}
   function active(g,who,ctx){return generation===g&&identity()===who&&(!ctx||ctx.isCurrent());}
-  function message(e){var code=e&&e.message||'';return code.indexOf('image_too_large')>=0?words().large:code.indexOf('image_jpeg_required')>=0?words().jpeg:code.indexOf('image_dimensions')>=0?words().dimensions:code.indexOf('image_expired')>=0?words().expired:code.indexOf('image_invalid')>=0?words().invalid:words().failed;}
-  input.addEventListener('change',function(){
-    var file=input.files[0];if(!file)return;
-    clear();changed();if(file.size>5000000){error.textContent=words().large;return;}if(file.type&&file.type!=='image/jpeg'){error.textContent=words().jpeg;return;}
-    var g=++generation,who=identity(),ctx=bridge.createRequestContext?bridge.createRequestContext():null;context=ctx;owner=who;busy(true);remove.hidden=false;error.textContent=words().busy;
-    var reader=new FileReader();reader.onerror=function(){if(active(g,who,ctx)){busy(false);error.textContent=words().failed;}};
-    reader.onload=function(){if(!active(g,who,ctx))return;var result=String(reader.result),request=ctx||bridge;request.request('/orders/images',{image_base64:result.slice(result.indexOf(',')+1)}).then(function(data){if(!active(g,who,ctx))return;token.value=data.image_token;preview.src=result;preview.hidden=false;remove.hidden=false;error.textContent='';busy(false);changed();}).catch(function(e){if(active(g,who,ctx))error.textContent=message(e);}).finally(function(){if(active(g,who,ctx))busy(false);});};reader.readAsDataURL(file);
+  function hidePreview() {
+    preview.removeAttribute('src');
+    preview.hidden = true;
+    remove.hidden = true;
+  }
+
+  function message(error) {
+    var code = error && error.message || '';
+    if (code.indexOf('image_invalid') >= 0) return words().invalid;
+    if (code.indexOf('image_too_large') >= 0) return words().large;
+    if (code.indexOf('image_expired') >= 0) return words().expired;
+    return words().failed;
+  }
+
+  async function preparePhoto(file) {
+    var image = new Image();
+    var canvas = document.createElement('canvas');
+    canvas.width = canvas.height = IMAGE_SIZE;
+    var drawing = canvas.getContext('2d');
+    var source = URL.createObjectURL(file);
+
+    try {
+      image.src = source;
+      try {
+        await image.decode();
+      } catch (_) {
+        throw new Error('image_invalid');
+      }
+
+      var scale = IMAGE_SIZE / Math.max(image.naturalWidth, image.naturalHeight);
+      var width = Math.max(1, Math.round(image.naturalWidth * scale));
+      var height = Math.max(1, Math.round(image.naturalHeight * scale));
+      drawing.fillStyle = '#fff';
+      drawing.fillRect(0, 0, IMAGE_SIZE, IMAGE_SIZE);
+      drawing.imageSmoothingQuality = 'high';
+      drawing.drawImage(image, Math.floor((IMAGE_SIZE - width) / 2),
+        Math.floor((IMAGE_SIZE - height) / 2), width, height);
+    } finally {
+      image.removeAttribute('src');
+      URL.revokeObjectURL(source);
+    }
+
+    var jpeg = await new Promise(function (resolve) {
+      canvas.toBlob(resolve, 'image/jpeg', 0.86);
+    });
+    if (!jpeg || jpeg.type !== 'image/jpeg') throw new Error('image_encoding_failed');
+    if (jpeg.size > MAX_IMAGE_BYTES) throw new Error('image_too_large');
+
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () { resolve(String(reader.result)); };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsDataURL(jpeg);
+    });
+  }
+
+  input.addEventListener('change', async function () {
+    var file = input.files[0];
+    if (!file) return;
+
+    clear();
+    changed();
+    var currentGeneration = generation;
+    var who = identity();
+    var ctx = bridge.createRequestContext();
+    context = ctx;
+    owner = who;
+    busy(true);
+    remove.hidden = false;
+    error.textContent = words().busy;
+
+    try {
+      var result = await preparePhoto(file);
+      if (!active(currentGeneration, who, ctx)) return;
+      preview.src = result;
+      preview.hidden = false;
+
+      var data = await ctx.request('/orders/images', {
+        image_base64: result.slice(result.indexOf(',') + 1)
+      });
+      if (!active(currentGeneration, who, ctx)) return;
+      token.value = data.image_token;
+      error.textContent = '';
+      changed();
+    } catch (failure) {
+      if (active(currentGeneration, who, ctx)) {
+        hidePreview();
+        error.textContent = message(failure);
+      }
+    } finally {
+      if (active(currentGeneration, who, ctx)) busy(false);
+    }
   });
   remove.addEventListener('click',function(){clear();changed();});
   document.getElementById('form-umc-intake').addEventListener('reset',clear);

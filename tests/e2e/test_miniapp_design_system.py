@@ -6,6 +6,7 @@ and navigation run unchanged in Chromium. No live users or payments are used.
 
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -165,7 +166,8 @@ def open_app(
     page.set_default_timeout(8_000)
     errors: list[str] = []
     page.on("pageerror", lambda error: errors.append(str(error)))
-    page.route("**/*", network.route)
+    # Keep browser-local blob URLs available to the image decoder in WebKit.
+    page.route(re.compile(r"^https?://"), network.route)
     if host:
         script = Path(__file__).with_name("miniapp_host_mock.js").read_text()
         script = script.replace("__PLATFORM__", json.dumps(platform))

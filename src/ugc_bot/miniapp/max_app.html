@@ -531,8 +531,8 @@
       <textarea id="intake-brief" required maxlength="4000" aria-describedby="intake-brief-hint"></textarea>
       <p id="intake-brief-hint" class="hint umc-field-hint" data-intake-copy="briefHint"></p>
       <label for="intake-image" data-intake-copy="image"></label>
-      <p class="hint" id="intake-image-hint">JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт).</p>
-      <input id="intake-image" type="file" accept="image/jpeg" aria-describedby="intake-image-hint">
+      <p class="hint" id="intake-image-hint" data-intake-copy="imageHint">Выберите фото из галереи. Оно автоматически впишется в квадрат без обрезки.</p>
+      <input id="intake-image" type="file" accept="image/jpeg,image/png,image/heic,image/heif,.heic,.heif" aria-describedby="intake-image-hint">
       <input id="intake-image-token" type="hidden">
       <img id="intake-image-preview" alt="" hidden width="160" height="160" style="object-fit:contain;max-width:100%;">
       <button id="intake-image-remove" type="button" class="btn btn-secondary" data-intake-copy="removeImage" hidden></button>

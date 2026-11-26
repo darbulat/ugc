@@ -1,9 +1,13 @@
 """Customer journeys on production templates and synthetic signed APIs."""
 
+import base64
+import io
+import random
 import time
 from urllib.parse import urlparse
 
 import pytest
+from PIL import Image
 from playwright.sync_api import expect
 
 from tests.e2e.test_miniapp_design_system import open_app, screenshot
@@ -1033,17 +1037,30 @@ def test_image_upload_blocks_submit_and_account_change_discards_token(
     page.route("**/orders/images", lambda route: pending.append(route))
     page.locator("#btn-show-create-order").click()
     fill(page)
-    page.locator("#intake-image").set_input_files(
-        {
-            "name": "brief.jpg",
-            "mimeType": "image/jpeg",
-            "buffer": b"synthetic JPEG boundary",
-        }
+    image_input = page.locator("#intake-image")
+    image_input.set_input_files(
+        {"name": "broken.jpg", "mimeType": "image/jpeg", "buffer": b"invalid"}
     )
+    expect(page.locator("#intake-image-error")).to_contain_text(
+        "Не удалось открыть фото"
+    )
+    expect(page.locator("#intake-image-preview")).to_be_hidden()
+    assert not pending
+
+    data = io.BytesIO()
+    Image.new("RGB", (120, 200), "red").save(data, format="JPEG")
+    with page.expect_request("**/orders/images"):
+        image_input.set_input_files(
+            {
+                "name": "brief.jpg",
+                "mimeType": "image/jpeg",
+                "buffer": data.getvalue(),
+            }
+        )
     expect(page.locator("#btn-intake-create")).to_be_disabled()
-    page.wait_for_function(
-        "document.getElementById('intake-image-error').textContent.length>0"
-    )
+    expect(page.locator("#intake-image-preview")).to_be_visible()
+    expect(page.locator("#intake-image-token")).to_have_value("")
+    assert len(pending) == 1
     page.evaluate(
         "window._me.user_id='33000000-0000-4000-8000-000000000001';"
         "document.dispatchEvent(new Event('umc:app-ready'))"
@@ -1246,38 +1263,71 @@ def test_late_admin_capability_cannot_enable_entry_for_next_account(page):
     ).to_have_count(0)
 
 
-def test_original_jpeg_preview_saved_receipt_and_reopened_order(page):
-    import base64
-    import io
-
-    from PIL import Image
-
+@pytest.mark.parametrize("format_name", ["JPEG", "PNG"])
+def test_prepared_photo_preview_saved_receipt_and_reopened_order(
+    page, format_name
+):
+    width, height = 1800, 1350
+    if format_name == "PNG":
+        pixels = random.Random(0).randbytes(width * height * 3)
+        image = Image.frombytes("RGB", (width, height), pixels)
+    else:
+        image = Image.new("RGB", (width, height), "green")
+    image.paste("red", (0, 0, 120, height))
+    image.paste("blue", (width - 120, 0, width, height))
     data = io.BytesIO()
-    Image.new("RGB", (1080, 1080), (220, 180, 120)).save(data, format="JPEG")
-    encoded = base64.b64encode(data.getvalue()).decode()
+    if format_name == "JPEG":
+        exif = Image.Exif()
+        exif[274] = 6  # The phone displays the raw landscape as a portrait.
+        image.save(data, format=format_name, exif=exif)
+    else:
+        image.save(data, format=format_name)
+        assert data.tell() > 5_000_000
+
+    uploads = []
+
+    def save_image(route):
+        uploads.append(route.request.post_data_json["image_base64"])
+        route.fulfill(json={"image_token": ORDER})
+
     network = CustomerNetwork()
     errors = open_app(page, network, init_data=SIGNED)
-    page.route(
-        "**/orders/images",
-        lambda route: route.fulfill(json={"image_token": ORDER}),
-    )
+    page.route("**/orders/images", save_image)
     page.route(
         "**/orders/images/content",
         lambda route: route.fulfill(
-            json={"image_base64": encoded, "content_type": "image/jpeg"}
+            json={"image_base64": uploads[0], "content_type": "image/jpeg"}
         ),
     )
     page.locator("#btn-show-create-order").click()
     fill(page)
+    extension = format_name.lower()
     page.locator("#intake-image").set_input_files(
         {
-            "name": "brief.jpg",
-            "mimeType": "image/jpeg",
+            "name": f"brief.{extension}",
+            "mimeType": f"image/{extension}",
             "buffer": data.getvalue(),
         }
     )
-    expect(page.locator("#intake-image-preview")).to_be_visible()
+    preview = page.locator("#intake-image-preview")
+    expect(preview).to_be_visible()
     expect(page.locator("#btn-intake-create")).to_be_enabled()
+    assert (
+        preview.get_attribute("src") == f"data:image/jpeg;base64,{uploads[0]}"
+    )
+    jpeg = base64.b64decode(uploads[0])
+    assert len(jpeg) <= 5_000_000
+    with Image.open(io.BytesIO(jpeg)) as prepared:
+        assert prepared.format == "JPEG"
+        assert prepared.size == (1080, 1080)
+        assert prepared.getpixel((0, 0)) == (255, 255, 255)
+        first, last = (
+            ((540, 10), (540, 1070))
+            if format_name == "JPEG"
+            else ((10, 540), (1070, 540))
+        )
+        assert prepared.getpixel(first)[0] > 240
+        assert prepared.getpixel(last)[2] > 240
     page.locator("#btn-intake-create").click()
     expect(
         page.locator("#intake-result [data-order-image-view]")
