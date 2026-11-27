@@ -3,11 +3,14 @@
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import localcontext
+from io import BytesIO
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
+from PIL import Image
+from pillow_heif import from_pillow, get_file_mimetype
 
 from tests.helpers.fakes import FakeFSMContext
 from ugc_bot.application.messenger.dto import IncomingMessage, IncomingUser
@@ -16,6 +19,7 @@ from ugc_bot.bot.customer_intake import (
     choose_platforms,
     complete_intake,
     record_activity,
+    upload_telegram_image,
 )
 from ugc_bot.bot.telegram.handlers.order_creation_states import (
     OrderCreationStates,
@@ -25,6 +29,12 @@ from ugc_bot.domain.order_intake import (
     EligibleOrderPolicies,
     EligibleOrderPolicy,
 )
+
+
+def _jpeg(size=(1080, 1080)):
+    with BytesIO() as buffer, Image.new("RGB", size, "green") as photo:
+        photo.save(buffer, format="JPEG")
+        return buffer.getvalue()
 
 
 @pytest.fixture
@@ -381,21 +391,18 @@ async def test_invalid_platform_and_accompaniment_do_not_create(flow):
 
 @pytest.mark.asyncio
 async def test_telegram_document_upload_keeps_only_trusted_token(flow):
-    from io import BytesIO
-
-    from ugc_bot.bot.customer_intake import upload_telegram_image
-
-    user_id, incoming, state, service, messenger = flow
+    user_id, incoming, state, _, messenger = flow
     token = uuid4()
-    bot = SimpleNamespace(
-        download=AsyncMock(return_value=BytesIO(b"jpeg bytes"))
-    )
+    photo = _jpeg()
+    bot = SimpleNamespace(download=AsyncMock(return_value=BytesIO(photo)))
     image = SimpleNamespace(
         upload=AsyncMock(return_value=SimpleNamespace(token=token))
     )
     message = SimpleNamespace(
         bot=bot,
-        document=SimpleNamespace(file_id="untrusted-file-id", file_size=100),
+        document=SimpleNamespace(
+            file_id="untrusted-file-id", file_size=len(photo)
+        ),
         photo=None,
     )
     assert await upload_telegram_image(
@@ -403,12 +410,68 @@ async def test_telegram_document_upload_keeps_only_trusted_token(flow):
     )
     assert state._data["image_token"] == str(token)
     assert state._data.get("product_photo_file_id") is None
-    assert image.upload.call_args.args == (user_id, b"jpeg bytes")
-    image.upload.side_effect = ValueError("image_dimensions")
-    assert not await upload_telegram_image(
-        message, incoming, state, messenger, image
+    assert image.upload.call_args.args == (user_id, photo)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("format_name", ["JPEG", "PNG", "WEBP", "HEIC", "HEIF"])
+async def test_telegram_photo_fits_square_without_cropping(flow, format_name):
+    user_id, incoming, state, _, messenger = flow
+    is_heif = format_name in {"HEIC", "HEIF"}
+    rotated = is_heif or format_name == "JPEG"
+    mode = "RGBA" if format_name == "WEBP" else "RGB"
+    with BytesIO() as buffer, Image.new(mode, (1600, 1200), "green") as photo:
+        photo.paste("red", (0, 0, 140, photo.height))
+        photo.paste("blue", (photo.width - 140, 0, photo.width, photo.height))
+        if mode == "RGBA":
+            photo.paste((0, 0, 0, 0), (700, 500, 900, 700))
+        exif = Image.Exif()
+        if rotated:
+            exif[274] = 6
+        if is_heif:
+            from_pillow(photo).save(buffer, quality=90, exif=exif.tobytes())
+        else:
+            photo.save(buffer, format=format_name, exif=exif)
+        data = buffer.getvalue()
+    if format_name == "HEIF":
+        # mif1 is a general HEIF brand. The HEVC-compatible brands stay intact.
+        assert data[4:12] == b"ftypheic"
+        data = data[:8] + b"mif1" + data[12:]
+    if is_heif:
+        assert get_file_mimetype(data) == f"image/{format_name.lower()}"
+    bot = SimpleNamespace(download=AsyncMock(return_value=BytesIO(data)))
+    images = SimpleNamespace(
+        upload=AsyncMock(return_value=SimpleNamespace(token=uuid4()))
     )
-    assert "1080" in messenger.send_text.call_args.kwargs["text"]
+    media = SimpleNamespace(
+        file_id="full",
+        file_size=len(data),
+        file_name=f"photo.{format_name.lower()}",
+    )
+    thumb = SimpleNamespace(file_id="thumbnail", file_size=100)
+    message = SimpleNamespace(
+        bot=bot,
+        document=None if format_name == "JPEG" else media,
+        photo=[thumb, media] if format_name == "JPEG" else None,
+    )
+    assert await upload_telegram_image(
+        message, incoming, state, messenger, images
+    )
+    bot.download.assert_awaited_once_with("full")
+    owner, jpeg = images.upload.call_args.args
+    assert owner == user_id
+    assert len(jpeg) < 5_000_000
+    with Image.open(BytesIO(jpeg)) as fitted:
+        assert fitted.format == "JPEG"
+        assert fitted.size == (1080, 1080)
+        assert fitted.getpixel((0, 0)) == (255, 255, 255)
+        first, last = (
+            ((540, 10), (540, 1070)) if rotated else ((10, 540), (1070, 540))
+        )
+        assert fitted.getpixel(first)[0] > 240
+        assert fitted.getpixel(last)[2] > 240
+        if mode == "RGBA":
+            assert fitted.getpixel((540, 540)) == (255, 255, 255)
 
 
 @pytest.mark.asyncio
@@ -512,29 +575,39 @@ async def test_policy_authorization_failure_keeps_brief(flow, policy_error):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "case", ["none", "service", "large", "missing", "format", "forbidden"]
+    "case",
+    [
+        "none",
+        "service",
+        "large",
+        "large_download",
+        "missing",
+        "format",
+        "corrupt_heif",
+        "forbidden",
+    ],
 )
 async def test_image_failure_preserves_previous_token(flow, case):
-    from io import BytesIO
-
-    from ugc_bot.bot.customer_intake import upload_telegram_image
-
     _, incoming, state, _, messenger = flow
     state._data["image_token"] = "previous"
     media = SimpleNamespace(
-        file_id="a", file_size=5_000_001 if case == "large" else 10
+        file_id="a",
+        file_size={"large": 5_000_001, "large_download": None}.get(case, 10),
     )
+    data = {
+        "large_download": lambda: b"x" * 5_000_001,
+        "corrupt_heif": lambda: (
+            b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic"
+        ),
+        "forbidden": _jpeg,
+    }.get(case, lambda: b"x")
     bot = SimpleNamespace(
         download=AsyncMock(
-            return_value=None if case == "missing" else BytesIO(b"x")
+            return_value=None if case == "missing" else BytesIO(data())
         )
     )
     image = SimpleNamespace(
-        upload=AsyncMock(
-            side_effect=ValueError("image_jpeg_required")
-            if case == "format"
-            else PermissionError("forbidden")
-        )
+        upload=AsyncMock(side_effect=PermissionError("forbidden"))
     )
     message = SimpleNamespace(
         bot=bot, document=None if case == "none" else media, photo=[]
@@ -547,6 +620,19 @@ async def test_image_failure_preserves_previous_token(flow, case):
         None if case == "service" else image,
     )
     assert state._data["image_token"] == "previous"
+    if case == "forbidden":
+        image.upload.assert_awaited_once()
+    else:
+        image.upload.assert_not_awaited()
+    if case in {"large", "large_download"}:
+        assert "5 000 000" in messenger.send_text.call_args.kwargs["text"]
+    if case == "large":
+        bot.download.assert_not_awaited()
+    if case == "format":
+        assert (
+            "Не удалось прочитать"
+            in messenger.send_text.call_args.kwargs["text"]
+        )
 
 
 @pytest.mark.asyncio
@@ -843,8 +929,6 @@ async def test_actions_transport_wrappers(flow, channel):
 async def test_telegram_confirms_saved_order_before_native_checkout(
     flow, monkeypatch, with_manager
 ):
-    from io import BytesIO
-
     from tests.helpers.fakes import FakeCallback, FakeMessage, FakeUser
     from ugc_bot.bot.telegram.handlers import order_creation as tg
     from ugc_bot.bot.telegram.handlers import payments
@@ -858,9 +942,12 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
         get_many=AsyncMock(return_value={}),
     )
     message = FakeMessage(user=FakeUser(12))
-    message.document = SimpleNamespace(file_id="document", file_size=100)
+    photo = _jpeg((640, 1280))
+    message.photo = [
+        SimpleNamespace(file_id="gallery-photo", file_size=len(photo))
+    ]
     message.bot = SimpleNamespace(
-        download=AsyncMock(return_value=BytesIO(b"data"))
+        download=AsyncMock(return_value=BytesIO(photo))
     )
     images = SimpleNamespace(
         upload=AsyncMock(return_value=SimpleNamespace(token=uuid4()))
@@ -877,7 +964,7 @@ async def test_telegram_confirms_saved_order_before_native_checkout(
     )
     assert state._data["image_token"]
     assert state.state == OrderCreationStates.content_usage.state
-    images.upload.side_effect = ValueError("image_dimensions")
+    message.bot.download.return_value = BytesIO(b"invalid photo")
     await state.set_state(OrderCreationStates.order_photo.state)
     await tg.handle_order_photo(
         message,
