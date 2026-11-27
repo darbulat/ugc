@@ -1,14 +1,20 @@
 """Shared Telegram/MAX completion of a saved, server-priced customer brief."""
 
 import logging
+from asyncio import to_thread
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from io import BytesIO
 from uuid import UUID, uuid4
+
+from PIL import Image, ImageOps
+from pillow_heif import HeifImageFile, get_file_mimetype
 
 from ugc_bot.application.messenger.dto import Button, Keyboard, KeyboardKind
 from ugc_bot.application.native_principal_ports import (
     AuthenticatedMessengerPrincipal,
 )
+from ugc_bot.application.services.order_image_service import MAX_IMAGE_BYTES
 from ugc_bot.bot.telegram.handlers.order_creation_states import (
     OrderCreationStates,
 )
@@ -19,7 +25,7 @@ from ugc_bot.domain.order_intake import OrderIntakeCommand
 from ugc_bot.domain.order_targeting import OrderTargeting
 from ugc_bot.domain.social import ORDER_TARGET_PLATFORMS, SocialPlatform
 
-IMAGE_REQUIREMENTS = "JPEG, 1080 × 1080 px, до 5 МБ (5 000 000 байт)"
+TELEGRAM_ORDER_IMAGE_SIZE = (1080, 1080)
 ACCOMPANIMENT_CALLBACK_PREFIX = "order:manager:"
 CONSULTATION_CALLBACK_PREFIX = "order:consult:"
 logger = logging.getLogger(__name__)
@@ -327,6 +333,59 @@ async def complete_intake(
     return result
 
 
+def _open_telegram_photo(buffer: BytesIO) -> Image.Image:
+    if get_file_mimetype(buffer).startswith(("image/heic", "image/heif")):
+        # Open HEIF directly to keep Pillow's registered formats unchanged.
+        return HeifImageFile(buffer)
+    return Image.open(buffer, formats=("JPEG", "PNG", "WEBP"))
+
+
+def _fit_telegram_photo(data: bytes) -> bytes:
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("image_too_large")
+    try:
+        with BytesIO(data) as buffer, _open_telegram_photo(buffer) as source:
+            if (
+                Image.MAX_IMAGE_PIXELS is not None
+                and source.width * source.height > Image.MAX_IMAGE_PIXELS
+            ):
+                raise ValueError("image_invalid")
+            if (
+                source.format == "JPEG"
+                and source.size == TELEGRAM_ORDER_IMAGE_SIZE
+                and source.getexif().get(274, 1) == 1
+            ):
+                return data
+
+            source.draft("RGB", TELEGRAM_ORDER_IMAGE_SIZE)
+            ImageOps.exif_transpose(source, in_place=True)
+            side = TELEGRAM_ORDER_IMAGE_SIZE[0]
+            scale = side / max(source.size)
+            width = max(1, round(source.width * scale))
+            height = max(1, round(source.height * scale))
+            fitted = source.resize(
+                (width, height), Image.Resampling.LANCZOS
+            ).convert("RGBA")
+            with Image.new("RGB", TELEGRAM_ORDER_IMAGE_SIZE, "white") as square:
+                square.paste(
+                    fitted,
+                    ((side - width) // 2, (side - height) // 2),
+                    fitted.getchannel("A"),
+                )
+                with BytesIO() as result:
+                    square.save(result, format="JPEG", quality=86)
+                    return result.getvalue()
+    except (
+        EOFError,
+        OSError,
+        RuntimeError,
+        SyntaxError,
+        ValueError,
+        Image.DecompressionBombError,
+    ) as exc:
+        raise ValueError("image_invalid") from exc
+
+
 async def upload_telegram_image(message, incoming, state, messenger, images):
     data = await state.get_data()
     document = getattr(message, "document", None)
@@ -337,26 +396,24 @@ async def upload_telegram_image(message, incoming, state, messenger, images):
     try:
         if images is None:
             raise ValueError("image_upload_unavailable")
-        if getattr(media, "file_size", 0) and media.file_size > 5_000_000:
+        size = getattr(media, "file_size", None)
+        if size is not None and size > MAX_IMAGE_BYTES:
             raise ValueError("image_too_large")
         buffer = await message.bot.download(media.file_id)
         if buffer is None:
             raise ValueError("image_invalid")
+        with buffer:
+            source = buffer.read(MAX_IMAGE_BYTES + 1)
+        jpeg = await to_thread(_fit_telegram_photo, source)
         data = await state.get_data()
         user_id = UUID(str(data["user_id"]))
         image = await images.upload(
-            user_id, buffer.read(), principal=principal_for(incoming, user_id)
+            user_id, jpeg, principal=principal_for(incoming, user_id)
         )
     except (ValueError, PermissionError, LookupError) as exc:
         reason = (
             str(exc)
-            if str(exc)
-            in {
-                "image_too_large",
-                "image_jpeg_required",
-                "image_dimensions",
-                "image_invalid",
-            }
+            if str(exc) in {"image_too_large", "image_invalid"}
             else "image_upload_unavailable"
         )
         await messenger.send_text(
